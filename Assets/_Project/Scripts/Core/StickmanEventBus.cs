@@ -220,6 +220,26 @@ namespace StickMate.Core
         /// 외력/발판 상실은 다른 능동 상태와 완전히 같은 경로(Ragdoll/GroundLossHang)를 탄다.</para>
         /// </summary>
         Dance = 27,
+        // ==== 밧줄 던져 등반(RopeClimb) — 사용자 명시 요청 2026-09-06: "높은 창이 있을때 줄같은걸
+        // 던져서 타고 올라가는것도 구현되어야함". 구조설계 docs/DESIGN_ROPE_CLIMB_ARCHITECTURE.md ====
+
+        /// <summary>
+        /// 손 등반(<see cref="ParkourClimb"/>)의 상한(<c>StickConfig.stepUpMaxHeights</c>)을 넘는 더
+        /// 높은 벽/창을 밧줄(갈고리)을 던져 타고 오르는 능동 상태(States/RopeClimbState.cs).
+        /// <c>Throw</c>(던지기, 아직 원래 발판 위)와 <c>Ascend</c>(밧줄을 타고 오르기, 공중) 2페이즈다.
+        ///
+        /// <para>왜 <see cref="ParkourClimb"/>를 확장하지 않고 별도 상태인가: 진행 방식(고정 시간
+        /// Lerp가 아니라 속도 기반), 페이즈 수(1개 vs 2개), 실패 시 화면(즉시 Fall vs 페이즈별 분기)이
+        /// 전부 달라 공유 가능한 코드가 사실상 없다 — <see cref="LedgeHang"/>을 <see cref="ParkourClimb"/>에
+        /// 합치지 않은 것과 같은 판례(그 값 문서 참고). 대신 같은 정적 유틸(GroundSensor)과 같은 블랙보드
+        /// 프로퍼티를 양쪽이 각자 호출해 관례만 공유한다.</para>
+        ///
+        /// <para>Ragdoll 강제 인터럽트는 새 코드 없이 이미 구조적으로 커버된다 — 정본 목록은
+        /// <c>States/RagdollImpactResolver</c> 클래스 문서 한 곳뿐이다(이 프로젝트가 "같은 목록이
+        /// 6개 파일에 복사됐다가 전부 낡았다"는 사고를 겪은 뒤 확정한 규칙 — 여기서 목록을 다시
+        /// 적지 않는다).</para>
+        /// </summary>
+        RopeClimb = 28,
     }
 
     /// <summary>
@@ -441,6 +461,38 @@ namespace StickMate.Core
     }
 
     /// <summary>
+    /// 밧줄 등반(2026-09-07) 오버레이의 생애주기 — 다른 스펙터클과 같은 <see cref="SpectacleOverlayPhase"/>
+    /// 3단계를 쓴다. <c>States/RopeClimbState.cs</c>는 이 이벤트로 "지금 어느 좌표를 향해
+    /// 던지고 있다/걸려 있다"는 <b>사실</b>만 발행하고, 밧줄 라인/갈고리 스프라이트를 그리는 것은
+    /// 별도 <c>Interaction/RopeClimbRenderer.cs</c>가 맡는다(ArcheryState/ArcheryRenderer 분리 관례
+    /// 재사용) — 이 상태가 창에 대해 아는 것은 좌표 하나뿐이라는 사실을 구조로 강제한다
+    /// (원칙 3 준수, 설계 문서 4절).
+    /// </summary>
+    public readonly struct RopeClimbOverlayEvent
+    {
+        /// <summary>던지는/오르는 손의 현재 월드 좌표(팔 IK 결과 그대로).</summary>
+        public readonly Vector2 HandWorld;
+
+        /// <summary>갈고리가 걸리는(또는 걸린) 목표 좌표(월드) — <c>wallHandle</c>의 가장자리,
+        /// Throw의 <c>Enter()</c>에서 이미 확정된다.</summary>
+        public readonly Vector2 AnchorWorld;
+
+        /// <summary>밧줄 비행 진행률(0~1) — Throw의 WindUp 동안 0, Swing 동안 경과 비율,
+        /// HookConfirm 이후(Ascend 포함)는 1(이미 걸림).</summary>
+        public readonly float FlightProgress01;
+
+        public readonly SpectacleOverlayPhase Phase;
+
+        public RopeClimbOverlayEvent(Vector2 handWorld, Vector2 anchorWorld, float flightProgress01, SpectacleOverlayPhase phase)
+        {
+            HandWorld = handWorld;
+            AnchorWorld = anchorWorld;
+            FlightProgress01 = flightProgress01;
+            Phase = phase;
+        }
+    }
+
+    /// <summary>
     /// docs/UX_FLOW.md 26-3절 "살아있는 느낌" 디테일 — AutoWanderController가 타이밍/확률 조건만 판정해
     /// 발행하는 유휴 연출 신호. 실제 동작 재생은 Interaction/IdleAmbientMotionRenderer.cs가 구독해
     /// StickmanBlackboard.BeginIdleAmbientMotion()으로 넘긴다(2026-08-30 배선 완료).
@@ -639,6 +691,10 @@ namespace StickMate.Core
         /// <summary>활쏘기 한 발의 조준 시작/발사 통지 — 사전 확정된 도달점을 함께 싣는다.</summary>
         public static event Action<ArcheryShotEvent> ArcheryShotChanged;
 
+        /// <summary>밧줄 등반(2026-09-07) 오버레이 생애주기 변경 — Interaction/RopeClimbRenderer.cs가
+        /// 구독해 밧줄/갈고리를 그리고 지운다.</summary>
+        public static event Action<RopeClimbOverlayEvent> RopeClimbOverlayChanged;
+
         /// <summary>윈도우 창 도둑(27-1) 오버레이 생애주기 변경. Phase2+ 렌더링이 이 이벤트만 구독해
         /// 팔 IK/파티클 스폰-제거를 담당한다(지금은 트리거/취소 판정만 계산).</summary>
         public static event Action<WindowTheftOverlayEvent> WindowTheftOverlayChanged;
@@ -721,6 +777,9 @@ namespace StickMate.Core
         public static void RaiseArcheryShotChanged(int shotIndex, ArcheryShotPhase phase, ArcheryShotResult result,
             Vector2 impactWorld, float flightSeconds)
             => ArcheryShotChanged?.Invoke(new ArcheryShotEvent(shotIndex, phase, result, impactWorld, flightSeconds));
+
+        public static void RaiseRopeClimbOverlayChanged(Vector2 handWorld, Vector2 anchorWorld, float flightProgress01, SpectacleOverlayPhase phase)
+            => RopeClimbOverlayChanged?.Invoke(new RopeClimbOverlayEvent(handWorld, anchorWorld, flightProgress01, phase));
 
         public static void RaiseWindowTheftOverlayChanged(Rect targetRectOsScreen, SpectacleOverlayPhase phase)
             => WindowTheftOverlayChanged?.Invoke(new WindowTheftOverlayEvent(targetRectOsScreen, phase));

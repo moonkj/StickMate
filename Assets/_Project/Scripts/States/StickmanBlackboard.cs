@@ -101,6 +101,11 @@ namespace StickMate.States
         /// IntentSource에서 매 프레임 조회 — WalkState가 소비해 ParkourClimb로 보낸다.</summary>
         public bool StepUpPressed => IntentSource != null && IntentSource.StepUpRequested;
 
+        /// <summary>이번 프레임에 "손 등반 상한을 넘는 벽에 밧줄을 던져 오르기"가 요청되었는지(동일한
+        /// 1프레임 계약, 2026-09-07). IntentSource에서 매 프레임 조회 — WalkState가 소비해
+        /// RopeClimb로 보낸다(StepUpRequested와 별도 채널인 이유는 그 문서 참고).</summary>
+        public bool RopeClimbPressed => IntentSource != null && IntentSource.RopeClimbRequested;
+
         /// <summary>
         /// ★ 배회 페이즈의 **계획 잔여 체류 시간**(초) — 발화 자격 게이트(docs/UX_FLOW.md 5절 규칙 8)가
         /// 읽는 유일한 상태 입력. 의도 소스가 <see cref="IPlannedDwellSource"/>를 구현한 경우에만
@@ -867,6 +872,12 @@ namespace StickMate.States
                 case StickmanStateId.LedgeHang:     // 모서리에 매달려 몸 위치를 직접 보간한다.
                 case StickmanStateId.ParkourClimb:  // 턱 위로 몸 위치를 직접 보간한다.
                 case StickmanStateId.Runaway:       // 은신처로 순간이동/은닉한다.
+                // ★ 밧줄 등반(2026-09-07) — Throw는 자기 Tick에서 GroundedTick을 직접 부르므로
+                //   (Archery의 비-Approach 분기와 같은 계약) 안전망 중복 호출이 _groundedTickFrame으로
+                //   걸러지고, Ascend는 ParkourClimb과 똑같이 몸 위치를 직접 Lerp로 보간해 접지가 없다.
+                //   여기 없으면 Ascend 중 안전망이 "발밑에 발판이 없다"고 보고 GroundLossHang/Fall로
+                //   강제 전이시켜 오르는 도중 갑자기 떨어진다.
+                case StickmanStateId.RopeClimb:
                     return true;
                 default:
                     return false;
@@ -952,6 +963,12 @@ namespace StickMate.States
                 //   끝내면 안 된다 — 위 계약 문서의 Idle 반례). 여기서 빼면 안전망이 도움닫기 속도를
                 //   매 프레임 지워 **스타점프가 영원히 도약하지 못한다**.
                 case StickmanStateId.Dance:
+                // ★ 밧줄 등반(2026-09-07) — 활쏘기와 같은 형태의 계약이다. Throw 중에는 제자리
+                //   정지를 상태가 직접 매 프레임 재확인해 죽이고(0으로 확정), Ascend 중에는
+                //   ParkourClimb와 같은 방식으로 몸 위치를 직접 보간한다. 여기서 빼면 안전망이
+                //   Throw 도중 남은 이동 속도를 못 죽이거나(제자리인데 미끄러짐), Ascend 도중
+                //   보간 위치를 매 프레임 지워 등반이 진행되지 않는다.
+                case StickmanStateId.RopeClimb:
                     return true;
                 default:
                     return false;
@@ -1011,6 +1028,12 @@ namespace StickMate.States
                 //   방향이 나오므로, 여기 없으면 그 호출이 같은 프레임 뒤쪽 TickPose에 덮여 죽은 코드가
                 //   되고 피루엣은 제자리 정지, 문워크는 그냥 뒷걸음질이 된다.
                 case StickmanStateId.Dance:
+                // ★ 밧줄 등반(2026-09-07, FacingLocked=true도 함께 걸지만 8-4 계약대로 여기도 함께
+                //   선언한다 — "SetFacingSign을 스스로 부르는 상태는 반드시 여기 들어와야 한다"는
+                //   멤버십 규칙은 FacingLocked 여부와 무관하다). RopeClimbState.Enter()가 오르는
+                //   벽 쪽으로 SetFacingSign을 부른다 — 등지고 오르면 손이 뒤로 뻗는다(파쿠르와
+                //   같은 이유).
+                case StickmanStateId.RopeClimb:
                     return true;
                 default:
                     return false;
@@ -1744,6 +1767,34 @@ namespace StickMate.States
         }
 
         /// <summary>
+        /// ★ 밧줄 등반(2026-09-07) 상한의 세로축 절반 — "이 오버레이 화면 자체의 하드 클램프 상단"을
+        /// Unity 월드 Y로 역변환한다(docs/DESIGN_ROPE_CLIMB_ARCHITECTURE.md 1-B). 위
+        /// <see cref="TryGetWalkableScreenBoundsWorld"/>가 좌우 경계에 하는 일을 세로로 한 번 더 할
+        /// 뿐 — 같은 <see cref="ComputeScreenClampOsBounds"/>(유일한 생산자)에서 파생되므로 두 조회가
+        /// 어긋날 수 없다.
+        ///
+        /// <para>★ 왜 "발판 목록 전체의 최고 Y"가 아니라 이 방식인가 — 이 프로젝트가 멀티모니터에서
+        /// "발판 통합 경계"(<c>GroundInfo.Screen*WorldX</c>)를 화면 경계로 오인해 러닝머신 버그를
+        /// <b>두 번</b> 겪었다(<see cref="AutoWanderController.ResolveEffectiveEdgeBoundary"/> 문서,
+        /// 2026-08-29 최초 수정 → 2026-09-02 멀티모니터 재발). 같은 함정이 세로축에도 열려 있다 —
+        /// 두 번째 모니터의 창이 발판으로 열거되면 "발판 목록의 최고 Y"가 이 오버레이 화면 훨씬
+        /// 위까지 뻗을 수 있다. 그래서 처음부터 "발판이 어디까지 있는가"가 아니라 "이 오버레이 화면
+        /// 자체가 어디서 끝나는가"(캐릭터가 실제로 서 있을 수 있는 화면 범위)만 묻는다 — 목표 창이
+        /// 아무리 높아도, 캐릭터가 자기 오버레이 화면 밖으로 등반이 끝나서는 안 된다.</para>
+        /// </summary>
+        /// <returns>Body/MainCamera가 없어 계산할 수 없으면 false(그 경우 out 값은 무의미).</returns>
+        public bool TryGetWalkableScreenTopWorldY(out float topWorldY)
+        {
+            topWorldY = 0f;
+            if (Body == null || MainCamera == null) return false;
+
+            Vector2 os = ScreenCoordinateConverter.WorldToOsScreen(MainCamera, Body.position, Config, out float depth);
+            ScreenClampOsBounds b = ComputeScreenClampOsBounds();
+            topWorldY = ScreenCoordinateConverter.OsScreenToWorld(MainCamera, new Vector2(os.x, b.MinY), depth, Config).y;
+            return true;
+        }
+
+        /// <summary>
         /// 매 프레임 마지막에 호출 — (1) 캐릭터 OS 좌표를 오버레이 창(=화면) 안으로 하드 클램프하고,
         /// (2) 그래도 발판을 완전히 잃은 채 오래 낙하 중이면 화면 중앙 지면으로 강제 복귀시킨다.
         /// </summary>
@@ -2184,6 +2235,13 @@ namespace StickMate.States
             // 지금까지 등반 내내 아래 ApplyIdlePose가 중립 포즈를 덧씌웠고, 그래서 차렷 자세의
             // 막대기가 위로 평행이동하기만 했다(= 사용자가 말한 "어설픈 점프").
             if (Machine.CurrentStateId == StickmanStateId.ParkourClimb) return;
+
+            // ★ 밧줄 등반(2026-09-07) — ParkourClimb와 완전히 같은 이유로 여기서 아무것도 하지
+            // 않는다: 포즈를 이미 RopeClimbState.Tick()이 자기 진행 곡선으로 세팅했다(Throw 단계는
+            // ApplyRopeThrowPose, Ascend 반복 구간은 ApplyRopeClimbCyclePose, 마감 구간은 기존
+            // ApplyParkourClimbPose 무변경 재사용). 이 분기가 없으면 아래 ApplyIdlePose가 매 프레임
+            // 덧씌워 등반 내내 차렷 자세로 보인다 — 등반이 처음 이 문제를 겪었던 것과 같은 결함이다.
+            if (Machine.CurrentStateId == StickmanStateId.RopeClimb) return;
 
             // ★★ 음악 반응 춤(2026-09-06, 사용자 요청 2026-09-03 "노래가 나오면 상호 반응해서 춤추는
             // 동작을 넣어줘") — Walk/LandingCrouch/Archery/ParkourClimb와 **완전히 같은 이유**로 여기서

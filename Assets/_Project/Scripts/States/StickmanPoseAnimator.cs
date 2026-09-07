@@ -2416,6 +2416,164 @@ namespace StickMate.States
             ReapplyCurrentAngles();
         }
 
+        // ============================================================================
+        // ★★ 밧줄 등반(RopeClimb) — 2026-09-07, docs/DESIGN_ROPE_CLIMB_ARCHITECTURE.md 8절
+        // (design-motion 산출물, coder가 그대로 옮김)
+        // ============================================================================
+
+        /// <summary>
+        /// ★ Throw(던지기) 자세 — 감기(WindUp) → 던지기(Swing, 팔 스윙만) → 걸림 확인(HookConfirm)의
+        /// 3소절(§8-1). 밧줄/갈고리 소품 자체는 이 메서드가 전혀 모른다(관심사 분리 — 이미
+        /// <see cref="ApplyArcheryPose"/>가 활/화살을 모르는 것과 같은 경계, §8-1-A).
+        ///
+        /// <para>두 손이 함께 밧줄을 감아쥐었다가(코일) 위·앞으로 스윙해 던지는 정점 자세로 이동한 뒤
+        /// 그 자세를 유지한다 — 활쏘기가 앞손=활/뒷손=시위로 양손을 함께 쓰는 것과 같은 이유로,
+        /// 2D 측면도에서 외팔 동작은 허전해 보인다(§8-1 표). 다리는 건드리지 않는다(제자리에 서서
+        /// 던지는 동작이라 스탠스를 바꿀 이유가 없다).</para>
+        ///
+        /// <para>여기 쓰인 각도들은 <b>판단값</b>이다(§8-8) — 보행 키프레임 표와 같은 성격이라
+        /// StickConfig가 아니라 이 클래스의 상수로 둔다. 실기 빌드 캡처로 1차 확인이 필요하다
+        /// (디자인 7인 공통 규칙 — "최종 판정은 실제 빌드 캡처로만").</para>
+        /// </summary>
+        /// <param name="windUp01">WindUp 진행도(0=중립, 1=완전히 감아쥠). Swing/HookConfirm 동안은 1.</param>
+        /// <param name="throwProgress01">Swing 진행도(0=코일 자세, 1=던지는 정점 자세). HookConfirm
+        /// 동안(그리고 사거리가 길어 Swing이 늘어난 구간에서도) 1로 유지된다 — 새 소절이 아니라
+        /// Swing의 hold 연장이다(§8-1).</param>
+        public void ApplyRopeThrowPose(float deltaTime, in PoseSettings idle, float smoothingRate,
+            float windUp01, float throwProgress01)
+        {
+            float wind = Mathf.Clamp01(windUp01);
+            float thrown = Mathf.Clamp01(throwProgress01);
+
+            for (int i = 0; i < _limbs.Length; i++)
+            {
+                Limb limb = _limbs[i];
+                float upper = NeutralUpperAngle(limb, idle);
+                float lower = NeutralLowerAngle(limb, idle);
+
+                if (!limb.IsLeg)
+                {
+                    // 코일(뒤아래로 감아쥠) → 정점(위앞으로 던짐)을 순서대로 블렌드한다. wind가
+                    // 1이면 첫 블렌드가 이미 coil*에 도달해 있으므로, 두 번째 블렌드는 그 지점에서
+                    // release*로 자연스럽게 이어진다(별도 분기 없이 순차 Lerp만으로 성립).
+                    float coilUpper = RopeThrowCoilArmDegrees;
+                    float coilLower = ElbowBendSign * RopeThrowCoilElbowDegrees;
+                    float releaseUpper = RopeThrowReleaseArmDegrees;
+                    float releaseLower = ElbowBendSign * RopeThrowReleaseElbowDegrees;
+
+                    upper = Mathf.LerpAngle(upper, coilUpper, wind);
+                    lower = Mathf.LerpAngle(lower, coilLower, wind);
+                    upper = Mathf.LerpAngle(upper, releaseUpper, thrown);
+                    lower = Mathf.LerpAngle(lower, releaseLower, thrown);
+                }
+
+                ApplyLimb(limb, upper, lower, deltaTime, smoothingRate);
+            }
+
+            // 몸통은 감는 동안만 살짝 앞으로 숙인다 — 힘을 싣는 그림(§8-1). 정점에 도달하면(thrown=1)
+            // 다시 편다 — 이미 밧줄은 날아가고 있으므로 계속 숙일 이유가 없다.
+            RequestBodyLean(RopeThrowWindUpLeanDegrees * wind * (1f - thrown));
+            ReapplyCurrentAngles();
+        }
+
+        /// <summary>코일(감아쥠) 자세의 어깨 각도(도). 0=곧게 아래 기준으로 살짝 뒤아래.</summary>
+        private const float RopeThrowCoilArmDegrees = -35f;
+        /// <summary>코일 자세의 팔꿈치 굽힘(도).</summary>
+        private const float RopeThrowCoilElbowDegrees = 55f;
+        /// <summary>던지는 정점 자세의 어깨 각도(도). 180 근처가 곧게 위이므로 그보다 살짝 앞으로
+        /// 기운 값 — 위·앞으로 던진 follow-through.</summary>
+        private const float RopeThrowReleaseArmDegrees = 155f;
+        /// <summary>정점 자세의 팔꿈치 굽힘(도) — 거의 편 상태.</summary>
+        private const float RopeThrowReleaseElbowDegrees = 12f;
+        /// <summary>WindUp 중 상체가 앞으로 숙는 각도(도).</summary>
+        private const float RopeThrowWindUpLeanDegrees = 10f;
+
+        /// <summary>
+        /// ★ Ascend(오르기) <b>반복 구간</b> 자세 — 밧줄을 번갈아 갈아 잡으며 오른다(§8-3, 신규).
+        /// 마감 구간(창틀에 실제로 손이 닿는 마지막 한 뼘)은 이 메서드가 아니라
+        /// <see cref="ApplyParkourClimbPose"/>를 <b>무변경으로 재호출</b>한다(§8-0 — 두 사건이 물리적으로
+        /// 완전히 같기 때문이다).
+        ///
+        /// <para><b>위상 오프셋 교대</b>(§8-3-B) — 기존 <see cref="ApplyParkourClimbPose"/>의 손 로직은
+        /// 두 손이 같은 순간에 같은 턱을 나란히 잡지만(창틀처럼 넓고 평평한 손잡이에는 맞다), 가느다란
+        /// 밧줄 한 줄을 오를 때는 그러면 "번갈아 짚는" 리듬이 나오지 않는다. 그래서 앞손
+        /// (<c>limb.NeutralSign&gt;=0</c>)과 뒷손이 <b>정확히 반 사이클</b> 어긋난 같은 곡선
+        /// (<see cref="ClimbRiseProfile"/>)을 쓴다 — 위상이 1을 넘어 0으로 감기는 순간 자동으로
+        /// "방금 놓은 손이 다시 높이 뻗는" 모양이 된다(주기함수라 별도 "놓기" 분기가 필요 없다).</para>
+        ///
+        /// <para>다리도 같은 위상 규칙으로 <c>hang</c>(늘어진 극단)과 <c>climb</c>의 맨틀 스탠스(접은
+        /// 극단) 사이를 오간다(§8-3-C) — 새 다리 각도 상수를 하나도 만들지 않고, 이미 검증된 두
+        /// 극단(매달리기 상태 / 맨틀 스탠스)을 그대로 빌린다.</para>
+        ///
+        /// <para>가로(앞쪽) 목표는 두 손 공통이다(밧줄은 한 가닥이므로 좌우로 어긋나지 않는다 —
+        /// 기존 <c>stagger</c>는 로프 등반의 손에는 적용하지 않는다). 세로만 위상에 따라 오간다.</para>
+        /// </summary>
+        /// <param name="cycleLocalProgress01">이번 사이클 내부 진행도(0~1) — 앞손 위상 그대로,
+        /// 사이클을 몇 번 반복하든 <see cref="RopeClimbState"/>가 매 프레임 계산해 넘긴다.</param>
+        /// <param name="gripForwardWorld">루트에서 <b>고정 밧줄 앵커</b>까지의 앞쪽 거리(월드,
+        /// 진행 방향이 +). HookConfirm 시점에 확정된 값이라 파쿠르처럼 매 프레임 재조회할 필요가
+        /// 없다(§8-3-B).</param>
+        public void ApplyRopeClimbCyclePose(float deltaTime, in LedgeHangPoseSettings hang,
+            in ParkourClimbPoseSettings climb, float smoothingRate, float cycleLocalProgress01, float gripForwardWorld)
+        {
+            SetBodyOffset(0f); // 반복 구간은 시각 오프셋(sag)이 없다 — 실제 높이는 루트 Y 자체가 만든다.
+
+            Limb gripArm = _rightArm ?? _leftArm;
+            float armReachLocal = gripArm != null && gripArm.Upper != null && gripArm.Lower != null
+                ? gripArm.Upper.Length + gripArm.Lower.Length
+                : 0f;
+            float reachHighLocal = armReachLocal * ClimbGripReachUsable;
+            float reachLowLocal = ShoulderPivotLocalY;
+
+            float invX = 1f / Mathf.Max(0.0001f, RootScaleX);
+            float gripFwdLocal = gripForwardWorld * invX;
+
+            float pFront = Mathf.Repeat(cycleLocalProgress01, 1f);
+            float pBack = Mathf.Repeat(pFront + 0.5f, 1f);
+
+            for (int i = 0; i < _limbs.Length; i++)
+            {
+                Limb limb = _limbs[i];
+                bool front = limb.NeutralSign >= 0f;
+                float phase = front ? pFront : pBack;
+                float shaped = ClimbRiseProfile(phase, climb);
+                float upper;
+                float lower;
+
+                if (limb.IsLeg)
+                {
+                    float extremeAUpper = limb.NeutralSign * hang.LegSpreadDegrees;
+                    float extremeALower = KneeBendSign * Mathf.Max(0f, hang.KneeBendDegrees);
+                    float extremeBUpper = limb.NeutralSign * climb.MantleHipDegrees;
+                    float extremeBLower = KneeBendSign * Mathf.Max(0f, climb.MantleKneeDegrees);
+                    upper = Mathf.LerpAngle(extremeAUpper, extremeBUpper, shaped);
+                    lower = Mathf.LerpAngle(extremeALower, extremeBLower, shaped);
+                }
+                else
+                {
+                    Vector2 shoulder = LeanedLocal(limb.Upper != null ? limb.Upper.PivotLocal : Vector2.zero);
+                    float handLocalY = Mathf.Lerp(reachHighLocal, reachLowLocal, shaped);
+                    Vector2 grip = new Vector2(gripFwdLocal, handLocalY);
+                    SolveTwoLinkIk(shoulder, grip,
+                        limb.Upper != null ? limb.Upper.Length : 0f,
+                        limb.Lower != null ? limb.Lower.Length : 0f,
+                        ElbowBendSign, out upper, out lower);
+                }
+
+                ApplyLimb(limb, upper, lower, deltaTime, smoothingRate);
+            }
+
+            // 상체를 벽/밧줄 쪽으로 살짝 기울인다 — climb.TorsoLeanDegrees(당기는 동안 기우는 각도)를
+            // 재사용하되 반복 구간에서는 절반만 쓴다(마감 구간의 진짜 "당기기"보다는 약해야 한다).
+            RequestBodyLean(climb.TorsoLeanDegrees * RopeClimbCycleLeanRatio);
+            ReapplyCurrentAngles();
+        }
+
+        /// <summary>반복 구간의 상체 기울임 비율(climb.TorsoLeanDegrees 대비) — 마감 구간의 실제
+        /// "당기기"보다 약하게 유지하기 위한 로컬 튜닝값(StickConfig 필드가 아니다 — 자세의 형태이지
+        /// 수치 다이얼이 아니다, ReboundArmSpreadDegrees와 같은 판단 기준).</summary>
+        private const float RopeClimbCycleLeanRatio = 0.5f;
+
         /// <summary>다리 부착점(엉덩이)의 로컬 좌표. 다리는 <see cref="Segment.FollowsBodyLean"/>이
         /// false라 상체 기울임의 영향을 받지 않는다 — 팔과 달리 <see cref="LeanedLocal"/>을 통과시키지
         /// 않는 이유이며, <see cref="ApplyAngle"/>의 처리와 정확히 같다.</summary>

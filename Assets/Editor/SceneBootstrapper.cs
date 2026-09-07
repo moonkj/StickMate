@@ -587,6 +587,10 @@ namespace StickMate.EditorTools
             // ★★★ 2026-09-06 음악 반응 춤 2층. 이 한 줄이 없어서 «기능 전체가 빌드에서 죽어 있었다»
             //   (클래스 문서 참고). 위 SettingsWindow 항목과 <b>같은 함정</b>이고 벌써 네 번째다.
             added += EnsureComponent<DanceEpisodeDirector>(root);
+            // 2026-09-07 밧줄 등반 — 위 DanceEpisodeDirector와 같은 함정을 다섯 번째로 밟지 않기
+            // 위해 처음부터 이 목록에 넣는다(BootstrapPrefabParityAuditTests가 이 목록과 프리팹의
+            // 실제 컴포넌트를 대조한다).
+            added += EnsureComponent<RopeClimbRenderer>(root);
 
             // ★ 붙이는 것과 <b>배선하는 것</b>은 다른 일이다. 붙기만 하고 _player가 null이면 그 감독은
             //   Update() 첫 줄에서 조용히 반환한다 — «컴포넌트는 있는데 아무 일도 안 한다»는 «컴포넌트가
@@ -1205,6 +1209,13 @@ namespace StickMate.EditorTools
             // 클릭된다(WindowCrashRenderer와 같은 계약). 직렬화 필드가 없고 Awake()에서 같은
             // GameObject의 StickmanAgent를 직접 찾으므로 배선이 필요 없다.
             root.AddComponent<ArcheryRenderer>();
+
+            // 밧줄 등반(2026-09-07)의 밧줄/갈고리를 그리는 시각 레이어 — 위 ArcheryRenderer와
+            // 완전히 같은 관례(콜라이더 0개, 직렬화 필드 없이 같은 GameObject의 StickmanAgent를
+            // Awake()에서 직접 찾는다). 트리거/판정은 States/RopeClimbState.cs와
+            // AutoWanderController가 전담하므로 별도 Director가 필요 없다(활쏘기와 달리 "유휴 상태를
+            // 감시하다가 발동하는" 절차가 없다 — 발동은 기존 배회 AI의 경계 행동 추첨 안에 있다).
+            root.AddComponent<RopeClimbRenderer>();
 
             // ================================================================================
             // 캐릭터 성장(레벨/XP) + 장비 + 정보창 배선

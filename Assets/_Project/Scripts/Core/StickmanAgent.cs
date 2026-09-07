@@ -766,6 +766,12 @@ namespace StickMate.Core
                 // 방어 코드(에러 로그 + 현재 상태 유지)를 밟아 연출이 통째로 사라지고, 감독은
                 // 락만 잡은 채 «춤추는 중»이라고 믿는다.
                 { StickmanStateId.Dance, new DanceState(_blackboard) },
+                // ★ 밧줄 던져 등반(2026-09-07, 사용자 신규 기획 "높은 창이 있을때 줄같은걸 던져서
+                // 타고 올라가는것도 구현되어야함") — WalkState가 손 등반 상한을 넘는 벽 높이대역에서
+                // ChangeState(RopeClimb)로 보낸다(States/WalkState.ResolveClimbBandTarget 참고).
+                // 등록을 빠뜨리면 ChangeState가 BUG-M2 방어 코드(에러 로그 + 현재 상태 유지)를 밟아
+                // 연출이 통째로 사라지고 캐릭터가 그 자리에 멈춘 것처럼 보인다.
+                { StickmanStateId.RopeClimb, new RopeClimbState(_blackboard) },
             };
 
             // BUG-P1-M2 대응(Major, docs/BUG_REPORT_PHASE1.md): 생성과 "최초 상태 활성화"를 분리했다.

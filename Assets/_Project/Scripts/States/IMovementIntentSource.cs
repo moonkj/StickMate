@@ -62,6 +62,26 @@ namespace StickMate.States
         /// 실패하면 **아무 일도 일어나지 않는다**(그 자리에 그대로 서 있다가 기존 배회 행동으로 복귀).
         /// </summary>
         bool StepUpRequested { get; }
+
+        /// <summary>
+        /// 이번 프레임에 "손 등반 상한을 넘는 벽에 밧줄을 던져 오르기"(States/RopeClimbState.cs) 의도가
+        /// 새로 발생했는지 — 위 채널들과 <b>완전히 동일한 1프레임 펄스 계약</b>을 따른다
+        /// (2026-09-07, docs/DESIGN_ROPE_CLIMB_ARCHITECTURE.md 1-D).
+        ///
+        /// 왜 <see cref="StepUpRequested"/>를 재사용하지 않는가: 소비자(WalkState)가 "이건 손 등반이
+        /// 아니라 밧줄 등반이다"를 구분해야 다른 상태로 보낼 수 있다 — 같은 채널로 합치면
+        /// <see cref="StickMate.Core.StickmanStateId.ParkourClimb"/>과
+        /// <see cref="StickMate.Core.StickmanStateId.RopeClimb"/> 중 어느 쪽으로 보낼지 알 방법이 없다.
+        ///
+        /// ★ 이 멤버만 <b>기본 구현(C# 8+ default interface member)</b>을 둔다 — 이 인터페이스를
+        /// 구현하는 테스트 스텁이 이 저장소에 50여 개 있고(EditMode/PlayMode 전역), 그 전부가 이
+        /// 신호와 무관한 "정지한 더미"다. 필수 멤버로 추가하면 50여 개 파일이 전부 컴파일 에러가 나고,
+        /// 그 파일들을 전부 고쳐도 얻는 것은 "항상 false를 반환하는 코드"뿐이다(비용 대비 이득이
+        /// 없다 — 프로젝트 apiCompatibilityLevel이 .NET Standard 2.1이라 기본 구현이 IL2CPP/모노
+        /// 양쪽에서 안전하게 동작한다). 실제로 이 신호를 발행해야 하는 유일한 구현체
+        /// (<see cref="AutoWanderController"/>)는 이 프로퍼티를 명시적으로 재정의한다.
+        /// </summary>
+        bool RopeClimbRequested => false;
     }
 
     /// <summary>

@@ -191,13 +191,25 @@ namespace StickMate.Tests.EditMode
                 // 문워크만 퇴장 직전에 방향 전환이 끼어 있을 수 있다(4루프마다). 최악을 재는 자리라 더한다.
                 float pending = ids[move] == DanceIds.Moonwalk ? cfg.danceMoonwalkTurnSeconds : 0f;
 
-                float worst = 0f;
-                const int Steps = 4000;
-                for (int i = 0; i < Steps; i++)
+                float worst;
+                if (move == StickmanPoseAnimator.DanceMovePirouette || move == StickmanPoseAnimator.DanceMoveStarJump)
                 {
-                    float phase = i / (float)Steps;
-                    float wait = DistanceToNextBoundary(move, phase) * loop + outro + pending;
-                    if (wait > worst) worst = wait;
+                    // ★ 2026-09-07 §14 — 박자 표가 있는 이 둘은 캐논 위상(phase01) 폭이 아니라 실제
+                    //   박자 길이(초)로 직접 잰다(RealWorstGracefulWait 문서 참고). dancePirouetteRevolutions
+                    //   2→1 변경으로 캐논(1.40 = 2바퀴 가정)과 실제(0.70 = 1바퀴)가 갈라지면서 «위상거리
+                    //   x loop» 근사가 실제보다 22% 부풀었던 것을 이 라운드가 잡았다(1.374→1.120초).
+                    worst = RealWorstGracefulWait(state, move) + outro + pending;
+                }
+                else
+                {
+                    worst = 0f;
+                    const int Steps = 4000;
+                    for (int i = 0; i < Steps; i++)
+                    {
+                        float phase = i / (float)Steps;
+                        float wait = DistanceToNextBoundary(move, phase) * loop + outro + pending;
+                        if (wait > worst) worst = wait;
+                    }
                 }
 
                 Assert.LessOrEqual(worst, budget + 0.0001f,
@@ -211,19 +223,63 @@ namespace StickMate.Tests.EditMode
 
             Debug.Log($"{LogPrefix} 전체 최악 {globalWorst:F3}초({globalWorstId}) vs 예산 {budget:F2}초.");
             // ★ 네거티브 컨트롤 — 예산이 «아무 값이나 통과하는 헐거운 상한»이면 위 단언이 무의미하다.
-            //   설계상 최악은 D1 피루엣이고 예산은 그 바로 위에 잡혀 있어야 한다.
+            //   설계상 최악은 D2 스타점프이고 예산은 그 바로 위에 잡혀 있어야 한다.
             Assert.Greater(globalWorst, budget * 0.5f,
                 $"{LogPrefix} 최악 대기 {globalWorst:F3}초가 예산 {budget:F2}초의 절반도 안 됩니다 — " +
                 "경계 판정이 «항상 즉시 나갈 수 있다»로 무너졌을 때와 구분되지 않습니다(거짓 초록).");
-            Assert.AreEqual(DanceIds.Pirouette, globalWorstId,
-                $"{LogPrefix} 정상 퇴장의 구속 동작이 피루엣이 아니라 {globalWorstId}입니다. " +
-                "구속이 바뀌었다면 예산(1.90초)의 유도도 함께 바뀌어야 합니다.");
+            // ★ 2026-09-07 갱신(docs/UX_MOTION_DANCE.md §14) — dancePirouetteRevolutions 2→1로
+            //   D1 피루엣의 구속 최악이 1.82→1.12초로 내려가면서 병목이 D1에서 D2로 넘어갔다.
+            //   예산(danceGracefulExitBudgetSeconds)도 1.90→1.58초로 같은 라운드에서 함께 내렸다 —
+            //   구속 동작이 다시 바뀌면 이 단언과 그 예산의 유도를 함께 재검토해야 한다.
+            Assert.AreEqual(DanceIds.StarJump, globalWorstId,
+                $"{LogPrefix} 정상 퇴장의 구속 동작이 스타점프가 아니라 {globalWorstId}입니다. " +
+                $"구속이 바뀌었다면 예산({budget:F2}초)의 유도도 함께 바뀌어야 합니다.");
+        }
+
+        /// <summary>
+        /// ★ 2026-09-07 §14 신설 — D1/D2(박자 표가 있는 두 동작)의 정상 퇴장 최악 대기(초)를 <b>실제
+        /// 박자 길이</b>로 직접 계산한다. <see cref="DistanceToNextBoundary"/>(아래)는 위상(phase01)
+        /// 거리에 <c>state.LoopSeconds</c>를 곱하는 근사인데, 이 근사는 <b>캐논 비율표(<see
+        /// cref="StickmanPoseAnimator.BeatEdge"/>가 읽는 <c>DanceCanonicalBeatSeconds</c>)와 실제
+        /// <c>DanceState.CumulativeRealBeatSeconds</c>가 정확히 같은 비율일 때만</b> 유효하다 — D1은
+        /// ③(회전) 박자가 <c>dancePirouetteRevolutionSeconds × dancePirouetteRevolutions</c>로 실제
+        /// 길이를 다시 잡으므로, revolutions가 캐논 표의 암묵 가정(2바퀴)과 달라지면 위상 폭과 실제
+        /// 길이가 갈라진다(<c>LoopPhase01</c>은 박자별로 조각 선형 사상을 하므로 그 자체는 정확하지만,
+        /// "평균 위상 속도 = loop/1.0"라는 역산은 더 이상 성립하지 않는다). D2도 도움닫기(①) 길이가
+        /// 거리/속도에서 파생돼 캐논과 미세하게 갈라진다 — 이 함수는 그 갈라짐 크기와 무관하게 항상
+        /// 정확하다(캐논 표를 아예 거치지 않는다).
+        ///
+        /// <para>방법: 이 동작의 허용 경계 <b>2개</b>(<see cref="DanceState.BoundaryOrdinal"/>과 같은
+        /// 지점)를 실제 초 단위로 다시 찾아, 그 둘이 루프를 감아 도는 두 간격 중 <b>더 큰 쪽</b>을
+        /// 돌려준다 — 요청이 그 큰 간격 시작 직후에 오면 그 간격 전체를 기다려야 하기 때문이다.</para>
+        /// </summary>
+        private static float RealWorstGracefulWait(DanceState state, int moveIndex)
+        {
+            float loop = state.LoopSeconds;
+            float[] boundaries = moveIndex == StickmanPoseAnimator.DanceMovePirouette
+                ? new[] { state.CumulativeRealBeatSeconds(2), state.CumulativeRealBeatSeconds(4) }
+                : new[] { state.CumulativeRealBeatSeconds(1), loop };   // D2 — ①의 끝, 그리고 사이클 끝.
+
+            System.Array.Sort(boundaries);
+            float worst = 0f;
+            for (int i = 0; i < boundaries.Length; i++)
+            {
+                float start = boundaries[i];
+                float end = i + 1 < boundaries.Length ? boundaries[i + 1] : boundaries[0] + loop;
+                float gap = end - start;
+                if (gap > worst) worst = gap;
+            }
+            return worst;
         }
 
         /// <summary>
         /// 위상 <paramref name="phase01"/>에서 <b>다음 퇴장 허용 경계까지의 거리</b>(루프 비율).
         /// 판정 자체는 프로덕션의 <see cref="DanceState.BoundaryOrdinal"/>을 그대로 소비한다 —
         /// 규칙을 여기 다시 적으면 두 벌이 되어 함께 틀어진다.
+        ///
+        /// <para>★ D1/D2(박자 표가 있는 동작)에는 이제 이 함수를 쓰지 않는다 — 위 <see
+        /// cref="RealWorstGracefulWait"/>를 대신 쓴다(이유는 그 문서 참고). 나머지 5종(박자 표가 없어
+        /// <c>LoopPhase01</c>이 위상을 균일하게 진행시키는 동작)에는 여전히 정확하다.</para>
         /// </summary>
         private static float DistanceToNextBoundary(int moveIndex, float phase01)
         {
@@ -263,7 +319,9 @@ namespace StickMate.Tests.EditMode
             //   피루엣은 ③회전+④닫기가 구속이므로 경계가 «②의 끝»과 «④의 끝»이고,
             //   스타점프는 ②~⑦(도약~복귀)이 구속이므로 «①의 끝»과 «사이클 끝»이다.
             //   ★ 피루엣에서 «④의 끝» 하나만 두면 ⑤ 호흡 도중에 온 요청이 다음 세트를 통째로
-            //     기다려 2.86초가 되고 예산 1.90초를 넘긴다(이 검사가 실제로 잡은 결함이다).
+            //     기다려야 한다(이 검사가 실제로 잡은 결함이다 — 원 발견 당시 수치는 세트 2.86초 /
+            //     예산 1.90초였고, 2026-09-07 §14로 세트 2.16초 / 예산 1.58초로 바뀌었지만 «다음
+            //     세트를 통째로 기다리면 예산을 넘긴다»는 구조적 결함 자체는 세트/예산 값과 무관하다).
             AssertBoundaryCount(StickmanPoseAnimator.DanceMovePirouette, 2, "피루엣");
             AssertBoundaryCount(StickmanPoseAnimator.DanceMoveStarJump, 2, "스타점프");
             AssertBoundaryCount(StickmanPoseAnimator.DanceMoveMoonwalk, 2, "문워크");

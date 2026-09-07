@@ -178,13 +178,41 @@ namespace StickMate.States
             // ★ 되올라가기 진입 판정(2026-08-29) — 뛰어내린 캐릭터가 다시 올라오는 유일한 경로다.
             // 아래 점프 분기 안의 ParkourClimb 판정과 목적지는 같지만, 벽을 못 찾았을 때 **점프로
             // 흘러내리지 않는다**는 점이 다르다(IMovementIntentSource.StepUpRequested 문서 참고).
+            //
+            // ★ 2026-09-07 — TryFindClimbableWall 성공만으로 무조건 ParkourClimb로 보내지 않는다.
+            // 벽 높이를 3구간(손 등반/밧줄 등반/포기)으로 갈라 목적지를 정한다(아래
+            // ResolveClimbBandTarget 참고, docs/DESIGN_ROPE_CLIMB_ARCHITECTURE.md 6-B). 이 지점은
+            // 지금도 AutoWanderController가 손 등반 대역에서만 StepUpRequested를 쏘므로 사실상 항상
+            // ParkourClimb로 갈라지지만, 재확인 계약(의도가 만들어진 프레임과 소비되는 프레임 사이에
+            // 벽이 바뀔 수 있다)을 다른 채널들과 동일하게 지킨다.
             if (_blackboard.StepUpPressed && info.Grounded)
             {
                 int stepUpDirection = _blackboard.MoveInputX >= 0f ? 1 : -1;
-                if (_blackboard.TryFindClimbableWall(info, stepUpDirection, out _, out _))
+                if (_blackboard.TryFindClimbableWall(info, stepUpDirection, out _, out float stepUpWallTopY))
                 {
-                    _blackboard.Machine.ChangeState(StickmanStateId.ParkourClimb);
-                    return;
+                    StickmanStateId? band = ResolveClimbBandTarget(info, stepUpWallTopY);
+                    if (band.HasValue)
+                    {
+                        _blackboard.Machine.ChangeState(band.Value);
+                        return;
+                    }
+                }
+            }
+
+            // ★ 밧줄 등반 진입 판정(2026-09-07, 신규) — StepUpRequested와 같은 자리, 같은 재확인
+            // 계약이다. 벽을 못 찾거나 그 사이 대역이 바뀌었으면(예: 창이 더 낮아졌다) 점프로도
+            // 흘러내리지 않는다 — StepUpRequested와 동일한 "실패하면 아무 일도 없다" 계약.
+            if (_blackboard.RopeClimbPressed && info.Grounded)
+            {
+                int ropeDirection = _blackboard.MoveInputX >= 0f ? 1 : -1;
+                if (_blackboard.TryFindClimbableWall(info, ropeDirection, out _, out float ropeWallTopY))
+                {
+                    StickmanStateId? band = ResolveClimbBandTarget(info, ropeWallTopY);
+                    if (band.HasValue)
+                    {
+                        _blackboard.Machine.ChangeState(band.Value);
+                        return;
+                    }
                 }
             }
 
@@ -192,17 +220,31 @@ namespace StickMate.States
             // 전이 규칙 주석 참고, Architect 결정으로 의도된 코요테 타임 채택).
             if (_blackboard.JumpPressed && _blackboard.IsWithinCoyoteTime(info))
             {
-                // ParkourClimb 진입 판정(아키텍처 0절, UX_FLOW.md 4절/26-2): AutoWanderController가
+                // ParkourClimb/RopeClimb 진입 판정(아키텍처 0절, UX_FLOW.md 4절/26-2): AutoWanderController가
                 // 발판 경계에서 발생시키는 JumpRequested 펄스가, 마침 진행방향에 그보다 눈에 띄게 높은
                 // 발판(벽)이 있을 때 자연스럽게 등반으로 이어지는 확장. info.Grounded를 명시적으로
                 // 요구해 공중(코요테 타임)에서는 벽을 잡지 않도록 한다.
+                //
+                // ★★ 2026-09-07 (기존 잠재 결함 처방, docs/DESIGN_ROPE_CLIMB_ARCHITECTURE.md 0절 4번/6-B) —
+                // 이 지점은 원래 벽 높이를 전혀 재지 않고 무조건 ParkourClimb로 보냈다. 지금은
+                // wanderEdgeJumpAttemptChance 기본값이 0이라 이 경로 자체가 잠들어 있어 증상이 없었지만,
+                // 밧줄 등반이 배포된 뒤 그 확률을 0보다 크게 튜닝하면 임의로 높은 벽도 ParkourClimb의
+                // 고정 1.20초 Lerp로 "엘리베이터처럼" 순간 상승해버리는 결함이 처음으로 관측 가능해진다.
+                // 이번 기능이 반드시 함께 닫아야 하는 구멍이라 여기서도 같은 3구간 분기를 거친다.
                 if (info.Grounded)
                 {
                     int climbDirection = _blackboard.MoveInputX >= 0f ? 1 : -1;
-                    if (_blackboard.TryFindClimbableWall(info, climbDirection, out _, out _))
+                    if (_blackboard.TryFindClimbableWall(info, climbDirection, out _, out float jumpWallTopY))
                     {
-                        _blackboard.Machine.ChangeState(StickmanStateId.ParkourClimb);
-                        return;
+                        StickmanStateId? band = ResolveClimbBandTarget(info, jumpWallTopY);
+                        if (band.HasValue)
+                        {
+                            _blackboard.Machine.ChangeState(band.Value);
+                            return;
+                        }
+                        // 밴드 밖(포기 구간)이면 등반 시도 자체를 접고 그대로 아래 점프로 흘러간다 —
+                        // "포기하면 아무 것도 안 함"(3구간 표의 3번째 갈래)이 여기서는 곧 평범한
+                        // 제자리 점프다.
                     }
                 }
 
@@ -242,6 +284,30 @@ namespace StickMate.States
                 }
             }
             // 좌우 반전(스프라이트 flip)은 Phase 2 렌더링 레이어 담당 — 여기서는 물리 이동/보행 애니메이션만.
+        }
+
+        /// <summary>
+        /// ★ 2026-09-07 신규 — 벽 높이를 손 등반(ParkourClimb) / 밧줄 등반(RopeClimb) / 포기(null)
+        /// 3구간으로 가른다(docs/DESIGN_ROPE_CLIMB_ARCHITECTURE.md 6-B의 처방을 그대로 옮긴 것).
+        ///
+        /// <para>두 상한 모두 <b>이 저장소의 기존 정본을 그대로 재사용</b>한다 — 새 계산원을 만들지
+        /// 않는다: 손 등반 상한은 <see cref="AutoWanderController.ResolveStepUpMaxHeightStatic"/>
+        /// (AutoWanderController가 트리거 판정에 쓰는 것과 정확히 같은 값, Dock 실측 유도 포함),
+        /// 밧줄 등반 상한은 <see cref="AutoWanderController.ResolveRopeClimbMaxHeight"/>(설정값과
+        /// 화면 클램프 상단 중 더 좁은 쪽). 두 계산원이 갈라지면 "트리거 판정과 소비 판정이 다른
+        /// 대역을 본다"는, 이 프로젝트가 이미 여러 번 겪은 실패 유형이 재발한다.</para>
+        /// </summary>
+        private StickmanStateId? ResolveClimbBandTarget(GroundSensor.GroundInfo info, float wallTopWorldY)
+        {
+            float wallHeight = wallTopWorldY - info.GroundWorldY;
+
+            float parkourMax = AutoWanderController.ResolveStepUpMaxHeightStatic(_blackboard);
+            if (wallHeight <= parkourMax) return StickmanStateId.ParkourClimb;
+
+            float ropeMax = AutoWanderController.ResolveRopeClimbMaxHeight(_blackboard, info.GroundWorldY);
+            if (wallHeight <= ropeMax) return StickmanStateId.RopeClimb;
+
+            return null; // 등반 포기 — 호출부가 기존 배회 거동(현재 동작 유지)으로 흘러간다.
         }
 
         public void Exit()

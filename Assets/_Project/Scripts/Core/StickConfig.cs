@@ -321,6 +321,89 @@ namespace StickMate.Core
                  "1초 안에 지나가므로 느리게 따라오면 박자가 뭉개진다(무릎앉아와 같은 이유).")]
         public float parkourClimbPoseSmoothingRate = 44f;
 
+        // ============================================================================
+        // ★★ 밧줄 등반(RopeClimb) — 2026-09-07, docs/DESIGN_ROPE_CLIMB_ARCHITECTURE.md 8절
+        // (design-motion 산출물, coder가 그대로 옮김). 10개 필드 전부 그 문서 8-7 표가 정본이다.
+        // 손으로 오를 수 없는(stepUpMaxHeights를 넘는) 벽을 밧줄을 던져 오르는 신규 능동 상태
+        // (States/RopeClimbState.cs, StickmanStateId.RopeClimb=28)가 소비한다.
+        // ============================================================================
+
+        [Tooltip("밧줄 등반으로 오를 수 있는 최대 높이 — 신장 배수(H). stepUpMaxHeights(파쿠르 상한)에서 " +
+                 "곧바로 이어 붙는 값이라 빈 구간도 겹침도 없다(설계 1-B). 실질 상한은 이 값과 " +
+                 "'화면 클램프 상단 − 시작 Y'(StickmanBlackboard.TryGetWalkableScreenTopWorldY) 중 " +
+                 "더 작은 쪽이 이긴다 — 창이 아무리 높아도 캐릭터가 자기 오버레이 화면 밖으로 오르지는 " +
+                 "않는다.\n" +
+                 "★ 6.6f 근거(개산 대조, 정밀 유도 아님 — 화면 클램프가 실질 상한을 따로 잡으므로 " +
+                 "이 값은 안전핀일 뿐이다): 이 앱의 기준 배율에서 화면 폭 ≈ 25 월드유닛(ArcheryState.cs:499-501 " +
+                 "실측 25유닛/900pt). 16:9 화면 세로 = 25×9/16 = 14.06유닛 = 14.06/BaselineCharacterTotalHeight " +
+                 "≈ 6.18H. archeryMaxTargetDistanceRatio(6.6f)가 이미 이 자릿수에 있어 그대로 빌려 쓴다 — " +
+                 "가로/세로는 다른 축이지만 '이 세계 스케일에서 화면 한 변이 대략 6~7H대'라는 것을 " +
+                 "두 독립된 값이 교차 확인해 준다.")]
+        public float ropeClimbMaxHeights = 6.6f;
+
+        [Tooltip("밧줄을 타고 오르는 속도 — 초당 신장 배수(H/초). WalkState.ResolveWalkSpeed가 배율에 " +
+                 "비례하는 것과 같은 이유로 H 배수다.\n" +
+                 "★ 0.88f는 임의 리터럴이 아니라 경계 연속성에서 역산했다(설계 8-2): " +
+                 "stepUpMaxHeights(1.0551) / parkourClimbDuration(1.20초) = 0.87925 ≈ 0.88 H/s. " +
+                 "파쿠르가 자기 상한 높이를 오르는 데 걸리는 실효 속도와 정확히 맞추면, 파쿠르 상한 " +
+                 "바로 위에서 시작하는 첫 밧줄 등반이 하한 경계에서 갑자기 빨라지거나 느려지지 않는다 " +
+                 "— 경계에서 지속시간까지 1.199초로 파쿠르의 1.20초와 사실상 일치한다.")]
+        public float ropeClimbSpeedHeightsPerSecond = 0.88f;
+
+        [Tooltip("자율 배회 중 밧줄 등반을 시도할 확률 — stepUpChance와 별도로 추첨한다(재사용하면 " +
+                 "'스텝업 확률이 높아지면 로프도 덩달아 자주 나온다'는 의도치 않은 결합이 생긴다).\n" +
+                 "★ 기본값 0(출하 시 잠재워 둠) — design-motion 권고(설계 7절/8-7). longCapeTripMeanSeconds=0 / " +
+                 "throwTumbleEnabled류의 '신중한 온보딩' 관례를 따른다. 포즈/렌더러가 실기 캡처로 " +
+                 "1차 확인되기 전까지는 구조만 배선하고 수치로는 잠재운다 — 값을 올리는 것만으로 발동한다.")]
+        [Range(0f, 1f)]
+        public float ropeClimbChance = 0f;
+
+        [Tooltip("Ascend(오르기) 반복 사이클 1회당 상승폭 — 신장 배수(H). 손이 담당하는 아치형 이동량이 " +
+                 "팔 길이(design-character 실측 0.3297H)의 약 2.7배쯤이어야 '손만 까딱이는' 느낌이 아니라 " +
+                 "몸 전체가 실제로 추진되는 느낌이 난다(설계 8-3-A). 사이클을 몇 개로 쪼개든 총 소요 시간은 " +
+                 "ropeClimbSpeedHeightsPerSecond 하나로 정해진 값과 같다 — 이 값은 순전히 애니메이션 저작 " +
+                 "편의이지 별도 타이밍 시스템이 아니다.")]
+        public float ropeClimbCycleRiseHeights = 0.9f;
+
+        [Tooltip("Throw(던지기) 1소절 — 양손이 밧줄을 아래·뒤로 감아쥐는 준비 동작 지속시간(초). " +
+                 "Archery Draw(0.42s)보다 살짝 짧다 — 활시위를 당기는 저항감이 없는 단순 스윙 준비 " +
+                 "동작이라 더 빨라도 자연스럽다(설계 8-1).")]
+        public float ropeThrowWindUpSeconds = 0.35f;
+
+        [Tooltip("Throw 2소절 — 팔이 코일 자세에서 던지는 정점 자세까지 스윙하는 지속시간(초). 거리와 " +
+                 "무관하게 고정이다 — 던지는 신체 동작 자체의 지속시간은 목표 거리와 무관하다(Archery의 " +
+                 "발사 반동 archeryRecoilSeconds가 사거리와 무관하게 고정인 것과 같은 이유, 설계 8-1).")]
+        public float ropeThrowSwingSeconds = 0.20f;
+
+        [Tooltip("Throw 3소절 — 정점 자세를 유지한 채 '걸림 확인'을 읽는 시간(초). 명중/실패는 물리 " +
+                 "시뮬레이션이 아니라 Enter()에서 이미 확정된 사실이므로(game-architect 2-B) 이 소절은 " +
+                 "순수하게 읽는 시간이다. Archery Aim(0.30s)의 hold 역할과 같되, 화살처럼 다시 쏠 일이 " +
+                 "없어 더 짧다(설계 8-1).")]
+        public float ropeThrowHookConfirmSeconds = 0.18f;
+
+        [Tooltip("밧줄 비행 시간(렌더러가 쓰는 값)의 기준값(초) — 오를 높이가 기준 높이(" +
+                 "stepUpMaxHeightWorld)와 같을 때의 비행 시간. ArcheryState.ResolveFlightSeconds와 " +
+                 "완전히 같은 제곱근-거리 스케일링을 세로축에 옮겨 쓴다(선형이면 너무 느려지고 고정이면 " +
+                 "섬광이 된다는 그 트레이드오프가 여기도 그대로 적용된다, 설계 8-1).")]
+        public float ropeThrowFlightBaseSeconds = 0.20f;
+
+        [Tooltip("밧줄 비행 시간의 상한(초) — ropeClimbMaxHeights(6.6H, scale≈2.50)에서 0.50초 근처로 " +
+                 "수렴한다. Archery 화살(최장 0.62~1.25초)보다 훨씬 짧다 — 이 던지기는 '거의 수직에 " +
+                 "가까운 짧은 던지기'라 활쏘기 같은 원거리 포물선의 체공감을 흉내 낼 이유가 없다 " +
+                 "(game-architect 6-C, 설계 8-1).")]
+        public float ropeThrowFlightMaxSeconds = 0.55f;
+
+        [Tooltip("밧줄 등반 진입 대사 확률 — parkourClimbChatterChance와 같은 공유 쿨다운 " +
+                 "(ambientChatterCooldownSeconds)을 재사용하되 확률은 훨씬 높게 둔다.\n" +
+                 "★ 파쿠르(0.35)보다 훨씬 높은 이유(설계 8-7): 파쿠르는 배회 AI가 76초에 한 번꼴로 " +
+                 "반복하는 흔한 사건이라 잡담 확률을 낮춰야 과다 발화를 막는다. 밧줄 등반은 " +
+                 "ropeClimbChance(트리거 확률)와 좁은 높이 대역 자체가 이미 '드문 사건'임을 보장하므로, " +
+                 "드물게 벌어질 때만큼은 공유 쿨다운 하나로 충분히 조절되고 두 번째 확률로 더 낮출 " +
+                 "필요가 없다 — 오히려 낮추면 '모처럼 발동한 큰 스펙터클인데 캐릭터가 침묵한다'는 " +
+                 "손해가 더 크다.")]
+        [Range(0f, 1f)]
+        public float ropeClimbChatterChance = 1.0f;
+
         // ★★ 2026-09-01 — rollLandingHeightThreshold(절대 2.0유닛) 폐기, 신장 배수(H)로 전환.
         //
         // 폐기 사유(MOTION_SPEC 1절 표 #4 / 4-1절, UX_FLOW.md 31-4-3): 이 값은 **거리**인데 절대
@@ -3854,12 +3937,15 @@ namespace StickMate.Core
 
         [Tooltip("★ 감시견 — 정상 퇴장(음악 종료 / 에피소드 만료 / T4 고착 상한) 요청이 들어온 뒤 실제로 " +
                  "상태에서 빠지기까지 허용하는 시간(초).\n\n" +
-                 "유도: 최악은 D1 피루엣 1.82초(회전 1.40 시작 직후에 요청이 오면 회전을 끝내고 마무리 " +
-                 "0.42까지 가야 한다 — 회전 중간에 끊으면 반쯤 돌아간 몸이 남는다)이고 여유 0.08을 더했다. " +
-                 "가장 빠른 것은 D5 로봇 0.40초로, 8키가 각각 완결 포즈라 어느 경계에서든 나갈 수 있다.\n\n" +
+                 "★ 2026-09-07 1.90→1.58로 하락(docs/UX_MOTION_DANCE.md §14) — dancePirouetteRevolutions " +
+                 "2→1로 D1 피루엣의 구속(회전+닫기)이 1.82→1.12초로 줄면서 병목이 D1에서 D2 스타점프로 " +
+                 "옮겨갔다. 새 유도: 최악은 D2 스타점프 1.50초(도약~복귀가 구속 구간, 이번 라운드가 " +
+                 "손대지 않음)이고 여유 0.08을 더했다. D1 피루엣은 이제 1.12초로 더 이상 전역 병목이 " +
+                 "아니다. 가장 빠른 것은 D5 로봇 0.40초로, 8키가 각각 완결 포즈라 어느 경계에서든 " +
+                 "나갈 수 있다.\n\n" +
                  "이 예산을 넘기면 경고 + 강제 Idle이다. 사용자가 체감하는 '음악 끊겼는데 왜 계속 추지'의 " +
                  "총 지연은 폴링 0.5 + 정책 T2 3.0 + 이 값이며, 줄이고 싶으면 손댈 곳은 T2다(design-systems).")]
-        public float danceGracefulExitBudgetSeconds = 1.90f;
+        public float danceGracefulExitBudgetSeconds = 1.58f;
 
         [Tooltip("예약된 에피소드 시작 순간에 게이트가 막혀 있으면 1.0초 간격으로 이만큼(초) 재시도하고, " +
                  "그래도 안 되면 이번 에피소드를 건너뛰고 휴지로 간다.\n\n" +
@@ -3999,14 +4085,21 @@ namespace StickMate.Core
 
         [Tooltip("한 바퀴에 걸리는 시간(초). 반전 주기는 이것의 절반(0.35초 = 2.86Hz)이고, 실제 " +
                  "더블 피루엣(2바퀴 약 1.2~1.5초)과 같은 대역이다.\n\n" +
-                 "★ **최대 미확인 항목** — 2.86Hz 미러링이 '회전'으로 읽히는지 '깜빡임'으로 읽히는지는 " +
-                 "연속 프레임 캡처로만 판정된다(design-motion도 아직 못 봤다). 깜빡임으로 읽히면 후퇴 " +
-                 "사다리는 (1) 이 값을 0.90으로(반전 2.22Hz) (2) dancePirouetteRevolutions를 1로 " +
-                 "(3) 회전 포기 순이며, (3)은 사용자가 요청한 '회전'을 못 지키므로 리더 판단이 필요하다.")]
+                 "★ 2026-09-07 실기(macOS) 연속캡처로 판정 완료(docs/UX_MOTION_DANCE.md §14) — " +
+                 "2.86Hz 미러링은 '회전'이 아니라 '좌우 스냅 깜빡임'으로 읽힌다(사용자가 신고한 " +
+                 "\"다리 삼각형모양이 이상하게 함\"과 정합). 후퇴사다리 판정: ②(이 값을 0.90으로, " +
+                 "반전 2.22Hz)는 **기각**(같은 논리가 2.22Hz에도 적용돼 이득이 불확실한데 세트가 " +
+                 "오히려 길어져 비용만 확실함) — 그래서 이 값은 **손대지 않는다**. 대신 ③을 채택해 " +
+                 "dancePirouetteRevolutions를 2→1로 내렸다(반전 빈도는 그대로 두고 반전 횟수만 " +
+                 "세트당 4→2회로 줄여 깜빡임 노출시간을 절반으로 줄인다). ④(회전 포기)는 리더 승인 " +
+                 "대기로 별도 상신됨 — ③ 반영 후 Windows 재신고가 오면 다음 수순이다.")]
         public float dancePirouetteRevolutionSeconds = 0.70f;
 
-        [Tooltip("한 세트에서 도는 바퀴 수. 2 = 더블 피루엣.")]
-        public int dancePirouetteRevolutions = 2;
+        [Tooltip("한 세트에서 도는 바퀴 수. ★ 2026-09-07 2→1로 변경(docs/UX_MOTION_DANCE.md §14 " +
+                 "후퇴사다리 ③ 채택 — 위 dancePirouetteRevolutionSeconds 툴팁 참고). 1 = 싱글 피루엣, " +
+                 "반전 2회/세트. 이 값을 바꾸면 danceGracefulExitBudgetSeconds와 D1 세트 수 탐색범위 " +
+                 "(ResolveLoopTarget, 8.0~16.0초 창)가 함께 파생 재계산된다 — 고립된 값이 아니다.")]
+        public int dancePirouetteRevolutions = 1;
 
         [Header("음악 반응 춤 — D2 스타점프(기본 무료)")]
 

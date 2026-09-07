@@ -86,6 +86,11 @@ namespace StickMate.Tests.EditMode
             //   매 프레임 죽인다(States/DanceState.DampHorizontal). 여기서 빼면 안전망이 도움닫기
             //   속도를 매 프레임 지워 스타점프가 영원히 도약하지 못한다.
             StickmanStateId.Dance,
+            // ★ 2026-09-07 밧줄 등반 — 활쏘기와 같은 형태의 계약이다. Throw 중에는 상태가 매 프레임
+            //   제자리 속도를 죽이고, Ascend 중에는 ParkourClimb와 같은 방식으로 몸 위치를 직접
+            //   보간한다. 여기서 빼면 안전망이 Throw의 정지를 못 지키거나 Ascend의 보간 위치를
+            //   매 프레임 지운다.
+            StickmanStateId.RopeClimb,
         };
 
         [Test]
@@ -178,6 +183,10 @@ namespace StickMate.Tests.EditMode
             //   세로 회전축이 없어서 SetFacingSign 부호 반전으로 만들고(States/DanceState의
             //   DrivePirouetteFacing), 문워크는 정의상 앞을 보면서 뒤로 간다.
             StickmanStateId.Dance,
+            // ★ 2026-09-07 밧줄 등반 — RopeClimbState.Enter()가 오르는 벽 쪽으로 SetFacingSign을
+            //   부른다(파쿠르와 같은 이유 — 등지고 오르면 손이 뒤로 뻗는다). 아래 (1-B-2) 소스
+            //   전수 감사가 이 멤버십을 강제한다.
+            StickmanStateId.RopeClimb,
         };
 
         [Test]

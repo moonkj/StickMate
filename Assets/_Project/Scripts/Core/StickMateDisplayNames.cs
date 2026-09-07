@@ -138,6 +138,7 @@ namespace StickMate.Core
             Set(names, StickmanStateId.Archery, "활쏘기");
             Set(names, StickmanStateId.GroundLossHang, "허둥대는");
             Set(names, StickmanStateId.Dance, "춤추는");
+            Set(names, StickmanStateId.RopeClimb, "밧줄 등반");
             return names;
         }
 

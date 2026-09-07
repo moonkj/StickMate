@@ -12,7 +12,7 @@
 #   생성기: docs/localization/verify/golden_gen.py
 #
 # 표본 = AmbientChatter 배열 + GrabReactionLines 배열 + States/ DialogueLine.Say|React +
-#        RunawayState.TriggerSelfReturn + StickmanAgent 집중모드 람다  (고유 62줄)
+#        RunawayState.TriggerSelfReturn + StickmanAgent 집중모드 람다  (고유 63줄)
 #
 3F1EB852	0.620000	가뿐하네
 3F3AE148	0.730000	거긴 다리야
@@ -30,6 +30,7 @@
 3F4E147B	0.805000	발밑이 단단해
 3F3AE148	0.730000	밤에도 걷네
 3F3AE148	0.730000	밤이 깊었네
+3F27AE15	0.655000	밧줄이다!
 3F1EB852	0.620000	산책 중
 3F27AE15	0.655000	수고했어!
 3F3AE148	0.730000	쉬는 날이네

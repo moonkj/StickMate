@@ -56,6 +56,16 @@ MonoBehaviour:
   parkourClimbTorsoLeanDegrees: 24
   parkourClimbMaxBodySagHeights: 0.75
   parkourClimbPoseSmoothingRate: 44
+  ropeClimbMaxHeights: 6.6
+  ropeClimbSpeedHeightsPerSecond: 0.88
+  ropeClimbChance: 0
+  ropeClimbCycleRiseHeights: 0.9
+  ropeThrowWindUpSeconds: 0.35
+  ropeThrowSwingSeconds: 0.2
+  ropeThrowHookConfirmSeconds: 0.18
+  ropeThrowFlightBaseSeconds: 0.2
+  ropeThrowFlightMaxSeconds: 0.55
+  ropeClimbChatterChance: 1
   landingReactionThresholdHeights: 0.88
   landingSoftAbsorbThresholdHeights: 0.35
   landingSoftAbsorbMinDepth01: 0.08
@@ -424,7 +434,7 @@ MonoBehaviour:
   danceHorizontalDamping: 14
   danceForcedExitSeconds: 0.18
   danceEpisodeHardCapSeconds: 18
-  danceGracefulExitBudgetSeconds: 1.9
+  danceGracefulExitBudgetSeconds: 1.58
   danceEpisodeStartRetrySeconds: 8
   danceLoopJitterFraction: 0.06
   danceAmplitudeJitterFraction: 0.05
@@ -450,7 +460,7 @@ MonoBehaviour:
   dancePirouetteReleveHeights: 0.045
   dancePirouetteBobHeights: 0.01
   dancePirouetteRevolutionSeconds: 0.7
-  dancePirouetteRevolutions: 2
+  dancePirouetteRevolutions: 1
   danceStarJumpArmSpreadDegrees: 60
   danceStarJumpElbowDegrees: 4
   danceStarJumpHipDegrees: 43

@@ -59,10 +59,19 @@ namespace StickMate.Tests.EditMode
     /// «깜빡임/순간이동»으로 읽힌 결과일 가능성이 매우 높다 — 각도 산출 자체의 결함이 아니다.
     ///
     /// ★ <c>dancePirouetteRevolutionSeconds</c>/<c>Revolutions</c>를 손대는 완화(설계 문서의 「후퇴
-    /// 사다리」 ②③)는 <c>danceGracefulExitBudgetSeconds</c>(1.90초, ③ 회전 1.40초 기준으로 유도됨)와
-    /// 루프 길이·에피소드 루프 수 범위에 <b>연쇄로 영향</b>을 준다 — 고립된 한 줄 수정이 아니다.
-    /// 그래서 이 라운드는 그 다이얼을 건드리지 않았다. 이 파일은 <b>진단을 잠그는 안전망</b>이고,
-    /// 실제 완화(후퇴 사다리 ②~④)는 실기 연속 캡처와 함께 <c>design-motion</c>/리더가 판단한다.
+    /// 사다리」 ②③)는 <c>danceGracefulExitBudgetSeconds</c>와 루프 길이·에피소드 루프 수 범위에
+    /// <b>연쇄로 영향</b>을 준다 — 고립된 한 줄 수정이 아니다. <b>이 라운드(신설 당시)는 그 다이얼을
+    /// 건드리지 않았다</b> — 이 파일은 진단만 잠그는 안전망으로 남겼다.
+    ///
+    /// <para>★★ 2026-09-07 후속 라운드 갱신 — design-motion이 실기(macOS) 연속캡처로 「깜빡임」을
+    /// 확정하고(<c>docs/UX_MOTION_DANCE.md</c> §14) 후퇴사다리 ③을 채택했다: <c>dancePirouetteRevolutions</c>
+    /// 2→1(③ 회전 1.40→0.70초), 연쇄로 <c>danceGracefulExitBudgetSeconds</c> 1.90→1.58초(병목이
+    /// D1에서 D2 스타점프로 이동), D1 세트 수 탐색범위 하한 3→4(<c>DanceState.ResolveLoopTarget</c>이
+    /// <c>AudioReactiveDancePolicy.MotionEpisodeMinSeconds</c>/<c>MaxSeconds</c>로 자동 재계산 —
+    /// 별도 상수 없음). <c>dancePirouetteRevolutionSeconds</c>(0.70, 반전 2.86Hz)는 ②가 기각되어
+    /// **그대로**다 — 그래서 이 파일이 진단한 「2.86Hz 순간 미러링」 메커니즘 자체와 아래 ③의 모든
+    /// 단언은 <b>바뀌지 않는다</b>(반전 «빈도»가 아니라 세트당 «횟수»만 4→2회로 줄었다). ④(회전 포기)는
+    /// 여전히 리더 승인 대기다.</para>
     ///
     /// <para><b>플랫폼</b>: 플랫폼 중립. <c>StickmanPoseAnimator.cs</c>/<c>DanceState.cs</c>에는
     /// <c>#if UNITY_STANDALONE_*</c> 분기가 없다(자세·박자 경로는 두 플랫폼에서 글자 그대로 같은 코드를

@@ -114,6 +114,10 @@ namespace StickMate.States
         private bool _ledgeHangRequestedThisTick;
         private bool _hopDownRequestedThisTick;
         private bool _stepUpRequestedThisTick;
+        // ★ 밧줄 등반(2026-09-07, docs/DESIGN_ROPE_CLIMB_ARCHITECTURE.md 1-C) — StepUpRequested와
+        // 완전히 동일한 1프레임 펄스 계약이되 별도 채널이다(IMovementIntentSource.RopeClimbRequested
+        // 문서 참고 — 소비자가 손 등반/밧줄 등반을 구분해야 한다).
+        private bool _ropeClimbRequestedThisTick;
 
         // ==================== 진단/테스트 창구 (2026-08-30 R3-M1) ====================
         // 왜 필요한가: R3-M1은 "값이 맞는가"가 아니라 "**판정을 쓰는 쪽**이 그 값을 실제로 보는가"의
@@ -139,6 +143,7 @@ namespace StickMate.States
         public bool LedgeHangRequested => _ledgeHangRequestedThisTick;
         public bool HopDownRequested => _hopDownRequestedThisTick;
         public bool StepUpRequested => _stepUpRequestedThisTick;
+        public bool RopeClimbRequested => _ropeClimbRequestedThisTick;
 
         /// <summary>
         /// ★ 발화 자격 게이트(docs/UX_FLOW.md 5절 규칙 8)가 읽는 **계획 잔여 체류 시간**(초).
@@ -183,6 +188,7 @@ namespace StickMate.States
             _ledgeHangRequestedThisTick = false;
             _hopDownRequestedThisTick = false;
             _stepUpRequestedThisTick = false;
+            _ropeClimbRequestedThisTick = false;
 
             if (_descendSuppressTimer > 0f) _descendSuppressTimer -= deltaTime;
             if (_lookAroundCooldownTimer > 0f) _lookAroundCooldownTimer -= deltaTime;
@@ -783,6 +789,31 @@ namespace StickMate.States
                         $"턱 높이={wallHeight:F3}유닛(상한 {maxHeight:F2}), 턱 발판핸들={wallHandle}.");
                     return true;
                 }
+
+                // ▼ 밧줄 등반(2026-09-07, docs/DESIGN_ROPE_CLIMB_ARCHITECTURE.md 1-C) — 되올라가기가
+                // 못 미치는 벽만 여기로 떨어진다. 기존 되올라가기 블록은 위 한 줄도 바뀌지 않았다
+                // (else if로만 이어 붙인다) — _edgeActionRolledThisLeg/descendSuppressed 같은 기존
+                // 안전장치를 전부 그대로 물려받기 위해서다.
+                //
+                // ropeClimbChance로 별도 추첨한다(스텝업 확률과 독립 — Archery의 hitChance/
+                // bullseyeChance가 같은 난수를 재사용하지 않는 것과 같은 이유: 재사용하면 "스텝업
+                // 확률이 높아지면 로프도 덩달아 자주 나온다"는 의도치 않은 결합이 생긴다).
+                else
+                {
+                    float ropeMaxHeight = ResolveRopeClimbMaxHeight(_blackboard, info.GroundWorldY);
+                    float ropeClimbChance = Cfg(c => c.ropeClimbChance, 0f);
+                    if (wallHeight <= ropeMaxHeight && ropeClimbChance > 0f && _rng.NextDouble() < ropeClimbChance)
+                    {
+                        _ropeClimbRequestedThisTick = true;
+                        _moveInputX = _direction;
+                        Debug.Log($"[밧줄등반] 결정 — 방향={(_direction > 0 ? "오른쪽" : "왼쪽")}, " +
+                            $"벽 높이={wallHeight:F3}유닛(파쿠르 상한 {maxHeight:F2} 초과, 밧줄 상한 " +
+                            $"{ropeMaxHeight:F2}), 벽 발판핸들={wallHandle}.");
+                        return true;
+                    }
+                    // 어느 쪽도 못 맞으면(대역 밖이거나 추첨 실패) 기존처럼 그대로 흘러간다
+                    // (정지 후 반대 방향) — 새 "포기 연출"은 만들지 않는다.
+                }
             }
 
             return false;
@@ -809,20 +840,18 @@ namespace StickMate.States
         /// 유도식(max(설정, 실측 낙차 + 여유))은 한 줄도 바뀌지 않는다.</para></summary>
         private float ResolveStepUpMaxHeight()
         {
-            float configured = _blackboard != null && _blackboard.Config != null
-                ? _blackboard.Config.ResolveStepUpMaxHeightWorld(_blackboard.CharacterHeightWorld)
-                : StickConfig.BaselineCharacterTotalHeight * 1.0551f;
-            if (!TryMeasureDockDropWorldUnits(out float dockDrop)) return configured;
-
-            float resolved = DockGeometry.ResolveStepUpMaxHeight(configured, dockDrop);
+            float resolved = ResolveStepUpMaxHeightStatic(_blackboard);
 
             // 설정값만으로는 못 올라오는 환경이라는 사실 자체를 한 번은 남긴다 — 이 로그가 뜬다는 것은
             // "이 사용자의 Dock에서는 stepUpMaxHeights 설정값이 무의미하다"는 뜻이고, 위 유도가 없었다면
             // 그대로 갇혔을 환경이라는 뜻이다.
-            if (dockDrop > configured && !_loggedDockDropExceedsConfiguredStepUp)
+            float configured = _blackboard != null && _blackboard.Config != null
+                ? _blackboard.Config.ResolveStepUpMaxHeightWorld(_blackboard.CharacterHeightWorld)
+                : StickConfig.BaselineCharacterTotalHeight * 1.0551f;
+            if (resolved > configured && !_loggedDockDropExceedsConfiguredStepUp)
             {
                 _loggedDockDropExceedsConfiguredStepUp = true;
-                Debug.LogWarning($"[되올라가기] 실측 Dock 낙차 {dockDrop:F3}유닛이 stepUpMaxHeights 환산값 " +
+                Debug.LogWarning($"[되올라가기] 실측 Dock 낙차가 stepUpMaxHeights 환산값 " +
                     $"{configured:F3}을 넘습니다(Dock 아이콘이 큰 설정). 상한을 {resolved:F3}유닛으로 올려 " +
                     "되올라가기를 유지합니다 — 이 유도가 없으면 한 번 내려간 캐릭터가 영영 못 올라옵니다.");
             }
@@ -831,22 +860,85 @@ namespace StickMate.States
 
         private bool _loggedDockDropExceedsConfiguredStepUp;
 
+        /// <summary>
+        /// ★ 2026-09-07 — 위 <see cref="ResolveStepUpMaxHeight"/>(인스턴스, 1회성 경고 로그 포함)에서
+        /// <b>순수 계산만</b> 뽑아낸 정적 핵심(docs/DESIGN_ROPE_CLIMB_ARCHITECTURE.md 6-B).
+        ///
+        /// 왜 뽑아냈나: WalkState가 손 등반/밧줄 등반/포기 3구간을 가르려면 <b>이 컨트롤러가 트리거
+        /// 판정에 쓰는 것과 정확히 같은 파쿠르 상한</b>을 소비 시점에도 써야 한다("판정을 쓰는 쪽이
+        /// 그 값을 실제로 보는가" — 이 저장소가 이미 여러 번 겪은 "같은 값의 두 번째 계산원" 함정,
+        /// <c>ResolveEffectiveEdgeBoundary</c> 사고와 같은 계열). WalkState는 이 컨트롤러의 인스턴스를
+        /// 모르므로(IMovementIntentSource로만 참조) 정적 메서드로 공유한다. 1회성 경고 로그는 컨트롤러
+        /// 인스턴스 상태(<see cref="_loggedDockDropExceedsConfiguredStepUp"/>)라 이 정적 버전에는
+        /// 없다 — WalkState가 매 프레임 호출해도 로그가 늘지 않는다.
+        ///
+        /// <para>★ <c>public</c>인 이유: PlayMode 테스트 어셈블리(<c>StickMate.Tests.PlayMode</c>)는
+        /// <c>InternalsVisibleTo</c> 대상이 아니다(<c>Scripts/AssemblyInfo.cs</c>는 EditMode만 허용 —
+        /// ArcheryRenderer.SolveGravity 등과 같은 이유). 부작용이 전혀 없는 순수 함수라 노출해도
+        /// 위험이 없다.</para>
+        /// </summary>
+        public static float ResolveStepUpMaxHeightStatic(StickmanBlackboard blackboard)
+        {
+            float configured = blackboard != null && blackboard.Config != null
+                ? blackboard.Config.ResolveStepUpMaxHeightWorld(blackboard.CharacterHeightWorld)
+                : StickConfig.BaselineCharacterTotalHeight * 1.0551f;
+            if (!TryMeasureDockDropWorldUnits(blackboard, out float dockDrop)) return configured;
+            return DockGeometry.ResolveStepUpMaxHeight(configured, dockDrop);
+        }
+
+        /// <summary>
+        /// ★ 밧줄 등반 상한(월드 유닛, 2026-09-07 — docs/DESIGN_ROPE_CLIMB_ARCHITECTURE.md 1-B) —
+        /// <c>min(ropeClimbMaxHeights × H, 화면 클램프 상단 − 시작 Y)</c> 중 더 작은 쪽.
+        ///
+        /// 화면 클램프 상단은 새로 계산하지 않는다 — <see cref="StickmanBlackboard.TryGetWalkableScreenTopWorldY"/>
+        /// (StickmanBlackboard.ComputeScreenClampOsBounds의 <c>MinY</c>를 그대로 읽는 조회 하나)를
+        /// 쓴다. 그 값에는 이미 화면 여유(ScreenClampMarginOsPx)가 포함돼 있으므로 여기서 별도
+        /// 여유를 더 빼지 않는다 — 두 번 빼면 상한이 필요 이상으로 좁아진다.
+        ///
+        /// <paramref name="startWorldY"/>는 등반이 <b>시작되는</b> Y(지금 캐릭터가 서 있는 발판의
+        /// 지면 Y)다 — AutoWanderController는 <c>info.GroundWorldY</c>를, WalkState도 같은 값을 넘긴다.
+        ///
+        /// 화면 클램프를 구할 수 없으면(카메라/몸 미배선) 설정값만으로 판정한다 — 클램프가 없다고
+        /// 등반 자체를 막을 이유는 없다(TryGetWalkableScreenBoundsWorld가 실패할 때 원시 경계로
+        /// 되돌아가는 것과 같은 폴백 어법).
+        ///
+        /// <para>★ <c>public</c>인 이유는 <see cref="ResolveStepUpMaxHeightStatic"/>과 같다 —
+        /// PlayMode 테스트 어셈블리는 InternalsVisibleTo 대상이 아니다.</para>
+        /// </summary>
+        public static float ResolveRopeClimbMaxHeight(StickmanBlackboard blackboard, float startWorldY)
+        {
+            float h = blackboard != null ? blackboard.CharacterHeightWorld : StickConfig.BaselineCharacterTotalHeight;
+            float configuredHeights = blackboard != null && blackboard.Config != null
+                ? blackboard.Config.ropeClimbMaxHeights : 6.6f;
+            float byConfig = Mathf.Max(0f, configuredHeights) * h;
+
+            float byScreen = byConfig;
+            if (blackboard != null && blackboard.TryGetWalkableScreenTopWorldY(out float screenTopWorldY))
+            {
+                byScreen = screenTopWorldY - startWorldY;
+            }
+
+            return Mathf.Max(0f, Mathf.Min(byConfig, byScreen));
+        }
+
         /// <summary>Dock 발판 상단 − 바닥 안전망 상단 = 지금 이 화면의 진짜 낙차(월드 유닛).
-        /// 핸들의 의미와 이 측정을 여기 둔 이유는 Core/DockGeometry.cs 하단 주석 참고.</summary>
-        private bool TryMeasureDockDropWorldUnits(out float dropWorldUnits)
+        /// 핸들의 의미와 이 측정을 여기 둔 이유는 Core/DockGeometry.cs 하단 주석 참고.
+        /// ★ 2026-09-07 — 정적으로 뽑혔다(<see cref="ResolveStepUpMaxHeightStatic"/> 참고). 인스턴스
+        /// 상태를 하나도 쓰지 않으므로(블랙보드 조회뿐) 정적 전환에 거동 변화가 없다.</summary>
+        private static bool TryMeasureDockDropWorldUnits(StickmanBlackboard blackboard, out float dropWorldUnits)
         {
             dropWorldUnits = 0f;
-            if (_blackboard == null) return false;
+            if (blackboard == null) return false;
 
-            if (!_blackboard.TryGetFootholdTopWorldY(
+            if (!blackboard.TryGetFootholdTopWorldY(
                     StickMate.Platform.FallbackPlatformWindowService.DockFootholdHandle, out float dockTopY)) return false;
 
             // 안전망은 Dock 좌우로 잘린 두 조각이고 둘의 상단 Y는 같은 단일 소스에서 나오므로 어느 쪽을
             // 재도 같다. 한쪽 조각이 폭 0으로 죽어 있는 배치(Dock이 화면 끝까지 넓은 경우)를 위해 둘 다 본다.
             float netTopY = 0f;
-            if (!_blackboard.TryGetFootholdTopWorldY(
+            if (!blackboard.TryGetFootholdTopWorldY(
                     StickMate.Platform.FallbackPlatformWindowService.SyntheticFootholdHandle, out netTopY)
-                && !_blackboard.TryGetFootholdTopWorldY(
+                && !blackboard.TryGetFootholdTopWorldY(
                     StickMate.Platform.FallbackPlatformWindowService.SyntheticFootholdHandleRight, out netTopY))
             {
                 return false;

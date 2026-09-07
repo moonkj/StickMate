@@ -302,6 +302,12 @@ namespace StickMate.Core
         public static float ResolveParkourClimbChatterChance(StickConfig config)
             => ScaleChance(config != null ? config.parkourClimbChatterChance : 0.35f);
 
+        /// <summary>밧줄등반 진입 대사 확률(2026-09-07, docs/DESIGN_ROPE_CLIMB_ARCHITECTURE.md 8-7) —
+        /// ResolveParkourClimbChatterChance와 완전히 같은 형태(설정창 「잡담 빈도」 슬라이더가 이 대사에도
+        /// 걸리도록 반드시 ScaleChance를 통과한다).</summary>
+        public static float ResolveRopeClimbChatterChance(StickConfig config)
+            => ScaleChance(config != null ? config.ropeClimbChatterChance : 1.0f);
+
         private static float ScaleChance(float baseChance)
         {
             if (!HasChatterPercent) return baseChance;

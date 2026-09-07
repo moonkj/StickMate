@@ -134,8 +134,9 @@ namespace StickMate.States
         /// <summary>지금 이 상태에 머문 시간(초).</summary>
         public float ElapsedSeconds => _elapsed;
 
-        /// <summary>이번 에피소드의 <b>흔들림 없는</b> 루프 길이(초). D1은 세트 2.86, D2는 사이클
-        /// (배율에 따라 2.26~2.62), 나머지는 그 동작의 루프다.</summary>
+        /// <summary>이번 에피소드의 <b>흔들림 없는</b> 루프 길이(초). D1은 세트(기본 2.16, 2026-09-07
+        /// §14 이후 — dancePirouetteRevolutions에 따라 달라진다), D2는 사이클(배율에 따라 2.26~2.62),
+        /// 나머지는 그 동작의 루프다.</summary>
         public float LoopSeconds => _baseLoopSeconds;
 
         /// <summary>퇴장 박자 길이(초). D1/D2는 세트/사이클 안에 마무리 박자가 있어 <b>0</b>이다.</summary>
@@ -143,6 +144,26 @@ namespace StickMate.States
 
         /// <summary>이번 에피소드에 돌기로 한 루프 수.</summary>
         public int LoopTarget => _loopTarget;
+
+        /// <summary>박자 표가 있는 동작(D1/D2)의 박자 개수. 그 외는 0.</summary>
+        internal int BeatCount => _beatCount;
+
+        /// <summary>
+        /// ★ 테스트 전용 통로 — 박자 <c>[0, uptoExclusive)</c>의 <b>실제</b>(캐논 비율이 아닌) 누적
+        /// 길이(초). <c>StickmanPoseAnimator.BeatEdge</c>가 주는 위상(phase01)은 <b>캐논 비율표</b> 기준
+        /// 이라, <c>dancePirouetteRevolutions</c>처럼 설정이 캐논 표의 암묵 가정(2바퀴)과 달라지면
+        /// «위상거리 × <see cref="LoopSeconds"/>» 근사가 실제 초 단위 대기시간과 어긋난다(캐논 폭과
+        /// 실제 길이가 갈라지므로 위상 진행 속도가 박자마다 달라진다 — <c>LoopPhase01</c>의 조각별
+        /// 선형 사상 자체는 정확하지만, 그 사실을 모르는 «평균 속도» 역산은 정확하지 않다). 정상 퇴장
+        /// 최악 대기를 <b>실제 시간</b>으로 직접 재구성하려는 회귀 테스트가 이 통로로 우회한다.
+        /// </summary>
+        internal float CumulativeRealBeatSeconds(int uptoExclusive)
+        {
+            int n = Mathf.Clamp(uptoExclusive, 0, _beatCount);
+            float sum = 0f;
+            for (int i = 0; i < n; i++) sum += _beatSeconds[i];
+            return sum;
+        }
 
         /// <summary>정상 퇴장이 요청된 뒤 흐른 시간(초). <c>danceGracefulExitBudgetSeconds</c> 감시견의 입력.</summary>
         public float GracefulExitElapsedSeconds => _exitRequested ? _exitRequestedElapsed : 0f;
@@ -288,7 +309,8 @@ namespace StickMate.States
             if (_exitRequested && _exitRequestedElapsed >= GracefulBudgetSeconds)
             {
                 Debug.LogWarning($"{LogTag} ★ 정상 퇴장 예산 초과 — 요청 후 {_exitRequestedElapsed:F2}초" +
-                    $"(예산 {GracefulBudgetSeconds:F2}초). 최악은 D1 피루엣 1.82초이므로 이 줄이 보이면 " +
+                    $"(예산 {GracefulBudgetSeconds:F2}초). 정상 최악은 D2 스타점프 1.50초(2026-09-07 §14 " +
+                    "이후 — D1 피루엣은 1.12초로 내려가 더 이상 병목이 아니다)이므로 이 줄이 보이면 " +
                     "퇴장 박자 경계 판정이 어긋났다는 뜻입니다. 강제로 Idle로 내보냅니다.");
                 _blackboard.Machine.ChangeState(StickmanStateId.Idle, isForcedInterrupt: true);
                 return;
@@ -493,7 +515,7 @@ namespace StickMate.States
 
         private float EntryBrakeSeconds => Mathf.Max(0f, _cfg != null ? _cfg.danceEntryBrakeSeconds : 0.28f);
         private float HardCapSeconds => Mathf.Max(1f, _cfg != null ? _cfg.danceEpisodeHardCapSeconds : 18f);
-        private float GracefulBudgetSeconds => Mathf.Max(0.1f, _cfg != null ? _cfg.danceGracefulExitBudgetSeconds : 1.9f);
+        private float GracefulBudgetSeconds => Mathf.Max(0.1f, _cfg != null ? _cfg.danceGracefulExitBudgetSeconds : 1.58f);
 
         private float ResolveIntroSeconds()
         {
@@ -574,7 +596,7 @@ namespace StickMate.States
                 if (_moveIndex == StickmanPoseAnimator.DanceMovePirouette && i == 2)
                 {
                     float revolution = _cfg != null ? _cfg.dancePirouetteRevolutionSeconds : 0.7f;
-                    int revolutions = Mathf.Max(1, _cfg != null ? _cfg.dancePirouetteRevolutions : 2);
+                    int revolutions = Mathf.Max(1, _cfg != null ? _cfg.dancePirouetteRevolutions : 1);
                     actual = Mathf.Max(0.05f, revolution) * revolutions;
                 }
                 else if (_moveIndex == StickmanPoseAnimator.DanceMoveStarJump)
@@ -802,8 +824,10 @@ namespace StickMate.States
         /// <summary>
         /// 피루엣의 «회전» — 이 리그에는 세로 회전축이 없어서 <b>facing 부호 반전</b>으로 만든다.
         /// 반 바퀴마다 뒤집으면 retiré의 든 무릎이 앞↔뒤로 미러링되어 «돌았다»로 읽힌다.
-        /// <para>2바퀴 = 4회 반전이라 세트가 끝나면 방향이 <b>원래대로 돌아온다</b>(홀수면 매 세트마다
-        /// 캐릭터가 반대쪽을 보게 된다).</para>
+        /// <para>세트당 반전 횟수 = <c>dancePirouetteRevolutions × 2</c>. 이 값은 <b>바퀴 수와 무관하게
+        /// 항상 짝수</b>이므로(정수 revolutions에 2를 곱하면 홀짝이 뭐든 결과는 짝수다) 세트가 끝나면
+        /// 방향은 <b>항상 원래대로 돌아온다</b> — 기본값 1(싱글 피루엣, 2026-09-07 §14 후퇴사다리 ③
+        /// 채택, docs/UX_MOTION_DANCE.md)이든 이전 기본값 2(더블 피루엣, 4회 반전)이든 동일하다.</para>
         /// </summary>
         private void DrivePirouetteFacing()
         {
@@ -813,7 +837,7 @@ namespace StickMate.States
             float half = Mathf.Max(0.02f,
                 (_cfg != null ? _cfg.dancePirouetteRevolutionSeconds : 0.7f) * 0.5f);
             int wanted = Mathf.FloorToInt(_beatElapsed / half);
-            int revolutions = Mathf.Max(1, _cfg != null ? _cfg.dancePirouetteRevolutions : 2);
+            int revolutions = Mathf.Max(1, _cfg != null ? _cfg.dancePirouetteRevolutions : 1);
             wanted = Mathf.Min(wanted, revolutions * 2);
             while (_pirouetteFlips < wanted)
             {
@@ -831,9 +855,12 @@ namespace StickMate.States
         ///
         /// <list type="bullet">
         ///   <item><b>D1 피루엣</b> — ④(1번으로 닫고 착지)가 끝나는 지점 하나뿐이다. ⑤ 호흡은
-        ///     건너뛴다. 회전 시작 직후에 요청이 오면 <b>1.82초</b>가 최악이며 그것이 예산 1.90초의 근거다.</item>
+        ///     건너뛴다. 회전 시작 직후에 요청이 오면 <b>1.12초</b>가 최악이다(2026-09-07 §14 —
+        ///     dancePirouetteRevolutions 2→1로 ③이 1.40→0.70초로 줄어 1.82→1.12초로 하락, 더 이상
+        ///     전역 병목이 아니다).</item>
         ///   <item><b>D2 스타점프</b> — 사이클 끝. 도움닫기 중이면 <see cref="RequestGracefulExit"/>가
-        ///     이미 즉시 취소로 갈랐다.</item>
+        ///     이미 즉시 취소로 갈랐다. 최악 1.50초가 ★ 2026-09-07부터 예산(1.58초)의 유도값이다
+        ///     (위 D1 하락으로 병목이 넘어왔다).</item>
         ///   <item><b>D5 로봇</b> — 8키가 각각 완결 포즈라 <b>어느 키 경계에서든</b> 나갈 수 있다
         ///     (정상 퇴장 0.40초로 7종 중 가장 빠르다. 26-6-4의 «2.02초»는 구속 동작을 잘못 짚었다).</item>
         ///   <item>나머지 — 반루프 경계.</item>
@@ -860,8 +887,10 @@ namespace StickMate.States
                 // ★ 구속 구간은 ③회전 + ④닫고 착지뿐이다. 그 앞(①준비 plié·②상승)은 아직 아무 것도
                 //   시작하지 않았으므로 그대로 접어도 되고, 그 뒤(⑤ 세트 간 호흡)는 이미 중립 근처다.
                 //   ⇒ 허용 경계는 «②의 끝»과 «④의 끝» 둘이고, 최악 대기는 ③ 시작 직후에 요청이 왔을 때의
-                //   ③1.40 + ④0.42 = 1.82초다(= danceGracefulExitBudgetSeconds 1.90의 유도값 그 자체).
-                //   ★ ④의 끝 하나만 두면 ⑤ 도중에 온 요청이 다음 세트를 통째로 기다려 2.86초가 된다.
+                //   ③0.70 + ④0.42 = 1.12초다(2026-09-07 §14 — dancePirouetteRevolutions 2→1로 ③이
+                //   1.40→0.70초로 줄면서 예전 값 1.82초/예산 1.90초에서 하락했다. 새 전역 병목은
+                //   D2 스타점프 1.50초 — danceGracefulExitBudgetSeconds도 1.58초로 함께 내렸다).
+                //   ★ ④의 끝 하나만 두면 ⑤ 도중에 온 요청이 다음 세트를 통째로 기다려 2.16초가 된다.
                 return (p >= StickmanPoseAnimator.BeatEdge(moveIndex, 2) ? 1 : 0)
                      + (p >= StickmanPoseAnimator.BeatEdge(moveIndex, 4) ? 1 : 0);
             }
