@@ -100,7 +100,14 @@ namespace StickMate.States
         /// 가중 추첨. <paramref name="roll01"/>은 <b>발행자가 이미 갖고 있는 난수 하나</b>(개체별 독립
         /// RNG)를 그대로 넘긴 것이다 — 여기서 새 난수를 뽑지 않는다.
         /// </summary>
-        /// <param name="cursorAvailable">커서 좌표를 실제로 읽을 수 있는가. false면 G3를 제외한다.</param>
+        /// <param name="cursorAvailable">
+        /// <b>G3(화면 쪽 돌아보기)를 이번 추첨에 넣어도 되는가.</b> <c>false</c>면 G3를 <b>추첨에서 빼고</b>
+        /// 그 가중치를 G1에 합친다(가중치 합이 언제나 1이라 분포가 조용히 찌그러지지 않는다).
+        /// <para>★ 이 판정을 <b>여기서 하지 않는 이유</b>: 「왜 못 쓰는가」는 호출부의 사실이고 하나가 아니다 —
+        /// 커서를 못 읽는 경우와 <b>몰입기</b>(프롭이 고정돼 있어 방향을 뒤집으면 안 되는 구간)가 있고,
+        /// 앞으로 더 생길 수 있다. 이름은 첫 사유에서 왔지만 <b>계약은 「G3를 뺄 것인가」</b>이며
+        /// 그 합성은 <c>States/AutoWanderController.ScreenGlanceAllowed</c> 한 곳에 있다.</para>
+        /// </param>
         public static WanderAmbientMotion Draw(double roll01, bool cursorAvailable)
         {
             // G3를 못 쓰면 그 몫을 G1에 합친다(가중치 합은 언제나 1이라 분포가 조용히 찌그러지지 않는다).

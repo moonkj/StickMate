@@ -591,6 +591,13 @@ namespace StickMate.EditorTools
             // 위해 처음부터 이 목록에 넣는다(BootstrapPrefabParityAuditTests가 이 목록과 프리팹의
             // 실제 컴포넌트를 대조한다).
             added += EnsureComponent<RopeClimbRenderer>(root);
+            // ★★★ 2026-09-08 코스튬 집중 연출(PART2) 프롭 — **여섯 번째**다. 그리고 이번엔
+            //   리더가 그 함정을 직접 밟았다: BuildStickmanPrefab 쪽에만 AddComponent를 넣었는데
+            //   그 함수는 `existing != null && !force`에서 조기 반환하므로(:731, BUG-SW-M3)
+            //   메뉴를 눌러도 빌드를 해도 **안 붙는다**. 실제로 도는 복구 경로는 이 목록 하나뿐이다.
+            //   붙지 않으면 프롭 미배치 → IsCostumeImmersionActive 영구 거짓 → LFVS가 0프레임,
+            //   즉 «구현은 다 됐는데 기능 전체가 죽어 있는» 상태가 된다(춤 2층이 겪은 그것).
+            added += EnsureComponent<CostumePropRenderer>(root);
 
             // ★ 붙이는 것과 <b>배선하는 것</b>은 다른 일이다. 붙기만 하고 _player가 null이면 그 감독은
             //   Update() 첫 줄에서 조용히 반환한다 — «컴포넌트는 있는데 아무 일도 안 한다»는 «컴포넌트가
@@ -1216,6 +1223,14 @@ namespace StickMate.EditorTools
             // AutoWanderController가 전담하므로 별도 Director가 필요 없다(활쏘기와 달리 "유휴 상태를
             // 감시하다가 발동하는" 절차가 없다 — 발동은 기존 배회 AI의 경계 행동 추첨 안에 있다).
             root.AddComponent<RopeClimbRenderer>();
+
+            // 코스튬 집중 연출(PART2, 2026-09-07)의 소환 오브젝트를 그리는 시각 레이어 — 위 두
+            // 렌더러와 완전히 같은 관례(콜라이더 0개, 직렬화 필드 없이 Awake()에서 같은
+            // GameObject를 조회). ★ 이 한 줄이 없으면 P3 전체가 조용히 죽는다: 프롭이 안 그려지는
+            // 것뿐 아니라 배회 사다리의 몰입기 칸도 물어볼 컴포넌트가 없어 영원히 비활성이 된다.
+            // 구현 라운드(coder)가 자기 파일 목록 밖이라 못 넣고 보고했고 리더가 직접 붙였다 —
+            // 이 저장소가 "코드엔 있는데 배포물엔 없는" 함정을 겪은 것이 이번이 다섯 번째다.
+            root.AddComponent<CostumePropRenderer>();
 
             // ================================================================================
             // 캐릭터 성장(레벨/XP) + 장비 + 정보창 배선

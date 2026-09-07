@@ -88,14 +88,27 @@ namespace StickMate.Interaction
                 "EquipmentSlot에 값이 늘었는데 분배 switch가 따라오지 않았습니다. " +
                 "몸 도형이 없는 자리(FX/PET)라면 '아무것도 안 그린다'를 case로 <b>명시</b>하세요.");
 
-        /// <summary>모자 커버선 표가 모르는 번호를 만났다. 왕관(의도된 면제)·미착용과 <b>구분해서</b>
-        /// 알린다 — 셋 다 +∞를 돌려주지만 사실이 다르고, 뭉뚱그리면 머리카락 클리핑이 조용히 틀어진다.</summary>
+        /// <summary>
+        /// 모자가 <b>머리카락을 가린다고 선언했는데</b>(<c>AccessoryDefSO.hidesHair</c>) 어디까지 가리는지는
+        /// 아무 데도 없다. 왕관(의도된 면제)·미착용·<b>가리지 않는다고 선언한 팩 모자</b>와 구분해서 알린다 —
+        /// 넷 다 +∞를 돌려주지만 사실이 다르다.
+        ///
+        /// <para>★ <b>2026-09-08 두 가지가 바뀌었다.</b>
+        /// (가) 트리거가 좁아졌다 — 예전에는 <b>코드 표에 없는 번호 전부</b>였고, 그래서 팩 HEAD 아이템이
+        /// 들어오면 정상 경로가 결함으로 신고됐다(Major 4가 그 자리를 고쳤다).
+        /// (나) <b>문구가 거짓이 됐다</b> — 옛 문장은 «머리카락이 모자를 뚫고 나옵니다»였는데,
+        /// HAIR 카테고리가 은퇴해(<c>EquipmentModel.IsRetiredSlot</c>, 2026-09-06) <b>뚫고 나올 머리카락이 없다.</b>
+        /// 없는 증상을 적으면 받는 사람이 화면에서 그것을 찾다가 «재현이 안 된다»로 닫는다.</para>
+        /// </summary>
         internal static bool ReportUnknownHatCover(int hatItemIndex)
             => Log(SiteHatCover, 0, hatItemIndex,
-                $"[도형] 모자 {hatItemIndex}번의 커버선(HatCoverLocalY)이 없습니다 — 지금은 왕관과 " +
-                "똑같이 '아무것도 가리지 않는다'로 처리되므로 머리카락이 모자를 뚫고 나옵니다. " +
-                "Interaction/AccessoryShapeBuilder.HatCoverLocalY에 이 모자의 커버선을 추가하세요" +
-                "(정말 얹는 물건이면 왕관처럼 NothingCovered를 명시하세요).");
+                $"[도형] 모자 {hatItemIndex}번이 hidesHair=true로 <b>가린다고 선언</b>했는데 커버선" +
+                "(어디까지 가리는가)이 없습니다 — 지금은 왕관과 똑같이 '아무것도 가리지 않는다'로 " +
+                "처리됩니다. HAIR 카테고리가 은퇴한 동안은 화면 피해가 없지만, 되살아나는 날 " +
+                "이 모자만 머리카락을 안 자릅니다. 고치는 방법은 둘입니다: " +
+                "(1) 정말 얹는 물건이면 그 아이템의 hidesHair를 false로 내리십시오(왕관과 같은 사실입니다). " +
+                "(2) 정말 덮는 모자면 Interaction/AccessoryShapeBuilder.HatCoverLocalY에 " +
+                "이 자리의 커버선을 추가하십시오.");
 
         /// <summary>이펙트 도형 <c>switch</c>가 모르는 번호를 만났다.</summary>
         internal static bool ReportMissingFxShape(int itemIndex, string where)

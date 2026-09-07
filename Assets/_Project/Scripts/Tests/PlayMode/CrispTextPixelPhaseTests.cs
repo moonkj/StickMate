@@ -43,6 +43,21 @@ namespace StickMate.Tests.PlayMode
         /// (획이 두 픽셀에 반반 나뉜다).</summary>
         private const float WorstCasePhase = 0.5f;
 
+        /// <summary>재스냅 관측 창(초). <b>벽시계</b>다 — 이 저장소의 배치모드 PlayMode는
+        /// 수천 fps로 돌아서 «N프레임»은 예산이 되지 못한다(CLAUDE.md).</summary>
+        private const float ResnapWindowSeconds = 0.5f;
+
+        /// <summary>양성 대조 표면을 <b>매 프레임</b> 미는 양(스크린 픽셀).
+        /// <para>0.37을 고른 이유: 아래 <see cref="MoverCycleFrames"/>주기의 어떤 배수에서도 잔차가
+        /// <see cref="IntegerTolerance"/> 안으로 들어오지 않는다
+        /// (0.37 / 0.74 / 0.11 / 0.48 / 0.85 / 0.22 / 0.59). 0.5나 0.25처럼 «떨어지는» 값을 쓰면
+        /// 주기적으로 격자에 붙어 대조군이 <b>조용히 쉬는 프레임</b>이 생긴다.</para></summary>
+        private const float MoverStepPixels = 0.37f;
+
+        /// <summary>양성 대조 표면이 원위치로 되감기는 주기(프레임). 좌표가 끝없이 커지면
+        /// float 정밀도가 흔들려 «대조군이 안 움직였다»와 «정밀도가 무너졌다»가 섞인다.</summary>
+        private const int MoverCycleFrames = 7;
+
         private GameObject _root;
         private bool _savedSnapEnabled;
 
@@ -101,7 +116,18 @@ namespace StickMate.Tests.PlayMode
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ConstantPixelSize;
             scaler.scaleFactor = canvasScaleFactor;
 
-            var holderGo = new GameObject("Holder", typeof(RectTransform));
+            return AddSurface("Holder", canvasScaleFactor, extraPhasePixels);
+        }
+
+        /// <summary><see cref="BuildSurface"/>가 만든 <b>같은 캔버스</b>에 표면을 하나 더 얹는다.
+        /// <para>왜 필요한가: 「정지한 글자는 재스냅되지 않는다」를 단언하려면 <b>같은 관측 창 안에</b>
+        /// «움직이면 실제로 재스냅된다»를 보여 주는 대조군이 있어야 한다. 대조군을 다른 테스트로
+        /// 떼어 놓으면 <b>그 창에서 계기가 살아 있었는지</b>를 증명하지 못한다 — 그것이 이 저장소가
+        /// 반복해 당한 «죽은 프로브가 산 프로브와 똑같이 생겼다»의 형태다.</para></summary>
+        private (Text text, VertexSpy spy, RectTransform holder) AddSurface(string holderName,
+            float canvasScaleFactor, float extraPhasePixels)
+        {
+            var holderGo = new GameObject(holderName, typeof(RectTransform));
             holderGo.transform.SetParent(_root.transform, false);
             var holder = holderGo.GetComponent<RectTransform>();
             holder.anchorMin = holder.anchorMax = new Vector2(0.5f, 0.5f);
@@ -275,27 +301,100 @@ namespace StickMate.Tests.PlayMode
         // ============================================================================
 
         /// <summary>
-        /// 창이 <b>가만히 있으면</b> 위상은 이미 격자 위이므로 재스냅이 한 번도 일어나면 안 된다.
-        /// 여기서 카운터가 오르면 24시간 상주 앱이 <b>조용히 CPU를 태운다</b>.
+        /// 창이 <b>가만히 있으면</b> 위상은 이미 격자 위이므로 그 글자는 재스냅이 한 번도 일어나면
+        /// 안 된다. 여기서 카운터가 오르면 24시간 상주 앱이 <b>조용히 CPU를 태운다</b>.
+        ///
+        /// ============================================================================
+        /// ★★ 2026-09-07 재설계 — 이 테스트는 <b>측정 대상을 잘못 잡아</b> 거짓 빨강을 냈다
+        /// ============================================================================
+        /// 원판은 <b>전역</b> <c>CrispText.ResnapCount</c>를 봤다. 그런데 그 값은 프로세스의
+        /// <b>모든</b> 인스턴스가 함께 쌓는 총계이고, 이 저장소의 배치모드 PlayMode는
+        /// <c>Main.unity</c>(앱 전체)를 띄운 채 돈다. 그래서 <b>설계대로 캐릭터를 따라다니는</b>
+        /// 말풍선 라벨(<c>DialogueBubbleRenderer</c>의 <c>Label</c>, 이것도 <see cref="CrispText"/>다)이
+        /// 같은 카운터에 매 프레임 1씩 얹었다.
+        /// <list type="bullet">
+        ///   <item>실제 결과: <c>docs/verify/runs/ropeclimb-r3_play.xml</c> — «정지한 글자가 <b>588회</b>
+        ///     재스냅됐습니다». 같은 실행의 그 테스트 출력에 <c>[말풍선] 표시 … 기울기=0.0도(꺼짐)</c>가
+        ///     함께 찍혀 있다(배율 1.0이라 만화 기울기가 꺼져 축 정렬 → 스냅 대상이 된다).</item>
+        ///   <item>같은 실행에서 <c>스냅이_켜지면_…</c>과 배율 5종은 <b>전부 통과</b>했다. 그 테스트들이
+        ///     재는 잔차 한계는 <see cref="IntegerTolerance"/>(0.005)로
+        ///     <c>GlyphPixelSnapPolicy.ResidualEpsilon</c>(0.01)보다 <b>좁다</b> — 즉 스냅 직후의 잔차는
+        ///     드리프트 임계 아래였고, <b>하네스의 글자는 재스냅될 수 없었다</b>.
+        ///     ⇒ 588회는 우리 글자의 것이 아니었다.</item>
+        /// </list>
+        /// 그래서 판정을 <b>인스턴스별</b>(<see cref="CrispText.InstanceResnapCount"/>)로 옮기고,
+        /// <b>같은 관측 창 안에</b> «매 프레임 미는 표면»을 대조군으로 함께 돌린다. 대조군이 실제로
+        /// 수백 회 올라야만 «정지 표면 0회»가 의미를 갖는다 — 계기가 죽어서 0인 경우와 갈라진다.
         /// </summary>
         [UnityTest]
         public IEnumerator 정지한_표면에서는_재스냅이_돌지_않는다()
         {
-            (Text text, _, _) = BuildSurface(UiGlyphScalePolicy.ReferenceCanvasScale, WorstCasePhase);
-            Pump(text);
+            const float Scale = UiGlyphScalePolicy.ReferenceCanvasScale;
+
+            (Text stillText, VertexSpy stillSpy, _) = BuildSurface(Scale, WorstCasePhase);
+            (Text moverText, _, RectTransform moverHolder) = AddSurface("MovingHolder", Scale, WorstCasePhase);
+            Vector2 moverHome = moverHolder.anchoredPosition;
+
+            Pump(stillText);
+            Pump(moverText);
             yield return null;
-            yield return null;   // 첫 프레임의 스냅이 확정될 여유.
+            yield return null;
+            yield return null;   // 캔버스 크기·배율이 자리 잡고 첫 스냅이 확정될 여유.
 
+            var still = (CrispText)stillText;
+            var mover = (CrispText)moverText;
+            still.ResetInstanceCountersForTest();
+            mover.ResetInstanceCountersForTest();
             CrispText.ResetCountersForTest();
-            float until = Time.realtimeSinceStartup + 0.5f;    // 벽시계 예산(TEAM.md: 프레임 수 금지).
-            while (Time.realtimeSinceStartup < until) yield return null;
 
-            Assert.AreEqual(0, CrispText.ResnapCount,
-                $"{LogPrefix} 정지한 글자가 {CrispText.ResnapCount}회 재스냅됐습니다 — " +
-                "스냅이 수렴하지 않는다는 뜻이고, 상주 앱에서 매 프레임 메시를 다시 만들게 됩니다.");
-            Assert.Greater(CrispText.LastDriftCheckCount, 0,
-                $"{LogPrefix} 드리프트 검사 자체가 0건입니다 — 드라이버가 안 돌았다는 뜻이고, " +
-                "그러면 위 «0회» 는 «검사를 안 했다»와 구분되지 않습니다(공허한 통과).");
+            int frames = 0;
+            float until = Time.realtimeSinceStartup + ResnapWindowSeconds;  // 벽시계(TEAM.md: 프레임 수 금지).
+            while (Time.realtimeSinceStartup < until)
+            {
+                // 대조군만 민다. 정지 표면은 이 창 동안 한 번도 건드리지 않는다.
+                moverHolder.anchoredPosition = moverHome
+                    + new Vector2(frames % MoverCycleFrames * MoverStepPixels / Scale, 0f);
+                frames++;
+                yield return null;
+            }
+
+            int globalCount = CrispText.ResnapCount;
+            int othersCount = globalCount - still.InstanceResnapCount - mover.InstanceResnapCount;
+
+            // ★ 통과해도 숫자를 남긴다. 「전역 − 내 것」이 곧 <b>이 실행에 함께 살아 있던 앱의
+            //   글자들이 같은 창에서 다시 구워진 횟수</b>이고, 그것이 이 테스트를 588회로 빨갛게
+            //   만든 그 값이다. 로그로 남겨 두면 다음 사람이 같은 오진을 반복하지 않는다.
+            Debug.Log($"{LogPrefix} 관측 {frames}프레임/{ResnapWindowSeconds:F2}초 — " +
+                      $"정지 표면 {still.InstanceResnapCount}회(검사 {still.InstanceDriftCheckCount}회) / " +
+                      $"대조군 {mover.InstanceResnapCount}회 / 전역 총계 {globalCount}회 " +
+                      $"⇒ 앱의 다른 글자 {othersCount}회.");
+
+            // ---- (1) 계기가 살아 있었는가 — 이것부터다 -------------------------------
+            Assert.Greater(still.InstanceDriftCheckCount, 0,
+                $"{LogPrefix} 정지 표면에 대한 드리프트 검사가 0건입니다 — 드라이버가 안 돌았거나 이 " +
+                $"글자가 스냅 경로에 애초에 들어가지 못했다는 뜻이고(캔버스 없음/회전/정점 0), " +
+                $"그러면 아래 «재스냅 0회»는 «재 보지 않았다»와 구분되지 않습니다(공허한 통과).");
+
+            // ---- (2) 양성 대조 — 진짜로 폭주하면 이 계기가 잡는가 --------------------
+            Assert.Greater(mover.InstanceResnapCount, frames / 2,
+                $"{LogPrefix} 매 프레임 {MoverStepPixels}px씩 민 대조군이 {frames}프레임 중 " +
+                $"{mover.InstanceResnapCount}회밖에 재스냅되지 않았습니다 — 인스턴스 카운터가 " +
+                "폭주를 못 잡는다는 뜻이고, 그러면 아래 «0회»는 아무것도 증명하지 않습니다.");
+
+            // ---- (3) 본 판정 ---------------------------------------------------------
+            Assert.AreEqual(0, still.InstanceResnapCount,
+                $"{LogPrefix} 정지한 글자가 {still.InstanceResnapCount}회 재스냅됐습니다 " +
+                $"({frames}프레임 관측, 검사 {still.InstanceDriftCheckCount}회). 스냅이 수렴하지 " +
+                $"않는다는 뜻이고, 상주 앱에서 매 프레임 메시를 다시 만들게 됩니다. " +
+                $"[참고] 같은 창의 전역 총계는 {globalCount}회이고 그중 대조군이 " +
+                $"{mover.InstanceResnapCount}회입니다 — 전역 값에는 앱의 다른 글자(말풍선 등)가 " +
+                "함께 들어가므로 전역 값으로는 이 판정을 하지 않습니다.");
+
+            // ---- (4) «0회»가 «스냅이 아예 안 걸렸다»가 아님을 못박는다 ----------------
+            Vector3 world = WorldOfFirstVertex(stillText, stillSpy);
+            Assert.IsTrue(NearInteger(world.x) && NearInteger(world.y),
+                $"{LogPrefix} 재스냅은 0회인데 정지한 글자의 원점 ({world.x:F4}, {world.y:F4})이 " +
+                "격자 밖입니다 — 수렴한 것이 아니라 스냅이 걸리지 않은 것입니다.");
         }
 
         /// <summary>
@@ -311,7 +410,8 @@ namespace StickMate.Tests.PlayMode
             yield return null;
             yield return null;
 
-            CrispText.ResetCountersForTest();
+            var crisp = (CrispText)text;
+            crisp.ResetInstanceCountersForTest();
 
             // 반 픽셀만큼 옮긴다 — 레이아웃은 안 바뀌고 «위치»만 바뀌므로 uGUI는 메시를 다시
             // 만들지 않는다. 그 사각지대를 CrispText가 덮는지 보는 것이 이 테스트다.
@@ -320,8 +420,10 @@ namespace StickMate.Tests.PlayMode
             yield return null;
             yield return null;
 
-            Assert.Greater(CrispText.ResnapCount, 0,
-                $"{LogPrefix} 표면이 반 픽셀 움직였는데 재스냅이 0회입니다 — " +
+            // ★ 전역 CrispText.ResnapCount를 쓰지 않는다 — 앱의 말풍선 하나만 떠 있어도 이 단언이
+            //   «내 글자가 재스냅됐다»와 무관하게 통과한다(거짓 초록). 인스턴스 값으로 본다.
+            Assert.Greater(crisp.InstanceResnapCount, 0,
+                $"{LogPrefix} 표면이 반 픽셀 움직였는데 이 글자의 재스냅이 0회입니다 — " +
                 "움직이는 글자는 계속 격자를 벗어난 채로 남습니다.");
 
             Vector3 world = WorldOfFirstVertex(text, spy);

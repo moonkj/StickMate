@@ -107,10 +107,37 @@ namespace StickMate.Tests.EditMode
 
         private static string ResolveWithAssetDatabase(string guid) => AssetDatabase.GUIDToAssetPath(guid);
 
+        /// <summary>
+        /// <c>m_Script</c> 참조를 담을 수 있는 <b>모든</b> 파일 종류.
+        ///
+        /// <para>★ <b>2026-09-08 — <c>*.asset</c>을 추가했다.</b> 이 클래스 문서는
+        /// <i>"사고가 난 곳만 좁게 잠그면 다음 사고를 또 놓친다"</i>고 적어 놓고, 정작 목록은
+        /// <c>*.unity</c>·<c>*.prefab</c> <b>둘</b>뿐이었다. 그런데 <c>m_Script</c>를 적는 세 번째
+        /// 그릇이 있다 — <b>ScriptableObject <c>.asset</c></b>. 2026-09-08 실측으로 이 저장소에
+        /// <b>45개</b>가 있고 <b>전부</b> <c>m_Script</c> 줄을 하나씩 갖고 있었다
+        /// (장비 42 + <c>StickConfig</c> 1 + 그날 착지한 코스튬 DLC 2). 즉 이 감사는
+        /// <b>그릇 한 종류를 통째로 못 보고</b> 있었다. (숫자는 그날의 관측이고 단언이 아니다 —
+        /// 아래 검사는 개수를 세지 않는다.)</para>
+        ///
+        /// <para>★ <b>왜 조용한가</b>가 문제다. <c>.asset</c>의 스크립트가 사라지면
+        /// <c>broken</c>은 그냥 <b>비어 있고</b>, 검사는 초록으로 지나간다 — 실패한 측정과 성공한
+        /// 측정이 똑같이 생긴, 이 저장소의 표준 병이다. 격파 놀이 삭제 커밋이 프리팹을 깨뜨린 것과
+        /// <b>완전히 같은 사고</b>가 <c>.asset</c>에서 나면 아무도 모른다. 그리고 그 위험은
+        /// 코스튬 DLC가 오늘 실제로 키웠다: <c>CostumeManifestSO</c>·<c>CostumeKeyposeTableSO</c>는
+        /// 갓 생긴 스크립트이고, 이름이 바뀌거나 지워질 여지가 가장 큰 시기다.</para>
+        ///
+        /// <para>★ <b>왜 이 목록은 낡지 않는가</b>: 파일 <b>개수</b>도 <b>폴더</b>도 적지 않는다.
+        /// 적는 것은 <c>m_Script</c>를 담을 수 있는 <b>확장자</b>뿐이고, 그건 Unity의 직렬화 형식이
+        /// 바뀌지 않는 한 늘지 않는다. 아래 <c>모든_그릇_종류가_실제로_스캔에_잡힌다</c>가
+        /// 세 종류 각각이 <b>0개가 아님</b>을 매 실행 증명한다 — 한 종류가 통째로 빠지면
+        /// 그 순간 빨개진다.</para>
+        /// </summary>
+        internal static readonly string[] ScriptHostPatterns = { "*.unity", "*.prefab", "*.asset" };
+
         private static IEnumerable<string> ProjectAssetFiles()
         {
             string root = Application.dataPath;
-            foreach (string pattern in new[] { "*.unity", "*.prefab" })
+            foreach (string pattern in ScriptHostPatterns)
             {
                 foreach (string full in Directory.GetFiles(root, pattern, SearchOption.AllDirectories))
                 {
@@ -159,10 +186,73 @@ namespace StickMate.Tests.EditMode
             Debug.Log($"{LogPrefix} 네거티브 컨트롤 통과 — 깨진 2건 검출, 정상 1건 무시.");
         }
 
+        /// <summary>
+        /// ★ <b>범위 대조</b> — <see cref="ScriptHostPatterns"/>의 <b>세 종류가 각각</b> 실제로
+        /// 파일을 물어 오는가.
+        ///
+        /// <para>본 검사는 <b>부재 단언</b>이다("깨진 참조 0건"). 부재 단언은 <b>스캔 범위가
+        /// 줄어들면 조용히 초록</b>이 된다 — 파일을 하나도 안 읽어도 0건이기 때문이다. 실제로
+        /// 2026-09-08까지 <c>*.asset</c> 45개가 통째로 빠져 있었고, 그 45개에 깨진 참조가 생겼어도
+        /// 이 파일은 계속 초록이었을 것이다.</para>
+        ///
+        /// <para>그래서 종류별로 <b>0이 아님</b>을 못 박는다. 개수는 적지 않는다 — 애셋이 늘고 주는
+        /// 것은 정상이고, 숫자를 적으면 다음 팩에서 낡는다. <b>한 종류가 통째로 사라지는 것</b>만
+        /// 이 검사의 관심사다.</para>
+        /// </summary>
+        [Test]
+        public void 모든_그릇_종류가_실제로_스캔에_잡힌다()
+        {
+            var counts = new Dictionary<string, int>();
+            foreach (string pattern in ScriptHostPatterns)
+            {
+                string suffix = pattern.Substring(1);   // "*.asset" -> ".asset"
+                int n = 0;
+                foreach (string assetPath in ProjectAssetFiles())
+                {
+                    if (assetPath.EndsWith(suffix, System.StringComparison.Ordinal)) n++;
+                }
+                counts[suffix] = n;
+            }
+
+            var empty = new List<string>();
+            foreach (KeyValuePair<string, int> kv in counts)
+            {
+                if (kv.Value == 0) empty.Add(kv.Key);
+            }
+            Assert.IsEmpty(empty,
+                $"{LogPrefix} 스캔이 {string.Join(", ", empty)} 를 한 개도 물어오지 못했습니다. " +
+                "본 검사는 '깨진 참조 0건'이라는 부재 단언이라, 범위가 비면 아무것도 읽지 않고도 " +
+                "초록이 됩니다 — 그 종류의 초록은 전부 무효입니다.\n" +
+                "실측(2026-09-08): 추적 중인 것은 .prefab 1개 · .asset 45개이고, .unity 는 " +
+                "Main.unity 1개 + 러너가 만드는 임시 씬(InitTestScene*)이라 수가 변합니다. " +
+                "그래서 개수가 아니라 «종류마다 0이 아님»만 봅니다.");
+
+            // 음성 대조 — 존재하지 않는 확장자는 0이어야 한다(0이 아니면 세는 방식이 고장난 것이다).
+            int bogus = 0;
+            foreach (string assetPath in ProjectAssetFiles())
+            {
+                if (assetPath.EndsWith(".zzz없는확장자", System.StringComparison.Ordinal)) bogus++;
+            }
+            Assert.AreEqual(0, bogus,
+                $"{LogPrefix} 존재하지 않는 확장자가 {bogus}건 잡혔습니다 — 세는 방식이 아무 파일이나 " +
+                "세고 있으므로 위 '0이 아님' 판정도 무효입니다.");
+
+            var line = new StringBuilder();
+            foreach (KeyValuePair<string, int> kv in counts)
+            {
+                if (line.Length > 0) line.Append(" / ");
+                line.Append(kv.Key).Append(' ').Append(kv.Value).Append("개");
+            }
+            Debug.Log($"{LogPrefix} 범위 대조 — {line} (없는 확장자 {bogus}개).");
+        }
+
         // ==================== 본 검사 ====================
 
-        /// <summary>★ 씬과 프리팹 <b>전부</b>에 Missing 스크립트가 없다.
-        /// 이번 사고는 씬이 아니라 <b>프리팹</b>에 있었다 — 범위를 좁히지 않는 것이 이 검사의 핵심이다.</summary>
+        /// <summary>★ 씬·프리팹·<c>.asset</c> <b>전부</b>에 Missing 스크립트가 없다.
+        /// 이번 사고는 씬이 아니라 <b>프리팹</b>에 있었다 — 범위를 좁히지 않는 것이 이 검사의 핵심이다.
+        /// <para>★ 2026-09-08 <c>.asset</c>(ScriptableObject)이 범위에 들어왔다. 이름은 그대로 두었다 —
+        /// 이 이름을 바꾸면 <c>renames.tsv</c> 대장과 베이스라인 대조가 「짝없는 소멸」로 읽는다.
+        /// 실제 범위는 <see cref="ScriptHostPatterns"/>가 정본이다.</para></summary>
         [Test]
         public void 씬과_프리팹_어디에도_Missing_스크립트가_없다()
         {

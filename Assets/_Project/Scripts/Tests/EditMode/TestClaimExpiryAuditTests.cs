@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using NUnit.Framework;
+using StickMate.Core;
 using UnityEngine;
 
 namespace StickMate.Tests.EditMode
@@ -356,20 +357,23 @@ namespace StickMate.Tests.EditMode
                             : null;
                     },
                 },
+                // ★ 2026-09-08 — 옛 R2-5("hidesHair를 읽는 프로덕션 코드가 0건")는 <b>만료됐다</b>.
+                //   Major 4가 착지해 ItemCatalog.HidesHair -> AccessoryShapeBuilder 가 실제로 읽는다.
+                //   대장에서 지우지 않고 <b>다음 갭</b>으로 갈아 끼운다 — 그 자리에 남은 진짜 미해결이 있다.
                 new Claim
                 {
                     Id = "R2-5",
-                    TestFile = "ItemCatalogAssetParityTests.cs",
-                    Anchor = "A단계에서 이 필드를 읽는 코드는",
-                    Note = "AccessoryDefSO.hidesHair는 선언만 있고 읽는 프로덕션 코드가 0건. " +
-                           "값이 틀려도 화면이 멀쩡하므로 이 테스트가 유일한 파수꾼이다.",
-                    ClosedBecause = () =>
-                    {
-                        List<string> users = ProductionUsers("hidesHair", "AccessoryDefSO.cs");
-                        return users.Count > 0
-                            ? "hidesHair를 읽는 프로덕션 파일이 생겼다: " + string.Join(", ", users)
-                            : null;
-                    },
+                    TestFile = "PackThemeAndHatCoverTests.cs",
+                    Anchor = "Major 4는 「가리는가」만 애셋으로 옮겼습니다",
+                    Note = "팩 모자는 «가리는가»만 선언할 수 있고 «어디까지»(커버선 좌표)를 실을 통로가 " +
+                           "없다. 지금 피해가 0인 이유는 <b>HAIR 카테고리가 은퇴해</b> 커버선의 소비자가 " +
+                           "0개이기 때문이다 — 그 은퇴가 풀리는 순간 이 갭이 곧 «팩 모자만 머리카락을 " +
+                           "안 자른다»가 된다. 그때는 애셋에 좌표 필드를 열지, 코드 표를 늘릴지 " +
+                           "결정해야 하고(전자는 매니페스트 스키마 승격을 부른다) 그 판단은 리더 소관이다.",
+                    ClosedBecause = () => EquipmentModel.IsRetiredSlot(EquipmentSlot.Hair)
+                        ? null
+                        : "HAIR 카테고리가 은퇴에서 돌아왔다 — 커버선의 소비자가 생겼으므로 " +
+                          "팩 모자의 커버선 통로를 더 이상 미룰 수 없다.",
                 },
                 new Claim
                 {

@@ -97,6 +97,37 @@ namespace StickMate.Interaction
         /// 곱하는 식으로 자체 계산하면 15/25/50분 선택값이 어긋나므로 값의 생산자를 한 곳으로 둔다.</summary>
         public float SessionDurationSeconds { get; private set; }
 
+        // ====================================================================
+        // ★ 3구간 (docs/DESIGN_COSTUME_FOCUS_ARCHITECTURE.md 8절) — 새 타이머는 하나도 안 생긴다
+        // ====================================================================
+        //
+        // 경과 = SessionDurationSeconds − RemainingSeconds. 이 파일이 세션 시간의 **유일한
+        // 생산자**라, 구간을 다른 곳에서 세면 두 계산이 반드시 어긋난다. 그래서 구간도 여기서만
+        // 판정하고, 경계식 자체는 순수 함수(Core/FocusSessionPhases)에 둬서 EditMode가 잰다.
+
+        /// <summary>
+        /// 지금 세션의 구간. <b>세션이 없으면 항상 <see cref="FocusSessionPhase.None"/></b>이다.
+        ///
+        /// <para>★ <b>이 값은 저장된 상태가 아니라 파생값이다.</b> 그래서 세션이 끝나는 세 경로
+        /// (<see cref="CompleteSession"/> / <see cref="StopFocusSession"/> / <see cref="OnEmergencyStop"/>)가
+        /// 전부 이미 쓰고 있는 <see cref="IsSessionActive"/> 하나로 <b>자동으로 닫힌다</b> —
+        /// 경로마다 따로 초기화할 필드가 없으니 «세 번째 경로를 빠뜨렸다»가 구조적으로 불가능하다
+        /// (이 저장소가 재화 지급에서 실제로 겪은 형태라 같은 함정을 두 번 파지 않는다).</para>
+        ///
+        /// <para>매 프레임 호출돼도 할당이 없다(float 몇 개) — 24시간 상주 앱 규약.</para>
+        /// </summary>
+        public FocusSessionPhase CurrentPhase => IsSessionActive
+            ? FocusSessionPhases.Of(SessionDurationSeconds, SessionDurationSeconds - RemainingSeconds)
+            : FocusSessionPhase.None;
+
+        /// <summary>
+        /// <see cref="StickmanEventBus.FocusSessionPhaseChanged"/>로 <b>마지막으로 내보낸</b> 구간.
+        /// <see cref="StartFocusSession"/>이 매번 <see cref="FocusSessionPhase.Adapt"/>로 다시 잠그므로
+        /// 지난 세션의 값이 다음 세션으로 새지 않는다 — <b>이것이 「한 세션에 정확히 2회」의 근거다</b>
+        /// (적응기→몰입기, 몰입기→한계. 세션 시작·종료는 「구간 전이」가 아니라 「세션 경계」라 안 쏜다).
+        /// </summary>
+        private FocusSessionPhase _publishedPhase = FocusSessionPhase.None;
+
         private void OnEnable()
         {
             StickmanEventBus.StateTransitioned += OnStateTransitioned;
@@ -174,6 +205,10 @@ namespace StickMate.Interaction
             SessionDurationSeconds = Mathf.Max(MinimumSessionSeconds, minutes * 60f);
             RemainingSeconds = SessionDurationSeconds;
 
+            // ★ 구간 래치를 여기서 되잠근다. 경과 0초는 언제나 적응기이므로(가장자리 폭은 항상 > 0)
+            //   시작에는 이벤트를 쏘지 않고 값만 맞춰 둔다 — 그래야 한 세션의 발행이 정확히 2회다.
+            _publishedPhase = FocusSessionPhase.Adapt;
+
             // ★ 못 잡으면 아래 재시도 창이 열리고, 그동안 타이머는 그대로 흐른다(UX_WIDGETS 369행 계약).
             IsStartPoseConfirmed = false;
             _startPoseRetryRemaining = StartPoseRetryWindowSeconds;
@@ -219,6 +254,11 @@ namespace StickMate.Interaction
         //   만들면 그 길로 끝낸 사용자만 그날 번 동전을 통째로 잃고, 그 실패는 화면에 아무 흔적도
         //   남기지 않는다(GAME_ARCHITECTURE_REVIEW §3421이 적은 «중도 취소 경로에서만 어긋난다»가
         //   정확히 이 형태다). <c>IsSessionActive = false</c>를 쓰는 자리를 늘리기 전에 여기를 봐라.
+        //
+        // ★★ 2026-09-07 — <b>3구간도 이 세 경로에서 함께 닫힌다</b>. 다만 닫을 필드가 따로 없다:
+        //   <see cref="CurrentPhase"/>가 <c>IsSessionActive</c>에서 <b>파생</b>되므로 세 경로 전부가
+        //   이미 쓰고 있는 그 한 줄로 자동으로 None이 된다. 위 재화 지급이 «세 번째 경로를 빠뜨렸다»에
+        //   당한 자리라, 구간은 <b>애초에 빠뜨릴 필드를 만들지 않는</b> 형태로 넣었다.
         //
         // ★ <b>반드시 <c>IsSessionActive = false</c> 「앞」에서 부른다</b>(DS-5′ 인계 조건). 두 함수 모두
         //   <c>IsSessionActive</c>를 재진입 방지 관문으로 쓰기 때문에, 뒤에서 부르면 <b>조용히 0원</b>이 된다.
@@ -329,9 +369,40 @@ namespace StickMate.Interaction
                 return;
             }
 
+            // ★ 구간 전이 발행 — 시간을 감산한 **바로 그 자리**다(계약서 8-4절). 감산과 판정 사이에
+            //   다른 코드가 끼면 그 프레임의 경과가 두 값으로 갈린다.
+            PublishPhaseTransition();
+
             // ★ 시작 포즈 재시도. 이 아래에는 아무것도 없다 — 「딴짓 감지」가 삭제된 뒤 이 Update가
-            //   하는 일은 <b>시간 줄이기 + 시작 포즈 재시도</b> 둘뿐이다(2026-09-06 사용자 지시).
+            //   하는 일은 <b>시간 줄이기 + 구간 전이 발행 + 시작 포즈 재시도</b> 셋뿐이다.
             TickStartPoseRetry(dt);
+        }
+
+        /// <summary>
+        /// 직전에 발행한 구간과 비교해 <b>바뀔 때만</b> 쏜다. 세션이 도는 동안에만 호출되므로
+        /// (<see cref="Update"/>가 <see cref="IsSessionActive"/>에서 이미 걸러낸다)
+        /// <see cref="FocusSessionPhase.None"/>이 여기서 나올 수 없다.
+        ///
+        /// <para><b>구간을 건너뛸 수 없다</b>: 가장 좁은 몰입기는 최단 세션(60초)에서도 12초인데
+        /// <c>Time.deltaTime</c>은 <c>Maximum Allowed Timestep</c>(이 프로젝트 설정값 0.33333334초,
+        /// <c>ProjectSettings/TimeManager.asset</c>)으로 클램프된다. 즉 한 프레임이 구간 하나를
+        /// 통째로 넘길 수 없어 발행 횟수가 프레임률에 흔들리지 않는다.</para>
+        ///
+        /// <para>할당 0 — 이벤트 인자가 enum 둘이라 박싱이 없다(<c>Action&lt;T1,T2&gt;</c>).</para>
+        /// </summary>
+        private void PublishPhaseTransition()
+        {
+            FocusSessionPhase now = CurrentPhase;
+            if (now == _publishedPhase) return;
+
+            FocusSessionPhase from = _publishedPhase;
+            _publishedPhase = now;
+            StickmanEventBus.RaiseFocusSessionPhaseChanged(from, now);
+
+            // 세션당 2줄뿐이라 상주 비용이 없고, 「구간이 안 넘어갔다」는 신고가 오면 이 줄의 유무가
+            // 곧 답이다(이 파일이 시작 포즈에서 이미 세운 «조용한 스킵을 말하게 만든다» 관례).
+            Debug.Log($"[포모도로][구간] {from} → {now} (경과 {SessionDurationSeconds - RemainingSeconds:F0}초 / " +
+                $"세션 {SessionDurationSeconds:F0}초, 가장자리 {FocusSessionPhases.EdgeSeconds(SessionDurationSeconds):F0}초).");
         }
 
         /// <summary>

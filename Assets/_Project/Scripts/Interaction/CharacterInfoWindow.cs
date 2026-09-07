@@ -659,6 +659,11 @@ namespace StickMate.Interaction
         private GameObject _col1Root;
         private GameObject _col2Root;
 
+        /// <summary>본문 사각형(헤더 아래 전부). <b>앵커 스트레치</b>라 패널이 줄면 함께 준다 —
+        /// 그 사실이 결함 W-1의 출발점이었다(<see cref="_bodyHeight"/> 문단).
+        /// 이 참조는 <b>진단/테스트 전용</b>이다.</summary>
+        private RectTransform _bodyRect;
+
         private GameObject _sectionPage;
         private GameObject _inventoryPage;
 
@@ -1323,6 +1328,11 @@ namespace StickMate.Interaction
             var bodyGo = new GameObject("Body", typeof(RectTransform), typeof(RectMask2D));
             bodyGo.transform.SetParent(_panel, false);
             var body = bodyGo.GetComponent<RectTransform>();
+            // ★ 참조를 들고 있는 이유는 하나다 — 테스트가 «컬럼 뷰포트가 정말 Body를 따라갔는가»를
+            //   <b>Body 자신을 재서</b> 확인할 수 있게(결함 W-1의 회귀 잠금). 프로덕션 경로는 이 값을
+            //   읽지 않는다(그쪽은 _bodyHeight = 패널 − 헤더라는 <b>다른 계산</b>이고, 둘이 갈라지면
+            //   그 자리에서 빨개져야 한다).
+            _bodyRect = body;
             body.anchorMin = new Vector2(0f, 0f);
             body.anchorMax = new Vector2(1f, 1f);
             body.pivot = new Vector2(0.5f, 1f);

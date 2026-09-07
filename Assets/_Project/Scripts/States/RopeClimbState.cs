@@ -59,9 +59,12 @@ namespace StickMate.States
         private float _startWorldX;
         private bool _hasMantleTarget;
 
-        /// <summary>밧줄이 걸리는(HookConfirm에서 확정되는) 앵커 월드 좌표 — 진행 방향 쪽 벽의
-        /// 가까운 모서리. Throw 도중에는 목표가 바뀌지 않으므로(§8-3-B "밧줄은 이미 걸린 지점에
-        /// 고정") 한 번만 계산해 캐시한다.</summary>
+        /// <summary>밧줄이 걸리는(HookConfirm에서 확정되는) 앵커 월드 좌표 — <b>벽의 가로 구간 중
+        /// 출발 지점에서 가장 가까운 점</b>(<see cref="TryResolveWallGripX"/>). 벽이 내 앞에 통째로
+        /// 놓인 기존 형상에서는 그 점이 곧 "진행 방향 쪽 벽의 가까운 모서리"라 예전 값과 같고,
+        /// 경계를 가로질러 걸친 창에서만 갈라진다(2026-09-07 debugger — 옛 식은 거기서 앵커를 등 뒤로
+        /// 보냈다). Throw 도중에는 목표가 바뀌지 않으므로(§8-3-B "밧줄은 이미 걸린 지점에 고정")
+        /// 한 번만 계산해 캐시한다.</summary>
         private float _anchorWorldX;
         private Vector2 _anchorWorld;
 
@@ -157,11 +160,15 @@ namespace StickMate.States
             _blackboard.FacingLocked = true;
             if (_hasWall) _blackboard.SetFacingSign(_direction);
 
+            // ★★ 2026-09-07 (debugger) — 앵커는 "진행 방향 반대쪽 모서리"가 아니라 **벽의 가로 구간 중
+            // 내게서 가장 가까운 점**이다. 둘은 벽이 내 앞에 통째로 놓여 있을 때만 같은 값이고,
+            // §10이 새로 열어 준 "경계를 가로질러 걸친 창" 형상에서는 갈라진다 — 실측 형상(Finder
+            // OS x 976~1512 / Dock 경계 1259)에서 옛 식은 왼쪽 모서리 976을 앵커로 잡아, 오른쪽으로
+            // 걸어가며 오른쪽으로 밧줄을 던지는데 **앵커만 283pt(≈6.9유닛, 캐릭터 신장의 3배) 뒤**에
+            // 놓였다. 아래 TryResolveWallGripX가 그 클램프를 한 곳에서 담당한다(벽이 앞에 있는
+            // 기존 형상에서는 옛 식과 **완전히 같은 값**이 나온다 — 그 유도는 그 메서드 문서에 있다).
             _anchorWorldX = _startWorldX;
-            if (_hasWall && _blackboard.TryGetFootholdEdgeWorld(_wallHandle, -_direction, out _, out float nearEdgeX))
-            {
-                _anchorWorldX = nearEdgeX;
-            }
+            if (TryResolveWallGripX(out float gripWorldX, out _, out _)) _anchorWorldX = gripWorldX;
             _anchorWorld = new Vector2(_anchorWorldX, _wallTopWorldY);
 
             float climbHeightWorld = _hasWall ? Mathf.Max(0f, _wallTopWorldY - _startWorldY) : 0f;
@@ -476,7 +483,12 @@ namespace StickMate.States
         }
 
         // ============================================================================
-        // 공용 — 맨틀 좌표(ParkourClimbState.TryComputeMantleTargetX와 완전히 같은 계산, §6-D 재사용)
+        // 공용 — 맨틀 좌표(§6-D, ParkourClimbState.TryComputeMantleTargetX와 같은 계산원)
+        // ★ 2026-09-07 (debugger) 정정 — "완전히 같은 계산"이라고 적혀 있었으나 지금은 **일반화**다.
+        //   내가 벽의 가로 구간 **안에** 서 있는 경우(=§10이 새로 연 '경계를 가로질러 걸친 창')에만
+        //   값이 갈라지고, 그 밖의 모든 형상에서는 비트 단위로 같다(TryResolveWallGripX 문서에 유도).
+        //   ParkourClimbState 쪽은 이 라운드가 한 줄도 건드리지 않았다 — 손 등반은 겹침 탐색을
+        //   쓰지 않으므로 그 형상 자체가 도달하지 않는다.
         // ============================================================================
 
         private bool TryComputeMantleTargetX(out float targetX) => TryComputeMantleTargetX(out targetX, out _);
@@ -485,16 +497,48 @@ namespace StickMate.States
         {
             targetX = _startWorldX;
             nearEdgeWorldX = _startWorldX;
-            if (!_hasWall) return false;
-            if (!_blackboard.TryGetFootholdEdgeWorld(_wallHandle, -_direction, out _, out float nearEdgeX)) return false;
-            nearEdgeWorldX = nearEdgeX;
-            if (!_blackboard.TryGetFootholdEdgeWorld(_wallHandle, _direction, out _, out float farEdgeX)) return false;
+            if (!TryResolveWallGripX(out float gripX, out float spanMinX, out float spanMaxX)) return false;
+            nearEdgeWorldX = gripX;
 
             // §6-D — ParkourMantleInsetWorld를 그대로 호출한다. 이름에 "Parkour"가 들어있지만 실제
             // 계산은 파쿠르 특유의 것이 전혀 없다(경계 판정 거리 하나에서 유도된 범용 값).
             float inset = _blackboard.ParkourMantleInsetWorld;
-            float desired = nearEdgeX + _direction * Mathf.Max(0f, inset);
-            targetX = Mathf.Clamp(desired, Mathf.Min(nearEdgeX, farEdgeX), Mathf.Max(nearEdgeX, farEdgeX));
+            float desired = gripX + _direction * Mathf.Max(0f, inset);
+            targetX = Mathf.Clamp(desired, spanMinX, spanMaxX);
+            return true;
+        }
+
+        /// <summary>
+        /// ★★ 2026-09-07 (debugger) — 밧줄이 실제로 걸리는 x(<paramref name="gripX"/>) = <b>목표 벽의
+        /// 가로 구간 중 출발 지점에서 가장 가까운 점</b>. 벽의 가로 구간도 함께 돌려준다(맨틀 목표를
+        /// 그 구간 안으로 클램프해야 하므로).
+        ///
+        /// <para><b>기존 형상에서는 옛 식과 값이 한 비트도 다르지 않다.</b> 옛 식은 "진행 방향 반대쪽
+        /// 모서리"(<c>TryGetFootholdEdgeWorld(handle, -_direction)</c>)였다. 벽이 내 앞에 통째로
+        /// 놓여 있으면(손 등반/기존 로프 테스트가 쓰는 모든 배치) direction&gt;0일 때
+        /// <c>spanMin &gt; _startWorldX</c>이므로 <c>Clamp(_startWorldX, spanMin, spanMax) = spanMin</c>
+        /// = 왼쪽 모서리 = 옛 근접 모서리이고, direction&lt;0이면 대칭으로 <c>spanMax</c> = 오른쪽 모서리다.
+        /// 즉 이 메서드는 옛 식의 <b>엄밀한 일반화</b>이며, 값이 달라지는 경우는 오직 하나 —
+        /// <b>내가 벽의 가로 구간 안에 서 있는 경우</b>(= 벽이 내 경계를 가로질러 걸쳐 있는 §10 형상)
+        /// 뿐이고, 거기서 옛 식은 앵커를 등 뒤로 보냈다.</para>
+        ///
+        /// <para>왜 <c>_startWorldX</c>(진입 시점 몸 x)를 기준으로 클램프하는가: 밧줄은 §8-3-B대로
+        /// "이미 걸린 지점에 고정"이라 Throw~Ascend 내내 한 값이어야 하고, Ascend의 반복 구간은
+        /// <c>pos.x = _startWorldX</c>로 곧장 위로만 오르기 때문이다 — 두 값이 같은 기준에서 나와야
+        /// 밧줄이 몸을 스쳐 지나가지 않는다.</para>
+        /// </summary>
+        private bool TryResolveWallGripX(out float gripX, out float spanMinX, out float spanMaxX)
+        {
+            gripX = _startWorldX;
+            spanMinX = _startWorldX;
+            spanMaxX = _startWorldX;
+            if (!_hasWall) return false;
+            if (!_blackboard.TryGetFootholdEdgeWorld(_wallHandle, -1, out _, out float leftEdgeX)) return false;
+            if (!_blackboard.TryGetFootholdEdgeWorld(_wallHandle, 1, out _, out float rightEdgeX)) return false;
+
+            spanMinX = Mathf.Min(leftEdgeX, rightEdgeX);
+            spanMaxX = Mathf.Max(leftEdgeX, rightEdgeX);
+            gripX = Mathf.Clamp(_startWorldX, spanMinX, spanMaxX);
             return true;
         }
 

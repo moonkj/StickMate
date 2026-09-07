@@ -302,8 +302,49 @@ namespace StickMate.Interaction
         public float Column2ViewportHeightForTests
             => _col2Viewport != null ? _col2Viewport.rect.height : 0f;
 
-        /// <summary>컬럼 2가 밀려날 수 있는 최대치(pt). 설계 폭에서는 0이어야 한다.</summary>
+        /// <summary>컬럼 2가 밀려날 수 있는 최대치(pt). 설계 <b>크기</b>에서는 0이어야 한다 —
+        /// 3행이 켜져도 그렇다(<see cref="LayoutColumn2"/>의 «아래 여백은 뷰포트가 남긴 만큼만»).</summary>
         public float Column2MaxScrollForTests => MaxCol2Scroll();
+
+        /// <summary>컬럼 2가 <b>지금 밀려 있는 양</b>(pt, 아래를 드러낼수록 양수).</summary>
+        public float Column2ScrollForTests
+            => _col2Content != null ? _col2Content.anchoredPosition.y : 0f;
+
+        // ==================== 결함 W-1 회귀용 관측 창구 (2026-09-08) ====================
+        //
+        // 이 창은 「보이지 않는 것은 눌리지 않는다」를 InfoWindowClippedHitTestTests로 이미 잠가 뒀는데,
+        // <b>「안 보이는 것을 볼 방법이 있는가」는 아무도 안 재고 있었다.</b> 아래 넷이 그 축이다.
+        // 전부 <b>읽기</b>다 — 스크롤을 옮기는 창구는 두지 않는다. 테스트는 실제 입력 경로
+        // (FeedPointerForTests)로 민다. 화면을 바꾸는 창구를 만들면 «실제로 밀린다»를 못 재게 된다.
+
+        /// <summary>본문(Body) 사각형의 <b>화면</b> 사각형. 앵커 스트레치라 패널을 따라 줄어든다 —
+        /// 컬럼 뷰포트가 <b>정말</b> 이 상자를 따라갔는지 재는 기준이고, 프로덕션이 쓰는
+        /// «패널 − 헤더» 계산과는 <b>다른 경로</b>로 얻은 값이다(둘이 갈라지면 그 자리에서 빨개진다).</summary>
+        public Rect BodyScreenRect => RawScreenRectOf(_bodyRect);
+
+        /// <summary>컬럼 2 스크롤 뷰포트의 화면 사각형 — 테스트가 드래그를 걸 자리를 여기서 고른다
+        /// (<see cref="GridViewportScreenRect"/>와 같은 관례).</summary>
+        public Rect Column2ViewportScreenRect => RawScreenRectOf(_col2Viewport);
+
+        /// <summary>세트 패널(컬럼 2 <b>마지막</b> 블록의 알맹이)의 잘리기 전 화면 사각형.</summary>
+        public Rect SetPanelRawScreenRect => RawScreenRectOf(_setPanelRect);
+
+        /// <summary>세트 패널이 지금 화면에 <b>보이는</b> 넓이 비율(0 = 통째로 잘림, 1 = 온전히 보임).
+        /// <para>컬럼 2에서 가장 아래에 있는 블록이라, 세로가 짧은 화면에서 <b>가장 먼저 사라지는</b>
+        /// 면이다. <see cref="CardEquipButtonVisibleFraction"/>과 <b>같은 식</b>이다.</para></summary>
+        public float SetPanelVisibleFractionForTests
+        {
+            get
+            {
+                RectTransform rt = _setPanelRect;
+                if (rt == null || !rt.gameObject.activeInHierarchy) return 0f;
+                rt.GetWorldCorners(_corners);
+                float full = (_corners[2].x - _corners[0].x) * (_corners[2].y - _corners[0].y);
+                if (full <= 0f) return 0f;
+                Rect visible = VisibleScreenRectOf(rt);   // _corners를 다시 쓰므로 full을 먼저 잰다.
+                return Mathf.Clamp01(visible.width * visible.height / full);
+            }
+        }
 
         // ==================== P0-1 회귀용 관측 창구 ====================
 

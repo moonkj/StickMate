@@ -306,6 +306,27 @@ namespace StickMate.States
         /// </summary>
         private bool IsViewerAwayForWander => _blackboard != null && _blackboard.IsViewerAwayWanderActive;
 
+        /// <summary>
+        /// ★ 2026-09-07 코스튬 × 집중 세션 — <b>소환 오브젝트가 지금 화면에 실제로 서 있는가</b>.
+        ///
+        /// <para><b>왜 「몰입기인가」가 아니라 「프롭이 섰는가」인가</b>: 프롭은 몰입기 진입 프레임의
+        /// 좌표에 <b>고정</b>되므로, 캐릭터가 걸어가면 <b>프롭만 덩그러니 남는다</b> —
+        /// 「걷기 0」과 「프롭 고정」은 한 묶음이다. 반대로 자리가 좁아 프롭을 못 세웠으면(폴백 F4)
+        /// 붙어 있을 물건이 없으므로 걷기를 낮출 이유도 없다. 즉 이 조건의 <b>정확한 사실</b>은
+        /// 구간이 아니라 배치 결과이고, 그 값은
+        /// <c>Interaction.CostumePropRenderer.PropPlaced</c> 한 곳에만 있다 — 여기서 다시 해석하지 않는다
+        /// (<see cref="IsFocusAmbientActive"/>와 같은 어법이며, 코스튬 포즈 층도 <b>같은 값</b>을 본다.
+        /// 자세와 배회가 각자 판단하면 「반만 몰입한」 상태가 생긴다).</para>
+        ///
+        /// <para>★ <b>2026-09-07 P4에서 이사 완료.</b> P3에서는 이 파일이 프롭 렌더러를 직접 캐시
+        /// 조회했다(<c>StickmanBlackboard</c>가 다른 담당자 소유라 손대지 못했다). 지금은 같은 어법의
+        /// 다른 셋과 똑같이 <b>블랙보드에 한 줄 위임</b>한다 —
+        /// <c>StickmanBlackboard.IsCostumeImmersionActive</c>는 코스튬 포즈 층도 보는 <b>같은 한 판정</b>이다.
+        /// 사실이 옮겨간 것이 아니라(정본은 여전히 <c>PropPlaced</c>) 조회 지점만 모인 것이다.</para>
+        /// </summary>
+        private bool IsCostumeImmersionHolding
+            => _blackboard != null && _blackboard.IsCostumeImmersionActive;
+
         /// <summary>자리 비움 걷기 감쇄를 <b>이미 로그로 알렸는가</b>(엣지에서만 한 줄 — 24시간 상주
         /// 앱에서 추첨마다 찍으면 하룻밤에 수천 줄이다). 입력이 돌아오면 조용히 내려가고, 다시
         /// 비우면 그때 한 줄이 더 나간다.</summary>
@@ -316,6 +337,26 @@ namespace StickMate.States
         /// 실패하면 G3를 추첨에서 빼고 그 가중치를 G1에 합친다. 없는 대상을 향해 돌아보는 그림은
         /// 절대 불변 원칙 1 위반이다.</summary>
         private bool CanSeeCursor => CursorProvider != null && CursorProvider(out _);
+
+        /// <summary>
+        /// ★ G3(화면 쪽 돌아보기)를 <b>지금 추첨에 넣어도 되는가</b> — 2026-09-08.
+        ///
+        /// <para>조건이 <b>둘</b>이고 둘 다 «없는 것을 향한 자세»를 막는 같은 성격이다:</para>
+        /// <list type="number">
+        ///   <item><b>커서를 읽을 수 있는가</b>. 못 읽으면 돌아볼 대상이 없다(절대 불변 원칙 1).</item>
+        ///   <item><b>몰입기가 아닌가</b>. 몰입기에는 프롭이 <b>진입 프레임 좌표에 고정</b>돼 있어서,
+        ///     여기서 방향이 뒤집히면 <b>프롭이 「뒤」가 된다</b> — 뒤쪽으로 제한된 종이비행기 궤도가
+        ///     그 순간 책상을 뚫고 지나간다(2026-09-08 coder 발견 → 리더 판정 (나)).
+        ///     의미상으로도 맞다: 「몰입기」는 캐릭터가 작업에 빠져 있는 구간이라 <b>이미 배회 걷기가 0</b>이고,
+        ///     그 구간에 「화면 쪽으로 돌아본다」가 도는 것 자체가 구간의 뜻과 어긋난다.</item>
+        /// </list>
+        ///
+        /// <para>★ <b>각도만 죽여 어정쩡하게 남기지 않는다.</b> 그러면 「무언가 하려다 만 자세」가 생긴다 —
+        /// 프롭이 없으면 코스튬 모션을 <b>통째로</b> 끄는(폴백 키포즈를 안 만드는) 그 원칙과 같은 형태로,
+        /// 여기서는 <b>추첨에서 뺀다</b>. 빠진 가중치는 <c>FocusAmbientGestures.Draw</c>가 G1에 합치므로
+        /// 가중치 합이 언제나 1이고 <b>분포가 조용히 찌그러지지 않는다</b> — 새 분기도, 새 어휘도 없다.</para>
+        /// </summary>
+        public bool ScreenGlanceAllowed => CanSeeCursor && !IsCostumeImmersionHolding;
 
         private void TickResting(float deltaTime)
         {
@@ -339,7 +380,7 @@ namespace StickMate.States
                         : Cfg(c => c.wanderLookAroundCooldownSeconds, 30f));
                     LookAroundRaisedCount++;
                     WanderAmbientMotion motion = focus
-                        ? FocusAmbientGestures.Draw(_rng.NextDouble(), CanSeeCursor)
+                        ? FocusAmbientGestures.Draw(_rng.NextDouble(), ScreenGlanceAllowed)
                         : WanderAmbientMotion.LookAround;
                     StickmanEventBus.RaiseWanderAmbientMotionRequested(motion);
                 }
@@ -372,9 +413,19 @@ namespace StickMate.States
             //   집중 0.40 > 평소 0.75로 **단조 내림차순**이라, 두 조건이 겹쳐도 "더 조용한 쪽"이
             //   자동으로 이긴다 — 우선순위를 따로 판정하는 코드가 필요 없다.
             //   ★ Idle 길이는 여기서도 안 건드린다(IsViewerAwayForWander 문서의 복귀 지연 항목).
+            // ★ 2026-09-07 코스튬 몰입기 — 위 셋과 **또 같은 어법**이다: 갈래도 추첨도 그대로 두고
+            //   읽는 확률만 낮춘다(기본 0). 사다리는 부채꼴 0 ≥ 몰입기 0 ≥ 자리비움 0.15 ≥
+            //   집중 0.40 ≥ 평소 0.75로 여전히 **단조 내림차순**이라 우선순위 판정 코드가 필요 없다.
+            //   ★ 여기만 0인 이유는 앞의 셋과 다르다: 저쪽은 「덜 돌아다닌다」이고 이쪽은
+            //   **「고정된 프롭 곁을 떠나면 그림이 깨진다」**는 기하 제약이다.
+            //   그래서 이 값을 올리면 파쿠르 도달성이 아니라 **연출 자체**가 손상된다
+            //   (costumeImmersionWalkChance 툴팁에 되돌리는 조건을 적어 뒀다).
+            //   ★ Idle 길이는 여기서도 안 건드린다(위 셋과 같다).
             bool hold = IsRadialMenuHolding;
-            bool away = !hold && IsViewerAwayForWander;
+            bool immersion = !hold && IsCostumeImmersionHolding;
+            bool away = !hold && !immersion && IsViewerAwayForWander;
             float walkChance = hold ? 0f
+                : immersion           ? Cfg(c => c.costumeImmersionWalkChance, 0f)
                 : away                ? Cfg(c => c.awayWanderWalkChance,     0.15f)
                 : IsFocusAmbientActive ? Cfg(c => c.focusSessionWalkChance,   0.4f)
                 :                        Cfg(c => c.wanderPostIdleWalkChance, 0.75f);
@@ -801,7 +852,7 @@ namespace StickMate.States
             // hop-down 차례다). 죽은 이중 탐색(TryFindClimbableWall 프레임당 최대 2회 호출) 비용도
             // 함께 없어졌다.
             // ============================================================================
-            float ropeClimbChance = RopeClimbQaOverride.ChanceOverride ?? Cfg(c => c.ropeClimbChance, 0.2f);
+            float ropeClimbChance = RopeClimbQaOverride.ChanceOverride ?? Cfg(c => c.ropeClimbChance, 0.85f);
             if (ropeClimbChance > 0f
                 && _blackboard.TryFindRopeClimbWallWide(info, _direction, out long ropeWallHandle, out float ropeWallTopY, maxHeight, ropeMaxHeight)
                 && _rng.NextDouble() < ropeClimbChance)

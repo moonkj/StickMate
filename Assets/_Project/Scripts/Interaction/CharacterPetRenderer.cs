@@ -597,11 +597,21 @@ namespace StickMate.Interaction
 
             float sin = Mathf.Sin(_orbitPhase);
             float cos = Mathf.Cos(_orbitPhase);
-            _position = new Vector2(cx + r * PlaneOrbitHalfWidthInR * cos, cy + r * PlaneOrbitHalfHeightInR * sin);
+
+            // ★★ 2026-09-08 — 궤도의 <b>전방 반원을 없앤다</b>(design-motion 14-5, 판정 (가)).
+            //   가로 성분만 «뒤쪽 반»으로 접는다: 0.5×W×(cos−1)은 언제나 ≤ 0이고,
+            //   cos=−1에서 −W로 <b>가장 먼 뒤쪽 도달점이 예전과 정확히 같다</b>.
+            //   즉 뒤쪽 실루엣은 한 톨도 안 바뀌고 <b>앞으로 나가던 절반만 사라진다</b>.
+            //   세로 성분(sin)과 궤도 중심·주기는 건드리지 않는다 — 「몸과 머리로 범위를 넓혀라」는
+            //   2차 신고가 그 축에 걸려 있다.
+            float forwardOffsetInR = 0.5f * PlaneOrbitHalfWidthInR * (cos - 1f);
+            float side = TickPlaneOrbitSide(bb, dt);
+            _position = new Vector2(cx + side * r * forwardOffsetInR, cy + r * PlaneOrbitHalfHeightInR * sin);
             ClampToScreen(ref _position, r * PlaneWingSpanInR);
 
-            // 기수각 = 궤도 접선 방향(d/dt).
-            float dx = -r * PlaneOrbitHalfWidthInR * sin;
+            // 기수각 = 궤도 접선 방향(d/dt). 가로 성분이 절반이 됐으므로 여기도 같은 식에서 파생한다 —
+            // 두 곳이 갈라지면 기수가 진행 방향을 안 가리킨다.
+            float dx = side * (-0.5f * r * PlaneOrbitHalfWidthInR * sin);
             float dy = r * PlaneOrbitHalfHeightInR * cos;
             float angle = Mathf.Atan2(dy, dx) * Mathf.Rad2Deg;
 
@@ -610,6 +620,37 @@ namespace StickMate.Interaction
             _body.localScale = Vector3.one;
 
             SetSortingOrder(sin < 0f ? SortDefault : SortPlaneFront);
+        }
+
+        /// <summary>궤도가 «뒤쪽»을 갈아타는 속도(1/초). 완전 반전(+1 → −1)에 0.4초.</summary>
+        private const float PlaneOrbitSideTurnRate = 5f;
+
+        /// <summary>지금 궤도가 놓인 쪽(+1 = 캐릭터가 보는 쪽의 반대가 −x, −1이면 그 반대).
+        /// <b>바라보는 방향으로 부드럽게 따라간다</b> — 즉시 뒤집으면 비행기가 머리 너머로 순간이동한다
+        /// (최악 2×궤도폭 = 머리 반경의 12배).</summary>
+        private float _planeOrbitSide;
+        private bool _hasPlaneOrbitSide;
+
+        /// <summary>
+        /// 궤도의 «뒤쪽»이 어느 쪽인지를 정하는 부호. 캐릭터가 도는 순간 <b>머리 위를 가로질러</b>
+        /// 반대편으로 넘어가고, 그 도중 부호가 0을 지나면서 비행기가 머리 한가운데를 통과한다 —
+        /// 「비행기가 반대편으로 선회한다」로 읽히는 그림이고, 다른 펫들이 목표 좌표로 <b>따라가는</b>
+        /// (공/미니/달팽이의 trail) 관례와 같은 성격이다.
+        ///
+        /// <para>첫 프레임에는 이징 없이 바로 앉힌다 — 스폰 순간에 화면 반대편에서 날아오면
+        /// 그건 「등장」이 아니라 결함으로 읽힌다(다른 펫의 스폰 처리와 같은 판단).</para>
+        /// </summary>
+        private float TickPlaneOrbitSide(StickmanBlackboard bb, float dt)
+        {
+            float facing = bb.FacingSign >= 0f ? 1f : -1f;
+            if (!_hasPlaneOrbitSide)
+            {
+                _hasPlaneOrbitSide = true;
+                _planeOrbitSide = facing;
+                return _planeOrbitSide;
+            }
+            _planeOrbitSide = Mathf.MoveTowards(_planeOrbitSide, facing, PlaneOrbitSideTurnRate * dt);
+            return _planeOrbitSide;
         }
 
         /// <summary>

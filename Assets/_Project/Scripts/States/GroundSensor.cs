@@ -480,13 +480,25 @@ namespace StickMate.States
         /// <b>바깥쪽으로만</b> 넓히지, 후보가 <b>안쪽에서 시작해 바깥까지 걸쳐 있는</b> 경우는 원리상
         /// 커버할 수 없다(2026-09-07 3차 1st 시도가 정확히 이 함정에 빠졌다 — 기록을 위해 남긴다).</para>
         ///
-        /// <para>그래서 로프 전용으로 <b>겹침 검사</b>로 바꾼다 — "후보의 가로 구간이 [내 경계 −
-        /// <paramref name="bandToleranceWorld"/>, 내 경계 + <paramref name="bandToleranceWorld"/>]
+        /// <para>그래서 로프 전용으로 <b>겹침 검사</b>로 바꾼다 — "후보의 가로 구간이 내 경계 주변
         /// 밴드와 조금이라도 겹치는가"만 본다. 후보가 경계보다 한참 앞서 시작해서 한참 뒤까지
         /// 뻗어 있어도(Dock 위로 우뚝 솟은 빌딩처럼) 그 밴드를 스쳐 지나가기만 하면 잡힌다 — 밧줄은
         /// 손처럼 "바로 다음 칸"만 잡는 게 아니라 "지금 서 있는 근처 어딘가 위로 솟은 것"에 걸어도
         /// 자연스럽기 때문이다. 손 등반/매달리기/뛰어내리기는 이 메서드를 전혀 호출하지 않는다 — 로프
         /// 경로(<see cref="StickmanBlackboard.TryFindRopeClimbWallWide"/>)만 쓰므로 회귀 위험이 없다.</para>
+        ///
+        /// <para>★★ <b>그 밴드는 대칭이 아니다</b>(2026-09-07 debugger 수정 — 초판은 대칭이었고 그것이
+        /// 결함이었다). 앞쪽(진행 방향)으로만 <paramref name="bandToleranceWorld"/>만큼 열고, 뒤쪽은
+        /// "내 몸과 목표 경계 중 더 뒤에 있는 쪽"에서 닫는다. 초판의 대칭 밴드는 배포 기본값에서
+        /// 뒤쪽으로도 8.0유닛(≈327 OS pt, 1512pt 화면의 21.7%)을 열어 두어 <b>등 뒤의 높은 창</b>을
+        /// 목표로 고를 수 있었고, 그러면 <see cref="RopeClimbState"/>가 앞으로 밧줄을 던지는데
+        /// 목표는 등 뒤인 그림이 된다. 지금 규칙은 <b>벽의 어느 부분이라도 내 앞에 걸쳐 있으면 후보</b>
+        /// 이므로 위 "가로질러 걸친 창" 형상은 한 건도 잃지 않는다.</para>
+        ///
+        /// <para>★ <b>동률 파훼는 명시적이다</b>(같은 라운드). 상단 Y가 완전히 같은 후보가 둘 이상이면
+        /// ① 진행 방향으로 더 가까이서 시작하는 쪽 → ② 그래도 같으면 더 작은 핸들 순으로 고른다.
+        /// 초판은 강부등호 하나뿐이라 <b>목록 앞쪽</b>(= OS 창 열거 순서 = z-order)이 이겨서, 사용자가
+        /// 창을 클릭해 앞으로 가져오는 것만으로 같은 화면에서 목표가 달라졌다.</para>
         ///
         /// <para>내가 지금 서 있는 발판 자신이 후보로 잘못 채택될 위험은 없다 — 그 발판의 상단 Y는
         /// <paramref name="info"/>.GroundWorldY와 같으므로 아래 높이 필터(<c>detectionRadius</c> 이상
@@ -510,9 +522,42 @@ namespace StickMate.States
             float tol = bandToleranceWorld > 0f && !float.IsNaN(bandToleranceWorld)
                 ? bandToleranceWorld
                 : detectionRadius * AdjacentFootholdSearchRadiusMultiplier;
-            float bandMin = edgeX - tol;
-            float bandMax = edgeX + tol;
+
+            // ★★ 2026-09-07 (debugger 소견 1 수정) — 밴드는 대칭이었는데 밧줄은 대칭이 아니다.
+            // 이전 판은 [edgeX − tol, edgeX + tol] 대칭 밴드라 **진행 방향 뒤쪽에만 있는 높은 창**도
+            // 후보로 잡았다. 배포 기본값에서 tol = parkourDetectionRadius(0.5) ×
+            // ropeClimbAdjacentSearchRadiusMultiplier(16) = **8.0유닛**이고, 이는 실측 환산(1pt =
+            // DockGeometry.ReferenceWorldUnitsPerPoint = 0.02444유닛)으로 **327pt** — 1512pt 화면의 21.7%가
+            // 통째로 "뒤쪽 후보 구역"이었다. 그러면 RopeClimbState.Enter()는 _direction 쪽으로 밧줄을
+            // 던지는데 목표 벽은 등 뒤인 그림이 된다(앵커도 반대쪽으로 끌려간다).
+            //
+            // 처방: 밴드를 **방향성** 있게 만든다 — 앞쪽으로는 예전처럼 tol만큼 열고, 뒤쪽은
+            // "내 몸과 목표 경계 중 더 뒤에 있는 것"에서 닫는다. 즉 **벽의 어느 부분이라도 내 앞에
+            // 걸쳐 있으면 여전히 후보**고, 끝까지 전부 뒤에 있는 벽만 떨어진다.
+            //
+            // ★ 이 메서드가 왜 생겼는지를 깨지 않는다 — 실기 형상 3종을 전부 그대로 통과시킨다:
+            //   (가) **경계를 가로질러 걸친 창**(실측: Finder OS x 976~1512 vs Dock 경계 1259) —
+            //        왼쪽 모서리는 경계 안쪽이지만 오른쪽 모서리(1512)가 경계 밖이므로 그대로 잡힌다.
+            //   (나) **발밑 발판과 가로 구간이 정확히 같은 벽**(QA 시험벽 —
+            //        FallbackPlatformWindowService가 Dock과 같은 x 구간에 올리는 합성 발판) — 그 벽의
+            //        앞쪽 끝은 경계와 **정확히 같아서** 경계 기준으로 닫으면 부동소수 동등 비교 하나에
+            //        QA 트리거가 걸린다. 그래서 뒤쪽 한계를 edgeX가 아니라 **몸과 경계 중 더 관대한 쪽**
+            //        (아래 rearLimitX)으로 잡는다 — 그러면 여유가 distanceToEdge만큼 생긴다.
+            //   (다) 경계 밖에 완전히 분리된 창 — 앞쪽 tol이 한 줄도 안 줄었으므로 그대로 잡힌다.
+            //
+            // ★ 또 하나 — 뒤쪽 한계를 몸(footWorldPos)만으로 잡지 않는 이유: 몸은 프레임마다 움직이므로
+            // 트리거 프레임(AutoWanderController)과 소비 프레임(WalkState/RopeClimbState.Enter)이 **서로 다른 판정**을
+            // 낼 수 있고, 그러면 진입 직후 "목표 벽 소실"로 되튀긴다(이 저장소가 이미 겪은 사고).
+            // Mathf.Min/Max로 둘 중 관대한 쪽을 고르면 그 비대칭이 한쪽으로만(=더 관대한 쪽으로) 기울어
+            // 두 프레임이 갈라질 여지가 사라진다.
+            float rearLimitX = direction > 0
+                ? Mathf.Min(footWorldPos.x, edgeX)
+                : Mathf.Max(footWorldPos.x, edgeX);
+            float bandMin = direction > 0 ? rearLimitX : edgeX - tol;
+            float bandMax = direction > 0 ? edgeX + tol : rearLimitX;
+
             float bestTopY = float.NegativeInfinity;
+            float bestForwardGap = float.PositiveInfinity;
             bool found = false;
 
             for (int i = 0; i < footholds.Count; i++)
@@ -529,12 +574,31 @@ namespace StickMate.States
 
                 if (topLeftWorld.y - info.GroundWorldY < detectionRadius) continue; // 충분히 높지 않음(내 발판 자신 포함)
 
-                if (topLeftWorld.y > bestTopY)
-                {
-                    bestTopY = topLeftWorld.y;
-                    wallFoothold = fh;
-                    found = true;
-                }
+                // ★★ 2026-09-07 (debugger 소견 2 수정) — 동률 파훼 규칙을 **명시**한다.
+                // 이전 판은 `topLeftWorld.y > bestTopY` 강부등호 하나라 상단이 같은 두 창 중
+                // **목록 앞쪽**이 이겼고, 그 목록 순서는 OS 창 열거 순서(= z-order)다. 즉 사용자가
+                // 창을 클릭해 앞으로 가져오는 것만으로 **같은 화면에서 목표 벽이 바뀌었다**(비결정).
+                // 순서 의존을 끊기 위해 전순서(total order)를 세 개 키로 만든다:
+                //   ① 더 높은 상단(기존 기준 유지)
+                //   ② 동률이면 진행 방향으로 **더 가까이서 시작하는** 쪽(머리 위에 걸친 벽이 먼 벽을 이긴다)
+                //   ③ 그리고도 같으면 **더 작은 핸들** — 핸들은 OS가 준 식별자라 열거 순서와 독립이다.
+                // ①은 정확 비교로 충분하다 — 같은 OS y는 같은 변환을 거쳐 비트 단위로 같은 월드 y가 되고,
+                // 다른 OS y는 1pt만 달라도 0.024유닛 차라 "동률"이 아니다(임의의 입실론 상수를 두지 않는다).
+                float forwardGap = direction > 0
+                    ? Mathf.Max(0f, candMin - rearLimitX)
+                    : Mathf.Max(0f, rearLimitX - candMax);
+
+                bool better = !found
+                    || topLeftWorld.y > bestTopY
+                    || (topLeftWorld.y == bestTopY
+                        && (forwardGap < bestForwardGap
+                            || (forwardGap == bestForwardGap && fh.Handle < wallFoothold.Handle)));
+                if (!better) continue;
+
+                bestTopY = topLeftWorld.y;
+                bestForwardGap = forwardGap;
+                wallFoothold = fh;
+                found = true;
             }
 
             if (found) wallTopWorldY = bestTopY;

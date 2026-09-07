@@ -2094,6 +2094,25 @@ namespace StickMate.States
             // poseSmoothingRate(35/초)의 0.086초 만에 팔이 «딱» 하고 붙는 그 그림이다.
             _focusStanceActiveThisFrame = TickFocusWatchStance(deltaTime);
 
+            // ★★ 2026-09-08 — 코스튬 포즈 <b>계기</b>도 라우팅 «밖»에서 매 프레임 내려 둔다.
+            //   위 두 항목(관망 자세 이징 · 상체 기울임)과 <b>정확히 같은 이유</b>이고, 이번이 세 번째다:
+            //   라우팅의 조기 return 열 몇 개(Walk/Fall/등반/제스처 중/세션 종료 후) 어디로 빠져도
+            //   계기가 <b>직전 프레임 값 그대로</b> 남아 있었다.
+            //
+            // ★ 왜 「보기 흉하다」가 아니라 결함인가: 낡은 <c>false</c>와 낡은 스텝 번호는
+            //   합격선 L-5의 <b>「음성」 절반을 조용히 초록으로</b> 만든다 — 「스텝 사이 프레임에 안 썼다」가
+            //   참인 이유가 «정말 안 썼다»인지 «낡은 값이 우연히 false였다»인지 구별되지 않는다.
+            //   부재 단언은 썩어도 시끄럽지 않다는 것이 이 저장소가 반복해서 배운 형태다.
+            //   그리고 <see cref="CostumeStepIndex"/>는 자기 문서에 «적용하지 않았으면 −1»이라고
+            //   적혀 있어 명시적 계약 위반이기도 했다.
+            //
+            // ★ 값의 정본은 여전히 애니메이터 반환값이다 — 여기서는 <b>내리기만</b> 하고 조건을
+            //   다시 해석하지 않는다(올리는 곳은 TickCostumeKeypose 한 곳뿐이다).
+            //   누적 카운터(CostumePoseWriteCount)는 <b>내리지 않는다</b>. 그건 프레임 값이 아니다.
+            CostumeStepIndex = -1;
+            CostumeSubPhase = -1;
+            CostumePoseWroteThisFrame = false;
+
             TickPoseRouting(deltaTime);
 
             // ★ 2026-09-01 상체 기울임 — 위 라우팅에는 조기 return이 열 개 넘게 있고(상태마다 포즈
@@ -2311,6 +2330,22 @@ namespace StickMate.States
             if (_focusStanceActiveThisFrame)
             {
                 bool gesturing = TickIdleAmbientMotion(deltaTime);
+
+                // ★★ 코스튬 전용 모션(LFVS) — «몰입기»에만, 그리고 제스처가 안 도는 동안에만
+                //   포즈를 가져간다. <b>새 상태 ID를 만들지 않는 것이 이 배선의 전부다</b>(규칙 C-4):
+                //   여기 도달했다는 것 자체가 CurrentStateId == Idle이라는 뜻이고(앞의 조기 반환들이
+                //   Walk/Fall/등반/춤/활쏘기/Focus*를 전부 걸러냈다), 그래서 FramePacing의 Still 등급
+                //   진입 조건을 한 번도 안 깬다. 새 상태를 만들었다면 세션 25분 내내 Active로 묶여
+                //   제출이 정확히 2배가 됐을 것이다.
+                //
+                // ★ 왜 !gesturing인가: 앰비언트 제스처 4종은 <b>부드러운 보간</b>이 어휘의 본체인데
+                //   (G2 끄덕임 2박은 1.20초에 걸쳐 감쇠로 그려진다) LFVS는 <b>보간 없음</b>이 정의다.
+                //   같은 프레임을 다투면 제스처가 스텝에 잘려 죽는다. 8-3 매핑상 정상 동작에서는
+                //   애초에 겹치지 않으므로 이 가드는 «경계 프레임 보험»이다.
+                //
+                // ★ 이 분기가 통째로 거짓이어도 아래 한 줄이 그대로 돌아 거동이 100% 예전과 같다.
+                if (!gesturing && TickCostumeKeypose(pose)) return;
+
                 pose.ApplyFocusWatchStancePose(deltaTime, BuildPoseSettings(), PoseSmoothingRate,
                     BuildFocusWatchStanceInput(gesturing));
                 return;
@@ -2527,6 +2562,202 @@ namespace StickMate.States
 
         /// <summary>진단/테스트 창구 — 이번 프레임에 관망 자세가 적용됐는가.</summary>
         public bool IsFocusWatchStanceActive => _focusStanceActiveThisFrame;
+
+        // ==================== 코스튬 전용 모션 (LFVS, 2026-09-07) ====================
+        //
+        // 이 절이 소유하는 것은 **시간과 스텝 번호**뿐이다. 각도표는 에셋
+        // (Core/CostumeKeyposeTableSO)이, 박자 상수는 Core/CostumeFocusRhythm이, 그리는 일은 포즈 층
+        // (StickmanPoseAnimator.ApplyCostumeFocusStepPose)이 갖는다. 넷 중 어느 하나도 다른 셋의 값을
+        // 복사하지 않는다 — 관망 자세 절이 세운 그 규약 그대로다.
+        //
+        // ★ **새 타이머를 만들지 않는다.** 경과는 FocusWatchDirector의 (SessionDurationSeconds −
+        //   RemainingSeconds)에서 나오고 구간 경계는 Core/FocusSessionPhases가 판정한다. 세션 시간의
+        //   생산자는 그 디렉터 하나다 — 두 곳에서 같은 시간을 세면 반드시 어긋난다.
+
+        /// <summary>같은 GameObject의 코스튬 프롭 렌더러 — <see cref="IsFocusSessionActive"/>와
+        /// <b>한 글자도 다르지 않은 어법</b>의 읽기 전용 조회다(1회 탐색 + 캐싱, 못 찾으면 다시 찾지 않는다).</summary>
+        private Interaction.CostumePropRenderer CostumeProp
+        {
+            get
+            {
+                if (!_costumePropSearched && Body != null)
+                {
+                    _costumePropSearched = true;
+                    _costumeProp = Body.GetComponent<Interaction.CostumePropRenderer>();
+                }
+                return _costumeProp;
+            }
+        }
+
+        private Interaction.CostumePropRenderer _costumeProp;
+        private bool _costumePropSearched;
+
+        /// <summary>
+        /// 지금 세션의 구간(세션이 없으면 <see cref="FocusSessionPhase.None"/>) —
+        /// <c>Interaction.FocusWatchDirector.CurrentPhase</c>의 <b>읽기 전용 조회</b>다.
+        /// 여기서 경계를 다시 계산하지 않는다.
+        /// </summary>
+        public FocusSessionPhase FocusPhase
+            => FocusDirector != null ? FocusDirector.CurrentPhase : FocusSessionPhase.None;
+
+        /// <summary>집중 세션 디렉터(없으면 <c>null</c>). <see cref="IsFocusSessionActive"/>가 쓰는
+        /// <b>바로 그 캐시 필드</b>를 공유하므로 탐색은 여전히 리그당 1회다.</summary>
+        private Interaction.FocusWatchDirector FocusDirector
+        {
+            get
+            {
+                if (!_focusDirectorSearched && Body != null)
+                {
+                    _focusDirectorSearched = true;
+                    _focusDirector = Body.GetComponent<Interaction.FocusWatchDirector>();
+                }
+                return _focusDirector;
+            }
+        }
+
+        /// <summary>
+        /// ★ 코스튬 연출이 지금 살아 있는가 — <b>판정의 정본은 «프롭이 실제로 섰는가» 하나다</b>
+        /// (규정 P-GHOST-1).
+        ///
+        /// <para><b>마스터 스위치도 구간도 여기서 다시 묻지 않는다.</b> 프롭 렌더러가 이미 그 둘을
+        /// 통과한 뒤에만 <c>PropPlaced</c>를 세우기 때문이고, 여기서 한 번 더 물으면 판정이 두 곳이 되어
+        /// 「반만 켜진」 상태가 만들어진다. 자리가 좁아 프롭을 못 세웠으면(폴백 F4) 이 값이 거짓이라
+        /// <b>코스튬 포즈가 통째로 꺼지고</b> 기존 관망 자세로 떨어진다 — 대체 키포즈 표를 따로 두지
+        /// 않는 것이 P-GHOST-2이고, 그래서 «없는 것을 향한 자세»가 만들어질 자리가 코드에 없다.</para>
+        ///
+        /// <para>소비자는 셋이다: 이 파일의 포즈 라우팅 · <c>States/AutoWanderController</c>의 배회 사다리 ·
+        /// 진단/테스트. 셋 다 <b>같은 한 판정</b>을 본다.</para>
+        /// </summary>
+        public bool IsCostumeImmersionActive => CostumeProp != null && CostumeProp.PropPlaced;
+
+        /// <summary>지금 화면에 선 프롭의 코스튬 키(없으면 <c>null</c>). 포즈 층이 각도표를 찾는 열쇠이며,
+        /// <b>차림을 여기서 다시 해석하지 않는다</b> — 세션 중에 갈아입어도 화면에 서 있는 것은 여전히
+        /// 처음 세운 프롭이므로, 그 프롭이 말하는 코스튬이 <b>사실</b>이다(P-GHOST-1).</summary>
+        public string ActiveCostumeKey => CostumeProp != null ? CostumeProp.PlacedCostumeKey : null;
+
+        // 각도표 캐시 — 키가 바뀔 때만 카탈로그를 뒤진다(매 프레임 조회 금지).
+        private string _costumeTableKey;
+        private CostumeKeyposeTableSO _costumeTable;
+        private bool _costumeTableRejected;
+
+        /// <summary>
+        /// 진단/테스트 창구 — 이번 프레임에 코스튬 포즈 층이 <b>돌았다면</b> 그 스텝 번호,
+        /// <b>안 돌았으면 −1</b>(제스처 중 · 세션 종료 후 · Idle이 아닐 때 · 프롭 미배치).
+        ///
+        /// <para>★ <b>「돌았다」와 「썼다」는 다르다.</b> 층이 돌아도 그림이 직전 프레임과 같으면
+        /// 애니메이터가 조기 반환한다(PC-4) — 그때도 «지금 몇 번 키포즈인가»는 여전히 사실이라
+        /// 이 값은 유효하고, <b>Transform을 실제로 썼는지는 <see cref="CostumePoseWroteThisFrame"/></b>가
+        /// 따로 말한다. 두 질문을 한 값에 접으면 L-5의 음성 절반을 못 잰다.</para>
+        ///
+        /// <para>내리는 자리는 <c>TickPose</c> 한 곳(라우팅 <b>밖</b>)이다 — 라우팅 안에 두면
+        /// 조기 return 열 몇 개 중 하나로 빠질 때마다 낡은 값이 남는다.</para>
+        /// </summary>
+        public int CostumeStepIndex { get; private set; } = -1;
+
+        /// <summary>진단/테스트 창구 — 직전 프레임의 몰입기 소구간(0 진입 / 1 절정 / 2 이완, 없으면 −1).</summary>
+        public int CostumeSubPhase { get; private set; } = -1;
+
+        /// <summary>
+        /// ★ 계기 — 코스튬 포즈가 <b>실제로 Transform을 쓴</b> 누적 프레임 수(합격선 L-5의 반쪽).
+        ///
+        /// <para><b>「불렀다」가 아니라 「썼다」를 센다</b>: 값은
+        /// <c>StickmanPoseAnimator.ApplyCostumeFocusStepPose</c>의 <b>반환값</b>에서 그대로 오고,
+        /// 여기서 조건을 다시 해석하지 않는다. 그쪽이 조기 반환한 프레임(PC-4)은 안 오른다.</para>
+        ///
+        /// <para>★ <b>이 계기가 왜 필요한가</b>: 「스텝 사이 프레임의 쓰기가 0이다」는
+        /// <b>계기가 죽어서 0인 것</b>과 화면상 구별되지 않는다 — 이 저장소가 아홉 번 당한 형태다.
+        /// 같은 실행 안에서 <b>스텝이 바뀌는 프레임에는 오르고</b>(양성)
+        /// <b>스텝 사이 프레임에는 한 칸도 안 오르는 것</b>(음성)을 함께 보여야 그 0이 절감의 증거가 된다.
+        /// 프롭 쪽의 짝은 <c>Interaction.CostumePropRenderer.PointWriteCount</c>다.</para>
+        /// </summary>
+        public int CostumePoseWriteCount { get; private set; }
+
+        /// <summary>진단/테스트 창구 — 코스튬 포즈가 이번 프레임에 실제로 썼는가(위 계기의 순간값).</summary>
+        public bool CostumePoseWroteThisFrame { get; private set; }
+
+        /// <summary>
+        /// 코스튬 키포즈를 이번 프레임에 적용했는가. <c>false</c>면 호출부가 기존 관망 자세로 흐른다.
+        ///
+        /// <para><b>deltaTime을 받지 않는다</b> — 재생 위치가 <b>벽시계</b>이기 때문이다
+        /// (<c>stepIndex = floor(경과 × 스텝레이트) % 키수</c>). 프레임 수로 세면 절감 등급이 바뀌는
+        /// 순간 프레임의 «뜻»이 달라지고, 그건 CLAUDE.md가 금지한 형태다.</para>
+        /// </summary>
+        private bool TickCostumeKeypose(StickmanPoseAnimator pose)
+        {
+            // 내리는 것은 TickPose가 프레임 앞에서 이미 했다 — 여기서 또 내리면 «끄는 자리»가
+            // 둘이 되고, 그중 하나만 도는 경로가 생기는 날 어느 쪽이 참인지 알 수 없다.
+            if (pose == null || !IsCostumeImmersionActive) return false;
+
+            CostumeKeyposeTableSO table = ResolveCostumeTable(ActiveCostumeKey);
+            if (table == null) return false;   // 전용 모션 없는 코스튬(무료 티어) = 정상 상태.
+
+            Interaction.FocusWatchDirector director = FocusDirector;
+            if (director == null) return false;
+
+            float duration = director.SessionDurationSeconds;
+            float edge = FocusSessionPhases.EdgeSeconds(duration);
+            float immersion = FocusSessionPhases.ImmersionSeconds(duration);
+            if (!(immersion > 0f)) return false;
+
+            // 몰입기 안에서의 경과. 새 타이머가 아니라 **디렉터의 남은 시간에서 유도**한 값이다.
+            float immersionElapsed = Mathf.Clamp(duration - director.RemainingSeconds - edge, 0f, immersion);
+
+            int stage = CostumeEvolutionRules.StageOf(CostumeProgressModel.MinutesOf(ActiveCostumeKey));
+            table.StageWindow(stage, out int windowStart, out int windowCount);
+            if (windowCount <= 0) return false;
+
+            int subPhase = CostumeFocusRhythm.SubPhaseOf(immersion, immersionElapsed);
+            int stepsPerSecond = CostumeFocusRhythm.StepsPerSecondOf(subPhase, table.stepsPerSecond);
+            float loopSeconds = windowCount / (float)stepsPerSecond;
+            float period = CostumeFocusRhythm.PeriodSeconds(immersion,
+                Config != null ? Config.costumeFocusDutyCycleMaxSeconds : CostumeFocusRhythm.MaxPeriodSeconds);
+            float work = CostumeFocusRhythm.WorkSeconds(period, loopSeconds, CostumeFocusRhythm.DutyOf(subPhase));
+
+            float phase = Mathf.Repeat(immersionElapsed, period);
+            bool working = phase < work;
+
+            // 정지 구간은 언제나 0번(정지 키포즈)이다. 「이완」 소구간에서만 그 자세에 앞쪽 기울임을
+            // 1.5° 더한다 — 힘이 빠진 그림이고, **새 키포즈를 만들지 않기 위한** 장치다.
+            int localStep = working ? Mathf.FloorToInt(phase * stepsPerSecond) % windowCount : 0;
+            float leanBias = !working && subPhase == CostumeFocusRhythm.SubPhaseCount - 1
+                ? CostumeFocusRhythm.RelaxLeanBiasDegrees
+                : 0f;
+
+            CostumeStepIndex = localStep;
+            CostumeSubPhase = subPhase;
+
+            // 반환값이 곧 「이번 프레임에 실제로 썼는가」다 — 여기서 다시 판정하지 않고 그대로 싣는다.
+            CostumePoseWroteThisFrame = pose.ApplyCostumeFocusStepPose(BuildPoseSettings(),
+                new StickmanPoseAnimator.CostumeFocusStepInput(
+                    table.keyposes[windowStart + localStep], localStep, leanBias,
+                    BodyLeanEnabled ? 1f : 0f, CharacterHeightWorld));
+            if (CostumePoseWroteThisFrame) CostumePoseWriteCount++;
+            return true;
+        }
+
+        /// <summary>
+        /// 이 코스튬의 각도표. 키가 바뀔 때만 카탈로그를 뒤지고, <b>결함이 있으면 한 번만 크게 신고한 뒤
+        /// 그 표를 쓰지 않는다</b> — 조용히 기본값으로 때우면 만든 사람이 영영 모른다.
+        /// </summary>
+        private CostumeKeyposeTableSO ResolveCostumeTable(string costumeKey)
+        {
+            if (string.IsNullOrEmpty(costumeKey)) return null;
+            if (!string.Equals(costumeKey, _costumeTableKey, System.StringComparison.Ordinal))
+            {
+                _costumeTableKey = costumeKey;
+                _costumeTableRejected = false;
+                CostumeDescriptor costume = CostumeCatalog.Find(costumeKey);
+                _costumeTable = costume != null ? costume.Keyposes : null;
+
+                if (_costumeTable != null && !_costumeTable.IsUsable(out string error))
+                {
+                    Debug.LogError($"[코스튬모션] '{costumeKey}'의 키포즈 표를 쓰지 않습니다 — {error} " +
+                        "전용 모션 없이 기존 관망 자세로 계속합니다(반쯤 재생해 끊긴 그림을 내보내지 않습니다).");
+                    _costumeTableRejected = true;
+                }
+            }
+            return _costumeTableRejected ? null : _costumeTable;
+        }
 
         /// <summary>이번 프레임의 관망 자세 입력. <b>자세 토글(G4)과 방향 전환(G3)이 여기서 확정된다</b> —
         /// 포즈 층은 상태를 갖지 않으므로 "언제 뒤집히는가"의 소유자는 이쪽이다.</summary>

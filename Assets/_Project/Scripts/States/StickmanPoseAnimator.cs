@@ -3153,6 +3153,90 @@ namespace StickMate.States
             }
         }
 
+        // ============================================================================
+        // ★★ 코스튬 전용 모션 — LFVS(저프레임 벡터 스텝), 2026-09-07
+        // ============================================================================
+
+        /// <summary>
+        /// 키포즈로 <b>보간 없이 즉시 스냅</b>한다. 위 <see cref="ApplyIdlePoseImmediate"/>가 세운 본이며,
+        /// <b>스무딩 계수를 인자로 받지 않는 것</b>이 이 함수의 정의다 — 「보간 없음」이 LFVS다.
+        ///
+        /// ============================================================================
+        /// 왜 스냅이어야 하는가 (실측)
+        /// ============================================================================
+        /// 감쇠 계수 35/초, dt = 1/60에서 프레임당 잔존은 exp(−35/60) = 0.558이고,
+        /// 20° 스텝이 재빌드 임계(0.05°)까지 가라앉는 데 <b>183 ms</b>가 걸린다.
+        /// 3스텝/초(333 ms)면 <b>스텝 시간의 55%를 이징에 쓴다</b> — (a) 「즉시 전환」이 깨지고
+        /// (b) 그 183 ms 동안 팔다리가 매 프레임 다시 구워져 <b>절감이 절반으로 준다</b>.
+        ///
+        /// ============================================================================
+        /// ★ PC-4 — 스텝이 안 바뀐 프레임에는 Transform을 <b>한 번도</b> 안 건드린다
+        /// ============================================================================
+        /// 이 조기 반환이 없으면 «몰입기 쓰기 −97.8%»가 <b>전부 0이 된다</b>.
+        ///
+        /// <para><b>판정을 「스텝 번호가 같은가」가 아니라 「리그가 이미 그 자세인가」로 한다.</b>
+        /// 설계 인계는 <c>if (input.StepIndex == _lastStep) return;</c>를 제안했지만, 그 캐시는
+        /// <b>썩는다</b> — 다른 포즈 경로(걷기·낙하·제스처)가 같은 스텝 번호 동안 팔을 옮겨 놓으면
+        /// 캐시는 여전히 「같다」고 말하고 <b>화면은 다른 자세로 굳는다</b>. 그리고 그 실패는
+        /// 조용하다. 각 마디의 <c>Segment.CurrentAngle</c>은 <b>지금 실제로 적용돼 있는 각도</b>라
+        /// (그 필드 문서) 그걸 직접 비교하면 캐시가 없고, 없는 캐시는 썩지 않는다.
+        /// 비용은 float 비교 10회로 캐시 1회보다 크지만 <b>둘 다 0회 쓰기</b>이고, 이 함수가 지키려는
+        /// 것은 비교 횟수가 아니라 <b>Transform 쓰기 0</b>이다.</para>
+        ///
+        /// <para><b>기울임만은 매 프레임 요청한다</b>: 기울임 요청은 <b>소비형</b>이라 아무도 요청하지
+        /// 않으면 <see cref="TickBodyLean"/>이 목표 0으로 감쇠시킨다 — 조기 반환 뒤에 요청을 빼면
+        /// 스텝 사이에 상체가 <b>서서히 펴진다</b>. 요청은 필드 하나 쓰기이고,
+        /// <see cref="SetBodyLean"/>은 값이 같으면 내부에서 조기 반환하므로 둘 다 무비용이다.</para>
+        ///
+        /// <para><b>다리는 매번 중립으로 명시한다</b>(상속하지 않는다). 고관절 ±12° / 무릎 −4°는
+        /// 접지 계약이고, 「직전 경로가 남겨 둔 값」에 기대면 어디서 들어왔느냐에 따라 발이 뜬다.
+        /// 키포즈 자료형에 다리 각이 <b>없는</b> 이유는 <c>Core/CostumeKeypose</c> 문서에 있다.</para>
+        /// </summary>
+        /// <returns>이번 프레임에 실제로 <b>썼는가</b>. false = 조기 반환(쓰기 0). 검증 V6가 이 값을 센다.</returns>
+        public bool ApplyCostumeFocusStepPose(in PoseSettings settings, in CostumeFocusStepInput step)
+        {
+            float lean = Mathf.Clamp(step.Key.leanDegrees + step.LeanBiasDegrees,
+                -MaxBodyLeanDegrees, MaxBodyLeanDegrees) * step.LeanScale;
+            RequestBodyLean(lean);
+            SetBodyLean(lean);
+
+            float offsetY = step.Key.bodyOffsetY * step.HeightWorld;
+            if (HoldsCostumeStepAlready(settings, step, offsetY)) return false;
+
+            SetBodyOffset(offsetY);
+            ApplyCostumeSegment(_leftArm, step.Key.leftUpperArm, step.Key.leftLowerArm);
+            ApplyCostumeSegment(_rightArm, step.Key.rightUpperArm, step.Key.rightLowerArm);
+            ApplyCostumeSegment(_leftLeg, NeutralUpperAngle(_leftLeg, settings), NeutralLowerAngle(_leftLeg, settings));
+            ApplyCostumeSegment(_rightLeg, NeutralUpperAngle(_rightLeg, settings), NeutralLowerAngle(_rightLeg, settings));
+            return true;
+        }
+
+        /// <summary>리그가 <b>이미</b> 이 키포즈를 들고 있는가. 마디가 없는 리그(테스트 더미)는
+        /// «들 것이 없으므로 이미 들고 있다»로 본다 — 없는 마디 때문에 매 프레임 다시 쓰지 않는다.</summary>
+        private bool HoldsCostumeStepAlready(in PoseSettings settings, in CostumeFocusStepInput step, float offsetY)
+        {
+            if (_bodyOffsetY != offsetY || _headOffsetX != 0f) return false;
+            return SegmentHolds(_leftArm, step.Key.leftUpperArm, step.Key.leftLowerArm)
+                && SegmentHolds(_rightArm, step.Key.rightUpperArm, step.Key.rightLowerArm)
+                && SegmentHolds(_leftLeg, NeutralUpperAngle(_leftLeg, settings), NeutralLowerAngle(_leftLeg, settings))
+                && SegmentHolds(_rightLeg, NeutralUpperAngle(_rightLeg, settings), NeutralLowerAngle(_rightLeg, settings));
+        }
+
+        private static bool SegmentHolds(Limb limb, float upperAngle, float lowerAngle)
+        {
+            if (limb == null) return true;
+            if (limb.Upper != null && limb.Upper.CurrentAngle != upperAngle) return false;
+            if (limb.Lower != null && limb.Lower.CurrentAngle != lowerAngle) return false;
+            return true;
+        }
+
+        private void ApplyCostumeSegment(Limb limb, float upperAngle, float lowerAngle)
+        {
+            if (limb == null) return;
+            SetSegmentImmediate(limb.Upper, upperAngle);
+            SetSegmentImmediate(limb.Lower, lowerAngle);
+        }
+
         /// <summary>
         /// Walk 포즈 — 8개 키포즈 표(<see cref="LegHipKeys"/> 등)를 Catmull-Rom 스플라인으로 보간해
         /// 만든다. 선형 보간을 쓰지 않는 이유는 키포즈마다 각도의 기울기가 꺾여 딱딱해 보이기 때문이고,
@@ -4420,6 +4504,50 @@ namespace StickMate.States
                 GestureProgress01 = gestureProgress01;
                 GlanceTurnsAround = glanceTurnsAround;
                 LeanScale = leanScale;
+            }
+        }
+
+        /// <summary>
+        /// 코스튬 전용 모션(LFVS)의 <b>이번 프레임 입력</b>(<see cref="ApplyCostumeFocusStepPose"/>).
+        /// 위 <see cref="FocusWatchStanceInput"/>과 같은 컨벤션이다(readonly struct + <c>in</c> — 매 프레임
+        /// 경로라 할당이 없다).
+        ///
+        /// <para><b>시간·확률·구간·스텝 번호는 전부 호출부(<c>States/StickmanBlackboard</c>)가 소유한다.</b>
+        /// 포즈 층은 「지금 어느 자세인가」만 받는다 — 시간이 두 벌이 되면 반드시 갈라진다
+        /// (관망 자세·춤과 같은 관례).</para>
+        ///
+        /// <para>★ <b>프롭 배치 여부(P-GHOST-1)는 여기 없다.</b> 그 관문은 호출부 한 곳에 둔다 —
+        /// 여기에도 두면 「반만 켜진」 상태가 만들어지고, 어느 쪽이 참인지 화면만 봐서는 못 찾는다.</para>
+        /// </summary>
+        public readonly struct CostumeFocusStepInput
+        {
+            /// <summary>이번 스텝의 관절 각도표 한 장.</summary>
+            public readonly StickMate.Core.CostumeKeypose Key;
+
+            /// <summary>표 안에서의 스텝 번호(0 = 정지 키포즈). <b>진단·로그 전용</b>이다 —
+            /// 조기 반환 판정은 이 값이 아니라 <b>리그의 실제 각도</b>로 한다(위 함수 문서).</summary>
+            public readonly int StepIndex;
+
+            /// <summary>구간이 더하는 기울임 편차(도). 몰입기 「이완」 소구간의 +1.5°가 유일한 사용처이며,
+            /// <b>새 키포즈를 만들지 않기 위한</b> 장치다(표가 늘면 검증 대상이 코스튬당 25% 늘어난다).</summary>
+            public readonly float LeanBiasDegrees;
+
+            /// <summary>상체 기울임 배율(보통 1, 마스터 스위치가 꺼지면 0).
+            /// <b>스위치의 해석은 호출부 한 곳</b>이다(<see cref="FocusWatchStanceInput.LeanScale"/>과 같은 규약).</summary>
+            public readonly float LeanScale;
+
+            /// <summary>캐릭터 전신 높이(월드 유닛). <c>bodyOffsetY</c>가 <b>H 배수</b>라 여기서 월드로 편다 —
+            /// 절대 유닛으로 적으면 배율 0.35~2.00에서 프롭·몸이 서로 다른 속도로 움직인다.</summary>
+            public readonly float HeightWorld;
+
+            public CostumeFocusStepInput(in StickMate.Core.CostumeKeypose key, int stepIndex,
+                float leanBiasDegrees, float leanScale, float heightWorld)
+            {
+                Key = key;
+                StepIndex = stepIndex;
+                LeanBiasDegrees = leanBiasDegrees;
+                LeanScale = leanScale;
+                HeightWorld = heightWorld;
             }
         }
     }

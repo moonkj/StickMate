@@ -35,6 +35,15 @@ namespace UnityEngine
     {
         public float x, y, z;
         public Vector3(float x, float y, float z) { this.x = x; this.y = y; this.z = z; }
+        // ★ 2026-09-08 coder-systems — <b>흉내가 늘어난 것이 아니라 대역이 모자랐다.</b>
+        //   AccessoryShapeBuilder.FxPetCard.cs(생성 파일)가 AppearanceShapeBuilder 상수를 부르면서
+        //   그 파일이 컴파일 목록에 딸려 들어왔고, 아래 셋이 없어 하니스가 통째로 죽어 있었다
+        //   (README 가 경고한 «게이트가 빨간 상태가 아니라 안 도는 상태»). 셋 다 UnityEngine 원문 그대로다.
+        public static Vector3 zero => new Vector3(0f, 0f, 0f);
+        public static Vector3 operator *(float s, Vector3 v) => new Vector3(s * v.x, s * v.y, s * v.z);
+        public static Vector3 operator *(Vector3 v, float s) => new Vector3(v.x * s, v.y * s, v.z * s);
+        public static Vector3 operator +(Vector3 a, Vector3 b) => new Vector3(a.x + b.x, a.y + b.y, a.z + b.z);
+        public static Vector3 operator -(Vector3 a, Vector3 b) => new Vector3(a.x - b.x, a.y - b.y, a.z - b.z);
         public static float Distance(Vector3 a, Vector3 b)
         {
             float dx = a.x - b.x, dy = a.y - b.y, dz = a.z - b.z;
@@ -106,6 +115,7 @@ namespace UnityEngine
         public static float Max(float a, float b) => a > b ? a : b;
         public static int Max(int a, int b) => a > b ? a : b;
         public static float Min(float a, float b) => a < b ? a : b;
+        public static int Min(int a, int b) => a < b ? a : b;
         public static float Abs(float a) => Math.Abs(a);
         public static float Sin(float a) => (float)Math.Sin(a);
         public static float Cos(float a) => (float)Math.Cos(a);

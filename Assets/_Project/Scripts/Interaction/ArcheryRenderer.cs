@@ -291,7 +291,43 @@ namespace StickMate.Interaction
         /// <summary>과녁 중심의 로컬 Y(지면 기준). ArcheryDirector와 <b>같은 식</b>에서 나온다.</summary>
         public float TargetCenterLocalY => ArcheryDirector.TargetCenterHeight(Height, TargetRadius);
 
+        /// <summary>★ <b>기하</b> 두께 — 배율에 정확히 비례한다(하한 없음).
+        /// 비례 계약을 잠그는 테스트가 이 값을 읽으므로 <b>여기에 하한을 태우지 않는다</b>.
+        /// 실제로 그려지는 두께는 아래 <see cref="RenderStrokeWidth"/>다.</summary>
         public float StrokeWidth => Height * StrokeWidthRatio;
+
+        /// <summary>
+        /// ★★ <b>실제로 그려지는</b> 두께 — 화면상 최소 두께 아래로 내려가지 않는다(2026-09-08).
+        ///
+        /// ============================================================================
+        /// 무엇이 빠져 있었나 (실측)
+        /// ============================================================================
+        /// 몸·액세서리·FX·펫은 전부 <see cref="StickmanAgent.MinStrokeWorldWidth"/>를 물고 있는데
+        /// <b>이 렌더러만 순수 비례</b>였다. 배율 0.35에서 과녁 획이 <b>0.951pt</b>로 내려간다
+        /// (하한 2.00pt의 <b>절반 미만</b>). ★ <b>Windows 100%(1×)에서는 device pixel 1개 미만</b>이라
+        /// 안티에일리어싱에 묻혀 아예 사라질 수 있고, Windows가 1차 출시 플랫폼이다.
+        ///
+        /// <para><b>기본 배율에서는 그림이 한 톨도 안 바뀐다</b> [계산]: 기하 두께가 하한과 만나는 지점은
+        /// 배율 <b>0.7358</b>이고 출하 기본은 <b>0.75</b>다(2.039pt vs 2.000pt). 즉 하한은
+        /// <b>0.7358 미만에서만</b> 물린다 — 여유가 1.9%로 얇지만 방향은 확실하다.</para>
+        ///
+        /// <para><b>도형은 그대로 두고 LineRenderer 두께만 올린다</b> —
+        /// <c>StickmanAgent.ApplyStrokeWidthsForScale</c>과 <c>CharacterAccessoryRenderer</c>가 세운
+        /// 그 규칙 그대로다. 좌표까지 하한을 태우면 낮은 배율에서 실루엣이 달라진다.</para>
+        ///
+        /// <para>여기서 파생되는 얇은 선들(활대 ×0.85 · 시위 ×0.45 · 화살 ×0.62 등)은 <b>이 값의 비례</b>로
+        /// 남는다. 그 비율은 「활대보다 얇은 시위」라는 조형 의도라, 각각 2pt로 밀어 올리면 굵기 위계가
+        /// 통째로 무너진다 — 하한은 <b>주 획</b>을 지키는 장치다.</para>
+        /// </summary>
+        public float RenderStrokeWidth => Mathf.Max(StrokeWidth, MinStrokeWorld);
+
+        /// <summary>이 렌더러가 쓰는 화면상 최소 두께(월드). 하한 값의 <b>단일 소스</b>는
+        /// <see cref="StickmanAgent.MinStrokeWorldWidth"/>다 — 여기 숫자를 다시 적으면 몸과 어긋난다.
+        /// 에이전트가 없는 사본/스텁에서는 <c>StickConfig</c>의 근사 환산으로 되메운다(0을 흘리면
+        /// 하한이 조용히 사라진다 — 다른 렌더러 셋과 같은 폴백).</summary>
+        private float MinStrokeWorld => _agent != null
+            ? _agent.MinStrokeWorldWidth
+            : StickConfig.MinStrokeScreenPoints / StickConfig.ReferencePointsPerWorldUnitApprox;
         public float BowHalfLength => Height * BowHalfLengthRatio;
         public float BowMaxPull => Height * BowMaxPullRatio;
 
@@ -493,7 +529,7 @@ namespace StickMate.Interaction
             float groundLocalY = -TargetCenterLocalY; // 과녁 로컬 기준 지면.
             float spread = Height * StandSpreadRatio;
 
-            var stand = CreateLine(_targetRoot, "Stand", ink, StrokeWidth, SortingStand, loop: false, capVertices: 2);
+            var stand = CreateLine(_targetRoot, "Stand", ink, RenderStrokeWidth, SortingStand, loop: false, capVertices: 2);
             stand.positionCount = 5;
             stand.SetPosition(0, new Vector3(-spread, groundLocalY, 0f));
             stand.SetPosition(1, new Vector3(0f, bottomLocalY, 0f));
@@ -515,7 +551,7 @@ namespace StickMate.Interaction
 
             // 활대: 로컬 +x가 "쏘는 방향"이고 위아래로 휜다. y에 대해 대칭이라 좌우 어느 방향을 향하도록
             // 회전시켜도 모양이 뒤집혀 보이지 않는다(부호를 따로 다루지 않아도 되는 이유).
-            _bowLimbs = CreateLine(_bowRoot, "Limbs", ink, StrokeWidth * 0.85f, SortingBow, loop: false, capVertices: 0);
+            _bowLimbs = CreateLine(_bowRoot, "Limbs", ink, RenderStrokeWidth * 0.85f, SortingBow, loop: false, capVertices: 0);
             int n = 13;
             _bowLimbs.positionCount = n;
             for (int i = 0; i < n; i++)
@@ -525,10 +561,10 @@ namespace StickMate.Interaction
                 _bowLimbs.SetPosition(i, new Vector3(p.x, p.y, 0f));
             }
 
-            _bowString = CreateLine(_bowRoot, "String", ink, StrokeWidth * 0.45f, SortingBow, loop: false, capVertices: 2);
+            _bowString = CreateLine(_bowRoot, "String", ink, RenderStrokeWidth * 0.45f, SortingBow, loop: false, capVertices: 2);
             _bowString.positionCount = 3;
 
-            _nockedArrow = CreateLine(_bowRoot, "NockedArrow", ink, StrokeWidth * 0.62f, SortingBow, loop: false, capVertices: 0);
+            _nockedArrow = CreateLine(_bowRoot, "NockedArrow", ink, RenderStrokeWidth * 0.62f, SortingBow, loop: false, capVertices: 0);
             _nockedArrow.positionCount = 7;
 
             SetLineAlpha(_bowLimbs, 0f);
@@ -749,7 +785,7 @@ namespace StickMate.Interaction
             go.transform.SetParent(_container.transform, false);
             go.transform.localPosition = new Vector3(origin.x, origin.y, 0f);
 
-            var line = CreateLine(go.transform, "Line", ResolveInk(), StrokeWidth * 0.62f, SortingBow, loop: false, capVertices: 0);
+            var line = CreateLine(go.transform, "Line", ResolveInk(), RenderStrokeWidth * 0.62f, SortingBow, loop: false, capVertices: 0);
             line.positionCount = 7;
             // ★ 화살의 기준점은 <b>촉</b>이다(오늬가 아니다). 오늬를 -shaft에 두면 촉이 정확히 로컬
             // 원점 = 궤적점에 온다. 2026-08-29 사용자 신고 "다 외곽에 꽂히는거 같음"의 실제 원인이
@@ -841,7 +877,7 @@ namespace StickMate.Interaction
             go.transform.localPosition = new Vector3(localOrigin.x, localOrigin.y, 0f);
             _impactBurstRoot = go.transform;
 
-            _impactBurst = CreateLine(go.transform, "Rays", ResolveInk(), StrokeWidth * 0.7f, SortingBurst, loop: false, capVertices: 2);
+            _impactBurst = CreateLine(go.transform, "Rays", ResolveInk(), RenderStrokeWidth * 0.7f, SortingBurst, loop: false, capVertices: 2);
             // 하나의 LineRenderer로 여러 갈래를 그리기 위해 중심을 매번 되짚는 지그재그 폴리라인을 쓴다
             // (짧은 선분 여러 개를 방사형으로 뿌려 충격을 표현하는 기법).
             _impactBurst.positionCount = ImpactRayCount * 2 + 1;
@@ -881,8 +917,8 @@ namespace StickMate.Interaction
                 go.transform.localPosition = new Vector3(localImpact.x, localImpact.y, 0f);
 
                 var line = CreateRing(go.transform, "Puff", ink, radius * Random.Range(0.6f, 1.2f), SortingBurst);
-                line.startWidth = StrokeWidth * 0.5f;
-                line.endWidth = StrokeWidth * 0.5f;
+                line.startWidth = RenderStrokeWidth * 0.5f;
+                line.endWidth = RenderStrokeWidth * 0.5f;
 
                 float a = Random.Range(0.15f, Mathf.PI - 0.15f);
                 _puffs.Add(new Puff
@@ -1095,7 +1131,7 @@ namespace StickMate.Interaction
         /// <summary>반지름 r의 <b>테두리 원</b>.</summary>
         private LineRenderer CreateRing(Transform parent, string name, Color color, float radius, int sortingOrder)
         {
-            var lr = CreateLine(parent, name, color, StrokeWidth, sortingOrder, loop: true, capVertices: 2);
+            var lr = CreateLine(parent, name, color, RenderStrokeWidth, sortingOrder, loop: true, capVertices: 2);
             SetCirclePath(lr, radius);
             return lr;
         }

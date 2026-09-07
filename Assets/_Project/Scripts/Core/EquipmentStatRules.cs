@@ -24,6 +24,78 @@ namespace StickMate.Core
     }
 
     /// <summary>
+    /// ★ <b>애셋이 선언하는 부스탯 방향</b>. 기본 42종은 이 값을 <b>쓰지 않는다</b> —
+    /// 그쪽 부스탯은 <c>ItemCatalog</c>의 코드 표(<c>SubStatTable</c>)가 정본이다.
+    /// 이 열거형이 존재하는 이유는 <b>팩 아이템이 코드 표에 못 들어가기 때문</b>이다(§21-10-a).
+    ///
+    /// <para>★★ <b>타입이 <see cref="CharacterStat"/>가 아닌 것은 우연이 아니라 요구사항이다</b> —
+    /// <see cref="DeclaredRarity"/>가 <see cref="ItemRarity"/>가 아닌 것과 <b>같은 이유이고,
+    /// 여기서는 더 나쁘다.</b> Unity는 <c>.asset</c>에 키가 없으면 필드를 C# 기본값으로 두는데
+    /// <see cref="CharacterStat.Focus"/>가 <b>0</b>이다. 그 타입으로 필드를 만들면 기본 42종이
+    /// <b>파일을 한 바이트도 안 고쳤는데</b> 전부 「집중력을 부스탯으로 선언함」이 되고,
+    /// 그 값이 코드 표를 이기는 구조였다면 <b>24종의 부스탯이 통째로 집중력 한 방향</b>이 된다
+    /// (§21-2-e가 검산한 «각 스탯 정확히 6개, 편차 0»이 «집중력 24 · 나머지 0»으로 무너진다).</para>
+    ///
+    /// <para><b>0의 이름이 <see cref="None"/>인 것도 요구사항이다.</b> 인스펙터 드롭다운 맨 위에
+    /// <c>None</c>이 보이므로 "안 적으면 부스탯 없음"이 문서가 아니라 UI가 된다.
+    /// <b>절대 하지 말 것</b>: <see cref="None"/>을 0이 아닌 값으로 바꾸거나 앞에 항목을 끼워 넣는 것.</para>
+    /// </summary>
+    public enum DeclaredSubStat
+    {
+        /// <summary>★ <b>선언 없음</b>. 기본 42종이 전부 여기다(키를 안 적었으므로).
+        /// 팩의 <b>외형 슬롯</b> 아이템도 여기다 — 외형은 스탯 기여가 0이라는 구조적 사실이다(§14-1).
+        /// <b>0이어야 한다.</b></summary>
+        None = 0,
+
+        /// <summary>집중력을 가리킨다(= <see cref="CharacterStat.Focus"/>).</summary>
+        Focus = 1,
+
+        /// <summary>관찰력을 가리킨다(= <see cref="CharacterStat.Observation"/>).</summary>
+        Observation = 2,
+
+        /// <summary>매력을 가리킨다(= <see cref="CharacterStat.Charm"/>).</summary>
+        Charm = 3,
+
+        /// <summary>민첩을 가리킨다(= <see cref="CharacterStat.Agility"/>).</summary>
+        Agility = 4,
+    }
+
+    /// <summary>
+    /// 선언 ↔ 부스탯 방향 사이의 <b>유일한 다리</b>(<c>DeclaredRarityRules</c>와 같은 자리).
+    /// 두 열거형의 값을 손으로 더하거나 빼는 코드가 이 파일 밖에 생기면 그 순간 두 번째 진실이 된다.
+    /// </summary>
+    public static class DeclaredSubStatRules
+    {
+        /// <summary>
+        /// 선언을 부스탯 방향으로 푼다. <b>선언이 없으면 <c>false</c></b>이고 그때
+        /// <paramref name="stat"/>는 쓰면 안 되는 값이다.
+        /// <para>★ 뺄셈(<c>(CharacterStat)((int)declared - 1)</c>)을 쓰지 않는 이유는
+        /// <c>DeclaredRarityRules.TryResolve</c> 문단과 같다 — 뺄셈은 "두 열거형이 영원히 나란히 커야
+        /// 한다"는 <b>문서에 없는 계약</b>을 만들고, 그 계약은 언젠가 조용히 깨진다.</para>
+        /// </summary>
+        public static bool TryResolve(DeclaredSubStat declared, out CharacterStat stat)
+        {
+            switch (declared)
+            {
+                case DeclaredSubStat.Focus: stat = CharacterStat.Focus; return true;
+                case DeclaredSubStat.Observation: stat = CharacterStat.Observation; return true;
+                case DeclaredSubStat.Charm: stat = CharacterStat.Charm; return true;
+                case DeclaredSubStat.Agility: stat = CharacterStat.Agility; return true;
+                default: stat = CharacterStat.Focus; return false;   // None — 쓰면 안 되는 값
+            }
+        }
+
+        /// <summary>선언이 있는가. <see cref="TryResolve"/>와 <b>같은 판정</b>이어야 하므로 그 함수를
+        /// 그대로 부른다(두 벌로 적으면 둘이 갈라진다).</summary>
+        public static bool IsDeclared(DeclaredSubStat declared) => TryResolve(declared, out _);
+
+        /// <summary>선언을 <c>ItemCatalogEntry.SubStat</c>이 쓰는 정수로. 선언이 없으면
+        /// <see cref="EquipmentStatRules.NoStat"/>다 — 「없음」을 스탯 하나로 빌려 표현하지 않는다.</summary>
+        public static int ToSubStatValue(DeclaredSubStat declared)
+            => TryResolve(declared, out CharacterStat stat) ? (int)stat : EquipmentStatRules.NoStat;
+    }
+
+    /// <summary>
     /// 스탯 4칸을 <b>할당 없이</b> 들고 다니는 그릇. 배열을 쓰면 카드가 갱신될 때마다(0.25초 주기)
     /// 쓰레기가 생기고, 필드 4개를 늘어놓으면 호출부가 순서를 손으로 맞추다 어긋난다.
     /// </summary>

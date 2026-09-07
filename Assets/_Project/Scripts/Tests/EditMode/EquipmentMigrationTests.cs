@@ -80,6 +80,10 @@ namespace StickMate.Tests.EditMode
             // v10 게임화 묶음(동전·구매 이력·등급 해금·장착한 춤). 정적 상태가 새어 들어오면
             // "파일이 말한 것"과 "직전 테스트가 남긴 것"을 구분할 수 없다.
             CurrencyModel.ResetForTesting();
+            // v12 코스튬 누적. ★ 카탈로그도 함께 되돌린다 — 합성 코스튬을 실어 둔 채로 다음 픽스처가
+            //   돌면 "코드가 모르는 키는 버린다"가 앞 테스트의 잔재 때문에 통과하거나 실패한다.
+            CostumeProgressModel.ResetForTesting();
+            CostumeCatalog.ResetForTesting();
         }
 
         /// <summary>
@@ -1056,6 +1060,287 @@ namespace StickMate.Tests.EditMode
             StringAssert.Contains("\"focusXpToday\"", json,
                 "v11을 선언했는데 집중 모드 XP 필드가 파일에 없습니다 — 버전만 올라가고 스키마가 " +
                 "안 따라왔습니다.");
+        }
+
+        // ====================================================================
+        // ★★ v12 코스튬 누적 집중 시간 — CLAUDE.md가 요구하는 vN-1 하위 호환 테스트
+        // ====================================================================
+
+        /// <summary>
+        /// 합성 코스튬 매니페스트 1개. ★ <b>프로덕션 <c>.cs</c>를 한 줄도 안 고치고</b> 코스튬을
+        /// 만들 수 있는지가 불변 원칙 4의 합격 기준이고, 이 헬퍼가 그 통로를 실제로 통과한다
+        /// (<c>CostumeCatalog.Build</c>가 이 값을 받아 검증하고 실는다).
+        /// </summary>
+        private static CostumeManifestSO SyntheticCostume(string key, CostumeSourceKind kind, string sourceId)
+        {
+            var manifest = ScriptableObject.CreateInstance<CostumeManifestSO>();
+            manifest.name = key;
+            manifest.costumeKey = key;
+            manifest.requiresSchemaVersion = CostumeManifestSO.SchemaVersion;
+            manifest.sourceKind = kind;
+            manifest.sourceId = sourceId;
+            manifest.displayNameKey = key + ".name";
+            return manifest;
+        }
+
+        /// <summary>
+        /// 카탈로그에 코스튬을 싣고 <b>실제로 실렸는지 먼저 확인</b>한다.
+        ///
+        /// <para>★ 이 확인이 <b>양성 대조</b>다. 아래 정규화 테스트들은 전부 「버려졌는가」라는
+        /// <b>부재 단언</b>인데, 카탈로그가 조용히 비어 있으면 <b>모든 키가 버려져</b> 그 단언들이
+        /// 통째로 통과한다 — CLAUDE.md가 경고한 «부재 단언은 썩으면 조용히 초록이 된다»가
+        /// 정확히 이 형태다.</para>
+        /// </summary>
+        private static void InstallCostumes(params CostumeManifestSO[] manifests)
+        {
+            var faults = new List<string>();
+            CostumeCatalog.UseForTesting(manifests, faults);
+
+            Assert.IsEmpty(faults,
+                "합성 코스튬 매니페스트가 거부됐습니다 — 아래 모든 단언이 '카탈로그가 비어서' " +
+                "통과하게 됩니다:\n  " + string.Join("\n  ", faults));
+            Assert.AreEqual(manifests.Length, CostumeCatalog.Count,
+                "실린 코스튬 수가 넣은 수와 다릅니다(양성 대조 실패).");
+            for (int i = 0; i < manifests.Length; i++)
+            {
+                Assert.IsNotNull(CostumeCatalog.Find(manifests[i].costumeKey),
+                    $"'{manifests[i].costumeKey}'를 실었는데 카탈로그가 못 찾습니다.");
+            }
+        }
+
+        private const string OfficeCostumeKey = "costume.office";
+        private const string CyberCostumeKey = "costume.cyber";
+
+        /// <summary>v11 픽스처. <b>v11이 실제로 담고 있던 필드만</b> 적는다
+        /// (<c>costumeFocus</c>·<c>costumeFocusMinutesToday</c>는 없다 — 그게 이 테스트의 전제다).
+        /// 다른 v11 값(동전 잔액·활쏘기 누계·집중 XP 누계)을 실제로 채워
+        /// "그 값들이 살아남는가" 음성 대조에 쓴다.</summary>
+        private const string V11Json =
+            "{\n" +
+            "    \"version\": 11,\n" +
+            "    \"level\": 14,\n" +
+            "    \"currentXp\": 25.0,\n" +
+            "    \"totalXpEarned\": 7000.0,\n" +
+            "    \"characterName\": \"열한동료\",\n" +
+            "    \"wornHead\": \"\",\n" +
+            "    \"wornEyes\": \"\",\n" +
+            "    \"wornNeck\": \"\",\n" +
+            "    \"wornShoulders\": \"\",\n" +
+            "    \"wornHair\": \"\",\n" +
+            "    \"wornFx\": \"\",\n" +
+            "    \"wornPet\": \"\",\n" +
+            "    \"coinBalance\": 4100,\n" +
+            "    \"seedGranted\": true,\n" +
+            "    \"dayIndex\": 88,\n" +
+            "    \"todayGrantedCoins\": 700,\n" +
+            "    \"archeryCoinsToday\": 60,\n" +
+            "    \"focusXpToday\": 150\n" +
+            "}";
+
+        /// <summary>
+        /// ★★ <b>v12 신설 필드 2개의 하위 호환</b> — 2026-09-07, 코스튬 DLC × 집중 모드(PART2).
+        /// CLAUDE.md: <i>"저장 스키마 <c>CurrentVersion</c>을 올리는 라운드는 <c>vN-1</c> 구버전 파일을
+        /// 읽었을 때 신규 필드가 안전한 기본값으로 채워지는지 검증하는 하위 호환 테스트 1건을
+        /// 반드시 동반한다."</i>
+        ///
+        /// <para>v11 파일에는 두 키가 없었으므로 빈 기록 · 0분으로 떨어져야 하고, 그것이
+        /// <b>"아직 아무 코스튬도 안 입고 집중한 적이 없다"</b>는 v11 사용자에게 <b>참인 사실</b>이어야 한다
+        /// (그때는 기능이 없었다). 같은 파일의 v11 값들이 함께 살아남는지(음성 대조)까지 확인한다 —
+        /// 이게 없으면 위 단언이 "파일을 통째로 버려서" 통과한 것인지 구별할 수 없다.</para>
+        /// </summary>
+        [Test]
+        public void v11_파일을_읽어도_코스튬_누적이_비어_있고_v11_값이_그대로_남는다()
+        {
+            ResetModels();
+            // ★ 양성 대조 — 카탈로그가 «아는 키»를 실제로 갖게 해 둔다. 이게 없으면 아래 "비어 있다"가
+            //   "카탈로그가 비어서 전부 버려졌다"와 구별되지 않는다.
+            InstallCostumes(SyntheticCostume(OfficeCostumeKey, CostumeSourceKind.BaseTheme, ItemCatalog.ThemeOffice));
+
+            File.WriteAllText(CharacterSaveStore.FilePath, V11Json);
+            CharacterSaveStore.Load();
+
+            Assert.IsTrue(CharacterSaveStore.LoadedFromFile, "v11 파일을 통째로 버렸습니다.");
+            Assert.IsFalse(CharacterSaveStore.SaveSuspended,
+                "v11 파일을 읽었을 뿐인데 저장이 보류됐습니다 — 그러면 이 사용자는 다시는 저장되지 않습니다.");
+
+            // ---- (1) 신설 필드가 안전한 기본값인가 ----
+            Assert.AreEqual(0, CostumeProgressModel.Records.Count,
+                "v11 파일에 없던 코스튬 누적 기록이 생겼습니다. '기록 없음'이 v11 사용자에게 참입니다.");
+            Assert.AreEqual(0, CostumeProgressModel.MinutesToday,
+                "v11 파일에 없던 '오늘 누적 분'이 0이 아닙니다 — 마이그레이션만으로 오늘의 " +
+                "일일 소프트캡 일부를 이미 쓴 상태가 됩니다.");
+            Assert.AreEqual(0, CostumeProgressModel.MinutesOf(OfficeCostumeKey),
+                "입은 적도 없는 코스튬에 누적 시간이 생겼습니다.");
+
+            // ---- (2) 표시만 0이 아니라 <b>실제로 열려 있는가</b>(v10 테스트가 세운 본) ----
+            Assert.AreEqual(CostumeEvolutionRules.DailySoftCapMinutes,
+                CostumeProgressModel.RemainingMinutesToday,
+                "오늘 남은 코스튬 누적 여유가 전액이 아닙니다.");
+            Assert.AreEqual(25, CostumeProgressModel.AddFocusMinutes(OfficeCostumeKey, 25),
+                "v11 사용자가 마이그레이션 직후 코스튬 누적을 한 분도 못 쌓습니다.");
+            Assert.AreEqual(0, CostumeEvolutionRules.StageOf(CostumeProgressModel.MinutesOf(OfficeCostumeKey)),
+                "25분 만에 단계가 올랐습니다 — 임계표가 사용자가 쓴 숫자와 어긋났습니다.");
+
+            // ---- (3) 음성 대조 — 같은 파일의 v11 값들이 살아남는가 ----
+            Assert.AreEqual(14, CharacterProgressionModel.Level, "v11 파일의 레벨이 사라졌습니다(전제 붕괴).");
+            Assert.AreEqual("열한동료", CharacterProgressionModel.CharacterName, "v11 파일의 이름이 사라졌습니다.");
+            Assert.AreEqual(4100, CurrencyModel.CoinBalance, "v11 파일의 동전 잔액이 사라졌습니다.");
+            Assert.AreEqual(60, CurrencyModel.ArcheryCoinsToday, "v11 파일의 활쏘기 누계가 사라졌습니다.");
+            Assert.AreEqual(150, CurrencyModel.FocusXpToday, "v11 파일의 집중 모드 XP 누계가 사라졌습니다.");
+        }
+
+        /// <summary>
+        /// ★ v12 <b>왕복</b> — 위 테스트가 "없을 때"를 잠그므로 이것이 "있을 때"를 잠근다.
+        /// 둘 중 하나만 있으면 반대쪽이 조용히 죽는다.
+        /// <para>코스튬 <b>둘</b>을 쓰는 이유: 레코드 배열이 «키와 값을 한 줄에» 들고 있는지를
+        /// 한 줄짜리로는 잴 수 없다(한 줄이면 어긋나도 눈에 안 띈다).</para>
+        /// </summary>
+        [Test]
+        public void v12_왕복은_코스튬_누적_분과_오늘분을_보존한다()
+        {
+            ResetModels();
+            InstallCostumes(
+                SyntheticCostume(OfficeCostumeKey, CostumeSourceKind.BaseTheme, ItemCatalog.ThemeOffice),
+                SyntheticCostume(CyberCostumeKey, CostumeSourceKind.Pack, "pack.cyber"));
+
+            Assert.AreEqual(25, CostumeProgressModel.AddFocusMinutes(OfficeCostumeKey, 25), "전제 — 적립이 성공해야 한다.");
+            Assert.AreEqual(40, CostumeProgressModel.AddFocusMinutes(CyberCostumeKey, 40), "전제 — 적립이 성공해야 한다.");
+            Assert.AreEqual(65, CostumeProgressModel.MinutesToday, "전제 — 오늘분은 전 코스튬 공유 1개다.");
+
+            Assert.IsTrue(CharacterSaveStore.Save(), "저장에 실패했습니다.");
+
+            ResetModels();
+            Assert.AreEqual(0, CostumeProgressModel.Records.Count, "리셋 전제가 바뀌었습니다.");
+            InstallCostumes(
+                SyntheticCostume(OfficeCostumeKey, CostumeSourceKind.BaseTheme, ItemCatalog.ThemeOffice),
+                SyntheticCostume(CyberCostumeKey, CostumeSourceKind.Pack, "pack.cyber"));
+
+            CharacterSaveStore.Load();
+
+            Assert.AreEqual(25, CostumeProgressModel.MinutesOf(OfficeCostumeKey),
+                "재시작하면 코스튬 누적이 사라집니다 — 100시간은 되벌 수 없는 값입니다.");
+            Assert.AreEqual(40, CostumeProgressModel.MinutesOf(CyberCostumeKey),
+                "두 번째 코스튬의 누적이 사라졌거나 첫 번째 것과 섞였습니다(레코드 배열이 키-값을 " +
+                "한 줄에 들고 있지 않다는 뜻입니다).");
+            Assert.AreEqual(65, CostumeProgressModel.MinutesToday,
+                "오늘 누적 분이 사라졌습니다 — 자정 전에 재시작한 사용자가 일일 소프트캡을 " +
+                "무제한으로 우회하게 됩니다.");
+        }
+
+        /// <summary>v12 파일을 손으로 적는다. 정규화 3건(모르는 키 / 중복 키 / 음수)이
+        /// <b>디스크에서 올라온 값</b>에 대해 도는지 보려면 모델을 거치지 않고 파일을 써야 한다.</summary>
+        private static string V12JsonWithRecords(string records, int minutesToday)
+        {
+            return "{\n" +
+                   "    \"version\": " + CharacterSaveStore.CurrentVersion + ",\n" +
+                   "    \"level\": 20,\n" +
+                   "    \"characterName\": \"열두동료\",\n" +
+                   "    \"coinBalance\": 500,\n" +
+                   "    \"dayIndex\": 99,\n" +
+                   "    \"costumeFocus\": [" + records + "],\n" +
+                   "    \"costumeFocusMinutesToday\": " + minutesToday + "\n" +
+                   "}";
+        }
+
+        private static string Record(string key, int minutes)
+            => "{ \"costumeKey\": \"" + key + "\", \"focusMinutes\": " + minutes + " }";
+
+        /// <summary>
+        /// ★ 정규화 — <b>코드가 모르는 키는 버린다</b>. 그리고 <b>존재 대조를 같은 테스트 안에</b> 넣는다:
+        /// 아는 키가 실제로 <b>살아남는지</b> 먼저 못박지 않으면 이 부재 단언은
+        /// "카탈로그가 통째로 비어서" 통과한 것과 구별되지 않는다(CLAUDE.md 확대 규칙).
+        /// </summary>
+        [Test]
+        public void 모르는_코스튬_키는_버려지고_아는_키는_그대로_살아남는다()
+        {
+            ResetModels();
+            InstallCostumes(SyntheticCostume(OfficeCostumeKey, CostumeSourceKind.BaseTheme, ItemCatalog.ThemeOffice));
+
+            File.WriteAllText(CharacterSaveStore.FilePath,
+                V12JsonWithRecords(Record(OfficeCostumeKey, 120) + ", " + Record("costume.은퇴한것", 3000), 60));
+            CharacterSaveStore.Load();
+
+            // ---- 존재 대조(먼저) — 이게 깨지면 아래 부재 단언은 통째로 폐기해야 한다 ----
+            Assert.AreEqual(120, CostumeProgressModel.MinutesOf(OfficeCostumeKey),
+                "카탈로그가 아는 키의 누적까지 사라졌습니다 — 아래 '버려졌다' 단언이 " +
+                "'전부 버려져서' 통과한 것이 됩니다(측정 무효).");
+
+            // ---- 부재 단언 ----
+            Assert.AreEqual(0, CostumeProgressModel.MinutesOf("costume.은퇴한것"),
+                "이 앱이 모르는 코스튬 키가 그대로 살아남았습니다.");
+            Assert.AreEqual(1, CostumeProgressModel.Records.Count,
+                "정규화 후 기록 수가 아는 키 1건이 아닙니다.");
+        }
+
+        /// <summary>★ 정규화 — <b>중복 키는 첫 항목만</b>. 두 값을 다르게 두어 «첫 항목»인지
+        /// «마지막 항목»인지 «합»인지가 실제로 갈리게 한다(같은 값이면 셋 다 통과한다).</summary>
+        [Test]
+        public void 중복된_코스튬_키는_첫_항목만_살아남는다()
+        {
+            ResetModels();
+            InstallCostumes(SyntheticCostume(OfficeCostumeKey, CostumeSourceKind.BaseTheme, ItemCatalog.ThemeOffice));
+
+            File.WriteAllText(CharacterSaveStore.FilePath,
+                V12JsonWithRecords(Record(OfficeCostumeKey, 120) + ", " + Record(OfficeCostumeKey, 7), 0));
+            CharacterSaveStore.Load();
+
+            Assert.AreEqual(1, CostumeProgressModel.Records.Count, "중복 키가 두 줄로 남았습니다.");
+            Assert.AreEqual(120, CostumeProgressModel.MinutesOf(OfficeCostumeKey),
+                "중복 키에서 첫 항목이 아니라 다른 값이 살아남았습니다(127이면 합쳤다는 뜻입니다).");
+        }
+
+        /// <summary>★ 정규화 — <b>음수 분은 0</b>이고, <b>오늘분은 소프트캡으로 클램프</b>된다.
+        /// 캡 값을 숫자로 베끼지 않고 <see cref="CostumeEvolutionRules.DailySoftCapMinutes"/>를 참조한다.</summary>
+        [Test]
+        public void 음수_누적과_상한_초과_오늘분은_정규화된다()
+        {
+            ResetModels();
+            InstallCostumes(SyntheticCostume(OfficeCostumeKey, CostumeSourceKind.BaseTheme, ItemCatalog.ThemeOffice));
+
+            int overCap = CostumeEvolutionRules.DailySoftCapMinutes * 10;
+            File.WriteAllText(CharacterSaveStore.FilePath,
+                V12JsonWithRecords(Record(OfficeCostumeKey, -50), overCap));
+            CharacterSaveStore.Load();
+
+            Assert.AreEqual(0, CostumeProgressModel.MinutesOf(OfficeCostumeKey),
+                "음수 누적 분이 그대로 들어왔습니다 — 단계 판정이 음수 구간에서 돌게 됩니다.");
+            Assert.AreEqual(0, CostumeProgressModel.Records.Count,
+                "0분으로 정규화된 레코드가 목록에 남았습니다 — 다음 저장이 그 0분짜리를 디스크에 " +
+                "다시 굳혀 '없음 = 기록 없음'이라는 이 필드의 뜻이 깨집니다.");
+            Assert.AreEqual(CostumeEvolutionRules.DailySoftCapMinutes, CostumeProgressModel.MinutesToday,
+                "상한을 넘겨 적힌 오늘분이 클램프되지 않았습니다.");
+            Assert.AreEqual(0, CostumeProgressModel.RemainingMinutesToday,
+                "상한을 넘겼는데 오늘 더 실을 여유가 남아 있습니다.");
+            Assert.AreEqual(0, CostumeProgressModel.AddFocusMinutes(OfficeCostumeKey, 30),
+                "일일 소프트캡에 도달했는데 더 쌓입니다.");
+        }
+
+        /// <summary>저장 파일이 <b>정확히 v12</b>로 기록된다. 숫자를 베끼지 않고 상수를 참조한다
+        /// (CLAUDE.md 2026-09-01 확정). ★ 이 단언이 지키는 것은 v10·v11과 같은 이유 —
+        /// 다운그레이드 방어: v12 필드를 v11 번호로 앉히면 v11 시절 빌드가 그 파일을 <b>자기 버전</b>으로
+        /// 읽어 다운그레이드 방어가 침묵하고, 60초 뒤 자동 저장이 누적 100시간을 덮어 지운다.
+        /// <para>★ 그리고 <b>두 필드가 함께</b> 들어갔는지 본다 — 나눠 넣으면 v13이 되고
+        /// 하위 호환 테스트가 한 벌 더 붙는다.</para></summary>
+        [Test]
+        public void 코스튬_누적_필드는_v12_번호로_함께_기록된다()
+        {
+            ResetModels();
+            InstallCostumes(SyntheticCostume(OfficeCostumeKey, CostumeSourceKind.BaseTheme, ItemCatalog.ThemeOffice));
+            Assert.IsTrue(CharacterSaveStore.Save(), "저장에 실패했습니다.");
+
+            string json = File.ReadAllText(CharacterSaveStore.FilePath);
+            StringAssert.Contains($"\"version\": {CharacterSaveStore.CurrentVersion}", json,
+                "저장 파일의 버전 번호가 CurrentVersion과 다릅니다.");
+            Assert.GreaterOrEqual(CharacterSaveStore.CurrentVersion,
+                CharacterSaveStore.FirstVersionWithCostumeFocus,
+                "코스튬 누적 필드가 들어 있는데 스키마 버전이 그보다 낮습니다. 그러면 v11 시절 빌드가 " +
+                "이 파일을 '자기 버전'으로 읽어 다운그레이드 방어가 통째로 침묵합니다.");
+            StringAssert.Contains("\"costumeFocus\"", json,
+                "v12를 선언했는데 코스튬 누적 배열이 파일에 없습니다 — 버전만 올라가고 스키마가 " +
+                "안 따라왔습니다.");
+            StringAssert.Contains("\"costumeFocusMinutesToday\"", json,
+                "v12의 두 필드 중 '오늘분'이 파일에 없습니다 — 나눠 넣으면 다운그레이드 창이 " +
+                "한 번 더 열립니다(v10 게임화 묶음이 세운 판단).");
         }
     }
 }

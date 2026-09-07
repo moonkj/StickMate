@@ -40,17 +40,33 @@ namespace StickMate.Tests.EditMode
             CharacterInfoWindow.SectionLabelHeight + CharacterInfoWindow.Col2LabelGap
             + CharacterInfoWindow.NameRowHeight;
 
-        private static float SetBlockHeight =>
+        /// <summary>세트 블록 높이. <b>패널 높이를 인자로 받는다</b> — 2행판(56)과 3행판(76) 둘 다
+        /// 재야 하기 때문이다. ★ 2026-09-08까지 이 테스트는 <b>2행판만</b> 재고 있었고, 그래서
+        /// <b>코스튬 3행이 켜져도 초록이었다</b>(같은 예산을 재는 <c>CostumeProgressReadoutTests</c>는
+        /// 3행판을 재고 있었다 — <b>두 파일이 서로 다른 상태를 재고 있었다</b>는 사실 자체가 갭이었다).
+        /// 지금은 <b>최악 상태</b>로 통일한다.</summary>
+        private static float SetBlockHeight(float setPanelHeight) =>
             CharacterInfoWindow.SectionLabelHeight + CharacterInfoWindow.Col2LabelGap
-            + CharacterInfoWindow.SetPanelHeight;
+            + setPanelHeight;
 
         private const int BlockCount = 4;
 
-        private static float DesignContentHeight =>
+        /// <summary>
+        /// ★ <b>잉크 하단</b> — 마지막 블록의 아래 끝(위 여백 + 블록 넷 + 블록 사이 간격 셋).
+        /// <b>아래 여백은 더하지 않는다.</b> 그 구분이 계약 C1/C2의 전부다:
+        /// 아래 여백에는 <b>그려지는 것이 하나도 없어서</b>, 거기까지 세면 «아무도 못 보는 4pt»를
+        /// 초과로 신고하게 된다(ux-designer §14-2 실측: 설계 크기에서 잘리는 픽셀은 <b>0</b>이다).
+        /// </summary>
+        private static float InkBottom(float setPanelHeight) =>
             CharacterInfoWindow.ColPadY
-            + StatusBlockHeight + RecordBlockHeight + DisplayBlockHeight + SetBlockHeight
-            + (BlockCount - 1) * CharacterInfoWindow.Col2BlockGap
-            + CharacterInfoWindow.ColPadY;
+            + StatusBlockHeight + RecordBlockHeight + DisplayBlockHeight + SetBlockHeight(setPanelHeight)
+            + (BlockCount - 1) * CharacterInfoWindow.Col2BlockGap;
+
+        /// <summary>★ <b>최악 상태</b>의 세트 패널 높이 = 코스튬 3행이 켜진 판.
+        /// 이 창의 세로 예산은 «오늘 대부분이 보는 화면»이 아니라 <b>가장 큰 화면</b>에서 성립해야 한다.
+        /// (3행은 오늘 도달 가능하다 — <c>CostumeManifest_office</c>가 실려 있고 기본 코호트
+        /// 코스튬은 엔타이틀먼트를 묻지 않는다.)</summary>
+        private static float WorstSetPanelHeight => CharacterInfoWindow.SetPanelHeightWithCostume;
 
         // ====================================================================
         // 1. 스탯 카드 내부 — §4-3-2 검산 11 + 18 + 8 + 5 + 8 + 13 + 11 = 74
@@ -116,28 +132,71 @@ namespace StickMate.Tests.EditMode
         // ====================================================================
 
         /// <summary>
-        /// ★ 설계 크기(1042 × 802)에서 컬럼 2가 <b>본문 높이 안에 들어간다</b>.
-        /// <para>넘치면 스크롤이 받아 주지만(그래서 도달성은 안 죽는다), 스크롤바가 없는 컬럼이라
-        /// 아래 블록의 <b>발견 가능성</b>이 떨어진다. 설계 크기에서는 안 넘치는 것이 계약이다.</para>
+        /// ★★ <b>계약 C1 「잉크 불가침」</b> — 설계 크기(1042 × 802)에서 <b>그려지는 것은 한 픽셀도
+        /// 잘리지 않는다</b>. 재는 상태는 <b>최악(코스튬 3행이 켜진 판)</b>이다.
+        ///
+        /// <para>★ 2026-09-08 — 이 테스트는 예전에 «위 여백 + 블록 + <b>아래 여백</b> ≤ 736»을 쟀고,
+        /// 그 식은 3행판에서 4pt를 초과로 신고했다. 그런데 <b>그 4pt는 전부 아래 여백</b>이고
+        /// 여백에는 그려지는 것이 없다 — 스크롤을 끝까지 밀어도 <b>새로 드러나는 것이 없다</b>
+        /// (ux-designer §14-2). <b>계약이 말한 해악(「아래 블록이 잘 안 보인다」)과 계약이 재는 양이
+        /// 갈라져 있었다.</b> 그래서 폐기하지 않고 <b>둘로 갈랐다</b> — 이 테스트가 C1, 아래가 C2.</para>
+        ///
+        /// <para>★ 그리고 <b>재는 상태를 최악으로 바꿨다.</b> 예전에는 <c>SetPanelHeight</c>(2행판)로
+        /// 재고 있어서 3행이 켜져도 초록이었다.</para>
         /// </summary>
         [Test]
-        public void 설계_크기에서_컬럼2가_본문_높이_안에_들어간다()
+        public void 최악_상태_설계_크기에서_컬럼2_잉크가_한_픽셀도_잘리지_않는다()
         {
             float body = CharacterInfoWindow.BodyHeight;
-            float used = DesignContentHeight;
+            float ink = InkBottom(WorstSetPanelHeight);
 
-            Assert.LessOrEqual(used, body,
-                $"컬럼 2 세로 예산 초과 — 사용 {used} vs 본문 {body} (초과 {used - body}pt).\n" +
+            // 전제 — 최악 상태가 기본 상태보다 실제로 크다(아니면 이 테스트가 아무것도 안 잰다).
+            Assert.Greater(WorstSetPanelHeight, CharacterInfoWindow.SetPanelHeight,
+                "3행판 세트 패널이 2행판보다 크지 않습니다 — 이 측정의 «최악 상태»가 사라졌습니다.");
+
+            Assert.LessOrEqual(ink, body,
+                $"[C1 잉크 불가침] 컬럼 2의 잉크가 본문 밖으로 나갑니다 — 잉크 하단 {ink} vs 본문 {body} " +
+                $"(초과 {ink - body}pt).\n" +
                 $"  능력치 {StatusBlockHeight} / 기록 {RecordBlockHeight} / 표시 {DisplayBlockHeight} / " +
-                $"세트 {SetBlockHeight} / 블록 간격 {CharacterInfoWindow.Col2BlockGap} × {BlockCount - 1} / " +
-                $"위아래 여백 {CharacterInfoWindow.ColPadY} × 2\n" +
-                "  스크롤이 도달성은 지켜 주지만, 스크롤바가 없는 컬럼이라 아래 블록이 잘 안 보입니다. " +
-                "리더에게 보고하고 무엇을 줄일지 정하십시오(coder-ui 규약: 억지로 넣지 말 것).");
+                $"세트 {SetBlockHeight(WorstSetPanelHeight)} / 블록 간격 {CharacterInfoWindow.Col2BlockGap} × {BlockCount - 1} / " +
+                $"위 여백 {CharacterInfoWindow.ColPadY}\n" +
+                "  ★ 이건 «여백이 줄었다»가 아니라 «글자가 잘린다»입니다. 스크롤이 도달성은 지켜 주지만 " +
+                "스크롤바가 없는 컬럼이라 아래 블록을 찾지 못합니다.\n" +
+                "  리더에게 보고하고 무엇을 줄일지 정하십시오(coder-ui 규약: 억지로 넣지 말 것).");
 
             // 양성 대조 — 예산이 실제로 빡빡한지도 함께 적는다("항상 참"인 단언이 아니다).
-            Assert.Greater(used, body * 0.9f,
-                $"컬럼 2가 본문의 90% 미만만 쓰고 있습니다({used} / {body}) — 이 테스트가 " +
+            Assert.Greater(ink, body * 0.9f,
+                $"컬럼 2가 본문의 90% 미만만 쓰고 있습니다({ink} / {body}) — 이 테스트가 " +
                 "재고 있는 대상이 사라졌거나 블록 하나가 통째로 빠졌습니다.");
+        }
+
+        /// <summary>
+        /// ★★ <b>계약 C2 「아래 여백 잔량」</b> — 잉크 아래로 <b>최소 <see cref="UiChrome.Space4"/></b>가
+        /// 보인다. <b>지금 값은 정확히 하한</b>이라(16 ≥ 16), 누가 세로를 <b>1pt만</b> 얹어도 여기서 빨개진다.
+        ///
+        /// <para>겉보기로는 C1+C2가 예전 계약보다 4pt를 내주는 것처럼 보인다(예전: 잉크 ≤ 716 /
+        /// 지금: 잉크 ≤ 720). 그러나 예전 자리에 있던 것은 <c>Assert.Ignore</c>였고 <b>건너뜀은
+        /// 회귀를 못 잡는다</b>. C2는 막는다 — <b>감시 강도는 올라갔다</b>(§14-5).</para>
+        ///
+        /// <para>★ 하한을 <c>16</c>이라고 <b>숫자로 적지 않는다</b> — 간격 토큰
+        /// <see cref="UiChrome.Space4"/>를 참조한다(CLAUDE.md 하드코딩 금지).</para>
+        /// </summary>
+        [Test]
+        public void 최악_상태에서도_잉크_아래로_한_칸_여백이_남는다()
+        {
+            float body = CharacterInfoWindow.BodyHeight;
+            float slack = body - InkBottom(WorstSetPanelHeight);
+
+            Assert.GreaterOrEqual(slack, UiChrome.Space4,
+                $"[C2 아래 여백 잔량] 잉크 아래 여백이 {slack}pt로 한 칸({UiChrome.Space4})보다 좁습니다 — " +
+                "마지막 블록이 본문 아래 끝에 붙어 «잘린 것처럼» 읽힙니다. " +
+                "여백은 정의상 가장자리에서 양보되는 공간이지만, 한 칸은 남겨야 «끝났다»가 읽힙니다(§14-5).");
+
+            // ★ 이 계약이 지금 <b>얼마나 빡빡한가</b>를 함께 기록한다 — 여유가 커지면(블록이 빠졌거나
+            //   이 계산기가 대상을 잃었으면) 그것도 알아야 한다.
+            Assert.Less(slack, CharacterInfoWindow.ColPadY * 2f,
+                $"잉크 아래 여백이 {slack}pt나 남습니다 — 컬럼 2에서 블록 하나가 통째로 빠졌거나 " +
+                "이 계산기가 다른 것을 세고 있습니다(양성 대조 실패).");
         }
 
         /// <summary>블록 사이 간격은 제목-내용 간격보다 <b>커야</b> 한다 — 안 그러면 제목이

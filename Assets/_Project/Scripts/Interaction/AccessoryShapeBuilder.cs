@@ -955,11 +955,28 @@ namespace StickMate.Interaction
         ///
         /// <para>★ 2026-09-02 — <b>"알 수 없는 번호"를 그 둘과 분리했다.</b> 그 전에는 셋 다
         /// <c>default: return +∞</c> 하나로 뭉뚱그려져 있어서, 7번째 모자를 표에 넣으면 그 모자가
-        /// <b>조용히 왕관 취급</b>을 받았다(= 머리카락을 안 자른다 -> 머리카락이 모자를 뚫고 나온다).
-        /// 지금은 미착용을 먼저 거르고, 왕관은 <b>명시된 case</b>이며, 남은 default는 결함이므로
-        /// <see cref="ShapeCoverageGuard"/>가 큰 소리로 알린다. 돌려주는 값이 여전히 +∞인 이유는
-        /// "모르는 모자 밑에서 머리카락을 자르는 것"이 더 파괴적이기 때문이다 — 잘라 버리면 화면에서
-        /// 머리카락까지 함께 사라져 원인이 두 겹이 된다.</para>
+        /// <b>조용히 왕관 취급</b>을 받았다. 지금은 미착용을 먼저 거르고, 왕관은 <b>명시된 case</b>이며,
+        /// 남은 default 는 <see cref="CoverOutsideCodeTable"/>가 받는다.</para>
+        ///
+        /// ============================================================================
+        /// ★★ 2026-09-08 <b>Major 4</b> — 「가리는가」는 이제 <b>에셋</b>이 답한다
+        /// ============================================================================
+        /// <see cref="AccessoryDefSO.hidesHair"/> 문서가 예약해 둔 전환이다. 다만 그 문서가 적은
+        /// 진단(<i>"지금 HatCoverLocalY 는 «모자면 가린다»를 전역 규칙으로 갖고 있다"</i>)은
+        /// <b>이미 낡아 있었다</b> — 왕관은 <c>if</c> 분기가 아니라 <b>표의 값</b>으로 벌써 면제였다.
+        /// 실재하던 결함은 <b><c>default:</c> 하나</b>였고, 그것이 팩 HEAD 아이템(자리 6번 이상)을
+        /// 전부 「모르는 모자」로 신고했다 — <b>12종을 굽기 전에 닫아야 하는 이유가 그것이다.</b>
+        ///
+        /// <para>그래서 갈아탄 범위도 <b>딱 그 default</b>다. 출하 6종은 여기 적힌 <c>case</c>가
+        /// 계속 정본이다: <c>hidesHair</c>는 <c>bool</c> 이라 <b>「어디까지」를 실을 수 없고</b>,
+        /// 이 여섯은 각자 다른 H-2 착용선(0.3282~0.4482 R)을 갖는다. 값을 에셋으로 내리려면
+        /// 좌표 필드가 필요하고 그건 <b>매니페스트 스키마 승격</b>을 부르는 결정이다(리더 판정: 최후 수단).</para>
+        ///
+        /// <para>★ <b>HAIR 카테고리가 은퇴한 사실</b>(<c>EquipmentModel.IsRetiredSlot</c>, 2026-09-06)이
+        /// 이 판단에 어떻게 걸리는가: 커버선의 유일한 소비자가 <see cref="AppendHair"/>이므로
+        /// <b>오늘 이 함수의 반환값은 화면에 한 점도 닿지 않는다.</b> 그래서 «어디까지»를 지금
+        /// 발명할 이유가 없고(발명하면 되살아나는 날 조용히 틀린다), 반대로 «가리는가»를 에셋에
+        /// 옮기는 것은 값이 아니라 <b>결함 신고의 정확도</b>를 고치는 일이라 지금 해도 안전하다.</para>
         /// </summary>
         internal static float HatCoverLocalY(int hatItemIndex, in Rig rig)
         {
@@ -977,11 +994,38 @@ namespace StickMate.Interaction
 
                 // 왕관 — <b>의도된</b> 면제. 얹는 물건이라 밑이 뚫려 있다(위 문단).
                 case HeadCrown: return NothingCovered;
-
-                default:
-                    ShapeCoverageGuard.ReportUnknownHatCover(hatItemIndex);
-                    return NothingCovered;
             }
+
+            // ★ 코드 표 밖 = 팩 모자. 에셋에 물어본다. <b>표 안에서는 카탈로그를 건드리지 않는다</b> —
+            //   출하 6종의 경로에 Resources 접근이 새로 생기지 않게 하려고 switch 뒤에 둔다.
+            return CoverOutsideCodeTable(hatItemIndex,
+                ItemCatalog.HidesHair(EquipmentSlot.Head, hatItemIndex));
+        }
+
+        /// <summary>
+        /// ★ Major 4의 실제 판정 — <b>코드 표에 좌표가 없는 모자</b>의 커버선.
+        ///
+        /// <list type="bullet">
+        ///  <item><b>가리지 않는다고 선언했으면</b>(<c>hidesHair: 0</c>) 왕관과 <b>같은 사실</b>이다 —
+        ///        <see cref="NothingCovered"/>이고 <b>결함이 아니다.</b> 팩 모자가 여기로 오는 것이
+        ///        정상 경로이고, 2026-09-07까지는 이 자리가 전부 결함으로 신고됐다.</item>
+        ///  <item><b>가린다고 선언했으면</b>(<c>hidesHair: 1</c>) 「어디까지」를 아무도 모른다 —
+        ///        <c>bool</c>은 좌표를 실을 수 없다. 이건 <b>진짜 결함</b>이므로 신고하고,
+        ///        값은 여전히 <see cref="NothingCovered"/>다: "모르는 모자 밑에서 머리카락을 자르는 것"이
+        ///        더 파괴적이기 때문이다(잘라 버리면 머리카락까지 사라져 원인이 두 겹이 된다).</item>
+        /// </list>
+        ///
+        /// <para><b>왜 갈라 뒀는가</b>(<c>ItemCatalog.EntryFrom</c>·<c>PackRegistry.Build</c>와 같은 이유):
+        /// 이 판정을 <see cref="HatCoverLocalY"/> 안에 인라인으로 두면 <b>테스트가 값을 넣어 볼 수 없다</b> —
+        /// 합성 7번째 모자의 <c>hidesHair</c>는 <c>Resources</c>가 물고 있기 때문이다. 여기로 꺼내면
+        /// 두 갈래를 직접 먹일 수 있고, 그래야 「가드가 살아 있는가」를 양성 대조로 증명할 수 있다.</para>
+        /// </summary>
+        internal static float CoverOutsideCodeTable(int hatItemIndex, bool declaresHidesHair)
+        {
+            if (!declaresHidesHair) return NothingCovered;
+
+            ShapeCoverageGuard.ReportUnknownHatCover(hatItemIndex);
+            return NothingCovered;
         }
 
         /// <summary>"이 모자는 머리카락을 하나도 가리지 않는다"를 뜻하는 커버선 값.
@@ -1419,7 +1463,12 @@ namespace StickMate.Interaction
 
             // ★ 계약 v2 — 인계본 16종(HEAD 4 · EYES 4 · BACK 4)은 코드 표(생성 파일)가 좌표를 갖고, 3/4 재저작 도형
             //   (아래 switch)은 <b>이 표면에서 폐기</b>됐다(§14-0 #1). 인계본에 없는 8종 + 머리는 그대로 switch 다.
-            if (!AppendHandoff(sink, slot, itemIndex, rig, surface))
+            //
+            // ★ 2026-09-07 P6 — 그 다음에 <b>에셋 조형 경로</b>가 온다(<see cref="AppendWornAsset"/>).
+            //   NECK 6종만 쓰던 통로를 HEAD/EYES/BACK으로 넓힌 자리이고, <b>데이터가 있을 때만</b> 참을
+            //   돌려주므로 출하 42종에는 아무 일도 일어나지 않는다(HEAD/EYES/BACK 에셋의 wornShapes는 0개다).
+            if (!AppendHandoff(sink, slot, itemIndex, rig, surface)
+                && !AppendWornAsset(sink, slot, itemIndex, rig, mondayLoosened, surface))
             {
                 switch (slot)
                 {
@@ -1427,6 +1476,8 @@ namespace StickMate.Interaction
                     case EquipmentSlot.Eyes: AppendEyes(sink, itemIndex, rig); break;
                     // ★ NECK은 <b>에셋이 형상을 갖는다</b>(B-2 파일럿). 여기서 좌표를 만들지 않는다.
                     //   인계본 4종도 같은 에셋이다(카드 = 몸 = 한 벌, surfaces 0).
+                    //   ★ 2026-09-07 — 데이터가 있으면 위 <c>AppendWornAsset</c>이 이미 처리했다. 이 자리에
+                    //   오는 것은 <b>데이터가 없는</b> 목 아이템뿐이고, <c>AppendWorn</c>이 표식을 그려 크게 알린다.
                     case EquipmentSlot.Neck:
                         AppendWorn(sink, slot, itemIndex, rig, SortNeck, mondayLoosened, surface);
                         break;
@@ -1486,7 +1537,32 @@ namespace StickMate.Interaction
             float hc = rig.HeadCenterY;
             for (int i = 0; i < n; i++)
             {
-                pts[i] = rig.F(xyInR[i * 2] * r, hc + xyInR[i * 2 + 1] * r);
+                // ★★ 2026-09-08 — <b>곱을 지역 float 에 먼저 접는다.</b> 값을 바꾸려는 것이 아니라
+                //   <b>반올림 횟수를 에셋 경로와 같게</b> 맞추는 것이다.
+                //
+                //   무슨 일이 있었나: 예전에는 <c>hc + xyInR[..] * r</c>가 <b>한 식</b>이라 JIT 이
+                //   융합 곱셈-덧셈(FMA)으로 계약할 수 있었고(반올림 1회), 판독기
+                //   (<c>AccessoryWornShapeReader.ReadSum</c>)는 <c>v *= coef</c>로 지역 float 에 접은 뒤
+                //   더하므로 <b>반올림 2회</b>였다. 두 경로가 <b>같은 식인데 다른 비트</b>를 냈다.
+                //
+                //   ★ 그 차이는 <b>런타임에 따라 나타나기도 하고 안 나타나기도 한다</b> — 실측:
+                //   오프라인 하니스(Unity 동봉 .NET 6 CoreCLR)에서는 12종 · 조각 1,824 · 점 52,400이
+                //   <b>전부 일치</b>했는데 Unity 러너(Mono)에서는 <b>Head 0번 · 조각 0 · 점 14</b>가 갈렸다.
+                //   같은 자리를 <c>Math.FusedMultiplyAdd</c>로 재현하면 정확히 그 점에서
+                //   <c>4018864A</c> vs <c>40188649</c>(1 ULP)가 나온다. y 좌표 13,100개 중
+                //   <b>999개(7.63%)</b>가 이 융합에 민감하다.
+                //
+                //   ⇒ 고치기 전에는 P6 계약(<i>"코드 표를 에셋으로 옮겨도 비트가 안 바뀐다"</i>)이
+                //   <b>실기에서 거짓</b>이었다. 반올림 횟수를 맞추면 두 경로가 어느 런타임에서도 같다.
+                //   ★ 반대 방향(테스트에 1 ULP 허용치를 두는 것)은 <b>해가 아니다</b> — 그 허용치가
+                //   양성 대조(«계수를 1 ULP 밀면 빨개진다»)를 통째로 죽인다.
+                //
+                //   ★ 화면 영향: 1 ULP ≈ 2.4e−7 월드 단위(캐릭터 키 2.27 단위 ≈ 220 px 기준 2.3e−5 px).
+                //   <b>「불필요한 임시 변수」로 보고 인라인하지 마라</b> — 인라인하는 순간 계약이 다시
+                //   깨지고, 그 증상은 <b>「같아 보이는 두 값」의 빨간불</b>이다.
+                float px = xyInR[i * 2] * r;
+                float py = xyInR[i * 2 + 1] * r;
+                pts[i] = rig.F(px, hc + py);
             }
             if (!bodyFixed) ApplyBodyTransform(pts, rig, xf);
             sink.Add(new Shape(name, pts, loop, LayerOrder(layer, sortingOrder), swayStart, swayCount, tone, filled, surfaces,
@@ -1518,6 +1594,83 @@ namespace StickMate.Interaction
         // ==================== 에셋이 가진 형상 (2026-09-02 B-2 파일럿) ====================
 
         /// <summary>
+        /// ★ <b>에셋 조형을 받는 자리인가</b>, 그리고 그 자리의 <b>기본 층</b>은 몇인가 (2026-09-07 P6).
+        ///
+        /// <para>층 번호를 데이터에 넣지 않는 이유는 <see cref="AppendWorn"/> 문단 그대로다 —
+        /// 자리끼리의 겹침 규칙이라 팩 작성자가 정하게 두면 남의 아이템이 내 모자 위로 올라온다.
+        /// 그 표를 <b>여기 한 곳</b>에 둔다. 생성 파일(<c>AppendHandoffHead/Eyes/Shoulders</c>)이 쓰는
+        /// 값과 같은 상수를 가리키므로, 같은 사실이 두 곳에서 계산되지 않는다.</para>
+        ///
+        /// <para><b>빠져 있는 자리와 그 이유</b> — 「아직 안 했다」가 아니라 <b>구조적 사유</b>다:
+        /// <list type="bullet">
+        ///  <item><see cref="EquipmentSlot.Hair"/> — 머리 도형은 모자 커버선으로 <b>잘린다</b>
+        ///    (<see cref="AppendClippedBelowCover"/>). 에셋 조각은 그 자르기를 안 거치므로 열면
+        ///    「모자를 썼는데 머리카락이 뚫고 나오는」 결함이 데이터로 만들어진다. 게다가 이 자리는
+        ///    2026-09-06 사용자 지시로 <b>은퇴</b>했다(<see cref="EquipmentModel.IsRetiredSlot"/>).</item>
+        ///  <item><see cref="EquipmentSlot.Fx"/> · <see cref="EquipmentSlot.Pet"/> — <b>몸 도형의 주인이
+        ///    이 파일이 아니다</b>(<c>Interaction/AppearanceShapeBuilder.cs</c>). 카드만 여기서 열면
+        ///    「카드는 있는데 착용하면 아무것도 안 나오는」 반쪽 아이템을 팩이 만들 수 있게 된다.</item>
+        /// </list>
+        /// 두 자리를 여는 것은 각각 별도 라운드다. 여기서 <c>false</c>를 돌려주면 옛 경로(코드 switch)가
+        /// 그대로 돌고, 그 경로가 모르는 번호는 <see cref="AppendMissingMarker"/>가 크게 알린다.</para>
+        /// </summary>
+        internal static bool TryWornAssetSlotOrder(EquipmentSlot slot, out int sortingOrder)
+        {
+            switch (slot)
+            {
+                case EquipmentSlot.Head: sortingOrder = SortHead; return true;
+                case EquipmentSlot.Eyes: sortingOrder = SortEyes; return true;
+                case EquipmentSlot.Neck: sortingOrder = SortNeck; return true;
+                case EquipmentSlot.Shoulders: sortingOrder = SortBack; return true;
+                default: sortingOrder = SortDefault; return false;
+            }
+        }
+
+        /// <summary>
+        /// 생성 파일(<c>AccessoryShapeBuilder.Handoff.cs</c>)의 코드 표를 <b>표면 걸러내기 없이</b> 부른다.
+        ///
+        /// <para>왜 별칭이 필요한가: 그 파일은 <c>Tools/CardShapeGen/gen_card_shapes.py</c>가 굽고
+        /// 머리에 <b>「손으로 고치지 마라」</b>가 붙어 있다 — 접근 수준 한 글자를 넓히려고 손대면 다음 생성이
+        /// 지운다. 부분 클래스는 같은 클래스이므로 이 파일에서 그쪽 <c>private</c>를 그대로 부를 수 있고,
+        /// 그 사실을 한 줄로 빌려 쓴다. <b>동작은 없다</b> — 전달뿐이다.
+        /// <c>Tests/EditMode/AccessoryAssetShapeParityTests</c>가 코드 표의 답을 얻는 창구다.</para>
+        /// </summary>
+        internal static bool AppendCodeShapes(List<Shape> sink, EquipmentSlot slot, int item, in Rig rig,
+            AccessorySurface surface)
+            => AppendHandoff(sink, slot, item, rig, surface);
+
+        /// <summary>
+        /// ★ <b>원칙 4의 실제 통로</b>(2026-09-07 P6) — 이 자리/번호의 몸 도형을 <b>에셋이 갖고 있으면</b>
+        /// 그것을 쓰고 <c>true</c>를 돌려준다. 없으면 아무것도 하지 않고 <c>false</c>다.
+        ///
+        /// <para><b>왜 「데이터가 있으면」인가.</b> 전환을 스위치나 목록으로 선언하면 그 선언이
+        /// <b>두 번째 진실</b>이 된다 — 에셋에는 좌표가 있는데 목록에 안 적혀 안 그려지거나, 목록에는
+        /// 적혔는데 좌표가 없어 표식이 뜨는 두 결함이 그 자리에서 열린다. 사실은 하나다:
+        /// <b>이 아이템의 좌표를 누가 갖고 있는가.</b> 그것을 그대로 묻는다.</para>
+        ///
+        /// <para>★ <b>출하 42종은 이 함수를 통과하지 못한다</b> — HEAD/EYES/BACK/HAIR/FX/PET 에셋의
+        /// <c>wornShapes</c>는 전부 0개이고 NECK 6종만 데이터를 갖는다. NECK은 이 함수가 생기기 전에도
+        /// 같은 <see cref="AppendWorn"/>을 같은 <see cref="SortNeck"/>으로 불렀으므로 결과가 같다
+        /// (<c>Tests/EditMode/AccessoryAssetShapeReachTests</c>가 그 두 사실을 매 실행 확인한다).</para>
+        ///
+        /// <para>★ 이 함수는 <b>인계본 코드 표 다음</b>에 온다. 즉 지금은 코드가 이긴다 — 인계본 16종의
+        /// 에셋에 좌표를 넣어도 화면은 안 바뀐다. 그 순서를 뒤집는 것(= 코드 switch 폐기)은
+        /// <b>리더 판정 사항</b>이고, 두 경로가 같은 답을 낸다는 증명이 먼저다
+        /// (<c>Tests/EditMode/AccessoryAssetShapeParityTests</c>).</para>
+        /// </summary>
+        internal static bool AppendWornAsset(List<Shape> sink, EquipmentSlot slot, int item, in Rig rig,
+            bool stateOn, AccessorySurface surface)
+        {
+            if (!TryWornAssetSlotOrder(slot, out int sortingOrder)) return false;
+
+            AccessoryWornShapeData[] data = ItemCatalog.WornShapes(slot, item);
+            if (data == null || data.Length == 0) return false;
+
+            AppendWorn(sink, slot, item, rig, sortingOrder, stateOn, surface);
+            return true;
+        }
+
+        /// <summary>
         /// 에셋(<see cref="AccessoryDefSO.wornShapes"/>)이 가진 형상을 <paramref name="sink"/>에 넣는다.
         ///
         /// <para>이 함수는 <b>어떤 아이템인지 모른다</b> — 자리 번호로 데이터를 집어 스트림을 돌릴 뿐이다.
@@ -1544,9 +1697,31 @@ namespace StickMate.Interaction
                 return;
             }
 
+            AppendWornData(sink, data, ItemCatalog.WornTransform(slot, item),
+                slot, item, rig, sortingOrder, stateOn, surface);
+        }
+
+        /// <summary>
+        /// 위 <see cref="AppendWorn"/>의 <b>본체</b> — 데이터가 <b>어디서 왔는지 모른다</b>.
+        ///
+        /// <para>가른 이유는 검증 가능성 하나다(<c>ItemCatalog.EntryFrom</c>을 가른 것과 같은 이유):
+        /// <see cref="AppendWorn"/>은 <c>Resources.LoadAll</c>이 물고 있는 표에서만 데이터를 받으므로,
+        /// <b>「합성 팩 아이템을 넣으면 무엇이 그려지는가」를 아무도 물어볼 수 없다</b>. 그리고 그 질문에
+        /// 답할 수 없으면 「팩을 코드 0줄로 넣을 수 있는가」도 실측이 아니라 주장이 된다.
+        /// <c>Tests/EditMode/AccessoryAssetShapeParityTests</c>가 여기로 인계본 16종의 좌표를 <b>스트림으로
+        /// 다시 적어</b> 먹이고, 코드 표가 낸 답과 비트까지 대조한다.</para>
+        ///
+        /// <para><paramref name="itemTransform"/>은 <b>아이템 단위</b> 몸 파라미터다. 카드 요청이면
+        /// 걸지 않는다 — 그 판정이 여기 있는 이유는 <see cref="AppendWorn"/>과 이 함수가 <b>같은 규칙</b>을
+        /// 써야 하기 때문이다(둘로 나뉘면 합성 경로만 다른 그림을 낸다).</para>
+        /// </summary>
+        internal static void AppendWornData(List<Shape> sink, AccessoryWornShapeData[] data,
+            in AccessoryWornTransform itemTransform, EquipmentSlot slot, int item, in Rig rig,
+            int sortingOrder, bool stateOn, AccessorySurface surface)
+        {
             AccessoryWornFrame frame = Frame(rig);
             AccessoryWornTransform xf = surface == AccessorySurface.Body
-                ? ItemCatalog.WornTransform(slot, item) : AccessoryWornTransform.None;
+                ? itemTransform : AccessoryWornTransform.None;
             for (int i = 0; i < data.Length; i++)
             {
                 if (!AccessoryWornShapeReader.TryBuild(data[i], frame, stateOn, out Vector3[] points, out _))
@@ -1845,7 +2020,12 @@ namespace StickMate.Interaction
             float hc = rig.HeadCenterY;
             for (int i = 0; i < n; i++)
             {
-                pts[i] = rig.F(xyInR[i * 2] * r, hc + xyInR[i * 2 + 1] * r);
+                // ★★ 2026-09-08 — <b>곱을 지역 float 에 먼저 접는다.</b> 값을 바꾸려는 것이 아니라
+                //   <b>반올림 횟수를 에셋 경로와 같게</b> 맞추는 것이다. 자세한 실측은
+                //   <see cref="HandoffPiece"/>의 같은 자리 주석에 있다 — 두 자리가 같은 이유로 같이 바뀐다.
+                float px = xyInR[i * 2] * r;
+                float py = xyInR[i * 2 + 1] * r;
+                pts[i] = rig.F(px, hc + py);
             }
             sink.Add(new Shape(name, pts, loop, LayerOrder(layer, SortHead), tone: tone, filled: filled,
                 noStroke: noStroke, layer: layer, underBack: underBack));

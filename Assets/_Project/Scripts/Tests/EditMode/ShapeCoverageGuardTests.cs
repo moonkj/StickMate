@@ -217,20 +217,52 @@ namespace StickMate.Tests.EditMode
                 "왕관과 미착용은 <b>의도된</b> +∞입니다 — 이들이 신고되면 정상 사용이 매번 빨간불이 됩니다.");
         }
 
+        /// <summary>
+        /// ★★ <b>2026-09-08 Major 4로 이 테스트의 규칙이 바뀌었다</b>(그리고 바뀌기 전 판은
+        /// 실제로 빨개졌다 — 그것이 동작이 바뀌었다는 증거다).
+        ///
+        /// <para><b>옛 규칙</b>: 코드 표에 없는 번호는 <b>전부</b> 신고. 그 규칙이 «7번째 모자가 조용히
+        /// 왕관 취급을 받는다»를 막으려던 것이었는데, <b>팩 HEAD 아이템이 정확히 그 자리에 온다</b> —
+        /// 즉 정상 경로가 매 재구성마다 결함 경로를 밟았다(12종을 굽기 전에 닫아야 했던 이유).</para>
+        ///
+        /// <para><b>새 규칙</b>: 사실의 주인은 에셋이다(<c>AccessoryDefSO.hidesHair</c>).
+        /// «가리지 않는다»고 선언했으면 왕관과 <b>같은 사실</b>이라 신고하지 않고,
+        /// «가린다»고 선언했는데 커버선이 없으면 그건 <b>진짜 결함</b>이라 신고한다.</para>
+        ///
+        /// <para>★ 자리 <see cref="UnknownIndexFor"/>는 <b>에셋이 없는 번호</b>라 선언 자체가 없다
+        /// (= 「가린다」고 말한 적이 없다) → 신고하지 않는 것이 옳다. 그리고 가드가 <b>죽지 않았다</b>는
+        /// 것은 같은 테스트 안에서 «가린다고 선언한 경우»를 직접 먹여 증명한다.</para>
+        /// </summary>
         [Test]
-        public void 알_수_없는_모자는_왕관과_구분되어_신고된다()
+        public void 가린다고_선언하지_않은_모자는_신고되지_않고_선언한_모자만_신고된다()
         {
             int unknown = UnknownIndexFor(EquipmentSlot.Head);
-            LogAssert.Expect(LogType.Error, new Regex(@"\[도형\].*커버선"));
+
+            // (1) 음성 — 에셋이 없거나 hidesHair 를 안 적은 자리. 팩 모자의 정상 경로가 여기다.
+            Assert.IsFalse(ItemCatalog.HidesHair(EquipmentSlot.Head, unknown),
+                $"자리 {unknown}번에 에셋이 없는데 «가린다»고 답했습니다 — 아래 음성 대조가 공허해집니다.");
 
             float cover = AccessoryShapeBuilder.HatCoverLocalY(unknown, Rig());
 
             Assert.AreEqual(AccessoryShapeBuilder.NothingCovered, cover,
                 "모르는 모자 밑에서 머리카락을 자르면 머리카락까지 함께 사라져 원인이 두 겹이 됩니다 — " +
                 "값 자체는 +∞가 맞습니다.");
+            Assert.AreEqual(0, ShapeCoverageGuard.HitCount,
+                "<b>가린다고 선언한 적이 없는</b> 자리를 결함으로 신고했습니다 — 팩 HEAD 아이템이 " +
+                "들어오는 순간 정상 사용이 매번 빨간불이 됩니다(2026-09-08 Major 4가 고친 자리).");
+
+            // (2) 양성 — «가린다»고 선언했는데 커버선이 없으면 그건 진짜 결함이다.
+            //     선언은 Resources 가 물고 있어 테스트가 값을 넣을 수 없으므로, 판정 함수에 직접 먹인다.
+            LogAssert.Expect(LogType.Error, new Regex(@"\[도형\].*커버선"));
+            float declared = AccessoryShapeBuilder.CoverOutsideCodeTable(unknown, declaresHidesHair: true);
+
+            Assert.AreEqual(AccessoryShapeBuilder.NothingCovered, declared,
+                "값 자체는 여전히 +∞가 맞습니다(위와 같은 이유).");
             Assert.AreEqual(1, ShapeCoverageGuard.LoggedCount,
-                "옛 코드는 왕관·미착용·알 수 없는 번호 셋을 <c>default: +∞</c> 하나로 뭉뚱그려서, " +
-                "7번째 모자가 조용히 왕관 취급을 받았습니다(머리카락 클리핑이 함께 틀어짐).");
+                "가드가 죽었습니다 — 「가린다고 선언했는데 커버선이 없다」를 아무도 안 잡으면 " +
+                "HAIR 카테고리가 되살아나는 날 그 모자만 조용히 머리카락을 안 자릅니다.");
+            Assert.IsTrue(ShapeCoverageGuard.LastMessage.Contains(unknown.ToString()),
+                $"신고 문구에 문제의 번호({unknown})가 없습니다 — 로그만 보고는 어느 모자인지 모릅니다.");
         }
 
         // ============================================================================

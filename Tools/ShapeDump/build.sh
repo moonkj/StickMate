@@ -33,7 +33,9 @@ FW="$UNITY/NetCoreRuntime/shared/Microsoft.NETCore.App/6.0.21"
 #   옛 빌더(partial 이전 스냅숏)와 겹치는 순간 CS0260/CS0103 으로 죽는다.
 #   그 상태로 Tools/ShapeDumpPC 의 <b>양성 대조 두 개가 조용히 멎어 있었다</b> —
 #   즉 "mirrordrift 의 0건을 믿어도 되는가"를 증명하는 자가 없는 채로 며칠이 갔다.
-BUILDER_SET=(${SHAPEDUMP_BUILDER:-"$SRC/Interaction/AccessoryShapeBuilder.cs" "$SRC/Interaction/AccessoryShapeBuilder.Handoff.cs"})
+#   ★ 2026-09-08 coder-systems — 가족에 <b>세 번째 파일</b>이 생겼다(AccessoryShapeBuilder.FxPetCard.cs,
+#     생성 파일). 목록에 없어서 기본 실행이 CS0103 하나로 죽어 있었다 = <b>게이트가 안 도는 상태</b>.
+BUILDER_SET=(${SHAPEDUMP_BUILDER:-"$SRC/Interaction/AccessoryShapeBuilder.cs" "$SRC/Interaction/AccessoryShapeBuilder.Handoff.cs" "$SRC/Interaction/AccessoryShapeBuilder.FxPetCard.cs"})
 OUT="${SHAPEDUMP_OUT:-$SP}"
 mkdir -p "$OUT"
 
@@ -69,6 +71,10 @@ SOURCES=(
   "$SRC/Core/EquipmentStatRules.cs"
   "$SRC/Core/StickMateDevTools.cs"
   "$SRC/Interaction/ShapeCoverageGuard.cs"
+  # ★ 2026-09-08 — FxPetCard 조각이 AppearanceShapeBuilder 의 자리 상수를 부른다(자동 보강 배너가 지목한 파일).
+  "$SRC/Interaction/AppearanceShapeBuilder.cs"
+  # ★ 2026-09-08 — ItemCatalog 의 팩 테마 감사가 PackManifestKeys(키 모양 판정자 <b>하나</b>)를 부른다.
+  "$SRC/Core/StickPackManifestSO.cs"
 )
 # ★ 2026-09-05 — AccessoryShapeBuilder 가 partial 이 됐다(인계본 조각은 .Handoff.cs 에 있다).
 # 그래서 「빌더」는 파일 하나가 아니라 <b>가족</b>이고, A/B 로 바꿔 끼울 때도 가족째 바뀐다(위 BUILDER_SET).

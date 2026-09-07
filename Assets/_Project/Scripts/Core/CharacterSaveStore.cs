@@ -155,7 +155,32 @@ namespace StickMate.Core
         /// 이 키가 없으면 JsonUtility가 0으로 채우고, 그 0이 정확한 사실이다. 필드 하나뿐이라 명시적
         /// 마이그레이션이 필요 없다(v5의 착용 상태 재배치 같은 특수 케이스가 아니다).
         /// 검증은 <c>Tests/EditMode/EquipmentMigrationTests</c>의 v10 하위 호환 테스트가 한다.</para>
-        internal const int CurrentVersion = 11;
+        ///
+        /// 12 = 2026-09-07 <b>코스튬별 누적 집중 시간</b>(PART2 코스튬 DLC × 집중 모드).
+        /// 새 필드는 <c>costumeFocus</c>(레코드 배열) + <c>costumeFocusMinutesToday</c>(int) <b>둘</b>이고,
+        /// 값은 <c>Core/CostumeProgressModel.cs</c>가 들고 규칙은 <c>Core/CostumeEvolutionRules.cs</c>가 안다.
+        /// <para>★ <b>두 필드를 한 라운드에 함께 넣는다.</b> v10 게임화 묶음이 세운 판단 그대로다 —
+        /// <b>필드를 나눌 때마다 다운그레이드 창이 한 번씩 열린다.</b> 그리고 문을 닫는 것은 커밋이
+        /// 아니라 <b>빌드</b>다: 반쪽만 든 v12로 한 번 실행하면 그 반쪽이 디스크에 앉고
+        /// 나머지가 v13이 되어 하위 호환 테스트가 두 배가 된다.</para>
+        /// <para>★ <b>이 버전 상승의 근거도 v10·v11과 글자 하나까지 같다 — 「없음 ≠ 0」이 아니라
+        /// 다운그레이드 방어다.</b> <c>costumeFocus</c>의 「없음」은 <c>null</c>이고 그 <c>null</c>은
+        /// <i>"아직 아무 코스튬도 안 입고 집중한 적이 없다"</i>는 <b>정확한 사실</b>이라, 그 규칙만으로는
+        /// v12가 강제되지 않는다. 그런데도 올리는 이유: 이 필드를 v11 번호로 디스크에 앉히면
+        /// v11 시절 빌드가 그 파일을 <c>data.version &gt; CurrentVersion</c> 검사 없이 <b>자기 버전</b>으로
+        /// 읽고, <see cref="SaveSuspended"/>가 안 걸린 채 60초 뒤 자동 저장이 <b>누적 100시간을 통째로
+        /// 지운다</b>. 동전과 같은 등급의 「못 되버는 값」이다(100시간은 되벌 수 없다).</para>
+        /// <para>하위 호환은 v10·v11과 <b>같은 방식으로 저절로</b> 성립한다 — v11 이하 파일에 두 키가
+        /// 없으면 JsonUtility가 <c>null</c>/<c>0</c>으로 채우고, 그 값이 정확한 사실이다.
+        /// <c>FirstVersionWith…</c> 분기를 <b>하나도 추가하지 않는다</b>(기본이 <c>true</c>인 값이 없다).
+        /// 레코드 배열은 <c>null</c>과 <c>빈 배열</c>의 뜻이 같아지도록 <b>정규화</b>로 받는다
+        /// (<c>CostumeProgressModel.RestoreFromSave</c> — 모르는 키 버림 · 중복 첫 항목만 · 음수 0).
+        /// 검증은 <c>Tests/EditMode/EquipmentMigrationTests</c>의 v11 하위 호환 테스트가 한다.</para>
+        ///
+        /// <para>★ <b>이 필드들은 엔타이틀먼트가 아니다.</b> 저장된 것은 «입은 채 몇 분을 보냈는가»이지
+        /// «가졌는가»가 아니다 — <c>CostumeResolver</c>·<c>CostumeEntitlement</c>는 세이브를 한 글자도
+        /// 읽지 않는다(규칙 C-3). 그 둘을 섞으면 <b>세이브 파일이 결제 우회 표적이 된다</b>.</para>
+        internal const int CurrentVersion = 12;
 
         /// <summary>설정창 값이 처음 들어간 버전. 이 값보다 낮은 파일에는 <c>autoHideOnFullscreen</c>/
         /// <c>gearIconVisible</c> 키가 없으므로 읽으면 안 된다(false = 꺼짐으로 오해된다 —
@@ -189,6 +214,14 @@ namespace StickMate.Core
         /// <b>같은 이유</b>로 존재한다(로드 분기용이 아니라 다운그레이드 방어 테스트가 숫자를 베끼지 않게 하기 위해서).
         /// </summary>
         internal const int FirstVersionWithFocusXpDailyCap = 11;
+
+        /// <summary>
+        /// ★ 코스튬별 누적 집중 시간(<c>costumeFocus</c> · <c>costumeFocusMinutesToday</c>)이 처음
+        /// 들어간 버전 — <see cref="FirstVersionWithGameplayCurrency"/>·<see cref="FirstVersionWithFocusXpDailyCap"/>과
+        /// <b>같은 이유</b>로 존재한다(로드 분기용이 아니라, 다운그레이드 방어 테스트가 숫자를 베끼지
+        /// 않게 하기 위해서다).
+        /// </summary>
+        internal const int FirstVersionWithCostumeFocus = 12;
 
         /// <summary>
         /// 직렬화 스키마. JsonUtility는 프로퍼티를 직렬화하지 않으므로 public 필드로만 구성한다.
@@ -442,6 +475,36 @@ namespace StickMate.Core
             /// <summary>오늘 집중 모드(완주+취소)로 받은 XP. v10 이하 파일에는 없고, 그때의 0은
             /// "오늘 아무것도 안 받았다"는 정확한 사실이다(archeryCoinsToday와 같은 종류).</summary>
             public int focusXpToday;
+
+            // ================================================================
+            // ---- v12: 코스튬별 누적 집중 시간 ----
+            // ================================================================
+            // 정본: docs/DESIGN_COSTUME_FOCUS_ARCHITECTURE.md 3절(형태) +
+            //       docs/DESIGN_SYSTEMS_COSTUME_EVOLUTION.md §4·§5·§6(단위·격자·소프트캡).
+            // 값의 뜻·정규화·캡은 Core/CostumeProgressModel.cs와 Core/CostumeEvolutionRules.cs
+            // 두 곳에 있다 — 여기는 <b>그릇</b>이다. 임계도 캡도 저장하지 않는다(상한은 필드가
+            // 아니라 함수다 — v10이 세운 그 규칙 그대로).
+            //
+            // ★ 여기에 <b>만들면 안 되는</b> 필드:
+            //   · costumeStageReached 계열 — 누적은 줄어들지 않아 <b>강등이 문법적으로 없다</b>.
+            //     단계는 focusMinutes에서 파생한다(CostumeEvolutionRules.StageOf).
+            //     ※ 되살릴 조건 1개: 임계를 패치로 «올리는» 라운드는 그때 이 필드를 함께
+            //       도입해야 한다(그때는 v13 + 하위 호환 1벌).
+            //   · 병렬 배열 2개(키 배열 + 값 배열) — 「길이 불일치」라는 실패 모드와 그 위생
+            //     규칙·테스트를 <b>새로 만든다</b>. 레코드 배열은 그 어긋남이 문법적으로 불가능하다.
+            //   · costumeOwned / costumePack 계열 — C층은 세이브 금지다
+            //     (Tests/EditMode/EntitlementNotInSaveAuditTests).
+
+            /// <summary>코스튬을 <b>입은 채</b> 집중 세션을 마친 누적 <b>분</b>. v11 이하 파일에는
+            /// 없어 null이 되고, 그 null은 "아직 아무 코스튬도 안 입고 집중한 적이 없다"는
+            /// <b>정확한 사실</b>이다(v11 사용자에게 참이다 — 기능이 없었다).
+            /// <para>0분인 코스튬은 배열에 넣지 않는다 — 「없음」은 「기록 없음」이다.</para></summary>
+            public CostumeFocusRecord[] costumeFocus;
+
+            /// <summary>오늘 코스튬 누적에 실린 분(<b>전 코스튬 공유 1개</b>, 일일 소프트캡용).
+            /// 일자 롤오버에 0으로 돌아간다 — <c>archeryCoinsToday</c>·<c>focusXpToday</c>와
+            /// 같은 종류다. v11 이하 파일에서 0으로 채워지는 것이 정확한 사실이다.</summary>
+            public int costumeFocusMinutesToday;
         }
 
         /// <summary>
@@ -756,6 +819,17 @@ namespace StickMate.Core
 
                     EquippedDanceIds = data.equippedDanceIds,
                     ItemGraceBaselines = data.itemGraceBaselines,
+                });
+                // ★ v12 코스튬 누적 — 버전 분기가 없다. v11 이하 파일에는 두 키가 없어
+                //   JsonUtility가 null/0으로 채우고, 그 값들이 "아직 아무 코스튬도 안 입고 집중한
+                //   적이 없다"는 정확한 사실이다.
+                //   ★ <b>반드시 CurrencyModel 복원 뒤다.</b> costumeFocusMinutesToday는 「오늘」과
+                //   짝인 값이고, 이 앱에서 「오늘이 며칠인가」를 아는 곳은 CurrencyModel.DayIndex
+                //   하나뿐이다. 앞에 두면 방금 읽은 오늘분이 직전 세션의 날짜와 대조돼 즉시 0이 된다.
+                CostumeProgressModel.RestoreFromSave(new CostumeFocusSaveState
+                {
+                    Records = data.costumeFocus,
+                    MinutesToday = data.costumeFocusMinutesToday,
                 });
 
                 s_restoreInFlight = false;
@@ -1397,6 +1471,7 @@ namespace StickMate.Core
             try
             {
                 CurrencySaveState currency = CurrencyModel.CaptureSaveState();
+                CostumeFocusSaveState costume = CostumeProgressModel.CaptureSaveState();
                 var data = new SaveData
                 {
                     version = CurrentVersion,
@@ -1476,6 +1551,10 @@ namespace StickMate.Core
 
                     // ---- v11 게임화 XP 상한 ----
                     focusXpToday = currency.FocusXpToday,
+
+                    // ---- v12 코스튬 누적 집중 시간 ----
+                    costumeFocus = costume.Records,
+                    costumeFocusMinutesToday = costume.MinutesToday,
                 };
 
                 string dir = SaveDirectory;
@@ -1492,6 +1571,7 @@ namespace StickMate.Core
                 AppSettingsModel.MarkSaved();
                 TodoListModel.MarkSaved();
                 CurrencyModel.MarkSaved();   // v10 — 이 줄이 빠지면 동전이 매 주기 저장을 다시 부른다.
+                CostumeProgressModel.MarkSaved();   // v12 — 위와 같은 이유.
                 return true;
             }
             catch (Exception e)

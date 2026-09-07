@@ -45,13 +45,61 @@ namespace UnityEngine
             }
 
             var loaded = new List<T>();
+            // ★ 2026-09-08 coder-systems — <b>타입으로 거른다</b>. Unity 의 Resources.LoadAll&lt;T&gt; 는
+            //   폴더 안의 다른 ScriptableObject 를 애초에 돌려주지 않는데, 이 대역은 폴더의 .asset 을
+            //   전부 T 로 바인딩했다. 그래서 같은 폴더에 코스튬 매니페스트 2개가 들어온 날부터
+            //   ItemCatalog 가 "itemId 가 없습니다" 를 2건 찍었고, prodverify.py 가 그 2건을 보고
+            //   <b>판정 불능(rc=1)</b> 을 냈다 — 프로덕션은 멀쩡한데 게이트만 죽어 있었다.
+            //   판정 근거는 .asset 의 m_Script guid 와 <c>T.cs.meta</c> 의 guid 다(Unity 가 쓰는 그 값).
+            string wantedGuid = ScriptGuidOf(typeof(T));
             // 파일 이름 순 — 순서가 결과에 영향을 주면 안 되지만, 재현 가능해야 diff 가 뜻을 갖는다.
             foreach (string path in Directory.GetFiles(dir, "*.asset").OrderBy(p => p, StringComparer.Ordinal))
             {
+                if (wantedGuid != null && ScriptGuidIn(path) != wantedGuid) continue;
                 object o = AssetYaml.Load(path, typeof(T));
                 if (o is T typed) loaded.Add(typed);
             }
             return loaded.ToArray();
+        }
+
+        /// <summary><c>T.cs.meta</c> 의 guid. 못 찾으면 <c>null</c> 이고 그때는 <b>거르지 않는다</b> —
+        /// 조용히 0건을 돌려주면 "폴더가 비었다"와 구분이 안 된다(이 저장소가 반복해 당한 형태).
+        /// 못 찾았다는 사실은 크게 남긴다.</summary>
+        private static string ScriptGuidOf(Type t)
+        {
+            string scripts = Path.Combine(Path.GetDirectoryName(Root.TrimEnd(Path.DirectorySeparatorChar)) ?? ".", "Scripts");
+            if (!Directory.Exists(scripts)) { Debug.LogError($"[Resources 대역] 스크립트 폴더가 없습니다: {scripts}"); return null; }
+
+            string[] metas = Directory.GetFiles(scripts, t.Name + ".cs.meta", SearchOption.AllDirectories);
+            if (metas.Length != 1)
+            {
+                Debug.LogError($"[Resources 대역] {t.Name}.cs.meta 를 {metas.Length}개 찾았습니다(1개여야 합니다) — 타입 거르기를 건너뜁니다.");
+                return null;
+            }
+            foreach (string line in File.ReadAllLines(metas[0]))
+            {
+                if (line.StartsWith("guid:", StringComparison.Ordinal)) return line.Substring(5).Trim();
+            }
+            Debug.LogError($"[Resources 대역] {metas[0]} 에 guid 줄이 없습니다 — 타입 거르기를 건너뜁니다.");
+            return null;
+        }
+
+        /// <summary>이 .asset 이 가리키는 스크립트 guid. 없으면 <c>null</c>.</summary>
+        private static string ScriptGuidIn(string assetPath)
+        {
+            foreach (string line in File.ReadAllLines(assetPath))
+            {
+                int at = line.IndexOf("m_Script:", StringComparison.Ordinal);
+                if (at < 0) continue;
+                int g = line.IndexOf("guid:", at, StringComparison.Ordinal);
+                if (g < 0) return null;
+                int start = g + 5;
+                int end = line.IndexOf(',', start);
+                if (end < 0) end = line.IndexOf('}', start);
+                if (end < 0) end = line.Length;
+                return line.Substring(start, end - start).Trim();
+            }
+            return null;
         }
     }
 

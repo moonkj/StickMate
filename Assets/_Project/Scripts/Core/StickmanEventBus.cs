@@ -598,6 +598,35 @@ namespace StickMate.Core
         }
     }
 
+    /// <summary>
+    /// 코스튬 진화 <b>승급</b> 1건(2026-09-07, docs/DESIGN_COSTUME_FOCUS_ARCHITECTURE.md 7-3절 규칙 C-6).
+    ///
+    /// <para><b>발행 지점은 「세션 종료」 하나뿐이다.</b> 단계는 세션 시작에 래치되고 승급은 세션
+    /// 종료에 판정된다 — 세션 중에는 안 바뀐다. 중간에 단계가 바뀌면 프롭을 다시 구워야 해서
+    /// «1회만 그린다»(6-3 ②)가 깨지고, 몰입 중에 화면이 갑자기 변하면 그건 «집중 보조»가 아니라
+    /// <b>방해</b>다.</para>
+    ///
+    /// <para>★ <b>대사는 이 이벤트가 확정된 「뒤」 그 사실로부터 파생한다</b>(절대 불변 원칙 1).
+    /// 승급 문안을 먼저 정하고 판정을 끼워 맞추지 않는다 — 문안·박자는 design-narrative/design-motion
+    /// 소관이고 이 이벤트는 <b>자리만</b> 만든다.</para>
+    /// </summary>
+    public readonly struct CostumeStageAdvancedEvent
+    {
+        /// <summary>승급한 코스튬의 키(<c>costume.*</c> 역DNS). 세션 <b>시작 시점</b>에 래치된 키다 —
+        /// 세션 중에 갈아입었으면 애초에 누적도 승급도 일어나지 않는다(7-4절 「시작 ∧ 종료」).</summary>
+        public readonly string CostumeKey;
+
+        /// <summary>승급 후 단계(<c>Core/CostumeEvolutionRules.StageOf</c>의 결과, 0..3).
+        /// <b>래칫이라 내려가지 않는다</b> — 이 이벤트는 «올라갔다»일 때만 발행된다.</summary>
+        public readonly int Stage;
+
+        public CostumeStageAdvancedEvent(string costumeKey, int stage)
+        {
+            CostumeKey = costumeKey;
+            Stage = stage;
+        }
+    }
+
     /// <summary>상태 전이 1건을 나타내는 불변 이벤트 페이로드 (From -> To).</summary>
     public readonly struct StateTransitionEvent
     {
@@ -750,6 +779,35 @@ namespace StickMate.Core
         /// </summary>
         public static event Action<CharacterScaleChangeEvent> CharacterScaleChanged;
 
+        /// <summary>
+        /// 집중 세션의 <b>구간</b>이 바뀌었을 때 발생 — 인자는 <c>(from, to)</c> 순서다
+        /// (docs/DESIGN_COSTUME_FOCUS_ARCHITECTURE.md 8-4절이 못박은 시그니처).
+        ///
+        /// <para>★ <b>발행자는 <c>Interaction/FocusWatchDirector.Update</c> 한 곳뿐이다.</b>
+        /// 세션 시간의 유일한 생산자가 그 파일이라, 다른 곳에서 구간을 다시 세면 두 계산이 반드시
+        /// 어긋난다.</para>
+        ///
+        /// <para>★★ <b>한 세션에 정확히 2회 온다</b> — 적응기→몰입기, 몰입기→한계. <b>세션 시작
+        /// (None→적응기)과 세션 종료(→None)에는 발행되지 않는다</b>: 그 둘은 「구간 전이」가 아니라
+        /// 「세션 경계」이고, 그 사실의 창구는 이미 <c>FocusWatchDirector.IsSessionActive</c> ·
+        /// <c>CurrentPhase</c>다(<c>CurrentPhase</c>는 세션 밖에서 항상 <see cref="FocusSessionPhase.None"/>).
+        /// <b>세션이 몰입기 도중에 취소·긴급정지로 끝나는 경우 이 이벤트는 오지 않으므로</b>,
+        /// 프롭 철거처럼 「세션 종료 3경로 전부」를 덮어야 하는 구독자는 이 이벤트만 믿지 말고
+        /// <c>CurrentPhase</c>를 함께 읽어야 한다(계약서 6-3 ④).</para>
+        /// </summary>
+        public static event Action<FocusSessionPhase, FocusSessionPhase> FocusSessionPhaseChanged;
+
+        /// <summary>
+        /// 코스튬 진화 단계가 <b>올라갔을</b> 때 발생(세션 종료 판정 결과). 소비자는 승급 연출
+        /// (완주 포즈 위에 얹는 한 줄 대사)과 정보창이다.
+        ///
+        /// <para>★ 이 슬롯은 <b>P2 라운드가 미리 넣어 둔 것</b>이고 발행자는 P5-a가 붙인다
+        /// (계약서 9-2절 충돌 경보 — <c>StickmanEventBus.cs</c>를 두 Phase가 함께 만지지 않도록
+        /// 이벤트를 한 라운드에 몰아 넣었다). 아무도 발행/구독하지 않아도 무해하다 —
+        /// <see cref="GlobalEmergencyStopRequested"/>가 같은 이유로 먼저 자리를 잡았던 전례와 같다.</para>
+        /// </summary>
+        public static event Action<CostumeStageAdvancedEvent> CostumeStageAdvanced;
+
         public static void RaiseStateTransitioned(StickmanStateId from, StickmanStateId to, bool isForcedInterrupt = false)
             => StateTransitioned?.Invoke(new StateTransitionEvent(from, to, isForcedInterrupt));
 
@@ -816,5 +874,11 @@ namespace StickMate.Core
 
         public static void RaiseCharacterScaleChanged(float value, string reason, bool appliedToCharacter)
             => CharacterScaleChanged?.Invoke(new CharacterScaleChangeEvent(value, reason, appliedToCharacter));
+
+        public static void RaiseFocusSessionPhaseChanged(FocusSessionPhase from, FocusSessionPhase to)
+            => FocusSessionPhaseChanged?.Invoke(from, to);
+
+        public static void RaiseCostumeStageAdvanced(string costumeKey, int stage)
+            => CostumeStageAdvanced?.Invoke(new CostumeStageAdvancedEvent(costumeKey, stage));
     }
 }

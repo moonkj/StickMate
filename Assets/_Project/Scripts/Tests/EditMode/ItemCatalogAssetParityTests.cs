@@ -36,10 +36,14 @@ namespace StickMate.Tests.EditMode
     ///  (2) <b>표 모양</b>: 7카테고리 × 4자리, (카테고리, 자리) 중복 없음, 구멍 없음, 아이디 중복 없음.
     ///  (3) <b>에셋 ↔ 런타임 1:1</b>: 에셋 파일이 든 값과 카탈로그가 내주는 값이 필드 단위로 같다.
     ///      (1)이 이미 전체를 덮지만, 실패했을 때 <b>어느 아이템의 어느 필드</b>인지 바로 말해 준다.
-    ///  (4) <b>hidesHair가 거짓말하지 않는다</b>: 새로 생긴 필드가 렌더러의 실제 동작
-    ///      (<c>AccessoryShapeBuilder.HatCoverLocalY</c>)과 일치한다. A단계에서 이 필드를 읽는 코드는
-    ///      아직 없지만, <b>지금 값을 못 박아 두지 않으면</b> 훗날 렌더러를 이 필드로 갈아탈 때
-    ///      그 라운드가 "전환"이 아니라 "동작 변경"이 된다.
+    ///  (4) <b>hidesHair가 거짓말하지 않는다</b>: 이 필드가 렌더러의 실제 동작
+    ///      (<c>AccessoryShapeBuilder.HatCoverLocalY</c>)과 일치한다.
+    ///      ★ <b>2026-09-08 Major 4로 이 항목의 성격이 바뀌었다</b> — 렌더러가 <b>실제로</b> 이 필드를
+    ///      읽기 시작했다(<c>ItemCatalog.HidesHair</c> 경유). 다만 읽는 범위는 <b>코드 표 밖의 자리</b>뿐이고,
+    ///      출하 6종(0~5)의 커버선은 여전히 <c>HatCoverLocalY</c>의 명시된 <c>case</c>가 정본이다.
+    ///      그래서 이 대조는 <b>순환이 아니다</b>: 왼쪽(에셋)과 오른쪽(코드 표)이 여전히 독립 원천이다.
+    ///      (자리 6번 이상에서는 오른쪽이 왼쪽에서 파생되므로 그쪽은 여기서 재지 않는다 —
+    ///       그 갈래는 <c>PackThemeAndHatCoverTests</c>가 두 갈래를 직접 먹여 잰다.)
     ///  (5) <b>에셋 오염 금지</b>: 런타임이 들고 다니는 좌표 배열이 임포트된 에셋의 배열과 같은
     ///      인스턴스면, 누가 한 칸만 써도 에디터에서 .asset 파일이 조용히 더러워진다.
     ///  (6) <b>팩 소속·등급 선언</b>(2026-09-05 security S-13): <c>cohortId</c>/<c>declaredRarity</c>가
@@ -177,6 +181,24 @@ namespace StickMate.Tests.EditMode
                 Assert.AreEqual(def.declaredRarity, entry.Declared,
                     $"{where} 등급 선언 — 에셋의 선언과 카탈로그가 실은 선언이 다릅니다.");
 
+                // ★ 2026-09-08 — 팩 테마·부스탯도 같은 이유로 여기서 잰다. 이 두 줄이 없으면
+                //   «에셋에는 적었는데 카탈로그로 안 넘어갔다»가 <b>기본 42종에서는 아무 초록도
+                //   갈라뜨리지 않는다</b>(기본 42종은 둘 다 비어 있으므로) — S-13과 똑같은 형태다.
+                //   entry.DeclaredTheme 은 «선언 원문»이라 코드 표 판정(entry.Theme)과 다른 값이다.
+                Assert.AreEqual(def.themeKey ?? string.Empty, entry.DeclaredTheme,
+                    $"{where} 테마 선언 — 에셋이 적은 themeKey가 카탈로그에 그대로 도착하지 않았습니다.");
+                Assert.AreEqual(def.declaredSubStat, entry.DeclaredSubStat,
+                    $"{where} 부스탯 선언 — 에셋이 적은 declaredSubStat이 카탈로그에 도착하지 않았습니다.");
+
+                // 그리고 <b>기본 코호트에서는 판정이 코드 표를 따른다</b>는 사실도 같은 자리에서 못박는다.
+                if (def.cohortId == ItemCatalog.BaseCohortId)
+                {
+                    Assert.AreEqual(ItemCatalog.ThemeOfItem(def.itemId, def.cohortId), entry.Theme,
+                        $"{where} 테마 — 기본 코호트의 테마는 코드 표가 유일한 출처입니다.");
+                    Assert.AreEqual(ItemCatalog.SubStatOfItem(def.itemId, def.cohortId), entry.SubStat,
+                        $"{where} 부스탯 — 기본 코호트의 부스탯은 코드 표가 유일한 출처입니다.");
+                }
+
                 Assert.IsNotNull(entry.Icon, $"{where} 아이콘이 비었습니다.");
                 Assert.AreEqual(def.icon.Length, entry.Icon.Length, $"{where} 아이콘 조각 수");
 
@@ -225,9 +247,11 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void hidesHair는_렌더러가_지금_실제로_하는_일과_같은_말을_한다()
         {
-            // A단계에서 이 필드를 읽는 코드는 아직 없다. 그래서 값이 틀려도 화면은 멀쩡하다 —
-            // 즉 <b>지금</b> 못 박아 두지 않으면 훗날 렌더러를 이 필드로 갈아타는 라운드가
-            // "전환"이 아니라 "동작 변경"이 되어 버린다(Major 4의 근본 해법이 되려면 그러면 안 된다).
+            // ★ 2026-09-08 — Major 4가 착지해 렌더러가 이 필드를 읽는다. 그런데 그 독해는
+            //   <b>코드 표 밖(자리 6번 이상)</b>에서만 일어나므로, 출하 6종을 재는 이 대조는
+            //   여전히 «에셋 vs 코드 표»라는 <b>서로 다른 두 원천</b>의 대조다(순환이 아니다).
+            //   ★ 그리고 이 필드는 <b>HAIR가 은퇴한 동안 화면에 닿지 않는다</b> — 값이 틀려도
+            //   화면은 멀쩡하다. 그래서 이 대조가 여전히 유일한 파수꾼이다.
             AccessoryShapeBuilder.Rig rig = MakeRig();
 
             foreach (AccessoryDefSO def in LoadDefs())
@@ -258,12 +282,23 @@ namespace StickMate.Tests.EditMode
             Assert.AreEqual(CrownIndex, AccessoryShapeBuilder.HeadCrown,
                 "왕관의 자리 번호가 바뀌었습니다 — 이 테스트의 전제가 깨졌습니다.");
 
+            int checked_ = 0;
             foreach (AccessoryDefSO def in LoadDefs())
             {
                 if (def.slot != EquipmentSlot.Head) continue;
+                // ★ 2026-09-08 — <b>기본 코호트에 한정</b>한다. 팩 모자는 자기 코호트를 쓰고
+                //   hidesHair 를 스스로 정하므로 이 문장("왕관만 남긴다")의 대상이 아니다.
+                //   한정하지 않으면 팩 HEAD 아이템이 들어온 날 이 테스트가 <b>팩 탓으로</b> 빨개진다.
+                if (def.cohortId != ItemCatalog.BaseCohortId) continue;
+                checked_++;
                 Assert.AreEqual(def.itemIndex != CrownIndex, def.hidesHair,
-                    $"[{def.itemId}] 모자 중 왕관만 머리카락을 남기고 나머지 셋은 덮습니다.");
+                    $"[{def.itemId}] 모자 중 왕관만 머리카락을 남기고 나머지 다섯은 덮습니다.");
             }
+
+            // 빈 목록을 돌고 초록이 뜨는 형태를 막는다(docs/TEAM.md 거짓 통과 #5).
+            Assert.AreEqual(ExpectedItemsPerSlot, checked_,
+                "기본 코호트 모자를 " + checked_ + "종밖에 재지 않았습니다 — " +
+                "필터가 넓어졌거나 에셋이 사라졌습니다.");
         }
 
         // ==================== (5) 에셋 오염 금지 ====================

@@ -145,12 +145,31 @@ namespace StickMate.Core
         /// <summary>테스트 전용 강제값. <c>null</c>을 넣으면 실제 판정으로 되돌아간다.
         /// <para>★ <c>public</c>인 이유: PlayMode 테스트 어셈블리(<c>StickMate.Tests.PlayMode</c>)는
         /// <c>InternalsVisibleTo</c> 대상이 아니다(<c>AssemblyInfo.cs</c>는 EditMode만 허용 —
-        /// <see cref="States.AutoWanderController.ResolveStepUpMaxHeightStatic"/>과 같은 이유). 부작용이
-        /// 테스트 격리 목적 하나뿐이라 노출해도 위험이 없다.</para></summary>
+        /// <see cref="States.AutoWanderController.ResolveStepUpMaxHeightStatic"/>과 같은 이유).</para>
+        ///
+        /// <para>★★ <b>보안 판정 (security, 2026-09-07 — 근거는 단정이 아니라 실측이다).</b>
+        /// 초판 주석은 «부작용이 테스트 격리 목적 하나뿐이라 노출해도 위험이 없다»고 <b>단정</b>했다.
+        /// 그 문장은 검증할 수 없는 형태라 아래 <b>도달 범위</b>로 바꾼다.
+        /// <list type="bullet">
+        ///   <item><see cref="ChanceOverride"/>의 유일한 소비자는 배회 AI의 로프 추첨 확률이고,</item>
+        ///   <item><see cref="TestWallEnabled"/>의 유일한 소비자는 발판 목록에 합성 벽 1개를 더하는 자리다.</item>
+        /// </list>
+        /// 두 종점 어디에서도 XP·동전·아이템 보유·엔타이틀먼트 모델로 가는 화살표가 없다
+        /// (밧줄 등반은 어떤 재화도 지급하지 않는다). 즉 이 강제값은
+        /// <c>docs/security/ENTITLEMENT_CONTRACT.md</c> §E-6-c가 겨눈 <b>C층(유료 권한) 강제값이 아니다</b>.
+        /// 그 사실을 <c>UnlockSwitchScopeAuditTests</c>가 매 실행 다시 잰다 — 누군가 이 값을 보유 판정
+        /// 쪽으로 배선하는 날 그 감사가 <b>먼저</b> 빨개진다.</para>
+        ///
+        /// <para>★ <b>이 판정이 뒤집히는 조건</b>(적어 두지 않으면 다음 사람이 모른다):
+        /// (가) 밧줄 등반이 <b>XP·동전·아이템 해금</b> 중 하나라도 지급하게 되는 날,
+        /// (나) 이 프로세스가 <b>제3자 어셈블리를 적재</b>하게 되는 날(원칙 4 플러그인 통로가
+        /// 코드까지 열리는 경우 — 오늘은 <c>Assembly.Load</c> 계열이 프로덕션에 0건이라
+        /// <c>public</c>을 바깥에서 부를 주체 자체가 없다). 둘 중 하나라도 참이 되면
+        /// <c>internal</c> 전환 또는 릴리스 무력화를 다시 검토해야 한다.</para></summary>
         public static void SetChanceTestOverride(float? value) => _chanceTestOverride = value;
 
         /// <summary>테스트 전용 강제값. <c>null</c>을 넣으면 실제 판정으로 되돌아간다. <c>public</c>인
-        /// 이유는 <see cref="SetChanceTestOverride"/>와 같다.</summary>
+        /// 이유와 <b>보안 판정</b>은 <see cref="SetChanceTestOverride"/>와 같다.</summary>
         public static void SetWallTestOverride(bool? value) => _wallTestOverride = value;
 
         private static void ResolveChance()

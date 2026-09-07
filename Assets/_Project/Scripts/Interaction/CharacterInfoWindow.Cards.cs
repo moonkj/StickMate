@@ -860,7 +860,9 @@ namespace StickMate.Interaction
             var pageGo = new GameObject("Col3", typeof(RectTransform), typeof(Image), typeof(ScrollRect));
             pageGo.transform.SetParent(body, false);
             var page = pageGo.GetComponent<RectTransform>();
-            UiChrome.PlaceTopLeft(page, Col3X, 0f, Col3Width, BodyHeight);
+            // ★ W-1 — 상수 736이 아니라 <b>지금 Body</b>다. 이 페이지의 뷰포트는 Stretch라
+            //   여기 높이를 그대로 물려받고, 그 높이가 곧 MaxGridScroll()의 분모다.
+            UiChrome.PlaceTopLeft(page, Col3X, 0f, Col3Width, _bodyHeight);
             _sectionPage = pageGo;
 
             // 카드 사이 빈틈을 잡아도 끌리게 하는 투명 판. 그래픽이 없으면 uGUI 레이캐스트가 통과해
@@ -878,7 +880,7 @@ namespace StickMate.Interaction
             contentGo.transform.SetParent(_gridViewport, false);
             _gridContent = contentGo.GetComponent<RectTransform>();
             _gridContent.anchorMin = _gridContent.anchorMax = _gridContent.pivot = new Vector2(0f, 1f);
-            _gridContent.sizeDelta = new Vector2(_gridWidth, BodyHeight);
+            _gridContent.sizeDelta = new Vector2(_gridWidth, _bodyHeight);
             _gridContent.anchoredPosition = Vector2.zero;
 
             _gridScroll = pageGo.GetComponent<ScrollRect>();
@@ -1004,7 +1006,10 @@ namespace StickMate.Interaction
             float used = -y - CategoryBlockGap + Col3PadBottom;   // 마지막 블록 뒤 간격은 빼고 아래 여백을 더한다.
             if (_gridContent != null)
             {
-                _gridContent.sizeDelta = new Vector2(_gridWidth, Mathf.Max(BodyHeight, used));
+                // ★ W-1 — 하한은 <b>지금 뷰포트</b>다. 상수 736으로 두면 화면이 낮아 뷰포트가
+                //   622가 된 탭에서 «내용은 다 들어가는데 114pt가 밀리는» 가짜 스크롤이 생긴다
+                //   (LayoutColumn2의 «아래 여백은 뷰포트가 남긴 만큼만»과 같은 병).
+                _gridContent.sizeDelta = new Vector2(_gridWidth, Mathf.Max(_bodyHeight, used));
                 // 콘텐츠가 짧아지면(탭 전환) 밀려 있던 자리가 범위 밖이 된다 — 그대로 두면 빈 화면이다.
                 float max = MaxGridScroll();
                 Vector2 p = _gridContent.anchoredPosition;

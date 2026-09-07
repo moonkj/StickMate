@@ -58,7 +58,7 @@ MonoBehaviour:
   parkourClimbPoseSmoothingRate: 44
   ropeClimbMaxHeights: 6.6
   ropeClimbSpeedHeightsPerSecond: 0.88
-  ropeClimbChance: 0.2
+  ropeClimbChance: 0.85
   ropeClimbAdjacentSearchRadiusMultiplier: 16
   ropeClimbCycleRiseHeights: 0.9
   ropeThrowWindUpSeconds: 0.35
@@ -205,6 +205,11 @@ MonoBehaviour:
   focusSessionIdleDurationMin: 4
   focusSessionIdleDurationMax: 11
   focusWatchStanceSettleSeconds: 0.45
+  costumeFocusMotionEnabled: 1
+  costumeFocusPropIntroSeconds: 0.35
+  costumeFocusPropOutroSeconds: 0.22
+  costumeFocusDutyCycleMaxSeconds: 8
+  costumeImmersionWalkChance: 0
   radialMenuHoldsCharacterInPlace: 1
   stressOveruseWindowSeconds: 300
   stressOveruseTriggerCount: 8

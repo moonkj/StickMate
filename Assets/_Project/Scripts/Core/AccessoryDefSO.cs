@@ -73,6 +73,24 @@ namespace StickMate.Core
         SwungX = 6,
         /// <summary>같은 것의 y.</summary>
         SwungY = 7,
+
+        /// <summary>
+        /// ★ <b>신장 H</b>(발바닥 → 정수리). 2026-09-07 추가 — <c>design-motion</c>이 프롭 좌표를
+        /// <b>전부 H 배수</b>로 적는데 기저 목록에 H가 없어, 매니페스트를 쓰는 사람이 손으로
+        /// R 배수로 환산해야 했다. 그 환산이 한 번 어긋나면 <b>조형이 통째로 밀린다</b>.
+        ///
+        /// <para>★★ <b>반드시 맨 뒤에 붙인다. 중간에 끼워 넣지 마라.</b> 이 번호는 <c>.asset</c>의
+        /// 스트림에 <b>숫자 그대로</b> 눕는다(<see cref="AccessoryWornShapeData.terms"/>). 중간에 끼우면
+        /// 출하된 모든 도형의 기저가 한 칸씩 밀리고, 그 사고는 <b>저장 파일을 열어봐도 안 보인다</b> —
+        /// 좌표가 「다른 값」일 뿐이라 화면은 그려진다. <c>StickmanStateId</c>가 DLC 매니페스트에
+        /// 나가는 정수라 못을 박아 둔 것과 같은 종류의 값이다.
+        /// <c>Tests/EditMode/AccessoryWornBasisHeightTests</c>가 그 배치를 매 실행 잠근다.</para>
+        ///
+        /// <para>★ <b>프레임이 H를 안 실어 주면 조용히 0이 되지 않고 <u>크게 실패한다</u></b>
+        /// (<see cref="AccessoryWornShapeReader"/>의 기저 해석). 0으로 떨어뜨리면 도형이
+        /// <b>원점으로 무너지는데</b> 그건 「안 그려짐」과 화면상 구별되지 않는다.</para>
+        /// </summary>
+        Height = 8,
     }
 
     /// <summary>항이 <b>언제</b> 더해지는가. 상태는 착용자 쪽 사실 하나(<c>stateOn</c>)이고,
@@ -240,8 +258,34 @@ namespace StickMate.Core
         /// <summary>+1이면 오른쪽을 본다. <b>x에만</b> 곱한다(원본 <c>Rig.F</c>의 규약 그대로).</summary>
         public float Facing;
 
+        /// <summary>★ 신장 H(발바닥 → 정수리). <see cref="AccessoryWornBasis.Height"/>가 딛는 값이다.
+        /// <para><b><see cref="HeightUnavailable"/>(0)이면 「안 실어 줬다」는 뜻</b>이고, 그때
+        /// H 기저를 쓰는 항은 <b>조용히 0이 되지 않고 해석이 실패한다</b>. 0을 「신장 0」이라는
+        /// 실재값으로 읽지 않는 이유는 그런 캐릭터가 없기 때문이다 — 이 저장소의
+        /// 「없음 ≠ 0」 판단이 여기서는 <b>둘이 같은 뜻</b>이라 동반 불리언이 필요 없다.</para></summary>
+        public float Height;
+
+        /// <summary>「신장을 안 실어 줬다」. 값 자체에 뜻이 있는 것이 아니라, 위 문단의 판정이
+        /// <b>숫자를 베끼지 않게</b> 하는 자리다.</summary>
+        public const float HeightUnavailable = 0f;
+
+        /// <summary>
+        /// 신장 없이 만드는 프레임. ★ <b>일부러 남겨 둔다</b> — 몸에 붙는 42종은 H 기저를 하나도
+        /// 쓰지 않으므로 이 생성자를 쓰는 기존 호출부
+        /// (<c>Interaction/AccessoryShapeBuilder.Frame</c>)가 <b>한 글자도 안 바뀐다</b>.
+        /// 새 인자를 강제하면 그 파일을 고쳐야 하고, 그건 지금 다른 라운드가 물고 있는 파일이다.
+        /// <para>H 기저를 쓰는 표면(코스튬 프롭)은 아래 8인자 생성자를 쓴다.</para>
+        /// </summary>
         public AccessoryWornFrame(float headRadius, float torsoLength, float neckLine,
             float shoulderLine, float headCenterLine, float hipLine, float facing)
+            : this(headRadius, torsoLength, neckLine, shoulderLine, headCenterLine, hipLine, facing,
+                   HeightUnavailable)
+        {
+        }
+
+        /// <summary>신장까지 실어 주는 프레임. H 기저를 쓰는 도형은 이쪽으로만 성립한다.</summary>
+        public AccessoryWornFrame(float headRadius, float torsoLength, float neckLine,
+            float shoulderLine, float headCenterLine, float hipLine, float facing, float height)
         {
             HeadRadius = headRadius;
             TorsoLength = torsoLength;
@@ -250,10 +294,14 @@ namespace StickMate.Core
             HeadCenterLine = headCenterLine;
             HipLine = hipLine;
             Facing = facing;
+            Height = height;
         }
 
-        /// <summary>구조 검사 전용 — 치수를 1로 두면 스트림이 <b>문법적으로</b> 성립하는지만 본다.</summary>
-        public static AccessoryWornFrame Unit => new AccessoryWornFrame(1f, 1f, 1f, 1f, 1f, 1f, 1f);
+        /// <summary>구조 검사 전용 — 치수를 1로 두면 스트림이 <b>문법적으로</b> 성립하는지만 본다.
+        /// <para>★ 신장도 1이다. 안 그러면 H 기저를 쓰는 도형이 <b>문법은 옳은데</b> 검사에서
+        /// 거부되고, 매니페스트를 쓰는 사람은 그 이유를 영원히 못 찾는다.</para></summary>
+        public static AccessoryWornFrame Unit
+            => new AccessoryWornFrame(1f, 1f, 1f, 1f, 1f, 1f, 1f, 1f);
     }
 
     /// <summary>
@@ -357,9 +405,11 @@ namespace StickMate.Core
                     return false;
                 }
 
-                if (!TryBasis(basis, frame, swungX, swungY, out float v))
+                if (!TryBasis(basis, frame, swungX, swungY, out float v, out string basisError))
                 {
-                    error = $"기저 번호 {basis}를 모릅니다.";
+                    // ★ 사유를 구분한다 — 「모르는 번호」와 「값을 안 실어 줬다」는 고치는 방법이 다르다.
+                    //   기존 기저 8개는 여기 오지 않으므로 그 경로의 문구는 한 글자도 안 바뀐다.
+                    error = basisError ?? $"기저 번호 {basis}를 모릅니다.";
                     return false;
                 }
 
@@ -399,8 +449,14 @@ namespace StickMate.Core
             return true;
         }
 
-        private static bool TryBasis(int basis, in AccessoryWornFrame f, float swungX, float swungY, out float value)
+        /// <summary>
+        /// 기저 번호 -> 값. <paramref name="error"/>는 <b>실패했고 사유가 「모르는 번호」가 아닐 때만</b>
+        /// 채워진다(<c>null</c>이면 호출부가 기존 문구를 쓴다 — 옛 경로의 메시지를 보존하기 위해서다).
+        /// </summary>
+        private static bool TryBasis(int basis, in AccessoryWornFrame f, float swungX, float swungY,
+            out float value, out string error)
         {
+            error = null;
             switch ((AccessoryWornBasis)basis)
             {
                 case AccessoryWornBasis.HeadRadius: value = f.HeadRadius; return true;
@@ -411,6 +467,18 @@ namespace StickMate.Core
                 case AccessoryWornBasis.HipLine: value = f.HipLine; return true;
                 case AccessoryWornBasis.SwungX: value = swungX; return true;
                 case AccessoryWornBasis.SwungY: value = swungY; return true;
+
+                // ★ H는 「값이 없으면 0」으로 떨어뜨리지 <b>않는다</b>. 0으로 두면 그 항이 통째로
+                //   사라져 도형이 원점으로 무너지고, 그 화면은 「안 그려짐」과 구별되지 않는다 —
+                //   이 저장소가 반복해서 당한 «조용한 실패»의 형태다. 크게 실패시켜 사유를 남긴다.
+                case AccessoryWornBasis.Height:
+                    if (f.Height > AccessoryWornFrame.HeightUnavailable) { value = f.Height; return true; }
+                    value = 0f;
+                    error = "이 도형이 신장(H) 기저를 쓰는데 프레임에 신장이 실려 있지 않습니다. " +
+                            "H를 받는 8인자 AccessoryWornFrame 생성자로 만들어야 합니다 — " +
+                            "0으로 넘어가면 도형이 원점으로 무너지고 그건 '안 그려짐'과 화면상 같습니다.";
+                    return false;
+
                 default: value = 0f; return false;
             }
         }
@@ -467,13 +535,27 @@ namespace StickMate.Core
         public int requiredLevel = 1;
 
         /// <summary>
-        /// ★ 이 아이템이 <b>머리카락을 가리는가</b>. 지금 <c>AccessoryShapeBuilder.HatCoverLocalY</c>는
-        /// "모자면 가린다"를 전역 규칙으로 갖고 있는데, 그건 규칙이 아니라 <b>아이템별 성질</b>이다
-        /// (왕관은 얹는 것이라 밑이 뚫려 있어 머리가 보이는 게 옳다).
-        /// <para><b>A단계에서는 아직 아무도 읽지 않는다</b> — 값만 실제 렌더러 동작과 일치하게 채워 둔다.
-        /// 렌더러를 이 필드로 갈아타게 하는 것은 별도 라운드다(Major 4).</para>
+        /// ★ 이 아이템이 <b>머리카락을 가리는가</b>.
+        ///
+        /// <para>★★ <b>2026-09-08 Major 4 착지 — 렌더러가 이 필드를 읽는다.</b> 다만 읽는 범위는
+        /// <b>코드 표 밖의 자리(= 팩 모자)뿐</b>이다. 출하 6종(0~5)의 커버선은 여전히
+        /// <c>AccessoryShapeBuilder.HatCoverLocalY</c>의 명시된 <c>case</c>가 정본이다 —
+        /// 그 여섯이 <b>좌표</b>(H-2 착용선)를 갖고 있고 이 <c>bool</c>은 좌표를 실을 수 없기 때문이다.
+        /// 그래서 이 필드가 답하는 것은 <b>「가리는가」</b> 하나이고 <b>「어디까지」</b>가 아니다.</para>
+        ///
+        /// <para>★ <b>옛 주석이 말한 「모자면 가린다는 전역 규칙」은 이미 사실이 아니었다</b>(2026-09-08 실측):
+        /// 왕관은 <c>if</c> 분기가 아니라 <c>case HeadCrown: return NothingCovered;</c>라는 <b>표의 값</b>으로
+        /// 이미 면제였다. 실재하던 결함은 <b><c>default:</c> 하나</b>였다 — 코드 표에 없는 번호를 전부
+        /// 「모르는 모자」로 신고해서, <b>팩 HEAD 아이템이 들어오는 순간 재구성마다 결함 경로를 밟았다</b>.</para>
+        ///
+        /// <para>★ <b>HAIR 카테고리는 은퇴했다</b>(<c>EquipmentModel.IsRetiredSlot</c>, 2026-09-06 사용자 지시).
+        /// 커버선의 유일한 소비자가 <c>AppendHair</c>이므로 <b>오늘 이 값은 화면에 한 점도 닿지 않는다.</b>
+        /// 그래도 값을 옳게 적는다 — 카테고리가 되살아나는 날 이 필드가 곧 동작이 되고, 그때
+        /// 틀린 값은 <b>원인 모를 그림 변화</b>로 나타난다.</para>
         /// </summary>
-        [Tooltip("모자 계열이 머리카락을 덮는가. A단계에서는 기록만 하고 렌더러는 아직 읽지 않는다.")]
+        [Tooltip("모자 계열이 머리카락을 덮는가. 팩 모자는 이 값이 곧 렌더러의 판정이다 " +
+                 "— 좌표를 실을 수 없으므로 true로 적으면 '가린다고 선언했는데 커버선이 없다'로 신고된다. " +
+                 "얹는 물건(왕관 같은)은 false.")]
         public bool hidesHair;
 
         /// <summary>
@@ -522,6 +604,47 @@ namespace StickMate.Core
                  "이 칸을 건드리면 안 된다. DLC 팩만 선언하고, 팩은 6종이 전부 같은 단이어야 하며 " +
                  "상한은 희귀다(ItemCatalog.MaxDeclaredRarityForPack).")]
         public DeclaredRarity declaredRarity = DeclaredRarity.Derived;
+
+        /// <summary>
+        /// ★ 이 아이템의 <b>세트 테마 키</b>. 비면 <see cref="ItemCatalog.ThemeUnassigned"/>(= 무소속)다.
+        ///
+        /// <para><b>기본 42종은 이 칸을 비운다.</b> 그쪽 테마는 <c>ItemCatalog</c>의 코드 표
+        /// (<c>ThemeTable</c>, R21 안 B)가 <b>정본</b>이고, 이 칸에 무엇을 적어도
+        /// <c>ItemCatalog.ResolveTheme</c>이 <b>보지 않는다</b> — 조용히 무시하면 그게 두 번째 진실이 되므로
+        /// <c>ItemCatalog.AuditDeclarations</c>가 <b>결함으로 신고</b>한다.</para>
+        ///
+        /// <para><b>팩은 반드시 적는다</b>(스탯 4슬롯 아이템에 한해). 팩 아이템은 코드 표에 못 들어가므로
+        /// 이 칸이 <b>유일한 통로</b>다(§21-10-a). 비워 두면 그 팩은 <b>세트를 영원히 완성할 수 없고</b>,
+        /// 증상은 조용하다 — 화면은 멀쩡하고 +8만 안 붙는다(DS-4′-e 침묵 실패).</para>
+        ///
+        /// <para>★ <b>기본 6테마(<c>ink/sport/office/cyber/mil/neon</c>)를 팩이 쓰면 결함이다.</b>
+        /// <c>EquipmentStatRules.IsSetComplete</c>는 <b>문자열 동등성만</b> 보고 코호트를 안 보므로
+        /// (<c>StatSlotLoadout</c>이 코호트를 안 나른다), 팩이 <c>mil</c>을 쓰면 <b>기본 3종 + 팩 1종</b>
+        /// 조합에 세트 보너스가 붙는다 — 무료 세트의 경제가 유료 아이템으로 새는 형태다.</para>
+        ///
+        /// <para>★ 값 모양은 <see cref="PackManifestKeys.IsWellFormed"/>로 잰다(ASCII 소문자·숫자·점·밑줄).
+        /// 판정자를 두 벌로 적지 않는다 — 매니페스트 키와 <b>같은 자</b>를 쓴다.</para>
+        /// </summary>
+        [Tooltip("세트 테마 키(예: mine, arcane). 기본 42종은 비운다 — 코드 표가 정본이다. " +
+                 "팩의 스탯 4슬롯 아이템은 반드시 적는다(비면 세트가 영원히 완성되지 않는다). " +
+                 "기본 6테마(ink/sport/office/cyber/mil/neon)는 쓸 수 없다.")]
+        public string themeKey;
+
+        /// <summary>
+        /// ★ 이 아이템의 <b>부스탯 방향</b> 선언. <see cref="DeclaredSubStat.None"/>(기본)이면
+        /// 선언하지 않은 것이다.
+        ///
+        /// <para><b>기본 42종은 이 칸을 비운다</b> — <c>themeKey</c>와 같은 이유이고, 같은 감사가 잡는다.
+        /// <b>팩은 스탯 4슬롯 아이템에 한해 반드시 적는다</b>: 안 적으면 그 아이템은 같은 자리의 무료
+        /// 아이템보다 <b>부스탯 하나만큼 약한 채로</b> 팔린다(현금을 낸 쪽이 손해다).</para>
+        ///
+        /// <para>타입이 <see cref="CharacterStat"/>가 <b>아닌</b> 이유(직렬화 기본값 0 = 집중력)는
+        /// <see cref="DeclaredSubStat"/> 문단에 실측과 함께 있다 —
+        /// <b>이 필드를 <c>CharacterStat</c>으로 되돌리기 전에 그것부터 읽을 것.</b></para>
+        /// </summary>
+        [Tooltip("부스탯 방향 선언. None(기본)이면 없음 — 기본 42종은 전부 이것이고 이 칸을 건드리면 안 된다. " +
+                 "팩의 스탯 4슬롯 아이템만 적는다. 외형 슬롯(머리/이펙트/펫)은 팩이라도 None이다.")]
+        public DeclaredSubStat declaredSubStat = DeclaredSubStat.None;
 
         [Header("카드 썸네일 (40×40 viewBox, 원점 좌상단, y 아래로)")]
         public AccessoryIconPartData[] icon;

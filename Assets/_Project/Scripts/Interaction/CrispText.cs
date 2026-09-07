@@ -41,11 +41,26 @@ namespace StickMate.Interaction
     ///   <item><b>움직이는 글자는 계단 이동한다.</b> 창을 드래그하는 동안 글자는 1 물리 픽셀 단위로
     ///     뛰고, 부드럽게 움직이는 패널 테두리와 최대 ±0.5 물리 픽셀 어긋난다
     ///     (Retina 2x에서 0.25pt, Windows 150%에서 0.33pt). <b>대안은 「항상 번져 있음」</b>이다.
-    ///     <para>★ <b>말풍선은 이 항목의 예가 아니다</b> — 만화 레터링 모드는 글자에 손글씨
-    ///     기울기(실기 로그 실측 <c>-9.2도</c>)를 걸어 두어
-    ///     <see cref="GlyphPixelSnapPolicy.IsAxisAligned"/>가 false다. 즉 그 표면에서는 스냅이
-    ///     <b>아예 돌지 않는다</b>(그쪽 흐림의 주범은 외곽선이라는 것이 2026-09-01 오프라인
-    ///     A/B로 이미 실측됐다 — <c>DialogueBubbleRenderer</c>의 「말풍선만 글자가 뭉개다」 블록).</para></item>
+    ///     <para>★★ <b>정정 2026-09-07(debugger) — 「말풍선은 이 항목의 예가 아니다」는 절반만 참이다.</b>
+    ///     원문은 만화 레터링의 손글씨 기울기(<c>-9.2도</c>) 때문에
+    ///     <see cref="GlyphPixelSnapPolicy.IsAxisAligned"/>가 false라 그 표면에서는 스냅이 아예 돌지
+    ///     않는다고 적었다. 그런데 그 기울기는 <b>무조건 켜지지 않는다</b> —
+    ///     <c>DialogueBubbleRenderer.ComicTiltMinGlyphPixels</c>(=14)가 <b>물리 픽셀</b> 하한을 걸어
+    ///     <c>fontSize × canvasScale &lt; 14</c>면 각도가 <b>0</b>이 된다.
+    ///     <list type="bullet">
+    ///       <item><b>Retina 2x</b>: 13pt × 2 = 26px ≥ 14 → 기울기 켜짐 → 스냅 <b>안 돈다</b>(원문이 맞다).</item>
+    ///       <item><b>1x 화면</b>(Windows 100% · 비Retina macOS): 13pt × 1 = 13px &lt; 14 → 기울기 <b>0도</b> →
+    ///         축 정렬 → 스냅이 <b>돈다</b>. 즉 <b>원문이 틀리는 쪽이 하필 이 수정의 주 타깃인 Windows다</b>.</item>
+    ///     </list>
+    ///     실측 근거: <c>docs/verify/runs/ropeclimb-r3_play.xml</c> 배치모드(배율 1.0) 로그가
+    ///     «글자크기=13pt … <b>기울기=0.0도(꺼짐)</b>»를 찍었다.
+    ///     ⇒ 1x에서 말풍선 글자는 <b>움직이는 동안 매 프레임 재스냅</b>되고, 그 라벨에는
+    ///     <c>Outline</c>/<c>Shadow</c>(<c>IMeshModifier</c>)가 붙어 있어 재빌드 비용이 아래 2번 항목의
+    ///     «정점 복사뿐»보다 크다(외곽선은 글리프 메시를 네 방향으로 복제한다).
+    ///     그 표면을 스냅에서 빼야 하는지는 <b>연출 판단</b>이라 여기서 단독으로 정하지 않는다 —
+    ///     리더/<c>dev-platform</c> 소관으로 올려 둔다.
+    ///     (한편 그쪽 흐림의 주범이 외곽선이라는 2026-09-01 오프라인 A/B 실측은 그대로 유효하다 —
+    ///     <c>DialogueBubbleRenderer</c>의 「말풍선만 글자가 뭉개다」 블록.)</para></item>
     ///   <item><b>움직이는 동안 메시를 다시 만든다.</b> 위상이 격자에서 벗어난 프레임에만
     ///     <see cref="Graphic.SetVerticesDirty"/>를 건다. <see cref="Text"/>의 <c>TextGenerator</c>는
     ///     문자열·설정이 그대로면 캐시를 돌려주므로 비용은 정점 복사뿐이다. 정지한 창에서는
@@ -121,21 +136,71 @@ namespace StickMate.Interaction
         // 프로덕션 로직은 이 값을 <b>읽지 않는다</b> — 순수 관측용이다.
         // ------------------------------------------------------------------------
 
-        /// <summary>직전 틱에서 드리프트를 검사한 인스턴스 수(진단·테스트용).
-        /// <para>0이면 <b>드라이버가 안 돌았다</b>는 뜻이다 — 그 상태에서 "재스냅 0회"는
-        /// "괜찮다"가 아니라 "재 보지 않았다"이다. 두 테스트가 이 값을 함께 본다.</para></summary>
+        /// <summary>직전 틱에서 드리프트를 검사한 인스턴스 수(진단용). <b>앱 전체</b>가 몇 개의
+        /// 글자를 들고 있는지를 말한다 — 프로세스 전역이다.
+        /// <para>0이면 <b>드라이버가 안 돌았다</b>는 뜻이다.</para>
+        /// <para>★ <b>다만 «내 글자가 검사됐는가»의 근거로는 쓰지 마라</b>(2026-09-07 정정). 앱의
+        /// 다른 글자 하나만 살아 있어도 이 값은 &gt; 0이라, 「내 글자는 목록에 없었다」와
+        /// 구분되지 않는다 — <see cref="ResnapCount"/>가 588회 거짓 빨강을 낸 것과 <b>같은 병</b>이고,
+        /// 이쪽은 조용히 <b>초록</b>이 되는 쪽이라 더 위험하다.
+        /// 인스턴스 단위 근거는 <see cref="InstanceDriftCheckCount"/>다.</para></summary>
         public static int LastDriftCheckCount { get; private set; }
 
-        /// <summary>프로세스 수명 동안 위상 드리프트로 메시를 다시 만든 횟수(진단·테스트용).
-        /// <b>정지한 창만 떠 있는데 이 값이 계속 오르면 스냅이 수렴하지 않는다는 뜻</b>이고,
-        /// 그건 이 클래스의 결함이다(무한 재빌드 = 상주 앱에서 조용한 부하).</summary>
+        /// <summary>프로세스 수명 동안 <b>살아 있는 모든 인스턴스</b>가 위상 드리프트로 메시를 다시
+        /// 만든 횟수(진단용 총계).
+        ///
+        /// <para>★★ <b>이 값을 「수렴했는가」의 판정에 쓰지 마라</b>(2026-09-07 거짓 빨강 1건).
+        /// 원래 주석은 «정지한 창만 떠 있는데 이 값이 계속 오르면 스냅이 수렴하지 않는다는 뜻»이라고
+        /// 적었고, 그 문장을 그대로 믿은 PlayMode 테스트가 <b>588회</b>를 세어 실패했다. 그런데
+        /// 이 카운터는 <b>프로세스 전역</b>이고 <see cref="TickAll"/>은 <b>앱의 모든 글자</b>를 훑는다 —
+        /// 배치모드 PlayMode는 <c>Main.unity</c>를 띄운 채 돌므로, <b>설계대로 매 프레임 움직이는</b>
+        /// 말풍선 라벨(<c>DialogueBubbleRenderer</c>의 <c>Label</c>)이 같은 카운터에 함께 쌓인다.
+        /// 즉 <b>«내 글자가 발산했다»와 «남의 글자가 정상적으로 따라다녔다»가 똑같이 생긴다</b> —
+        /// 이 저장소가 반복해 겪은 그 형태다.</para>
+        ///
+        /// <para>⇒ <b>수렴 판정은 반드시 <see cref="InstanceResnapCount"/>(인스턴스별)로 한다.</b>
+        /// 이 총계는 «앱 전체가 지금 얼마나 글자를 다시 굽고 있는가»라는 <b>부하 지표</b>로만 읽는다.</para></summary>
         public static int ResnapCount { get; private set; }
 
-        /// <summary>테스트가 카운터를 되돌리는 통로. <b>프로덕션은 부르지 않는다</b>.</summary>
+        /// <summary>테스트가 <b>전역</b> 카운터를 되돌리는 통로. <b>프로덕션은 부르지 않는다</b>.
+        /// <para>★ 전역 값은 «앱 전체 부하» 지표다. 「이 글자가 수렴했는가」를 물으려면
+        /// <see cref="ResetInstanceCountersForTest"/> + <see cref="InstanceResnapCount"/>를 써라 —
+        /// 이유는 <see cref="ResnapCount"/> 문서에 있다.</para></summary>
         public static void ResetCountersForTest()
         {
             LastDriftCheckCount = 0;
             ResnapCount = 0;
+        }
+
+        // ------------------------------------------------------------------------
+        // ★★ 인스턴스별 진단 카운터 (2026-09-07 debugger 신설)
+        //
+        // 왜 생겼나: 위 전역 두 개만으로는 <b>「내 글자」와 「남의 글자」를 구분할 수 없다</b>.
+        // 배치모드 PlayMode는 Main.unity(앱 전체)를 띄운 채 도는데, TickAll()은 프로세스의 모든
+        // 인스턴스를 훑으므로 <b>설계대로 매 프레임 따라다니는 말풍선 라벨</b>이 같은 카운터에
+        // 쌓인다. 실제로 그것 때문에 «정지한 글자가 588회 재스냅됐다»는 거짓 빨강이 났다.
+        //
+        // 이 둘은 프로덕션 로직이 <b>읽지 않는다</b>(순수 관측). int 두 개라 인스턴스당 8바이트다.
+        // ------------------------------------------------------------------------
+
+        /// <summary><b>이 인스턴스</b>가 «스냅이 걸린 상태로» 드리프트 검사를 받은 횟수.
+        /// <para>0이면 이 글자는 애초에 스냅 경로에 들어가지 못했다(캔버스 없음 / 회전됨 /
+        /// 정점 0개 / <see cref="SnapEnabled"/> false). 그 상태에서 «재스냅 0회»는 «괜찮다»가
+        /// 아니라 <b>«재 보지 않았다»</b>이므로, 수렴을 단언하는 테스트는 이 값이 &gt; 0임을
+        /// 반드시 함께 확인한다.</para></summary>
+        public int InstanceDriftCheckCount { get; private set; }
+
+        /// <summary><b>이 인스턴스</b>가 위상 드리프트로 메시를 다시 만들게 한 횟수.
+        /// <para>표면이 <b>정지해 있는데</b> 이 값이 계속 오르면 그때는 진짜로 스냅이 수렴하지
+        /// 않는 것이고, 그건 이 클래스의 결함이다(무한 재빌드 = 상주 앱에서 조용한 부하).
+        /// <b>전역 <see cref="ResnapCount"/>로는 그 판정을 할 수 없다.</b></para></summary>
+        public int InstanceResnapCount { get; private set; }
+
+        /// <summary>이 인스턴스의 카운터를 되돌린다. <b>프로덕션은 부르지 않는다</b>.</summary>
+        public void ResetInstanceCountersForTest()
+        {
+            InstanceDriftCheckCount = 0;
+            InstanceResnapCount = 0;
         }
 
         /// <summary>스냅을 적용한 뒤의 정점 0 <b>로컬</b> 좌표. 다음 프레임에 이 점만 다시 월드로
@@ -238,9 +303,13 @@ namespace StickMate.Interaction
         internal void ReSnapIfDrifted()
         {
             if (!_snapApplied || !SnapEnabled) return;
+            // ★ 이 줄이 «스냅이 걸린 채로 실제로 재 봤다»의 증거다. 가드보다 <b>뒤</b>에 두는 것이
+            //   핵심 — 앞에 두면 «방문했다»만 세게 되어 «재 보지 않았다»와 구분되지 않는다.
+            InstanceDriftCheckCount++;
             Vector3 world = rectTransform.localToWorldMatrix.MultiplyPoint3x4(_snappedLocal);
             if (GlyphPixelSnapPolicy.IsPixelAligned(world.x, world.y)) return;
             ResnapCount++;
+            InstanceResnapCount++;
             SetVerticesDirty();
         }
 

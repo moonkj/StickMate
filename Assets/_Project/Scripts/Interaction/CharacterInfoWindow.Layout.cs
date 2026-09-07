@@ -27,6 +27,33 @@ namespace StickMate.Interaction
         private const float MinPanelWidth = 320f;
         private const float MinPanelHeight = 320f;
 
+        /// <summary>
+        /// ★★ <b>지금</b> Body가 실제로 쓰는 세로(pt). <see cref="BodyHeight"/>는 <b>설계 크기 상수</b>이고,
+        /// 화면이 낮으면 <see cref="ClampPanelToScreen"/>이 창을 줄여 Body가 그보다 작아진다.
+        ///
+        /// <para>★ <b>이 필드가 왜 생겼나 — 결함 W-1</b>(2026-09-08 <c>ux-designer</c> §14-6 실측).
+        /// <c>Body</c>는 앵커 스트레치라 패널을 따라 줄어드는데, 그 안의 <b>컬럼 루트 · <c>Col2Viewport</c> ·
+        /// 컬럼 3 페이지</b>는 전부 컴파일 타임 상수 736으로 고정돼 있었다. <c>MaxCol2Scroll()</c>의
+        /// 분모가 «실제 Body»가 아니라 736이라 <b>Body가 줄어도 스크롤 범위가 늘지 않았고</b>,
+        /// 잘려 나간 아래쪽에 <b>도달할 방법이 아예 없었다</b>:
+        /// <code>
+        /// Windows 1366×768 @100% → Body 670 : 세트 패널 2행이 통째로 안 보이는데 최대 스크롤 0
+        /// Windows 1920×1080 @150% → Body 622 : 세트 블록이 4pt만 보인다(제목도 안 읽힌다)
+        /// </code>
+        /// 그리고 <c>CharacterInfoWindow.Stats.cs</c>가 적어 둔 *"스크롤이 그 구멍을 닫는다"*는
+        /// <b>거짓이었다</b> — 스크롤은 붙었지만 뷰포트가 안 줄어서 닿지 못했다. 이 저장소가 반복해
+        /// 당한 *"죽은 프로브가 산 프로브와 똑같이 생겼다"*의 UI판이다(스크롤이 있으니 해결됐다고 읽힌다).</para>
+        ///
+        /// <para><b>규약: 런타임에 크기가 정해지는 상자는 <see cref="BodyHeight"/>를 쓰지 않고 이 값을 쓴다.</b>
+        /// 유일한 쓰는 곳은 <see cref="SyncColumnLayout"/>이고, 초깃값은 설계 크기(굽는 시점의 Body와 같다).</para>
+        ///
+        /// <para>★ 세로 구분선(<c>Col1Rule</c>/<c>Col2Rule</c>)은 <b>일부러 그대로 736으로 둔다</b> —
+        /// 그 둘은 그리기만 하는 면이고 <c>Body</c>의 <see cref="RectMask2D"/>가 정확히 Body 아래 끝에서
+        /// 자르므로 <b>결과가 이미 옳다</b>. 패널은 <see cref="PanelHeight"/>보다 커질 수 없으니
+        /// «구분선이 모자라는» 반대 방향은 구조적으로 생기지 않는다.</para>
+        /// </summary>
+        private float _bodyHeight = BodyHeight;
+
         /// <summary>작은 화면에서 창이 화면 밖으로 나가지 않게 <b>가로·세로 모두</b> 줄인다.
         /// 예전에는 세로만 줄이고 폭은 항상 880이라 640폭 화면에서 좌우로 각각 120pt씩 흘러나갔다
         /// (2026-08-30 디버거 실측). 잘리는 것은 본문 오른쪽/아래쪽이고 <see cref="RectMask2D"/>가
@@ -42,7 +69,9 @@ namespace StickMate.Interaction
             if (!Mathf.Approximately(_panel.sizeDelta.x, width) || !Mathf.Approximately(_panel.sizeDelta.y, height))
             {
                 _panel.sizeDelta = new Vector2(width, height);
-                SyncColumnLayout(width);
+                // ★ W-1 — 폭만 넘기면 뷰포트가 736에 얼어붙는다(<see cref="_bodyHeight"/> 문단).
+                //   Body는 앵커 스트레치라 «패널 − 헤더»가 그 자리의 정의 그대로다.
+                SyncColumnLayout(width, height - HeaderHeight);
                 SyncActionReachability();
             }
 
@@ -55,10 +84,16 @@ namespace StickMate.Interaction
         //   "창 크기와 헤더는 탭에 따라 변하지 않는다"가 된다. 세로 애니메이션도 함께 사라졌다 —
         //   움직이지 않는 값을 부드럽게 옮길 이유가 없다.
         //
-        //   ★ 세로가 728pt 미만인 화면의 강등 사다리(컬럼 1 세로 스크롤)는 <b>아직 없다</b>.
+        //   ★ 세로가 728pt 미만인 화면의 강등 사다리(<b>컬럼 1</b> 세로 스크롤)는 <b>아직 없다</b>.
         //     지금은 Body의 RectMask2D가 아래를 자르고, 상세 카드가 컬럼 1 바닥에 붙어 있어
-        //     그 화면에서는 상세 카드가 먼저 잘린다. 착용 경로는 컬럼 3(항상 스크롤 가능)의 카드
-        //     버튼이 전담하므로 도달성은 유지된다(문서 §3-6).
+        //     그 화면에서는 상세 카드가 먼저 잘린다. 착용 경로는 컬럼 3의 카드 버튼이 전담하므로
+        //     도달성은 유지된다(문서 §3-6).
+        //
+        //   ★★ 2026-09-08 정정 — 바로 위 문장의 «컬럼 3(항상 스크롤 가능)»은 <b>그때 거짓이었다</b>.
+        //     컬럼 3 페이지도 뷰포트가 736에 얼어붙어 있어서, Body가 줄면 스크롤 범위가 함께
+        //     늘지 않았다(결함 W-1 — <see cref="_bodyHeight"/> 문단). 지금은 SyncColumnLayout이
+        //     페이지·뷰포트를 Body에 맞춰 줄이므로 <b>그 문장이 참이 됐다</b>.
+        //     컬럼 1은 여전히 스크롤이 없다 — 그쪽은 미해결이고, 도달성 보증은 컬럼 3이 진다.
 
         /// <summary>창 중심이 화면 밖으로 나가지 않는 범위로 자른다 — 드래그와 화면 크기 변화가
         /// <b>같은 규칙</b>을 쓴다. 좌표계는 화면 중앙 원점이고, 창이 화면만큼 커지면 이동량은 0이 된다.</summary>
@@ -94,9 +129,17 @@ namespace StickMate.Interaction
         /// <b>[✕]는 절대 접지 않는다</b> — 이 창의 유일한 탈출구다.</para>
         ///
         /// <para>창 크기가 <b>바뀔 때만</b> 불린다(<see cref="ClampPanelToScreen"/>).</para>
+        ///
+        /// <para>★★ <b>세로 강등(결함 W-1)도 여기서 한다</b> — <paramref name="bodyHeight"/>가 그 통로다.
+        /// 상세 근거는 <see cref="_bodyHeight"/> 문단에 있다. 한 줄로: <b>스크롤이 붙어 있어도
+        /// 뷰포트가 안 줄면 잘린 곳에 닿지 못한다.</b></para>
         /// </summary>
-        private void SyncColumnLayout(float panelWidth)
+        /// <param name="bodyHeight">지금 Body가 실제로 쓰는 세로 = 패널 세로 − <see cref="HeaderHeight"/>.</param>
+        private void SyncColumnLayout(float panelWidth, float bodyHeight)
         {
+            // 하한은 클램프 하한에서 <b>유도</b>한다 — 새 숫자를 만들면 두 하한이 갈라진다.
+            _bodyHeight = Mathf.Max(MinPanelHeight - HeaderHeight, bodyHeight);
+
             // 접는 순서: 컬럼 2 → 컬럼 1 → (그래도 모자라면) 카드 2열 → 1열.
             _showCol1 = panelWidth >= Col1Width + MinGridColumnWidth;                 // 750
             _showCol2 = _showCol1 && panelWidth >= Col3X + MinGridColumnWidth;        // 1042
@@ -106,15 +149,31 @@ namespace StickMate.Interaction
             _gridContentWidth = _gridWidth - Col3PadX * 2f - Col3ScrollbarInset;
             _gridColumns = _gridContentWidth >= CardWidth * 2f + CardGap ? 2 : 1;
 
+            // ---- 세로: Body를 따라가야 하는 상자들 ----
+            // ★ 순서가 중요하다 — 뷰포트를 먼저 줄이고 나서 LayoutColumn2()/RefreshCards()를 부른다.
+            //   그 둘이 «콘텐츠 높이 − 뷰포트 높이»로 스크롤 범위를 다시 잡기 때문이다.
+            if (_col1Root != null)
+            {
+                UiChrome.PlaceTopLeft((RectTransform)_col1Root.transform, 0f, 0f, Col1Width, _bodyHeight);
+            }
+            if (_col2Root != null)
+            {
+                UiChrome.PlaceTopLeft((RectTransform)_col2Root.transform, Col2X, 0f, Col2Width, _bodyHeight);
+            }
+            if (_col2Viewport != null)
+            {
+                UiChrome.PlaceTopLeft(_col2Viewport, 0f, 0f, Col2ViewportWidth, _bodyHeight);
+            }
             if (_sectionPage != null)
             {
                 UiChrome.PlaceTopLeft(_sectionPage.GetComponent<RectTransform>(), _gridX, 0f,
-                    _gridWidth, BodyHeight);
+                    _gridWidth, _bodyHeight);
             }
 
             ApplyColumnVisibility();
             SyncHeaderChips(panelWidth);
-            RefreshCards();   // 열 수·헤더 폭이 바뀌면 좌표를 다시 잡아야 한다.
+            LayoutColumn2();  // 뷰포트가 줄면 스크롤 범위와 «밀려 있던 자리»가 함께 바뀐다.
+            RefreshCards();   // 열 수·헤더 폭·뷰포트 높이가 바뀌면 좌표를 다시 잡아야 한다.
         }
 
         /// <summary>컬럼 1·2가 지금 보이는가 — 탭 종류(카드 탭인가)와 폭(<see cref="SyncColumnLayout"/>)

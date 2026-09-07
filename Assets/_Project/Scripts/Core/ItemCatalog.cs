@@ -165,7 +165,8 @@ namespace StickMate.Core
         ///
         /// <para><b>외형 3슬롯(머리/이펙트/펫) 18종은 <see cref="EquipmentStatRules.NoStat"/>이고
         /// 그건 플레이스홀더가 아니라 구조적 사실이다</b>(§14-1: "외형 18종은 스탯 기여 0").
-        /// 팩 아이템도 지금은 <c>NoStat</c>이다 — 팩이 부스탯을 선언하는 통로는 아직 없다.</para>
+        /// <b>팩은 2026-09-08부터 <see cref="AccessoryDefSO.declaredSubStat"/>으로 선언한다</b> —
+        /// 안 적으면 여전히 <c>NoStat</c>이고, 그 침묵은 <see cref="ItemCatalog.AuditDeclarations"/>가 신고한다.</para>
         /// </summary>
         public readonly int SubStat;
 
@@ -184,10 +185,12 @@ namespace StickMate.Core
         /// 산술적으로 6테마 중 최대 1개만 만족한다(F5). 안 B에서 그 하나는
         /// <see cref="ItemCatalog.ThemeInk"/>이고 그것이 F5가 증명한 상한이다.</para>
         ///
-        /// <para>★ 값이 아직 코드 표에 있고 <see cref="AccessoryDefSO"/>로 안 내려간 이유는
-        /// <see cref="SubStat"/>과 같다(그 판정은 <c>game-architect</c> 소관, §21-10-a).
-        /// 옮기는 날 바뀌는 곳은 <see cref="ItemCatalog.EntryFrom"/> 하나다 —
-        /// <c>cohortId</c>·<c>declaredRarity</c>가 이미 간 길이다.</para>
+        /// <para>★ <b>기본 42종의 값은 여전히 코드 표에 있다</b>(그 판정은 <c>game-architect</c> 소관,
+        /// §21-10-a) — 옮기지 않은 것이지 통로가 없는 것이 아니다.
+        /// <b>팩은 2026-09-08부터 <see cref="AccessoryDefSO.themeKey"/>로 선언한다</b>:
+        /// 배선은 <see cref="ItemCatalog.EntryFrom"/> 한 줄이고 판정은
+        /// <see cref="ItemCatalog.ResolveTheme"/> 한 곳이다. 기본 코호트가 <c>themeKey</c>를 적어도
+        /// <b>읽지 않는다</b> — 애셋 한 줄이 출하 42종의 세트를 움직이는 경로를 원리적으로 없앤 것이다.</para>
         /// </summary>
         public readonly string Theme;
 
@@ -230,11 +233,27 @@ namespace StickMate.Core
         /// </summary>
         internal readonly DeclaredRarity Declared;
 
+        /// <summary>
+        /// ★ 에셋이 <b>적은 그대로</b>의 테마 키(<see cref="AccessoryDefSO.themeKey"/>). 비면 안 적은 것이다.
+        ///
+        /// <para><b><see cref="Theme"/>와 다르다</b> — 그쪽은 <b>판정 결과</b>이고 이쪽은 <b>선언 원문</b>이다.
+        /// 기본 코호트에서는 이 값이 무엇이든 <see cref="Theme"/>가 코드 표를 따르므로 둘이 갈린다.
+        /// 그 «갈림»을 볼 수 있어야 <see cref="ItemCatalog.AuditDeclarations"/>가
+        /// <b>「적었는데 안 읽힌다」</b>를 신고할 수 있다 — 결과만 들고 있으면 그 사실이 사라진다
+        /// (<see cref="Declared"/>가 <c>Rarity</c>와 따로 있는 것과 같은 이유).</para>
+        /// </summary>
+        internal readonly string DeclaredTheme;
+
+        /// <summary>에셋이 적은 그대로의 부스탯 선언(<see cref="AccessoryDefSO.declaredSubStat"/>).
+        /// <see cref="SubStat"/>과의 관계는 <see cref="DeclaredTheme"/> 문단과 같다.</summary>
+        internal readonly DeclaredSubStat DeclaredSubStat;
+
         private readonly string _displayName;
 
         private ItemCatalogEntry(string id, ItemCategory category, EquipmentSlot? slot, int itemIndex,
             string displayName, string description, string actionStatus, bool directlyInvocable, int? requiredLevel,
-            ItemIconPart[] icon, int cohortId, DeclaredRarity declared)
+            ItemIconPart[] icon, int cohortId, DeclaredRarity declared,
+            string declaredTheme, DeclaredSubStat declaredSubStat)
         {
             Id = id;
             Category = category;
@@ -242,6 +261,8 @@ namespace StickMate.Core
             ItemIndex = itemIndex;
             CohortId = cohortId;
             Declared = declared;
+            DeclaredTheme = declaredTheme ?? string.Empty;
+            DeclaredSubStat = declaredSubStat;
             _displayName = displayName;
             Description = description;
             ActionStatus = actionStatus;
@@ -278,9 +299,15 @@ namespace StickMate.Core
             //   그 변경은 「값이 아직 미확정」이라는 지금 상태와 비용이 안 맞는다. 값이 애셋으로
             //   내려가는 날 바뀌는 곳은 EntryFrom 하나다(cohortId·declaredRarity가 이미 간 길).
             //   ★ 행동(Action)은 슬롯도 등급도 없어 스탯 축이 애초에 없다 — 표를 보지 않는다.
+            //   ★ 2026-09-08 — 팩 통로가 열렸다. 기본 코호트는 여전히 <b>코드 표</b>가 정본이고
+            //   팩은 <b>에셋 선언</b>이 정본이다. 그 갈래는 ResolveSubStat/ResolveTheme 안에만 있다.
             bool equipment = category == ItemCategory.Equipment;
-            SubStat = equipment ? ItemCatalog.SubStatOfItem(id, cohortId) : EquipmentStatRules.NoStat;
-            Theme = equipment ? ItemCatalog.ThemeOfItem(id, cohortId) : string.Empty;
+            SubStat = equipment
+                ? ItemCatalog.ResolveSubStat(id, cohortId, declaredSubStat)
+                : EquipmentStatRules.NoStat;
+            Theme = equipment
+                ? ItemCatalog.ResolveTheme(id, cohortId, declaredTheme)
+                : string.Empty;
         }
 
         /// <summary>장비 한 종. <paramref name="cohortId"/>는 <b>등급 순위의 모집단</b>이고
@@ -290,17 +317,27 @@ namespace StickMate.Core
         /// <paramref name="declared"/>도 같은 이유로 기본 인자가 없다. 다만 이쪽은 잊었을 때의 기본값이
         /// <see cref="Core.DeclaredRarity.Derived"/>(= 안전)라 <paramref name="cohortId"/>와 <b>방향이 반대</b>다 —
         /// 그래도 기본 인자를 안 두는 이유는, 안전한 쪽이라도 <b>말없이 정해지는 사실</b>을 남기지 않기
-        /// 위해서다. 팩이 선언을 빠뜨린 것은 침묵이 아니라 결함이고, 감사가 그걸 잡는다.</para></summary>
+        /// 위해서다. 팩이 선언을 빠뜨린 것은 침묵이 아니라 결함이고, 감사가 그걸 잡는다.</para>
+        /// <para>★★ <b>그런데 <paramref name="declaredTheme"/>·<paramref name="declaredSubStat"/>에는
+        /// 기본 인자를 뒀다(2026-09-08). 규칙을 어긴 것이 아니라 그 규칙의 근거가 여기서는 반대로 선다.</b>
+        /// <c>cohortId</c>의 근거는 <i>"잊으면 조용히 기본 코호트에 합류하고 증상이 <b>안 산 사람</b>에게
+        /// 나타난다"</i>였다. 이 둘은 잊었을 때 값이 <b>무소속 / 부스탯 없음</b>이 되는데, 그것은
+        /// <b>2026-09-07까지 팩 아이템의 실제 동작 그대로</b>다 — 새 피해를 만들지 않는다.
+        /// 그리고 「팩인데 안 적었다」는 <see cref="ItemCatalog.AuditDeclarations"/>가 <b>로드 시점에
+        /// 결함으로 신고</b>하므로 침묵이 남지 않는다.
+        /// 실무적 이유도 하나 있다: 이 함수를 부르는 테스트 파일이 다른 라운드 소유라
+        /// 필수 인자로 늘리면 <b>그 파일을 대신 고쳐야</b> 하고, 그건 동시 진행 규칙이 금지한 형태다.</para></summary>
         internal static ItemCatalogEntry ForEquipment(string id, EquipmentSlot slot, int itemIndex,
             string displayName, string description, int requiredLevel, ItemIconPart[] icon,
-            int cohortId, DeclaredRarity declared)
+            int cohortId, DeclaredRarity declared,
+            string declaredTheme = null, DeclaredSubStat declaredSubStat = DeclaredSubStat.None)
             => new ItemCatalogEntry(id, ItemCategory.Equipment, slot, itemIndex, displayName, description,
-                null, true, requiredLevel, icon, cohortId, declared);
+                null, true, requiredLevel, icon, cohortId, declared, declaredTheme, declaredSubStat);
 
         internal static ItemCatalogEntry ForAction(string id, string displayName, string shortcut, string description)
             => new ItemCatalogEntry(id, ItemCategory.Action, null, -1, displayName, description,
                 shortcut ?? AutoOnlyStatus, shortcut != null, null, null, ItemCatalog.BaseCohortId,
-                DeclaredRarity.Derived);
+                DeclaredRarity.Derived, null, DeclaredSubStat.None);
 
         /// <summary>
         /// 단축키는 없지만 <b>사용자가 직접 부르는</b> 행동. 상태 슬롯에 그 자리를 적는다.
@@ -315,7 +352,7 @@ namespace StickMate.Core
         internal static ItemCatalogEntry ForMenuAction(string id, string displayName, string description)
             => new ItemCatalogEntry(id, ItemCategory.Action, null, -1, displayName, description,
                 MenuOnlyStatus, true, null, null, ItemCatalog.BaseCohortId,
-                DeclaredRarity.Derived);
+                DeclaredRarity.Derived, null, DeclaredSubStat.None);
 
         /// <summary>단축키가 없는 행동(자율 발동 전용)의 상태 슬롯 문구.</summary>
         public const string AutoOnlyStatus = "가끔 알아서";
@@ -469,6 +506,10 @@ namespace StickMate.Core
         private static AccessoryWornShapeData[][][] _wornBySlot;
         private static AccessoryWornTransform[][] _wornTransformBySlot;
 
+        /// <summary>★ 2026-09-08 Major 4 — 「이 아이템이 머리카락을 가린다고 선언했는가」.
+        /// 위 두 표와 같은 이유로 항목이 아니라 여기 있다(<see cref="HidesHair"/> 문단).</summary>
+        private static bool[][] _hidesHairBySlot;
+
         private static ItemCatalogEntry[][] BySlot
         {
             get { EnsureLoaded(); return _bySlot; }
@@ -507,11 +548,13 @@ namespace StickMate.Core
             var bySlot = new ItemCatalogEntry[slots][];
             var wornBySlot = new AccessoryWornShapeData[slots][][];
             var wornTransformBySlot = new AccessoryWornTransform[slots][];
+            var hidesHairBySlot = new bool[slots][];
             for (int s = 0; s < slots; s++)
             {
                 bySlot[s] = new ItemCatalogEntry[counts[s]];
                 wornBySlot[s] = new AccessoryWornShapeData[counts[s]][];
                 wornTransformBySlot[s] = new AccessoryWornTransform[counts[s]];
+                hidesHairBySlot[s] = new bool[counts[s]];
             }
 
             for (int i = 0; i < defs.Length; i++)
@@ -532,6 +575,7 @@ namespace StickMate.Core
                 wornBySlot[(int)def.slot][def.itemIndex] = AcceptWornShapes(def);
                 wornTransformBySlot[(int)def.slot][def.itemIndex] = new AccessoryWornTransform(
                     def.wornGroupAlpha, def.wornScale, def.wornScaleY, def.wornOffsetYInR, def.wornMirrorX);
+                hidesHairBySlot[(int)def.slot][def.itemIndex] = def.hidesHair;
             }
 
             if (defs.Length == 0)
@@ -542,6 +586,7 @@ namespace StickMate.Core
                 _bySlot = bySlot;
                 _wornBySlot = wornBySlot;
                 _wornTransformBySlot = wornTransformBySlot;
+                _hidesHairBySlot = hidesHairBySlot;
                 _entries = BuildFlat(bySlot);
                 return;
             }
@@ -574,6 +619,8 @@ namespace StickMate.Core
             //   둘 다 화면만 봐서는 원인을 못 찾는다. 판정 규칙은 AuditDeclarations 한 곳에만 있다.
             var faults = new List<string>();
             for (int s = 0; s < slots; s++) AuditDeclarations(bySlot[s], faults);
+            // ★ 슬롯을 가로지르는 사실 하나 — 「이 테마로 4/4를 채울 수 있는가」. 위 순회는 이걸 못 본다.
+            AuditThemeCompletability(bySlot, faults);
             for (int f = 0; f < faults.Count; f++) Debug.LogError($"[ItemCatalog] {faults[f]}");
 
             _bySlot = bySlot;
@@ -581,6 +628,7 @@ namespace StickMate.Core
             // ★ 2026-09-05 — 이 줄이 빠져 있었다. 위 빈 카탈로그 분기에는 있었고 정상 경로에만 없어서 에셋의
             //   몸 파라미터(줄무늬타이 dy −0.287 R)가 런타임에 전부 0이 됐다. CardShapeContractTests 가 잡았다.
             _wornTransformBySlot = wornTransformBySlot;
+            _hidesHairBySlot = hidesHairBySlot;
             _entries = BuildFlat(bySlot);
         }
 
@@ -615,6 +663,29 @@ namespace StickMate.Core
         }
 
         /// <summary>
+        /// ★ 이 아이템이 <b>머리카락을 가린다고 선언했는가</b>(<see cref="AccessoryDefSO.hidesHair"/>).
+        /// 없는 자리·안 적은 자리는 <c>false</c>다 — 「모른다」를 「가린다」로 읽지 않는다.
+        ///
+        /// <para><b>왜 <see cref="ItemCatalogEntry"/>가 아니라 병렬 표인가</b>:
+        /// <see cref="WornShapes"/>·<see cref="WornTransform"/>과 <b>같은 성격</b>(에셋이 실어 오는
+        /// 렌더 파라미터)이고, 항목에 필드를 더하면 골든 덤프·감사·다른 라운드가 잡고 있는
+        /// 테스트 파일까지 함께 흔들린다. 여기 두면 <b>출하 42종의 항목은 한 바이트도 안 바뀐다.</b></para>
+        ///
+        /// <para>소비자는 <c>AccessoryShapeBuilder.HatCoverLocalY</c>의 <b>코드 표 밖 갈래</b> 하나뿐이다
+        /// (Major 4). 출하 6종은 여전히 그 표의 명시된 <c>case</c>가 정본이다 — 이 <c>bool</c>은
+        /// 「가리는가」만 답하고 「어디까지」는 못 답하기 때문이다.</para>
+        /// </summary>
+        public static bool HidesHair(EquipmentSlot slot, int itemIndex)
+        {
+            EnsureLoaded();
+            int s = (int)slot;
+            if (_hidesHairBySlot == null || s < 0 || s >= _hidesHairBySlot.Length) return false;
+            bool[] row = _hidesHairBySlot[s];
+            if (row == null || itemIndex < 0 || itemIndex >= row.Length) return false;
+            return row[itemIndex];
+        }
+
+        /// <summary>
         /// ★ 에셋 하나 -> 카탈로그 항목 하나. <b>변환은 여기 한 곳뿐이다.</b>
         ///
         /// <para><c>EnsureLoaded</c> 안에 인라인으로 두지 않은 이유는 <b>검증 가능성</b>이다:
@@ -626,7 +697,7 @@ namespace StickMate.Core
         internal static ItemCatalogEntry EntryFrom(AccessoryDefSO def)
             => ItemCatalogEntry.ForEquipment(def.itemId, def.slot, def.itemIndex,
                 def.displayName, def.description, def.requiredLevel, def.BuildIcon(), def.cohortId,
-                def.declaredRarity);
+                def.declaredRarity, def.themeKey, def.declaredSubStat);
 
         /// <summary>
         /// 에셋의 형상 스트림을 <b>한 번</b> 검사한다. 통과한 것만 표에 올린다.
@@ -1000,7 +1071,24 @@ namespace StickMate.Core
         ///  <item>④ <b>한 코호트 안에서 등급이 섞이면</b> 결함(DS-2 단일 등급).</item>
         ///  <item>⑤ <b><see cref="MaxDeclaredRarityForPack"/> 초과</b>면 결함(페이투윈 차단선).</item>
         ///  <item>⑥ <b>팩의 <c>requiredLevel</c>이 <see cref="PackRequiredLevel"/>이 아니면</b> 결함.</item>
+        ///  <item>⑦ <b>기본 코호트가 테마/부스탯을 선언하면</b> 결함(2026-09-08). 그 선언은
+        ///        <see cref="ResolveTheme"/>가 <b>보지 않으므로</b> 조용히 무시되는데, 침묵은
+        ///        「적었으니 됐겠지」라는 오해를 그대로 출하시킨다.</item>
+        ///  <item>⑧ <b>팩의 스탯 4슬롯 아이템이 테마를 안 적으면</b> 결함. 그 팩은 <b>세트를 영원히
+        ///        완성할 수 없고</b> 화면은 아무 말도 하지 않는다(DS-4′-e 침묵 실패).</item>
+        ///  <item>⑨ <b>팩이 기본 6테마를 쓰면</b> 결함. <see cref="EquipmentStatRules.IsSetComplete"/>는
+        ///        문자열 동등성만 보므로 «기본 3종 + 팩 1종»에 세트 보너스가 붙는다 —
+        ///        무료 세트의 경제가 유료 아이템으로 샌다.</item>
+        ///  <item>⑩ <b>팩의 외형 슬롯 아이템이 테마/부스탯을 적으면</b> 결함. 외형은 무소속·
+        ///        <see cref="EquipmentStatRules.NoStat"/>이 <b>구조적 사실</b>이다(§14-1 · §21-4-c E1).</item>
+        ///  <item>⑪ <b>팩의 스탯 4슬롯 아이템이 부스탯을 안 적으면</b> 결함. 같은 자리의 무료
+        ///        아이템보다 <b>부스탯 하나만큼 약한 채로</b> 팔린다 — 현금을 낸 쪽이 손해다.</item>
+        ///  <item>⑫ <b>테마 키가 키 모양이 아니면</b> 결함. 판정자는
+        ///        <see cref="PackManifestKeys.IsWellFormed"/> 하나다(매니페스트 키와 <b>같은 자</b>).</item>
         /// </list>
+        ///
+        /// <para>★ <b>슬롯 하나만 본다</b> — 「이 테마가 4슬롯을 다 채우는가」는 여기서 알 수 없고
+        /// <see cref="AuditThemeCompletability"/>가 따로 본다.</para>
         ///
         /// ============================================================================
         /// ★ 왜 <b>신고만</b> 하고 값을 고치지 않는가 (이음매를 하나로)
@@ -1036,6 +1124,11 @@ namespace StickMate.Core
                             $"'{e.Declared}'로 선언했습니다. 기본 42종의 등급은 requiredLevel 파생이 " +
                             "유일한 출처입니다 — 선언하려면 팩 코호트를 쓰십시오.");
                     }
+
+                    // ⑦ 기본 코호트는 테마/부스탯도 선언하지 않는다. ResolveTheme/ResolveSubStat 이
+                    //    <b>보지 않으므로</b> 값은 안 움직이지만, 그 침묵을 남기면 «적었는데 왜 안 되지»가
+                    //    영원히 안 풀린다. 여기서 한 번 크게 말한다.
+                    AuditBaseCohortSilentDeclaration(e, i, faults);
                     continue;
                 }
 
@@ -1062,6 +1155,9 @@ namespace StickMate.Core
                         "현금으로 산 뒤 레벨을 갈게 만들지 않습니다.");
                 }
 
+                // ⑧~⑫ 팩의 테마/부스탯 선언.
+                AuditPackThemeAndSubStat(e, i, faults);
+
                 // ④ 한 코호트 안에서 등급이 섞이면 안 된다. 같은 코호트의 <b>앞선</b> 선언과만 견준다
                 //    (짝마다 견주면 6종 팩 하나에 결함이 15줄 찍힌다 — 원인은 하나인데).
                 if (!declared) continue;
@@ -1079,6 +1175,159 @@ namespace StickMate.Core
                     }
                     break;   // 앞선 선언 하나와만 견준다
                 }
+            }
+        }
+
+        /// <summary>
+        /// ⑦ 기본 코호트가 테마/부스탯을 <b>선언했는가</b>. 선언해도 값은 안 움직인다
+        /// (<see cref="ResolveTheme"/>·<see cref="ResolveSubStat"/>가 기본 코호트에서 코드 표만 본다) —
+        /// <b>그래서 위험하다.</b> 만든 사람은 적었으니 됐다고 믿고, 화면은 옛 값을 그대로 보여준다.
+        /// </summary>
+        private static void AuditBaseCohortSilentDeclaration(ItemCatalogEntry e, int index, List<string> faults)
+        {
+            if (!string.IsNullOrEmpty(e.DeclaredTheme))
+            {
+                faults.Add($"'{e.Id}'(자리 {index})가 기본 코호트({BaseCohortId})에 있으면서 themeKey를 " +
+                    $"'{e.DeclaredTheme}'로 적었습니다. 기본 42종의 테마는 ItemCatalog의 코드 표가 " +
+                    "유일한 출처라 이 값은 <b>읽히지 않습니다</b> — 적은 사람은 반영됐다고 믿게 됩니다. " +
+                    "칸을 비우거나, 정말 바꾸려면 코드 표를 고치십시오(R21 안 B의 E1~E3가 걸려 있습니다).");
+            }
+            if (DeclaredSubStatRules.IsDeclared(e.DeclaredSubStat))
+            {
+                faults.Add($"'{e.Id}'(자리 {index})가 기본 코호트({BaseCohortId})에 있으면서 " +
+                    $"declaredSubStat을 '{e.DeclaredSubStat}'로 적었습니다. 위와 같은 이유로 " +
+                    "<b>읽히지 않습니다</b>(기본 24종의 부스탯은 코드 표가 정본이고, §21-2-e의 " +
+                    "«각 스탯 정확히 6개»가 그 표 위에서 검산됐습니다).");
+            }
+        }
+
+        /// <summary>⑧~⑫ 팩 아이템의 테마·부스탯 선언. <b>슬롯 성격에 따라 요구가 정반대</b>다 —
+        /// 스탯 4슬롯은 <b>반드시 적고</b>, 외형 3슬롯은 <b>반드시 비운다</b>.</summary>
+        private static void AuditPackThemeAndSubStat(ItemCatalogEntry e, int index, List<string> faults)
+        {
+            bool appearance = e.Slot.HasValue && EquipmentModel.IsAppearanceSlot(e.Slot.Value);
+            string where = $"'{e.Id}'(자리 {index}, 코호트 {e.CohortId})";
+
+            if (appearance)
+            {
+                // ⑩ 외형은 무소속·NoStat 이 구조적 사실이다. 적으면 세트 계산의 24칸 규약이 흔들린다.
+                if (!string.IsNullOrEmpty(e.DeclaredTheme))
+                {
+                    faults.Add($"{where}는 외형 슬롯인데 themeKey를 '{e.DeclaredTheme}'로 적었습니다. " +
+                        "세트를 이루는 자리는 스탯 4슬롯(모자/안경/목/등)뿐이고 외형은 무소속이 " +
+                        "구조적 사실입니다 — 적어도 세트 판정에 들어가지 않으므로 뜻만 갈라집니다.");
+                }
+                if (DeclaredSubStatRules.IsDeclared(e.DeclaredSubStat))
+                {
+                    faults.Add($"{where}는 외형 슬롯인데 declaredSubStat을 '{e.DeclaredSubStat}'로 " +
+                        "적었습니다. 외형 슬롯의 스탯 기여는 0이 구조적 사실입니다(§14-1).");
+                }
+                return;
+            }
+
+            // ⑧ 스탯 슬롯인데 테마가 없다 = 그 팩은 세트를 영원히 완성할 수 없다.
+            if (string.IsNullOrEmpty(e.DeclaredTheme))
+            {
+                faults.Add($"{where}가 themeKey를 적지 않았습니다. 팩 아이템은 코드 표에 들어갈 수 없으므로 " +
+                    "이 칸이 유일한 통로이고, 비면 이 아이템은 <b>어떤 세트에도 속하지 않습니다</b> — " +
+                    "그 팩을 네 자리 다 걸쳐도 세트 보너스가 영원히 안 붙고 화면은 아무 말도 하지 않습니다.");
+            }
+            else
+            {
+                // ⑫ 키 모양. 판정자는 매니페스트 키와 같은 함수 하나다.
+                if (!PackManifestKeys.IsWellFormed(e.DeclaredTheme))
+                {
+                    faults.Add($"{where}의 themeKey('{e.DeclaredTheme}')가 키 모양이 아닙니다 " +
+                        $"(ASCII 소문자·숫자·점·밑줄, 최대 {PackManifestKeys.MaxKeyLength}자). " +
+                        "테마 키는 세트 판정에 쓰이는 안정 식별자라 표기가 갈리면 세트가 조용히 안 맞습니다.");
+                }
+
+                // ⑨ 기본 6테마 침범.
+                if (IsBaseTheme(e.DeclaredTheme))
+                {
+                    faults.Add($"{where}가 기본 42종의 테마 '{e.DeclaredTheme}'를 씁니다. " +
+                        "세트 판정은 문자열 동등성만 보고 코호트를 보지 않으므로, 기본 3종에 이 팩 1종을 " +
+                        "섞은 차림에 <b>세트 보너스가 붙습니다</b> — 무료 세트의 경제가 유료 아이템으로 샙니다. " +
+                        "팩은 자기 테마 키를 쓰십시오.");
+                }
+            }
+
+            // ⑪ 스탯 슬롯인데 부스탯이 없다 = 같은 자리 무료 아이템보다 약한 것을 파는 것이다.
+            if (!DeclaredSubStatRules.IsDeclared(e.DeclaredSubStat))
+            {
+                faults.Add($"{where}가 declaredSubStat을 적지 않았습니다. 기본 24종은 전부 부스탯을 " +
+                    "가지므로, 안 적으면 <b>현금으로 산 아이템이 같은 자리의 무료 아이템보다 약합니다</b>.");
+            }
+        }
+
+        /// <summary>
+        /// ★ <b>테마 완성 가능성</b> — 「이 테마로 4/4를 채울 수 있는가」. <see cref="AuditDeclarations"/>는
+        /// 슬롯 하나만 보므로 이 사실을 <b>구조적으로 못 본다</b>.
+        ///
+        /// <para>못 보면 무슨 일이 나는가: 팩이 모자·안경·목 셋만 싣고 등을 빠뜨려도 모든 개별 검사가
+        /// 통과한다. 그 팩을 산 사람은 <b>세 자리를 다 맞추고도 세트가 안 뜨는</b> 경험을 하고,
+        /// 화면에는 "무엇이 모자란지"가 적혀 있지 않다.</para>
+        ///
+        /// <para><b>기본 코호트는 보지 않는다</b> — 그쪽 24종은 코드 표가 E1(각 테마가 4슬롯에 정확히
+        /// 1종씩)을 이미 만족하고, 그 사실은 <c>EquipmentStatInvariantTests</c>가 따로 잠근다.
+        /// 여기서 또 재면 같은 사실이 두 곳에서 계산된다.</para>
+        ///
+        /// <para>순수 함수라 테스트가 <b>합성 팩</b>을 직접 먹인다(<see cref="AuditDeclarations"/>와 같은 이유).</para>
+        /// </summary>
+        /// <param name="bySlot">슬롯별 자리 배열. 길이는 <see cref="EquipmentModel.SlotCount"/>다.</param>
+        /// <param name="faults">사람이 읽을 결함 문장이 <b>추가</b>된다(비우지 않는다).</param>
+        internal static void AuditThemeCompletability(ItemCatalogEntry[][] bySlot, List<string> faults)
+        {
+            if (bySlot == null || faults == null) return;
+
+            // (코호트, 테마) 쌍마다 «어느 스탯 슬롯이 채워졌는가»를 비트로 모은다.
+            var keys = new List<string>();
+            var cohorts = new List<int>();
+            var themes = new List<string>();
+            var masks = new List<int>();
+
+            for (int s = 0; s < bySlot.Length && s < EquipmentModel.SlotCount; s++)
+            {
+                var slot = (EquipmentSlot)s;
+                if (EquipmentModel.IsAppearanceSlot(slot)) continue;   // 세트 계산의 자리는 스탯 4슬롯뿐이다
+                ItemCatalogEntry[] row = bySlot[s];
+                if (row == null) continue;
+
+                for (int i = 0; i < row.Length; i++)
+                {
+                    ItemCatalogEntry e = row[i];
+                    if (e == null || e.CohortId == BaseCohortId) continue;
+                    if (string.IsNullOrEmpty(e.Theme)) continue;       // ⑧이 이미 신고했다
+
+                    string key = e.CohortId + "\u0000" + e.Theme;
+                    int at = keys.IndexOf(key);
+                    if (at < 0)
+                    {
+                        keys.Add(key);
+                        cohorts.Add(e.CohortId);
+                        themes.Add(e.Theme);
+                        masks.Add(0);
+                        at = keys.Count - 1;
+                    }
+                    masks[at] = masks[at] | (1 << s);
+                }
+            }
+
+            for (int k = 0; k < keys.Count; k++)
+            {
+                var missing = new List<string>();
+                for (int s = 0; s < EquipmentModel.SlotCount; s++)
+                {
+                    var slot = (EquipmentSlot)s;
+                    if (EquipmentModel.IsAppearanceSlot(slot)) continue;
+                    if ((masks[k] & (1 << s)) == 0) missing.Add(EquipmentModel.SlotName(slot));
+                }
+                if (missing.Count == 0) continue;
+
+                faults.Add($"코호트 {cohorts[k]}의 테마 '{themes[k]}'는 " +
+                    $"{string.Join("·", missing)} 자리가 비어 <b>4/4 완성이 불가능</b>합니다. " +
+                    "세트는 스탯 4슬롯이 전부 같은 테마일 때만 성립하므로, 이 팩을 산 사람은 " +
+                    "가진 것을 전부 걸치고도 세트 보너스를 영원히 못 받습니다 — 화면은 아무 말도 하지 않습니다.");
             }
         }
 
@@ -1229,8 +1478,11 @@ namespace StickMate.Core
         internal static int SubStatTableCount => SubStatTable.Map.Count;
 
         /// <summary>
-        /// 아이디로 부스탯 방향. 모르는 아이디·외형 아이템·팩 아이템은
+        /// 아이디로 부스탯 방향. 모르는 아이디·외형 아이템은
         /// <see cref="EquipmentStatRules.NoStat"/>다.
+        ///
+        /// <para><b>이 함수는 「코드 표」 갈래 전용</b>이다 — 팩의 갈래는
+        /// <see cref="ResolveSubStat"/>가 갖는다(2026-09-08).</para>
         ///
         /// <para><paramref name="cohortId"/>가 기본 코호트가 아니면 <b>표를 아예 보지 않는다</b>.
         /// 등급이 코호트로 모집단을 가르는 것과 같은 이유다: 팩이 기본 42종과 같은 아이디를 쓰면
@@ -1417,14 +1669,67 @@ namespace StickMate.Core
         ///
         /// <para><paramref name="cohortId"/>가 기본 코호트가 아니면 <b>표를 아예 보지 않는다</b> —
         /// <see cref="SubStatOfItem"/>과 같은 이유(팩이 기본 42종과 같은 아이디를 쓰면 남의 테마를
-        /// 상속받는다). <b>팩이 테마를 선언하는 통로는 아직 없다</b>(DS-4′-d가 요구하는
-        /// <c>.asset theme</c> 필드가 아직 없다) — 그래서 오늘 팩 아이템은 전부 무소속이고,
-        /// 그 필드가 생기는 날 바뀌는 곳은 <see cref="EntryFrom"/> 하나다.</para>
+        /// 상속받는다). <b>이 함수는 「코드 표」 갈래 전용</b>이고, 팩의 갈래는
+        /// <see cref="ResolveTheme"/>가 갖는다(2026-09-08 — DS-4′-d가 요구하던
+        /// <c>.asset</c> 필드 <see cref="AccessoryDefSO.themeKey"/>가 생겼다).</para>
         /// </summary>
         internal static string ThemeOfItem(string itemId, int cohortId)
         {
             if (cohortId != BaseCohortId || string.IsNullOrEmpty(itemId)) return ThemeUnassigned;
             return ThemeTable.Map.TryGetValue(itemId, out string theme) ? theme : ThemeUnassigned;
+        }
+
+        // ============================================================================
+        // ★ 팩 통로 (2026-09-08) — 「어느 쪽이 정본인가」를 정하는 두 함수
+        // ============================================================================
+        // 프로덕션 주석이 <i>"그 필드가 생기는 날 바뀌는 곳은 EntryFrom 하나다"</i>라고 적어 뒀고,
+        // 실제로 <b>배선</b>은 EntryFrom 한 줄이다. 다만 <b>판정</b>은 값이 두 원천에서 오게 된 이상
+        // 이름 있는 자리 하나가 있어야 한다 — 생성자 안에 삼항 연산자로 묻으면 그 규칙이
+        // 「테스트가 직접 먹일 수 없는 자리」로 돌아간다(EntryFrom 을 가른 것과 같은 이유).
+        //
+        // ★ 규칙은 한 문장이다: <b>기본 코호트는 코드 표, 팩은 에셋 선언. 섞지 않는다.</b>
+        //   기본 코호트가 선언을 했더라도 <b>보지 않는다</b> — 그래야 애셋 한 줄이 출하 42종의
+        //   세트/부스탯을 움직이는 경로가 <b>원리적으로</b> 없다(X-3 구조 결정의 실체).
+        //   조용히 무시하면 그게 두 번째 진실이므로, 무시했다는 사실은
+        //   <see cref="AuditDeclarations"/>가 결함으로 신고한다.
+
+        /// <summary>
+        /// 이 아이템의 <b>세트 테마</b>. 기본 코호트는 <see cref="ThemeOfItem"/>(코드 표),
+        /// 팩은 <paramref name="declaredTheme"/>(에셋 선언)이다.
+        /// <para><c>null</c>은 <see cref="ThemeUnassigned"/>로 정규화한다 — 세트 판정이
+        /// <c>string.Equals(..., Ordinal)</c>이라 <c>null</c>과 <c>""</c>가 갈리면
+        /// <b>"둘 다 무소속인데 하나는 같다고 세어진다"</b>가 된다.</para>
+        /// </summary>
+        internal static string ResolveTheme(string itemId, int cohortId, string declaredTheme)
+            => cohortId == BaseCohortId
+                ? ThemeOfItem(itemId, cohortId)
+                : (declaredTheme ?? ThemeUnassigned);
+
+        /// <summary>
+        /// 이 아이템의 <b>부스탯 방향</b>. 기본 코호트는 <see cref="SubStatOfItem"/>(코드 표),
+        /// 팩은 <paramref name="declaredSubStat"/>(에셋 선언)이다.
+        /// </summary>
+        internal static int ResolveSubStat(string itemId, int cohortId, DeclaredSubStat declaredSubStat)
+            => cohortId == BaseCohortId
+                ? SubStatOfItem(itemId, cohortId)
+                : DeclaredSubStatRules.ToSubStatValue(declaredSubStat);
+
+        /// <summary>
+        /// 이 문자열이 <b>기본 42종이 쓰는 6테마 중 하나</b>인가. 팩이 이 중 하나를 쓰면 결함이다
+        /// (<see cref="AuditDeclarations"/>) — <see cref="EquipmentStatRules.IsSetComplete"/>가
+        /// <b>문자열 동등성만</b> 보므로 «기본 3종 + 팩 1종»에 세트 보너스가 붙는다.
+        /// <para>목록을 여기 다시 적지 않고 <see cref="AllThemes"/>를 훑는다 — 베끼면 키를 하나
+        /// 바꾸는 날 검사만 옛 값을 지킨다(CLAUDE.md 확정 규칙).</para>
+        /// </summary>
+        internal static bool IsBaseTheme(string themeKey)
+        {
+            if (string.IsNullOrEmpty(themeKey)) return false;
+            string[] all = AllThemes();
+            for (int i = 0; i < all.Length; i++)
+            {
+                if (string.Equals(all[i], themeKey, System.StringComparison.Ordinal)) return true;
+            }
+            return false;
         }
 
         /// <summary>이 자리 아이템의 부스탯 방향. 못 찾는 자리는 <see cref="EquipmentStatRules.NoStat"/>다

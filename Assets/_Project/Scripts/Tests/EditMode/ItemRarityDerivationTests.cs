@@ -471,17 +471,16 @@ namespace StickMate.Tests.EditMode
         {
             Assert.AreEqual(default(int), ItemCatalog.BaseCohortId,
                 $"{LogPrefix} ★ BaseCohortId 가 {ItemCatalog.BaseCohortId}인데 직렬화 기본값은 " +
-                $"{default(int)}입니다. Resources/Items 의 42개 .asset 에는 cohortId 키가 없어서 " +
+                $"{default(int)}입니다. Resources/{ItemCatalog.ItemResourceFolder} 의 아이템 .asset 에는 " +
+                "cohortId 키가 없어서 " +
                 "전부 직렬화 기본값으로 실립니다 — 두 값이 갈라지면 기본 42종이 파일 수정 없이 " +
                 "남의 모집단으로 넘어가고 등급이 통째로 무너집니다. " +
-                "BaseCohortId 를 바꾸려면 42개 .asset 에 cohortId 를 명시적으로 적어야 합니다.");
+                "BaseCohortId 를 바꾸려면 아이템 .asset 전부에 cohortId 를 명시적으로 적어야 합니다.");
 
             // 양성 대조 — 스캐너가 실제로 파일을 읽고 키를 찾을 수 있는가.
             //   (읽지 못하면 아래 '0건'은 '깨끗함'이 아니라 '못 봄'이다 — docs/TEAM.md 4절 사고 #4)
-            string dir = Path.Combine(Application.dataPath, "_Project", "Resources", "Items");
-            Assert.IsTrue(Directory.Exists(dir), $"{LogPrefix} {dir}를 찾지 못했습니다.");
-            string[] files = Directory.GetFiles(dir, "*.asset");
-            Assert.IsNotEmpty(files, $"{LogPrefix} 아이템 에셋을 하나도 못 읽었습니다 — 스캐너 고장.");
+            //   ★ 목록은 폴더가 아니라 <b>타입</b>에서 온다 — 왜 그런지는 ItemAssetFiles() 주석.
+            string[] files = ItemAssetFiles();
 
             int sawRequiredLevel = 0;
             var declared = new List<string>();
@@ -501,13 +500,15 @@ namespace StickMate.Tests.EditMode
                 }
             }
             Assert.AreEqual(files.Length, sawRequiredLevel,
-                $"{LogPrefix} 양성 대조 실패 — 에셋 {files.Length}개 중 requiredLevel 을 {sawRequiredLevel}개에서만 " +
-                "찾았습니다. 스캐너가 파일을 제대로 못 읽고 있으므로 아래 '0건'도 무효입니다.");
+                $"{LogPrefix} 양성 대조 실패 — 아이템 에셋 {files.Length}개 중 requiredLevel 을 " +
+                $"{sawRequiredLevel}개에서만 찾았습니다. 스캐너가 파일을 제대로 못 읽고 있으므로 " +
+                "아래 '0건'도 무효입니다. (아이템이 아닌 .asset 은 이미 걸러진 뒤입니다 — " +
+                "ItemAssetFiles() 참조.)");
             Assert.IsEmpty(declared,
                 $"{LogPrefix} Resources/Items 의 기본 아이템이 기본 코호트가 아닌 값을 적었습니다. " +
                 "이 폴더는 기본 42종의 자리이고, 팩은 자기 코호트를 써야 합니다.\n" + string.Join("\n", declared));
 
-            Debug.Log($"{LogPrefix} 에셋 {files.Length}개 스캔 — cohortId 명시 위반 0건 " +
+            Debug.Log($"{LogPrefix} 아이템 에셋 {files.Length}개 스캔 — cohortId 명시 위반 0건 " +
                       $"(양성 대조: requiredLevel {sawRequiredLevel}건 검출). " +
                       $"직렬화 기본값 {default(int)} == BaseCohortId {ItemCatalog.BaseCohortId}.");
         }
@@ -697,6 +698,11 @@ namespace StickMate.Tests.EditMode
         /// <see cref="DeclaredRarity.Derived"/>는 "팩이 선언을 빠뜨린 상태"이고, 위 파생 검사들이
         /// 재려는 것이 정확히 그 경우다(선언이 있으면 파생 경로를 아예 안 타므로 코호트 대조가
         /// 공허해진다). 선언까지 함께 재는 검사는 이 인자를 명시한다.</param>
+        /// <remarks>★ 2026-09-08 — <b>이 픽스처는 <see cref="PackEntry"/>와 달리 테마·부스탯을 안 채운다.</b>
+        /// 일부러다: 여기 팩 항목의 뜻은 <b>「선언을 빠뜨린 팩」</b>이고, 그 상태에 테마만 채워 두면
+        /// 어느 것도 아닌 모양이 된다. 그래도 안전한 이유는 <b>이 함수가 만든 모집단은
+        /// <c>AuditDeclarations</c>에 절대 안 들어가기 때문</b>이다(위 세 검사는 <c>RarityOfMember</c>만 부른다).
+        /// 감사를 여기 붙이려는 사람은 <see cref="PackEntry"/>를 쓰거나 이 주석을 먼저 지워라.</remarks>
         private static ItemCatalogEntry[] BuildPopulation(int[] baseLevels, int[] packLevels,
             int baseCohort, int packCohort,
             DeclaredRarity baseDeclared = DeclaredRarity.Derived,
@@ -954,10 +960,8 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 기본_42종은_선언_키를_아예_적지_않는다()
         {
-            string dir = Path.Combine(Application.dataPath, "_Project", "Resources", "Items");
-            Assert.IsTrue(Directory.Exists(dir), $"{LogPrefix} {dir}를 찾지 못했습니다.");
-            string[] files = Directory.GetFiles(dir, "*.asset");
-            Assert.IsNotEmpty(files, $"{LogPrefix} 아이템 에셋을 하나도 못 읽었습니다 — 스캐너 고장.");
+            // ★ 목록은 폴더가 아니라 <b>타입</b>에서 온다 — 왜 그런지는 ItemAssetFiles() 주석.
+            string[] files = ItemAssetFiles();
 
             int sawRequiredLevel = 0;
             var declared = new List<string>();
@@ -974,13 +978,15 @@ namespace StickMate.Tests.EditMode
 
             // 양성 대조 — 같은 스캐너가 실제로 키를 찾아낼 수 있음을 먼저 보인다.
             Assert.AreEqual(files.Length, sawRequiredLevel,
-                $"{LogPrefix} ★대조 실패 — 에셋 {files.Length}개 중 requiredLevel 을 {sawRequiredLevel}개에서만 " +
-                "찾았습니다. 스캐너가 파일을 제대로 못 읽고 있으므로 아래 '0건'도 무효입니다.");
+                $"{LogPrefix} ★대조 실패 — 아이템 에셋 {files.Length}개 중 requiredLevel 을 " +
+                $"{sawRequiredLevel}개에서만 찾았습니다. 스캐너가 파일을 제대로 못 읽고 있으므로 " +
+                "아래 '0건'도 무효입니다. (아이템이 아닌 .asset 은 이미 걸러진 뒤입니다 — " +
+                "ItemAssetFiles() 참조.)");
             Assert.IsEmpty(declared,
                 $"{LogPrefix} 기본 아이템이 등급을 선언했습니다({declared.Count}건). 기본 42종의 등급은 " +
                 "requiredLevel 파생이 유일한 출처입니다.\n" + string.Join("\n", declared));
 
-            Debug.Log($"{LogPrefix} 에셋 {files.Length}개 스캔 — declaredRarity 키 0건 " +
+            Debug.Log($"{LogPrefix} 아이템 에셋 {files.Length}개 스캔 — declaredRarity 키 0건 " +
                       $"(양성 대조: requiredLevel {sawRequiredLevel}건 검출).");
         }
 
@@ -1380,11 +1386,67 @@ namespace StickMate.Tests.EditMode
             => ItemCatalogEntry.ForEquipment($"base.{index}", EquipmentSlot.Head, index,
                 $"기본{index}", "합성", level, null, ItemCatalog.BaseCohortId, declared);
 
-        /// <summary>팩 코호트 항목.</summary>
+        /// <summary>
+        /// 팩 코호트 항목 — <b>「규칙을 다 지킨 팩 아이템」의 이 파일 쪽 정의</b>.
+        ///
+        /// <para>★ <b>2026-09-08 — 테마·부스탯을 채운다.</b> 그 전에는 등급·요구레벨만 채웠고,
+        /// 같은 날 <c>ItemCatalog.AuditDeclarations</c>에 ⑧(팩 스탯 슬롯은 테마를 적는다)·
+        /// ⑪(부스탯을 적는다)가 생기면서 <b>이 픽스처가 「망가진 팩」이 됐다</b> —
+        /// <c>감사가_올바른_팩에_침묵하고_망가진_팩에는_문다</c>가 "결함 12건"으로 죽었다.
+        /// 이 파일이 재려는 것은 <b>등급</b>이지 테마가 아니지만, 「정상 팩」을 세우는 픽스처가
+        /// 실제로 정상이 아니면 그 <b>교정</b>이 거짓이 되고, 그러면 그 밑의 양성 대조 전부가 무효다.</para>
+        ///
+        /// <para>★ <b>두 파일이 갈라지지 않게 하는 장치</b>(리더 지시): 테마 키를 «괜찮은 값»으로
+        /// 손으로 고르지 않는다. <b>프로덕션 판정자에게 물어서</b> 고르고
+        /// (<see cref="ItemCatalog.IsBaseTheme"/> · <see cref="PackManifestKeys.IsWellFormed"/>),
+        /// 그 둘이 아니라고 하면 <b>여기서 즉시 실패</b>한다. 규칙이 늘어나는 날
+        /// 이 파일과 <c>PackThemeAndHatCoverTests</c>의 교정이 <b>함께</b> 빨개진다 —
+        /// 그것이 「정상 팩의 정의가 한 곳」이라는 말의 실제 구현이다.</para>
+        /// </summary>
         private static ItemCatalogEntry PackEntry(int index, int cohort, DeclaredRarity declared,
             int level = ItemCatalog.PackRequiredLevel)
             => ItemCatalogEntry.ForEquipment($"pack.{index}", EquipmentSlot.Head, index,
-                $"팩{index}", "합성", level, null, cohort, declared);
+                $"팩{index}", "합성", level, null, cohort, declared,
+                PackFixtureTheme, PackFixtureSubStat);
+
+        /// <summary>팩 픽스처가 쓰는 테마 키. <b>기본 6테마가 아니어야</b> 하고 <b>키 모양</b>이어야 한다 —
+        /// 둘 다 프로덕션 판정자에게 묻는다(값을 여기 적어 두고 «괜찮겠지»로 넘기지 않는다).</summary>
+        private const string PackFixtureTheme = "pack.fixture";
+
+        /// <summary>팩 픽스처의 부스탯 선언. 어느 방향인지는 이 파일의 관심사가 아니다 —
+        /// <b>선언이 있다</b>는 사실만이 감사 ⑪의 입력이다.</summary>
+        private const DeclaredSubStat PackFixtureSubStat = DeclaredSubStat.Focus;
+
+        /// <summary>
+        /// ★ 픽스처 교정 — 위 두 값이 <b>지금도</b> 「정상 팩」의 조건을 만족하는가.
+        ///
+        /// <para>이 검사가 없으면 <c>Assert.IsEmpty(Audit(...))</c> 형태의 교정 4건이
+        /// <b>픽스처가 낡아서</b> 빨개졌을 때 «감사가 과탐한다»로 오독된다 — 원인이 정반대다.
+        /// 여기서 먼저 갈라 준다.</para>
+        /// </summary>
+        [Test]
+        public void 팩_픽스처는_지금도_규칙을_다_지킨_팩이다()
+        {
+            Assert.IsTrue(PackManifestKeys.IsWellFormed(PackFixtureTheme),
+                $"{LogPrefix} 픽스처 테마 '{PackFixtureTheme}'가 키 모양이 아닙니다 — " +
+                "아래 모든 «정상 팩 0건» 교정이 픽스처 탓으로 빨개집니다.");
+            Assert.IsFalse(ItemCatalog.IsBaseTheme(PackFixtureTheme),
+                $"{LogPrefix} 픽스처 테마 '{PackFixtureTheme}'가 기본 42종의 테마와 겹칩니다 — " +
+                "팩이 기본 테마를 쓰는 것은 결함이므로 이 픽스처로는 «정상 팩»을 세울 수 없습니다.");
+            Assert.IsTrue(DeclaredSubStatRules.IsDeclared(PackFixtureSubStat),
+                $"{LogPrefix} 픽스처가 부스탯을 선언하지 않습니다.");
+
+            // ★ 그리고 실제로 감사를 통과하는지 여기서 한 번 확인한다 — 규칙이 하나 더 늘면
+            //   4개 교정이 흩어져 빨개지기 전에 이 한 줄이 먼저 원인을 말한다.
+            var one = new List<ItemCatalogEntry>
+            {
+                PackEntry(0, ItemCatalog.BaseCohortId + 1, ItemCatalog.MaxDeclaredRarityForPack),
+            };
+            List<string> faults = Audit(one);
+            Assert.IsEmpty(faults,
+                $"{LogPrefix} 팩 픽스처 한 종이 감사에서 {faults.Count}건 걸립니다 — " +
+                "「정상 팩」의 정의가 늘었는데 이 파일의 픽스처가 안 따라왔습니다:\n" + string.Join("\n", faults));
+        }
 
         /// <summary>규칙을 <b>다시 적지 않는다</b> — 프로덕션 감사 함수를 그대로 부른다.
         /// 테스트가 규칙을 두 벌로 갖고 있으면 둘이 갈라지고, 그때 어느 쪽이 옳은지 아무도 모른다.</summary>
@@ -1393,6 +1455,153 @@ namespace StickMate.Tests.EditMode
             var faults = new List<string>();
             ItemCatalog.AuditDeclarations(population.ToArray(), faults);
             return faults;
+        }
+
+        // ============================================================================
+        // ★ 에셋 목록은 「폴더」가 아니라 「타입」으로 좁힌다 (2026-09-08 실사고 대응)
+        // ============================================================================
+
+        /// <summary>
+        /// <c>Resources/Items</c> 안의 <b>아이템</b> <c>.asset</c> 절대 경로(파일명 오름차순).
+        ///
+        /// <para>★ <b>무엇이 깨졌었나.</b> 위 두 감사는 원래
+        /// <c>Directory.GetFiles(Items, "*.asset")</c>가 돌려준 것을 <b>전부 아이템으로 보고</b>
+        /// <c>files.Length == sawRequiredLevel</c>을 양성 대조로 썼다. 2026-09-08 코스튬 DLC가
+        /// 같은 폴더에 <c>CostumeManifest_office</c>·<c>CostumeKeyposeTable_office</c> 2개를 놓자
+        /// 44 vs 42로 갈려 빨개졌다. <b>스캐너는 멀쩡했다</b> — 무너진 것은
+        /// 「이 폴더의 <c>.asset</c>은 전부 아이템이다」라는 <b>전제</b>다. 그리고 코스튬이 이 폴더에
+        /// 사는 것은 정상이다(<c>CostumeCatalog.ResourceFolder</c>가
+        /// <see cref="ItemCatalog.ItemResourceFolder"/>라, 다른 폴더에 두면 조용히 안 실린다).</para>
+        ///
+        /// <para>★ <b>왜 이 방식은 낡지 않는가.</b>
+        /// <list type="bullet">
+        ///   <item>개수를 적지 않는다. 아이템이 42 → 48로 늘어도 그대로 산다.
+        ///         (기대값에 42를 박아 넣는 손쉬운 길은 <b>다음 증설에서 또 낡는다</b> —
+        ///          이 저장소가 반복해 앓는 형태다.)</item>
+        ///   <item>선별 기준이 <see cref="AccessoryDefSO"/>라는 <b>타입</b>이라, 폴더에 어떤 다른 종류가
+        ///         몇 개 얹히든 애초에 목록에 안 들어온다. 다음에 코스튬이 아니라 무엇이 와도 같다.</item>
+        ///   <item>타입 이름도 폴더 이름도 <b>문자열로 베끼지 않는다</b>(<c>nameof</c> +
+        ///         <see cref="ItemCatalog.ItemResourceFolder"/>). 이름이 바뀌면 컴파일이 먼저 깨지고,
+        ///         폴더가 옮겨지면 프로덕션과 이 감사가 <b>같이</b> 옮겨 간다.</item>
+        /// </list></para>
+        ///
+        /// <para>★★ <b>좁히기 자체의 대조 2종</b> — 이게 없으면 좁히기가 <b>조용한 초록</b>을 만든다.
+        /// 기준(<c>files.Length</c>)과 대상(<c>sawRequiredLevel</c>)이 <b>같이 줄어들면</b>
+        /// 아이템을 몽땅 떨어뜨려도 등식이 성립하기 때문이다.
+        /// <list type="number">
+        ///   <item><b>독립 선별기 둘이 일치한다</b> — (A) 임포트된 타입(<c>AssetDatabase</c>)과
+        ///         (B) <c>.asset</c> 본문의 <c>m_Script</c> GUID 텍스트 매치. 임포트 경로와 텍스트 경로는
+        ///         서로 완전히 다른 길인데 같은 답을 내야 한다. 갈리면 어느 쪽이 옳은지 아무도 모르므로
+        ///         그 자체가 결함이다.</item>
+        ///   <item><b>제외된 파일에 <c>requiredLevel:</c>이 하나도 없다</b> — 있으면 좁히기가 진짜
+        ///         아이템을 떨어뜨렸다는 뜻이다. 이 단언이 그 순간을 <b>시끄럽게</b> 빨갛게 만든다.</item>
+        /// </list></para>
+        /// </summary>
+        private static string[] ItemAssetFiles()
+        {
+            string dir = Path.Combine(Application.dataPath, "_Project", "Resources",
+                ItemCatalog.ItemResourceFolder);
+            Assert.IsTrue(Directory.Exists(dir), $"{LogPrefix} {dir}를 찾지 못했습니다.");
+
+            string[] all = Directory.GetFiles(dir, "*.asset");
+            Assert.IsNotEmpty(all,
+                $"{LogPrefix} {dir} 에서 .asset 을 하나도 못 읽었습니다 — 스캐너 고장. " +
+                "이 폴더가 비면 아래 모든 '0건'이 '깨끗함'이 아니라 '못 봄'입니다.");
+            System.Array.Sort(all, System.StringComparer.Ordinal);
+
+            // (선별 A) 임포트된 타입. AssetDatabase 는 프로젝트 상대 경로만 받는다.
+            string folderAssetPath = "Assets/_Project/Resources/" + ItemCatalog.ItemResourceFolder;
+            var byType = new SortedSet<string>(System.StringComparer.Ordinal);
+            foreach (string guid in UnityEditor.AssetDatabase.FindAssets(
+                         "t:" + nameof(AccessoryDefSO), new[] { folderAssetPath }))
+            {
+                string rel = UnityEditor.AssetDatabase.GUIDToAssetPath(guid);
+                if (!string.IsNullOrEmpty(rel)) byType.Add(Path.GetFileName(rel));
+            }
+
+            // (선별 B) .asset 본문의 m_Script GUID — 임포트를 전혀 거치지 않는 다른 경로.
+            //   애셋에는 타입 <b>이름</b>이 없고 GUID만 있다. 이름으로 찾으면 탐지력이 애초에 0이다.
+            string scriptGuid = ScriptGuidOf(nameof(AccessoryDefSO));
+            var byGuid = new SortedSet<string>(System.StringComparer.Ordinal);
+            foreach (string f in all)
+            {
+                if (File.ReadAllText(f).IndexOf(scriptGuid, System.StringComparison.Ordinal) >= 0)
+                {
+                    byGuid.Add(Path.GetFileName(f));
+                }
+            }
+
+            // 대조 (1) — 두 선별기가 갈리면 그 자체가 결함이다.
+            var disagree = new List<string>();
+            foreach (string n in byType) if (!byGuid.Contains(n)) disagree.Add($"  타입만: {n}");
+            foreach (string n in byGuid) if (!byType.Contains(n)) disagree.Add($"  GUID만: {n}");
+            Assert.IsEmpty(disagree,
+                $"{LogPrefix} ★ 아이템 선별기 둘이 갈렸습니다(타입 {byType.Count}개 / " +
+                $"m_Script GUID {byGuid.Count}개). 임포트 상태와 파일 본문이 어긋났다는 뜻이고, " +
+                "어느 쪽이 옳은지 알 수 없으므로 이 파일의 모든 에셋 감사가 무효입니다.\n" +
+                string.Join("\n", disagree));
+
+            // 대조 (2) — 좁히기가 진짜 아이템을 떨어뜨리지 않았는가.
+            //   여기가 없으면 선별기가 몽땅 놓쳐도 '기준과 대상이 같이 줄어' 조용히 초록이 된다.
+            var items = new List<string>();
+            var droppedWithLevel = new List<string>();
+            foreach (string f in all)
+            {
+                if (byGuid.Contains(Path.GetFileName(f))) { items.Add(f); continue; }
+
+                foreach (string line in File.ReadAllLines(f))
+                {
+                    if (!line.Trim().StartsWith("requiredLevel:", System.StringComparison.Ordinal)) continue;
+                    droppedWithLevel.Add($"  {Path.GetFileName(f)}");
+                    break;
+                }
+            }
+            Assert.IsEmpty(droppedWithLevel,
+                $"{LogPrefix} ★ 아이템에서 제외된 .asset 이 requiredLevel 을 갖고 있습니다({droppedWithLevel.Count}건). " +
+                "둘 중 하나입니다 — (가) 좁히기가 진짜 아이템을 떨어뜨렸거나, " +
+                "(나) 아이템이 아닌 종류가 같은 키를 쓰기 시작했거나. 둘 다 이 감사의 전제를 " +
+                "다시 봐야 하는 사건입니다.\n" + string.Join("\n", droppedWithLevel));
+
+            Assert.IsNotEmpty(items,
+                $"{LogPrefix} {dir} 의 .asset {all.Length}개 중 아이템으로 뽑힌 것이 0개입니다 — " +
+                "선별기 고장. 0개면 아래 foreach 가 아무것도 재지 않고 초록이 됩니다(docs/TEAM.md 4절 사고 #5).");
+
+            if (items.Count != all.Length)
+            {
+                // 같은 폴더에 사는 <b>다른 종류</b>는 정상이다. 다만 조용히 지나가지 않게 남긴다 —
+                // 무엇이 얹혔는지 로그에 보이면 다음 사람이 전제를 다시 볼 수 있다.
+                Debug.Log($"{LogPrefix} {dir}: .asset {all.Length}개 중 아이템 {items.Count}개 " +
+                          $"(아이템 아닌 {all.Length - items.Count}개는 감사 대상 밖 — 같은 폴더에 사는 다른 종류).");
+            }
+            return items.ToArray();
+        }
+
+        /// <summary><c>&lt;타입&gt;.cs.meta</c> 의 GUID. <c>.asset</c> 본문에는 타입 이름이 없고
+        /// 이 GUID만 실린다 — 이름으로 찾으면 탐지력이 애초에 0이다.</summary>
+        private static string ScriptGuidOf(string typeName)
+        {
+            string scriptsRoot = Path.Combine(Application.dataPath, "_Project", "Scripts");
+            string meta = null;
+            foreach (string p in Directory.GetFiles(scriptsRoot, typeName + ".cs.meta",
+                         SearchOption.AllDirectories))
+            {
+                meta = p;
+                break;
+            }
+            Assert.IsNotNull(meta,
+                $"{LogPrefix} {typeName}.cs.meta 를 찾지 못했습니다 — 선별기 B가 눈이 멀었습니다.");
+
+            foreach (string line in File.ReadAllLines(meta))
+            {
+                string t = line.Trim();
+                if (!t.StartsWith("guid:", System.StringComparison.Ordinal)) continue;
+                string g = t.Substring("guid:".Length).Trim();
+                Assert.IsNotEmpty(g, $"{LogPrefix} {meta} 의 guid 가 비었습니다.");
+                return g;
+            }
+
+            Assert.Fail($"{LogPrefix} {meta} 에 guid 줄이 없습니다 — 선별기 B가 눈이 멀었습니다.");
+            return null;
         }
 
         // ============================================================================
