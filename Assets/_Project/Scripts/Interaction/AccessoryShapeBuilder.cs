@@ -914,7 +914,26 @@ namespace StickMate.Interaction
 
         // ==================== 유도 치수(렌더러의 공개 프로퍼티와 테스트가 읽는 값의 근원) ====================
 
+        /// <summary>
+        /// ★★ 2026-09-07 경고 — <b>죽은 v1 관·챙 공식일 수 있다.</b> 이 함수(와 <see cref="HatTopLocalY"/>)는
+        /// 인계본 조각(<c>AccessoryShapeBuilder.Handoff.cs</c>)으로 이전된 모자(현재 야구모자·중절모·
+        /// 털모자·왕관 — R25b, 이 파일 상단 "HEAD" 절 주석 참고)에는 <b>더 이상 적용되지 않는다</b>.
+        /// 실제로 그 모자들을 그리는 경로(<c>AppendHandoff</c>)는 이 산술을 <b>거치지 않고</b> 인계본
+        /// 좌표를 직접 쓴다 — 이 함수는 화면과 무관한 숫자를 계속 계산해 돌려줄 뿐이다.
+        /// <para>실측 사례(2026-09-07 반짝임 회귀 조사): 이 공식이 말하는 모자 꼭대기는 머리 중심 위
+        /// 1.608R이지만, <see cref="CharacterAccessoryRenderer.TryMeasureItemBounds"/>로 HEAD 슬롯을
+        /// 전수 실측하면 실제 최고점은 <b>2.5425R</b>다 — 58% 더 높다. 이 값을 "지금 그려지는 모자
+        /// 높이"로 믿고 다른 이펙트의 여유를 재면 <b>또 겹친다</b>.</para>
+        /// <para>실제 화면 높이가 필요하면 이 함수 대신 <see cref="CharacterAccessoryRenderer.TryMeasureItemBounds"/>
+        /// 로 그 아이템을 직접 실측하라 — 카드/왕관처럼 아직 이 공식을 쓰는 자리(베레모·밀짚모자의
+        /// 커버선 등, <see cref="BeretBrimLineRatio"/>/<see cref="StrawBrimLineRatio"/> 참고)에서도
+        /// 실측이 항상 정답이고 이 함수는 그 정답과 우연히 같을 뿐이다.</para>
+        /// </summary>
         internal static float HatBrimLocalY(in Rig rig) => rig.HeadCenterY + rig.HeadRadius * HatBrimLineRatio;
+
+        /// <summary>위 <see cref="HatBrimLocalY"/>와 <b>같은 경고</b>가 그대로 적용된다 — 인계본으로
+        /// 이전된 모자에는 죽은 공식이다. <see cref="CharacterAccessoryRenderer.TryMeasureItemBounds"/>로
+        /// 실측하라.</summary>
         internal static float HatTopLocalY(in Rig rig) => HatBrimLocalY(rig) + rig.HeadRadius * HatCrownHeightRatio;
         internal static float GlassesLocalY(in Rig rig) => rig.HeadCenterY + rig.HeadRadius * GlassesCenterRatio;
         /// <summary>목에 걸치는 것(나비넥타이/줄무늬타이/목도리/방울목걸이) <b>전부</b>의 부착 기준선.

@@ -774,6 +774,60 @@ namespace StickMate.States
             return lo;
         }
 
+        // ========================================================================
+        // ★ 안전 굽힘각 상한 2 — "규칙 D": 고정 양끝점 굽힘의 <b>신축</b>을 가둔다
+        // ========================================================================
+        //
+        // 2026-09-07 실기 신고 — "리틀스틱메이트는 점프하고 착지시 무릎앉아하면 다리가 막 늘어남".
+        //
+        // <b>원인(계산으로 확정).</b> BuildLimbPolylineBetween은 뿌리·끝점을 <b>고정한
+        // 채</b> 굽는다. 그러려면 위/아래 마디 길이를 매 각도마다 <b>다시 늘여야</b> 한다 — 코사인
+        // 법칙으로 유도:
+        //   단위 길이(Lu+Ll=1, 비율 ru:rl)로 각도 θ만큼 접었을 때 뿌리→끝 직선거리
+        //     d(θ) = √(ru² + rl² + 2·ru·rl·cos θ)
+        //   실제 현 길이 C에 맞추는 배율(=신축 배수) k(θ) = C/d(θ)·(Lu+Ll)/C = 1/d(θ)  (ru+rl=1이므로)
+        // θ=0(곧게 편 상태)에서 d=1이라 k=1(신축 없음)이지만, θ가 90°를 넘으면 d가 급격히 줄어
+        // k가 폭증한다. 실측(도구: 이 라운드의 검산 스크립트, ru≈0.5263 다리 기준):
+        //   θ=55°(landingCrouchRearKneeDegrees) → k=1.127(+12.7%, 눈에 안 띔)
+        //   θ=104°(throwTumbleKneeBendDegrees)  → k=1.621(+62.1%, 뚜렷이 늘어짐)
+        //   θ=126°(landingCrouchFrontKneeDegrees) → k=2.191(+119.1%, "다리가 막 늘어남"의 정체)
+        //
+        // <see cref="MaxSafeBendDegrees"/>("규칙 B")는 <b>이 신축과 무관한 별개의 제약</b>(획 윤곽이
+        // 관절에서 자기교차하지 않는가)이라 이 폭주를 막지 못한다 — 실측상 기본 배율에서 규칙 B 상한은
+        // 약 140.5°로, 126°보다 높아 그대로 통과시킨다(획/마디 길이 비가 배율에 무관하게 일정해
+        // 규칙 B 상한 자체는 배율과 무관하다 — 두 길이와 획이 전부 같은 <c>Height</c>에서 유도되는
+        // 이 저장소의 관례 때문이다).
+        //
+        // <b>고침.</b> "신축 k가 이 이상이면 안 된다"는 별도 상한을 두고, 실제 상한은 두 규칙의
+        // <b>더 엄격한 쪽</b>(min)이다 — 규칙 B가 이미 그렇듯 프로덕션이 상수를 신뢰하지 않고 스스로
+        // 지키게 한다. k(θ)의 역함수는 닫힌 해가 있다(이분 탐색 불필요):
+        //   k(θ) ≤ K  ⟺  cos θ ≥ (1/K² − ru² − rl²) / (2·ru·rl)
+        // MiniMaxStretchRatio = 1.15(다리 기준 최대 굽힘 약 59.3°)로 두면 이미 무해한
+        // 55°(rear knee, +12.7%)는 그대로 통과하고, 126°/104°만 붙잡는다.
+
+        /// <summary>고정 양끝점 굽힘(<see cref="BuildLimbPolylineBetween"/>)이 허용하는 <b>신축 배수</b>
+        /// 상한. 1.15면 마디 길이 합이 곧은 상태의 최대 115%까지만 늘어난다("규칙 D" — 위 클래스
+        /// 주석 참고). <see cref="MaxStretchSafeBendDegrees"/>가 이 값을 각도로 환산한다.</summary>
+        public const float MiniMaxStretchRatio = 1.15f;
+
+        /// <summary>
+        /// <see cref="MiniMaxStretchRatio"/>를 만족하는 <b>최대 굽힘각</b>(도) — 닫힌 해(코사인 법칙
+        /// 역산)라 <see cref="MaxSafeBendDegrees"/>와 달리 이분 탐색이 필요 없다.
+        /// </summary>
+        /// <param name="upperFraction">위 마디가 가져가는 비율(0~1) — <c>ru</c>.</param>
+        /// <param name="maxStretchRatio">허용 신축 배수 상한(예: 1.15 = +15%). 1 이하면 굽힘을
+        /// 전혀 허용하지 않는다(0을 돌려준다).</param>
+        public static float MaxStretchSafeBendDegrees(float upperFraction, float maxStretchRatio)
+        {
+            float ru = Mathf.Clamp(upperFraction, 0.05f, 0.95f);
+            float rl = 1f - ru;
+            if (maxStretchRatio <= 1f) return 0f;
+
+            float cosTarget = (1f / (maxStretchRatio * maxStretchRatio) - ru * ru - rl * rl) / (2f * ru * rl);
+            cosTarget = Mathf.Clamp(cosTarget, -1f, 1f);
+            return Mathf.Acos(cosTarget) * Mathf.Rad2Deg;
+        }
+
         private static void Apply(Limb limb)
         {
             // positionCount는 항상 같은 값이라 두 번째 호출부터는 재할당이 일어나지 않는다.

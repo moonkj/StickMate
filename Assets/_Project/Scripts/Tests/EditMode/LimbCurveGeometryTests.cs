@@ -1365,6 +1365,139 @@ namespace StickMate.Tests.EditMode
                 "관절 안쪽에 잉크가 뭉칩니다.");
         }
 
+        [Test]
+        public void 펫_무릎앉아_다리가_규칙D_상한_안에서만_늘어난다()
+        {
+            // ============================================================================
+            // ★ 2026-09-07 실기 신고 — "리틀스틱메이트는 점프하고 착지시 무릎앉아하면 다리가 막 늘어남"
+            // ============================================================================
+            // 확정된 원인: BuildLimbPolylineBetween(양 끝점 고정 굽힘)은 굽힘각이 커질수록 위/아래 마디의
+            // "실제 길이 합"이 곧은 상태보다 길어진다(코사인 법칙, LimbCurveRenderer.
+            // MaxStretchSafeBendDegrees 클래스 문서). 규칙 B(MaxSafeBendDegrees, 자기교차 방지)는 이
+            // 신축과 <b>무관한 별개의 제약</b>이라 이 폭주를 막지 못했다 — 주인의
+            // landingCrouchFrontKneeDegrees(126°대)가 규칙 B는 통과하면서도 다리 길이를 최대 219%까지
+            // 늘렸다. 규칙 D(MaxStretchSafeBendDegrees)를 규칙 B와 함께 min()으로 걸어 고쳤다
+            // (CharacterPetRenderer.PrepareMiniLimbs).
+            //
+            // 이 테스트는 (a) 옛 로직(규칙 B만)이 실제로 이 신고를 재현하는지(음성대조) 먼저 확인하고,
+            // (b) 지금 로직(규칙 B ∧ 규칙 D)이 전 배율에서 신축을 상한 안으로 가두는지를 함께 잠근다.
+            GameObject prefab = LoadPrefab();
+            float w = PetStrokeWorld();
+            float baked = BakedScale(prefab);
+
+            var legSpec = ReadLimbSpec(prefab, "LeftLeg");
+            float ru = legSpec.upper / (legSpec.upper + legSpec.lower);
+
+            var config = ScriptableObject.CreateInstance<StickConfig>();
+            float frontKnee, rearKnee, tumbleKnee, fallPose;
+            try
+            {
+                frontKnee = Mathf.Abs(config.landingCrouchFrontKneeDegrees);
+                rearKnee = Mathf.Abs(config.landingCrouchRearKneeDegrees);
+                tumbleKnee = Mathf.Abs(config.throwTumbleKneeBendDegrees);
+                fallPose = Mathf.Abs(config.fallPoseKneeBendDegrees);
+            }
+            finally
+            {
+                Object.DestroyImmediate(config);
+            }
+
+            var poses = new (float degrees, string name, bool expectedBroken)[]
+            {
+                (frontKnee, nameof(StickConfig.landingCrouchFrontKneeDegrees), true),
+                (rearKnee, nameof(StickConfig.landingCrouchRearKneeDegrees), false),
+                (tumbleKnee, nameof(StickConfig.throwTumbleKneeBendDegrees), true),
+                (fallPose, nameof(StickConfig.fallPoseKneeBendDegrees), false),
+            };
+
+            var buffer = new Vector3[LimbCurveRenderer.PolylinePointCount];
+            float worstNewRatio = 0f; string worstWhere = "";
+            float worstOldRatioForBrokenPoses = float.PositiveInfinity; string worstOldWhere = "";
+
+            foreach (float scale in ScaleSamples(prefab))
+            {
+                float petHeight = PetHeight(prefab) * (scale / baked);
+                Vector3[][] parts = AppearanceShapeBuilder.MiniFigure(petHeight, 1f);
+                Vector3 root = parts[4][0];
+                Vector3 tip = parts[4][parts[4].Length - 1];
+                float chord = Vector3.Distance(root, tip);
+
+                float selfIntersectCap = LimbCurveRenderer.MaxSafeBendDegrees(chord * ru, chord * (1f - ru), w);
+                float stretchCap = LimbCurveRenderer.MaxStretchSafeBendDegrees(ru, LimbCurveRenderer.MiniMaxStretchRatio);
+                float newCap = Mathf.Min(selfIntersectCap, stretchCap);
+
+                foreach (var pose in poses)
+                {
+                    // ---- 음성대조: 옛 로직(규칙 B 하나만) — 신고가 실제로 이 조합에서 재현되는가.
+                    float oldMagnitude = Mathf.Min(pose.degrees, selfIntersectCap);
+                    int oldCount = LimbCurveRenderer.BuildLimbPolylineBetween(root, tip, oldMagnitude, ru, w, buffer);
+                    Assert.Greater(oldCount, 0,
+                        $"{LogPrefix} 음성대조(옛 로직) {pose.name} 배율 {scale:F2}에서 마디를 굽지 못했습니다.");
+                    float oldRatio = PolylineLength(buffer, oldCount) / chord;
+
+                    if (pose.expectedBroken && oldRatio < worstOldRatioForBrokenPoses)
+                    {
+                        worstOldRatioForBrokenPoses = oldRatio;
+                        worstOldWhere = $"{pose.name} 배율 {scale:F2}";
+                    }
+
+                    // ---- 지금 로직: 규칙 B ∧ 규칙 D.
+                    float newMagnitude = Mathf.Min(pose.degrees, newCap);
+                    int newCount = LimbCurveRenderer.BuildLimbPolylineBetween(root, tip, newMagnitude, ru, w, buffer);
+                    Assert.Greater(newCount, 0,
+                        $"{LogPrefix} {pose.name} 배율 {scale:F2}에서 마디를 굽지 못했습니다.");
+                    float newRatio = PolylineLength(buffer, newCount) / chord;
+
+                    if (newRatio > worstNewRatio)
+                    {
+                        worstNewRatio = newRatio;
+                        worstWhere = $"{pose.name} 배율 {scale:F2}(굽힘 {newMagnitude:F1}도)";
+                    }
+
+                    Assert.LessOrEqual(newRatio, LimbCurveRenderer.MiniMaxStretchRatio + 0.01f,
+                        $"{LogPrefix} {pose.name} 배율 {scale:F2}에서 다리 마디 길이 합이 곧은 다리의 " +
+                        $"{newRatio:P0}로 늘어났습니다 — 규칙 D 상한({LimbCurveRenderer.MiniMaxStretchRatio:P0})을 " +
+                        "지키지 못했습니다(\"다리가 막 늘어남\" 재발).");
+
+                    // 무해했던 두 자세(rear knee/fall pose)는 이번 수정으로 값이 전혀 안 바뀌어야 한다
+                    // (규칙 D가 이미 안전한 굽힘을 건드리면 그건 과잉 클램프다).
+                    if (!pose.expectedBroken)
+                    {
+                        Assert.AreEqual(oldMagnitude, newMagnitude, 0.01f,
+                            $"{LogPrefix} {pose.name}는 신고 재현 대상이 아닌데 배율 {scale:F2}에서 값이 " +
+                            $"바뀌었습니다(옛 {oldMagnitude:F2}도 → 새 {newMagnitude:F2}도) — 규칙 D가 무해한 " +
+                            "자세까지 과도하게 눌렀다는 뜻입니다.");
+                    }
+                }
+            }
+
+            Debug.Log($"{LogPrefix} 음성대조 — 옛 로직(규칙 B만)에서 신고 대상 자세의 최소 신축조차 " +
+                $"{worstOldRatioForBrokenPoses:P2}({worstOldWhere})였다(재현 확인). " +
+                $"지금 로직 최악 신축 = {worstNewRatio:P2}({worstWhere}), 규칙 D 상한 " +
+                $"{LimbCurveRenderer.MiniMaxStretchRatio:P0}.");
+
+            // 음성대조 성립 조건: 옛 로직이 실제로 신고 수준의 신축을 재현해야 한다. 그렇지 않으면 이
+            // 테스트가 "고쳤다"고 말할 자격이 없다 — 애초에 안 늘어났다는 뜻이다.
+            // ★ 문턱은 1.30이 아니라 1.20이다 — 실측(2026-09-07, 이 라운드)상 최소 재현값이 프리팹
+            // 실치수에 따라 130%대까지 내려갈 수 있어(가짜 프리팹 fallback 비율 0.5263 기준 계산은
+            // 143%였지만 실측 프리팹은 더 낮았다), 1.30을 그대로 두면 여유가 1%p도 안 남아 프리팹이
+            // 다시 구워질 때마다 이 테스트가 깨질 위험이 있었다. 반대로 무해한 두 자세(rear knee/fall
+            // pose)의 실측 상한은 112.7%뿐이라 1.20은 두 그룹을 여전히 8%p 넘게 갈라놓는다.
+            Assert.Greater(worstOldRatioForBrokenPoses, 1.20f,
+                $"{LogPrefix} 음성대조가 성립하지 않습니다 — 옛 로직조차 다리를 " +
+                $"{worstOldRatioForBrokenPoses:P2}밖에 안 늘렸습니다. 이 테스트가 겨눈 버그(2026-09-07 " +
+                "실기 신고)가 이 경로에서 재현되지 않는다는 뜻이므로, 다른 경로를 의심해야 합니다.");
+        }
+
+        /// <summary>폴리라인의 <b>실제 그려지는 길이</b>(연속 점 사이 거리의 합) — 곧은 막대라면 이 값이
+        /// 현(root~tip) 길이와 같고, 양 끝점 고정 굽힘이 신축될수록 이 값이 현보다 길어진다.</summary>
+        private static float PolylineLength(Vector3[] buffer, int count)
+        {
+            float total = 0f;
+            for (int i = 1; i < count; i++) total += Vector3.Distance(buffer[i - 1], buffer[i]);
+            return total;
+        }
+
         /// <summary>주인 마디를 <paramref name="bendDegrees"/>만큼 접었을 때 관절이 현의 어느 쪽에 있는가
         /// (부호 있는 가로 오프셋, + = +x). 숫자를 적지 않고 프로덕션 함수로 직접 재는 대조군이다.</summary>
         private static float OwnerJointSide((float upper, float lower, float width) spec,

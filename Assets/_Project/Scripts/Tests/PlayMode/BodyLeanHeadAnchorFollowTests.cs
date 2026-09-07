@@ -56,6 +56,15 @@ namespace StickMate.Tests.PlayMode
         /// <summary>FX 나뭇잎 / PET 풍선의 자리와 요구 레벨.</summary>
         private const int FxLeaf = 5, PetBalloon = 4, TopRequiredLevel = 30;
 
+        /// <summary>CharacterPetRenderer.BalloonTetherBehindInR의 사본(2026-09-07 3차 수정값,
+        /// PetBalloonClearsBodyTests와 같은 값) — private라 테스트 어셈블리가 직접 참조할 수 없어
+        /// 복제한다.</summary>
+        private const float BalloonTetherBehindInR = 3.5f;
+
+        /// <summary>CharacterPetRenderer.BalloonTetherAboveInR의 사본(수정 전후 값이 같다) — 위와
+        /// 같은 이유로 복제.</summary>
+        private const float BalloonTetherAboveInR = 0.30f;
+
         /// <summary>스트레스 상시 표시가 기본 OFF가 되기 전의 원래 주의 경계값
         /// (Phase5VisualLayerTests와 같은 이유의 같은 값 — 렌더러 <b>능력</b>을 보려면 잠깐 되돌려야 한다).</summary>
         private const float OriginalCautionLevel = 0.4f;
@@ -214,15 +223,22 @@ namespace StickMate.Tests.PlayMode
         }
 
         /// <summary>
-        /// 실제로 그려진 펫이 그 앵커를 따라갔는가 — 풍선의 <b>매달린 쪽이 뒤집힌다</b>.
+        /// 실제로 그려진 펫이 "엉덩이 피벗 회전 + 풍선 전용 진행반대쪽 오프셋"을 정확히 따라갔는가.
         ///
-        /// <para>풍선 매듭은 머리 중심에서 <b>진행 반대쪽</b>으로 0.75R 떨어져 있다. 그런데 20도
-        /// 기울임이 머리를 앞으로 보내는 거리는 그보다 커서, 따라가면 매듭이 <b>진행 방향 앞쪽</b>으로
-        /// 넘어온다. 즉 <b>부호가 뒤집힌다</b> — 허용오차 조정으로는 통과시킬 수 없는 지표다.</para>
+        /// <para>★ 2026-09-07 갱신 — 이 테스트는 원래 "20도 기울임이 매듭을 진행 방향 앞쪽으로
+        /// 넘어오게 한다(부호가 뒤집힌다)"는 것으로 추종을 확인했다. 그 전제는 옛
+        /// <see cref="BalloonTetherBehindInR"/>=0.75R이 20도 기울임의 전방 이동량(≈0.41유닛,
+        /// 0.75R=0.165유닛보다 큼)보다 <b>작다는 우연</b> 위에 서 있었다. 같은 밤 3차 신고
+        /// ("풍선도 캐릭터가 멈춰있을때 캐릭터와 겹치지 않고 바깥쪽에 있어야하는데 여전히
+        /// 겹쳐져있음")로 그 상수를 3.5R(0.77유닛)로 올리면서 이 우연이 깨졌다 — 이제 기울여도
+        /// 매듭은 여전히 진행 반대쪽에 머문다(덜 뒤쪽일 뿐, 부호는 안 뒤집힌다). 그래서 지표를
+        /// "부호가 뒤집히는가"에서 <b>"실제로 그려진 값이 프로덕션과 같은 공식(엉덩이 피벗 회전으로
+        /// 구한 머리 앵커 + 진행반대쪽 오프셋)에서 나온 값과 일치하는가"</b>로 바꾼다 — 오프셋
+        /// 상수가 나중에 또 조정돼도(매직넘버 재조정) 이 테스트가 조용히 깨지지 않는 형태다.</para>
         /// </summary>
         [UnityTest]
         [Timeout(180000)]
-        public IEnumerator PET_풍선이_기울어진_머리_쪽으로_넘어온다()
+        public IEnumerator PET_풍선이_기울어진_머리_앵커에_진행반대쪽_오프셋을_더한_값과_일치한다()
         {
             yield return LoadSceneAndPinIdle();
             StickmanAgent agent = Agent();
@@ -233,6 +249,8 @@ namespace StickMate.Tests.PlayMode
             Assert.IsNotNull(pet, $"{LogPrefix} CharacterPetRenderer가 씬에 없습니다.");
             StickmanPoseAnimator pose = Pose(agent);
             StickmanMetrics metrics = agent.GetComponent<StickmanMetrics>();
+            Transform torso = FindDirectChild(agent.transform, "Torso");
+            Assert.IsNotNull(torso, $"{LogPrefix} Torso를 못 찾았습니다.");
 
             Assert.IsTrue(EquipmentModel.TryWear(EquipmentSlot.Pet, PetBalloon, null),
                 $"{LogPrefix} 풍선을 걸치지 못했습니다.");
@@ -244,19 +262,45 @@ namespace StickMate.Tests.PlayMode
                 pose.SetBodyLean(LeanDegrees);
                 yield return null;
             }
+            pose.SetBodyLean(LeanDegrees);
 
-            float facing = agent.Blackboard.FacingSign >= 0f ? 1f : -1f;
-            float bodyX = agent.Blackboard.Body.position.x;
-            float ahead = (pet.PetWorldPosition.x - bodyX) * facing;
             float r = metrics.HeadRadius;
+            float facing = agent.Blackboard.FacingSign >= 0f ? 1f : -1f;
+            Vector2 foot = agent.Blackboard.Body.position;
+            var hip = new Vector2(0f, metrics.HipLocalY);
+            var local = new Vector2(0f, metrics.HeadCenterLocalY + r * BalloonTetherAboveInR);
+            Quaternion rot = torso.localRotation;
 
-            Debug.Log($"{LogPrefix} 풍선 매듭이 몸 중심선보다 진행 방향으로 {ahead:F4}유닛 " +
-                $"(머리 반경 {r:F4}) — 기울임 {TorsoTilt(agent):F1}도. " +
-                "기울임을 안 따라갔다면 이 값은 -0.75R이어야 한다.");
+            // 머리 앵커 예측 — AssertHeadAnchorRotatesAboutHip의 hipPrediction과 같은 식(그 테스트가
+            // 이미 이 공식을 실측과 5% 오차 안으로 검증했다). 여기에 풍선 전용 오프셋을 더한다.
+            Vector2 headWorld = foot + hip + (Vector2)(rot * (local - hip));
+            float expectedKnotX = headWorld.x - facing * r * BalloonTetherBehindInR;
+            float actualKnotX = pet.PetWorldPosition.x;
+            float deviation = Mathf.Abs(actualKnotX - expectedKnotX);
+            float tolerance = r * 0.05f;
 
-            Assert.Greater(ahead, r * 0.4f,
-                $"{LogPrefix} 풍선이 몸 중심선보다 진행 방향으로 {ahead:F4}유닛에 있습니다 — " +
-                "기울임을 따라가지 않으면 매듭은 <b>진행 반대쪽</b>(음수)에 머뭅니다.");
+            Debug.Log($"{LogPrefix} 풍선 매듭 실측 x {actualKnotX:F4}, 공식 예측 x {expectedKnotX:F4} " +
+                $"(머리 앵커 x {headWorld.x:F4}, 오프셋 {BalloonTetherBehindInR}R) — 편차 {deviation:F5}, " +
+                $"허용 {tolerance:F5} — 기울임 {TorsoTilt(agent):F1}도.");
+
+            // P1 — 절대 조건: 실측이 공식과 일치한다.
+            Assert.Less(deviation, tolerance,
+                $"{LogPrefix} 풍선 매듭 실측 x({actualKnotX:F4})가 공식 예측({expectedKnotX:F4})에서 " +
+                $"{deviation:F5}유닛 벗어났습니다(허용 {tolerance:F5}) — 진행반대쪽 오프셋이 엉덩이 " +
+                "피벗 회전 뒤에 <b>더해지는</b> 것이 아니라 다른 경로로 계산되고 있을 수 있습니다.");
+
+            // 네거티브 컨트롤 — "기울이지 않았다면" 예측값과 실제로 다르다는 것을 같은 파일에서
+            // 증명한다. 이게 없으면 위 비교가 우연히(예: 둘 다 0에 가까워) 통과했을 수 있다.
+            var neutralHeadWorld = new Vector2(foot.x, foot.y + metrics.HeadCenterLocalY + r * BalloonTetherAboveInR);
+            float neutralKnotX = neutralHeadWorld.x - facing * r * BalloonTetherBehindInR;
+            float neutralVsLeanDiff = Mathf.Abs(neutralKnotX - expectedKnotX);
+            Debug.Log($"{LogPrefix} [네거티브] 기울이지 않았다면 예측 x {neutralKnotX:F4} — 기울인 " +
+                $"예측({expectedKnotX:F4})과 {neutralVsLeanDiff:F4}유닛 차이 " +
+                $"({(neutralVsLeanDiff > tolerance ? "충분히 다르다(대조 유효)" : "너무 비슷하다(대조 실패)")}).");
+            Assert.Greater(neutralVsLeanDiff, tolerance,
+                $"{LogPrefix} 기울임 유무에 따른 예측 차이({neutralVsLeanDiff:F4})가 허용오차" +
+                $"({tolerance:F5})보다 크지 않습니다 — 이 테스트가 기울임 추종을 실제로 검증하지 " +
+                "못합니다(무의미한 대조 — 몸통이 충분히 기울지 않았을 수 있습니다).");
 
             EquipmentModel.TryWear(EquipmentSlot.Pet, EquipmentModel.NotWorn, null);
             yield return null;

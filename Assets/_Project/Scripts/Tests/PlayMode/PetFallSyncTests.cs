@@ -443,6 +443,104 @@ namespace StickMate.Tests.PlayMode
         }
 
         // ============================================================================
+        // F3b — 2026-09-07 실기 신고: "점프하고 착지시 무릎앉아하면 다리가 막 늘어남"
+        // ============================================================================
+        // F3는 웅크림 <b>값</b>과 몸통이 실제로 내려가는지만 본다. 이 테스트는 그 웅크림이 실제로
+        // 그려지는 <b>다리 LineRenderer</b>를 얼마나 늘리는지 — 원래 뿌리~끝 직선거리(chord) 대비
+        // 실제로 그려진 마디 길이 합(폴리라인 선분 합) — 를 잰다.
+        //
+        // 확정된 원인(계산으로 확정, EditMode의 LimbCurveGeometryTests.펫_무릎앉아_다리가_규칙D_상한_
+        // 안에서만_늘어난다가 순수 수식으로 재검산): CharacterPetRenderer는 양 끝점을 고정한 채 굽는
+        // BuildLimbPolylineBetween을 쓰는데, 이 방식은 굽힘각이 커질수록 마디 길이 합이 곧은 상태보다
+        // 길어진다(코사인 법칙). 주인의 landingCrouchFrontKneeDegrees(126°대)를 그대로 넘기면 다리
+        // 마디 합이 곧은 다리의 최대 219%까지 늘어났다 — "규칙 B"(자기교차 방지)는 이 신축과 무관해
+        // 막지 못했다. 고침: LimbCurveRenderer.MaxStretchSafeBendDegrees("규칙 D")를 규칙 B와 함께
+        // min()으로 걸어 CharacterPetRenderer.PrepareMiniLimbs에서 굽힘각 상한을 정한다.
+        [UnityTest]
+        [Timeout(180000)]
+        public IEnumerator F3b_무릎앉아_착지에서_미니_다리가_비정상적으로_늘어나지_않는다()
+        {
+            yield return SetUpLayout();
+
+            StickmanBlackboard bb = _agent.Blackboard;
+            float dockCenterX = ScreenCoordinateConverter.OsScreenToWorld(bb.MainCamera,
+                new Vector2(Screen.width * 0.5f, _dockTopOsY), 10f, _clonedConfig).x;
+            Place(dockCenterX, _dockTopWorldY, DockHandle, StickmanStateId.Idle);
+            yield return new WaitForSeconds(0.5f);
+            yield return WearMini();
+            yield return new WaitForSeconds(1.0f);
+
+            // 실제 경로와 같은 입력으로 무릎앉아에 진입시킨다(F3와 동일 배치).
+            bb.LastLandingFallHeight = bb.CharacterHeightWorld * 3f;
+            bb.CurrentFootholdHandle = DockHandle;
+            bb.Machine.ChangeState(StickmanStateId.LandingCrouch, isForcedInterrupt: true);
+
+            float peakCrouch = 0f;
+            float worstRatio = 0f; string worstWhere = "";
+            float crouchSeconds = 0f;
+            float elapsed = 0f;
+            int sampled = 0;
+            while (elapsed < 0.9f && sampled < 20000)
+            {
+                yield return null;
+                elapsed += Time.deltaTime;
+                sampled++;
+                if (bb.Machine.CurrentStateId != StickmanStateId.LandingCrouch) break;
+
+                crouchSeconds += Time.deltaTime;
+                peakCrouch = Mathf.Max(peakCrouch, _pet.MiniCrouchAmount);
+
+                foreach (string legName in new[] { "MiniLegBack", "MiniLegFront" })
+                {
+                    LineRenderer lr = FindMiniLine(legName);
+                    if (lr == null || lr.positionCount < 2) continue;
+
+                    Vector3 root = lr.GetPosition(0);
+                    Vector3 tip = lr.GetPosition(lr.positionCount - 1);
+                    float chord = Vector3.Distance(root, tip);
+                    if (chord < 1e-5f) continue;
+
+                    float drawn = 0f;
+                    for (int i = 1; i < lr.positionCount; i++)
+                        drawn += Vector3.Distance(lr.GetPosition(i - 1), lr.GetPosition(i));
+
+                    float ratio = drawn / chord;
+                    if (ratio > worstRatio)
+                    {
+                        worstRatio = ratio;
+                        worstWhere = $"{legName}@{elapsed:F2}s(웅크림 {_pet.MiniCrouchAmount:F2})";
+                    }
+                }
+            }
+
+            Debug.Log($"{LogPrefix} F3b 결과 — 표본 {sampled}프레임({elapsed:F3}초), 무릎앉아 체류={crouchSeconds:F3}초, " +
+                $"미니 최대 웅크림={peakCrouch:F3}, 다리 마디 최대 신축={worstRatio:P1}({worstWhere}), " +
+                $"규칙 D 상한={LimbCurveRenderer.MiniMaxStretchRatio:P0}.");
+
+            // 전제(F3와 같은 근거): 관측 구간이 실제로 눌림 구간을 지났는가.
+            Assert.Greater(crouchSeconds, 0.15f,
+                $"{LogPrefix} 전제 실패 — 무릎앉아 상태에 {crouchSeconds:F3}초밖에 머물지 못해 " +
+                "눌림 구간을 관측하지 못했습니다.");
+            Assert.Greater(peakCrouch, 0.3f,
+                $"{LogPrefix} 전제 실패 — 미니가 충분히 웅크리지 않아(최대 {peakCrouch:F3}) 이 회귀가 " +
+                "겨눈 깊은 자세를 관측하지 못했습니다.");
+
+            Assert.LessOrEqual(worstRatio, LimbCurveRenderer.MiniMaxStretchRatio + 0.03f,
+                $"{LogPrefix} ★★ 다리 마디가 곧은 다리의 {worstRatio:P0}까지 늘어났습니다({worstWhere}) — " +
+                "\"점프하고 착지시 무릎앉아하면 다리가 막 늘어남\"(2026-09-07 실기 신고)의 재발입니다. " +
+                $"{nameof(CharacterPetRenderer)}.PrepareMiniLimbs의 규칙 D 캡" +
+                $"({nameof(LimbCurveRenderer.MaxStretchSafeBendDegrees)})을 확인하세요.");
+        }
+
+        /// <summary>그려진 미니 다리/팔 LineRenderer를 이름으로 찾는다(<see cref="FindMiniBody"/> 아래).</summary>
+        private static LineRenderer FindMiniLine(string name)
+        {
+            Transform body = FindMiniBody();
+            Transform child = body != null ? body.Find(name) : null;
+            return child != null ? child.GetComponent<LineRenderer>() : null;
+        }
+
+        // ============================================================================
         // F4 — 신고 B: 창 가장자리에서 돌아서도 미니는 창 범위 안에 남는다
         // ============================================================================
 

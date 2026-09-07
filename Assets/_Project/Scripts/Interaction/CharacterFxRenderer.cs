@@ -62,6 +62,22 @@ namespace StickMate.Interaction
         private const int SortFootprint = -2;
         private const int SortAerial = 6;
 
+        /// <summary>
+        /// ★★ 2026-09-07 2차 실기(Windows) 신고 — <i>"반짝임도 머리 뒤에있는거 같음 아예 안보임
+        /// 캐릭터 바깥쪽에 있어야하는데"</i>. 오늘 밤 풍선(<see cref="CharacterPetRenderer.SortPlaneFront"/>)이
+        /// 겪은 것과 <b>같은 결함 계열</b>이지만, 반짝임의 <see cref="SortAerial"/>(6)은 풍선의 옛 리터럴(10)과
+        /// 달리 <see cref="AccessoryShapeBuilder.SortHead"/>(모자, 10)와 <b>동률조차 아니고 그보다 작다</b> —
+        /// 즉 반짝임은 애초부터 모자보다 <b>확실히 뒤</b> 레이어였다. y좌표가 아무리 위여도(아래 참고)
+        /// 이 저장소는 sortingLayerName을 따로 안 쓰므로(같은 "Default" 레이어) sortingOrder 하나가
+        /// 앞뒤를 정하는 유일한 근거라, 겹치는 화면 영역에서는 <b>무조건</b> 모자가 이긴다.
+        /// <para>풍선과 같은 처방 — 매직넘버 대신 <see cref="AccessoryShapeBuilder.SortHead"/>에서 유도해
+        /// 모자 레이어가 바뀌어도 동률/역전이 재발하지 않게 한다. Dust/Bubble/Leaf는 몸통과 겹칠 고도에
+        /// 있지 않음이 이미 확인돼(<c>EffectOffsetsClearBodyAuditTests</c>) <see cref="SortAerial"/>을
+        /// 그대로 둔다 — 반짝임만 자기 레이어가 필요하다.</para>
+        /// <para>회귀 잠금: Tests/PlayMode/SparkleHatOcclusionRegressionTests.cs.</para>
+        /// </summary>
+        private const int SortSparkle = AccessoryShapeBuilder.SortHead + 1;
+
         // ---- 33-5절이 못박은 수치 ----
         private const float FootprintStrideRatio = 0.30f;    // 신장 배수 = 보폭 1회
         private const float FootprintLifeSeconds = 2.4f;
@@ -74,10 +90,31 @@ namespace StickMate.Interaction
         //   2회차 반짝임이 원리적으로 오지 않았다. 이제 Interaction/SparkleCadence.cs가
         //   <b>Idle 창에서 유도</b>한다 — 배회 시간을 바꿔도 같은 버그가 재발하지 않는다.
 
-        /// <summary>머리 <b>중심</b> 위 R 배수. 갈래가 0.34R -> 0.85R로 커지면서 함께 올렸다:
-        /// 옛 값 1.3R 그대로였다면 십자 아래 갈래 끝이 0.45R, 즉 <b>머리 링 안쪽</b>에 박힌다.
-        /// 지금은 아래 끝이 정수리(1.0R)보다 0.15R 위다.</summary>
-        private const float SparkleHeightInR = 2.0f;
+        /// <summary>
+        /// 머리 <b>중심</b> 위 R 배수.
+        ///
+        /// <para>★★ 2026-09-07 2차 실기(Windows) 신고 — <i>"반짝임도 머리 뒤에있는거 같음 아예
+        /// 안보임 캐릭터 바깥쪽에 있어야하는데"</i>. 바로 앞 라운드가 <c>EffectOffsetsClearBodyAuditTests</c>
+        /// 에서 이 값을 "결함 아님"으로 판정했었다 — 그 판정문 원문: <i>"발생 높이가 머리 중심 위 2.0R로
+        /// 정수리(1.0R)보다도 훨씬 위라, 가로 폭이 아무리 넓어도 그 고도에는 몸/머리 실루엣이 없다"</i>.
+        /// 이번 신고로 그 판정이 반증됐다 — 그 판정은 두 가지를 놓쳤다:</para>
+        /// <list type="number">
+        /// <item>기준이 <b>맨머리 정수리(1.0R)</b>뿐이었다. 실제로 몸에 겹칠 수 있는 것은 <b>모자</b>인데,
+        /// 모자는 정수리보다 훨씬 높이 올라간다 — <c>CharacterAccessoryRenderer.TryMeasureItemBounds</c>로
+        /// HEAD 슬롯 6종을 전수 실측하면 최고점이 <b>2.5425R</b>(정수리의 2.5배 이상)에 달한다.
+        /// (죽은 v1 공식 <c>AccessoryShapeBuilder.HatTopLocalY</c>가 말하는 1.608R은 인계본 조각으로
+        /// 이전된 모자들에는 더 이상 적용되지 않는다 — 그 함수 문서 참고.)</item>
+        /// <item>"발생 높이 2.0R"는 <b>별의 중심</b>일 뿐, <b>별 자신이 아래로 <see cref="SparkleArmInR"/>
+        /// (1.00R)만큼 더 뻗는다</b>는 사실을 계산에서 뺐다. 별의 실제 하단은 2.0 − 1.00 = <b>1.0R</b>
+        /// — "정수리보다 훨씬 위"가 아니라 <b>정수리와 정확히 같은 높이</b>였다(여유 0).</item>
+        /// </list>
+        /// <para>고침: 별의 <b>하단</b>(중심 − 팔 길이)이 실측 최댓값(2.5425R)의 1.2배를 넘도록 역산했다
+        /// — 종이비행기/나뭇잎/물방울과 같은 관례(요구 여유 = 장애물 치수 × 1.2).
+        /// 2.5425 × 1.2 = 3.051, + 팔 길이 1.00 = <b>4.05R</b>(반올림, 실제 여유 1.1994배).
+        /// 소폭의 반올림 손실을 메우려 <b>4.1R</b>로 한 눈금 더 올렸다(실제 여유 1.219배).
+        /// 회귀 잠금: Tests/PlayMode/SparkleHatOcclusionRegressionTests.cs.</para>
+        /// </summary>
+        private const float SparkleHeightInR = 4.1f;
         private const float SparkleSpreadInR = 0.9f;
 
         /// <summary>수명 앞부분의 크기 배수. 옛 값 0.2는 <b>0.8pt짜리 티끌</b>로 시작한다는 뜻이라
@@ -279,6 +316,18 @@ namespace StickMate.Interaction
         /// 테스트가 "기울이지 않았다면 어디였을지"를 <see cref="StickmanMetrics"/>만으로 계산할 수 있게
         /// 열어 둔다 — 옛 식을 프로덕션 코드에 화석으로 남겨 두지 않기 위해서다.</summary>
         public float HeadAnchorAboveHeadCenter => HeadRadius * SparkleHeightInR;
+
+        /// <summary>테스트/진단용 — 반짝임 별의 <b>바깥 정점 반경</b>(월드 유닛). 별 중심에서 이 값만큼
+        /// 아래로도 뻗으므로, "반짝임의 실제 하단"을 재려면 <see cref="HeadAnchorAboveHeadCenter"/>에서
+        /// 이 값을 빼야 한다 — 2026-09-07 신고가 정확히 이 항을 빠뜨린 결함이었다(SparkleHeightInR 문서).</summary>
+        public float SparkleArmWorld => HeadRadius * SparkleArmInR;
+
+        /// <summary>테스트/진단용 — 반짝임 별의 <b>실제 하단</b>이 머리 중심보다 얼마나 위인가(월드 유닛,
+        /// 별 자신의 아래쪽 정점 기준 = <see cref="HeadAnchorAboveHeadCenter"/> − <see cref="SparkleArmWorld"/>).
+        /// 2026-09-07 실기 신고("반짝임도 머리 뒤에 있는거 같음 아예 안보임") 회귀 잠금의 근거값 —
+        /// 발생 높이만 보고 별 자신의 하향 반경을 빠뜨리면 실제보다 하단을 과대평가(=덜 위험하다고
+        /// 오판)하게 된다(이전 라운드가 정확히 이 실수를 했다).</summary>
+        public float SparkleLowestPointAboveHeadCenter => HeadAnchorAboveHeadCenter - SparkleArmWorld;
 
         /// <summary>
         /// 테스트/진단용 — 살아 있는 조각 중 <b>그 FX가 지금 칠해야 할 색</b>(<see cref="ResolvePiecePalette"/>)이 아닌 것의 수.
@@ -567,7 +616,8 @@ namespace StickMate.Interaction
                 if (_nextSparkleIn > 0f) return;
             }
 
-            // 머리 중심 위 R·2.0(= 십자 아래 갈래 끝이 정수리보다 R·0.15 위), 좌우로 ±R·0.9 범위.
+            // 머리 중심 위 R·4.1(모자 최고 실측치 2.5425R의 1.2배 여유 위로 별 하단이 나오도록 역산 —
+            // SparkleHeightInR 문서 참고), 좌우로 ±R·0.9 범위.
             // ★ 2026-09-01 — 기준점이 <b>기울임이 반영된</b> 머리다(LeanedHeadWorld 문서 참고).
             float r = HeadRadius;
             Vector2 head = LeanedHeadWorld(bb, r * SparkleHeightInR);
@@ -575,7 +625,9 @@ namespace StickMate.Interaction
             float cy = head.y;
 
             // ★ 2026-09-06 — 십자 2획이 <b>윤곽 별 1도형</b>이 되면서 선도 2개 -> 1개다.
-            Puff p = Take(ref _sparkles, ref _sparkleCursor, SparkleCapacity, "Sparkle", SortAerial, 1);
+            // ★ 2026-09-07 — sortingOrder를 SortAerial(6)에서 SortSparkle(모자보다 확실히 위)로.
+            //   SortSparkle 문서 참고 — 모자와 동률/역전이던 것이 이번 신고의 두 원인 중 하나였다.
+            Puff p = Take(ref _sparkles, ref _sparkleCursor, SparkleCapacity, "Sparkle", SortSparkle, 1);
             if (p == null) return;
             BuildStar(p.Lines[0], r * SparkleArmInR);
             p.Root.position = new Vector3(cx, cy, 0f);

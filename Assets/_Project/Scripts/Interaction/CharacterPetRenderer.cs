@@ -237,7 +237,43 @@ namespace StickMate.Interaction
         // ---- 풍선(2026-09-01). 끈이 묶인 자리를 머리 옆에 두고, 주머니는 그 위에서 둥실거린다.
         //      회전 중심이 <b>묶인 자리</b>라 좌우로 흔들려도 끈이 몸에서 떨어지지 않는다.
         private const float BalloonFollowRate = 3.4f;
-        private const float BalloonTetherBehindInR = 0.75f;   // 묶인 자리(머리 중심에서 진행 반대쪽)
+
+        /// <summary>묶인 자리(머리 중심에서 진행 반대쪽으로의 거리, 머리 반경 배수).
+        ///
+        /// <para>★★★ 2026-09-07 같은 밤 3차 신고 — <i>"풍선도 캐릭터가 멈춰있을때 캐릭터와
+        /// 겹치지 않고 바깥쪽에 있어야하는데 여전히 겹쳐져있음"</i>. 앞선 <see cref="SortPlaneFront"/>
+        /// 수정(SortHead+1)은 <b>정렬 순서</b>만 고쳤을 뿐, 이 오프셋 자체는 그 라운드에서 한 번도
+        /// 검산되지 않았다 — 오늘 밤 이미 네 번(종이비행기 궤도 2회 · 나뭇잎 스폰폭 · 물방울 스폰편차)
+        /// 반복된 것과 <b>정확히 같은 패턴</b>이다: 위치 상수가 몸통 실측 치수보다 작아서 몸 밖으로
+        /// 못 나간다.</para>
+        ///
+        /// <para>확정된 원인(계산으로 확정, 추측 아님): 옛 값 0.75R은 <b>풍선 주머니 자신의 반경</b>
+        /// (<see cref="AppearanceShapeBuilder.BalloonRadiusInR"/>=0.80R)보다도 작았다. 주머니
+        /// (<see cref="AppearanceShapeBuilder.BalloonBody"/>)는 매듭과 <b>같은 로컬 x</b>(=0)를
+        /// 중심으로 좌우 대칭인 원이므로, Idle(기울임 0·기울기 tilt 0)에서 주머니의 몸쪽 안쪽 가장자리는
+        /// 매듭에서 몸 쪽으로 <c>BalloonRadiusInR</c>만큼 더 파고든다. 즉 안쪽 가장자리가 머리 중심에서
+        /// <c>(0.75 − 0.80)R = −0.05R</c> — <b>머리 중심을 이미 0.05R 넘어 반대쪽까지 파고들어 있었다</b>
+        /// (겹침이 아니라 관통). 매듭 자체만 봐도 머리 중심에서의 거리가
+        /// <c>sqrt(0.75² + <see cref="BalloonTetherAboveInR"/>²)R ≈ 0.807R</c>로 머리 반경(1R)보다
+        /// 작아 <b>매듭이 머리 원 안쪽</b>이었다 — 몸통 물리 반폭(1.8182R)은 비교할 것도 없이 머리
+        /// 자체와도 겹쳐 있었다.
+        ///
+        /// <para>고침(이 저장소 표준 검산 — 종이비행기/나뭇잎과 같은 방식, "최악 편차 = 오프셋 −
+        /// 안쪽으로 파고드는 최대량"이 물리 반폭×1.2를 넘긴다):
+        ///   최악 편차 = (<b>3.5</b> − 0.80)R = 2.70R.
+        ///   배율 1.0(R=0.22)에서 최악 편차 = 0.594유닛, 몸통 물리 반폭 0.4유닛×1.2 = 0.48유닛 —
+        ///   0.594 &gt; 0.48(여유 48.5%, 나뭇잎 수정의 여유 43%와 같은 자릿수).
+        /// 나뭇잎이 이미 3.5R로 고쳐졌으므로 같은 값을 재사용한다 — 매직넘버를 새로 고르지 않고
+        /// 오늘 밤 같은 방법론으로 검증된 값과 맞춘다.</para>
+        ///
+        /// <para>참고로 이 오프셋(3.5R=0.77유닛, 배율 1.0)은 공 펫의 뒤꼬리(0.55H=1.25유닛)나
+        /// 리틀스틱메이트의 뒤꼬리(0.75H=1.71유닛)보다 오히려 <b>가깝다</b> — 풍선이 유독 멀리
+        /// 떠 있는 것처럼 보이지 않는다.</para>
+        ///
+        /// <para>Tests/PlayMode/PetBalloonClearsBodyTests.cs가 "(오프셋 − 주머니 반경)×머리반경 &gt;
+        /// 몸통 물리 반폭×1.2"를 잠근다(음성대조로 옛 값 0.75R 재현 동반).</para></summary>
+        private const float BalloonTetherBehindInR = 3.5f;
+
         private const float BalloonTetherAboveInR = 0.30f;    // 묶인 자리(머리 중심에서 위)
         private const float BalloonBobSeconds = 2.6f;
         private const float BalloonBobInR = 0.28f;
@@ -363,6 +399,13 @@ namespace StickMate.Interaction
 
         /// <summary>테스트/진단용 — 종이비행기 궤도의 세로 반폭(월드 유닛, 지금 머리 반경 기준).</summary>
         public float PlaneOrbitHalfHeightWorld => HeadRadius * PlaneOrbitHalfHeightInR;
+
+        /// <summary>테스트/진단용 — 풍선 매듭이 머리 중심에서 진행 반대쪽으로 떨어진 거리(월드 유닛,
+        /// 지금 머리 반경 기준). 2026-09-07 3차 신고("멈춰있을 때도 여전히 겹쳐져 있음") 회귀 잠금의
+        /// 근거값 — PlayMode 테스트가 여기서 풍선 주머니 자체 반경(<c>AppearanceShapeBuilder.BalloonRadiusInR</c>,
+        /// internal이라 값을 복제해 뺀다)을 뺀 나머지가 <c>StickmanBlackboard.CharacterPhysicalHalfWidthWorld</c>
+        /// (몸통 물리 반폭)보다 충분히 큰지를 잠근다.</summary>
+        public float BalloonTetherOffsetWorld => HeadRadius * BalloonTetherBehindInR;
 
         /// <summary>테스트/진단용 — 지금 알파(숨김 페이드 확인).</summary>
         public float Alpha => _alpha;
@@ -1452,8 +1495,20 @@ namespace StickMate.Interaction
                 // 눌려 전 배율에서 2pt로 고정인데 마디는 배율에 비례해 짧아진다). 굽힘 0에서 재는 것이
                 // 가장 보수적이다 — 각도가 커지면 끝점 고정 때문에 마디가 오히려 길어진다.
                 float chord = Vector3.Distance(limb.Root, limb.Tip);
-                limb.MaxBendDegrees = LimbCurveRenderer.MaxSafeBendDegrees(
+                float selfIntersectCap = LimbCurveRenderer.MaxSafeBendDegrees(
                     chord * limb.UpperFraction, chord * (1f - limb.UpperFraction), stroke);
+
+                // ★ 2026-09-07 실기 신고 "점프 착지 무릎앉아하면 다리가 막 늘어남" — 규칙 B는 위 주석의
+                //   "마디가 오히려 길어진다"를 <b>자기교차 여부</b>로만 걸렀지 <b>얼마나</b> 길어지는지는
+                //   보지 않는다. 주인의 landingCrouchFrontKneeDegrees(126°)는 규칙 B 상한(기본 배율에서
+                //   약 140.5°, 배율 무관 — 마디·획이 같은 Height에서 나오므로 비율이 안 바뀐다)보다
+                //   낮아 그대로 통과했지만, 실제 신축 배수는 2.19배(다리 마디 총합이 곧은 다리의 219%)
+                //   였다 — "규칙 D"(LimbCurveRenderer.MaxStretchSafeBendDegrees 클래스 문서)로 별도로
+                //   가둔다. 55°(rear knee, 1.13배)는 이미 무해해 이 상한 밑이라 그대로 통과한다.
+                float stretchCap = LimbCurveRenderer.MaxStretchSafeBendDegrees(
+                    limb.UpperFraction, LimbCurveRenderer.MiniMaxStretchRatio);
+
+                limb.MaxBendDegrees = Mathf.Min(selfIntersectCap, stretchCap);
 
                 _miniLimbs[i] = limb;
                 parts[i + 2] = BuildMiniLimbPoints(limb, NeutralBendDegrees(isLeg));
