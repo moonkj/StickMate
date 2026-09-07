@@ -284,6 +284,18 @@ namespace StickMate.Platform.MacOS
                 // <b>1대에서도 줄이 나오는지</b>(= 계측이 죽어 있지 않은지)는 여기서 확인된다.
                 EmitMonitorTopologyOnce();
                 _timer = ReapplyIntervalSeconds;
+                // ★ 2026-09-07 — Windows판(WindowsOverlayStateEnforcer)에서 확정된 진단과 같은 갭이
+                //   구조적으로 이 파일에도 있었다: 다른 두 재무장 지점(TickDisplayTopology,
+                //   ReArmFullScreenFitForNewTarget)은 이미 "_timerFullScreen = ReapplyIntervalSeconds"로
+                //   곧바로 1회를 보장하는데, 정작 최초 부착 시점에는 그 관용구가 빠져 있어
+                //   TickFullScreenBounds()의 첫 시도가 부착 후 새로 0.5초를 기다려야 했다.
+                //   이 머신에는 macOS 실기가 없어 흰 배경 노출이 실측으로 확인된 적은 없고
+                //   (Windows 신고 사례와 달리), Retina에서는 해상도/모드 불일치 조건이 거의 항상
+                //   참이라 전환 자체가 안정적으로 걸린다는 별개의 이유로 체감 갭이 더 짧을 것으로
+                //   추정된다 — 그러나 이 0.5초 사전 대기는 그 추정과 무관하게 코드 구조상 동일하게
+                //   존재한다. 재시도 주기/상한/이후 로직은 전혀 건드리지 않는 순수 타이밍 수정이라
+                //   macOS 쪽에도 함께 적용한다(CLAUDE.md 플랫폼 동시 검토).
+                _timerFullScreen = ReapplyIntervalSeconds; // 다음 TickFullScreenBounds에서 곧바로 1회.
             }
 
             TickHitTestProbe();

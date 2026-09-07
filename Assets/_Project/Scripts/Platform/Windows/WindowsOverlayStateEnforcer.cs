@@ -293,6 +293,19 @@ namespace StickMate.Platform.Windows
                 // 옮기지 않은 시점이라 "Unity가 놓아 준 자리"가 그대로 찍힌다(그 자리가 이번 조사의 대상이다).
                 EmitMonitorTopologyOnce();
                 _timer = ReapplyIntervalSeconds;
+                // ★ 2026-09-07 — 이 재무장 관용구(다른 세 자리 — TickDisplayTopology 재무장,
+                //   ReArmFullScreenFitForNewTarget, ReArmFullScreenFitAfterNativeWindowMove —
+                //   는 이미 "_fullScreenTimer = ReapplyIntervalSeconds"로 곧바로 1회를 보장하고
+                //   있었다)가 정작 최초 부착 시점에는 빠져 있었다. 그 결과 "부착감지 -> _fullScreenTimer가
+                //   0부터 새로 0.5초 채움 ->
+                //   그제서야 TickFullScreenBounds() 첫 시도"라는 신규 대기가 매 세션 기동마다
+                //   껴 있었고, 그 0.5초 동안은 전체화면->창모드 전환(투명 네이티브 처리의 전제조건)이
+                //   아예 시도조차 되지 않아 씬 카메라 배경색(근백색 0.94)이 알파 무시된 채 불투명하게
+                //   노출된다(Windows 실기 확인 버그 — 기동 초반 ~2초 흰 배경). 여기서
+                //   ReapplyIntervalSeconds를 미리 채워 두면 바로 아래 TickFullScreenBounds()가
+                //   <b>같은 프레임</b>에서 곧바로 첫 시도를 한다 — 그 외 재시도 주기/상한/이후 로직은
+                //   전혀 건드리지 않는다.
+                _fullScreenTimer = ReapplyIntervalSeconds; // 다음 TickFullScreenBounds에서 곧바로 1회.
             }
 
             // 순서 중요: 재무장을 먼저 판정해야 같은 프레임의 TickFullScreenBounds()가 곧바로 다시 돈다.
