@@ -25818,3 +25818,35 @@ font-rendering라운드의 관찰·diff분석은 정확했음(원인이 그쪽�
 **수정**: 반경 2배 확대(수평0.33→0.66/수직→비례, 기존 3.33:1 타원비율·"원근착시" 설계의도는 유지), 중심오프셋도 재계산해 모자/머리카락 클리핑 새로 안 생기게 보정. 클리어비율 0%→58.6%.
 
 **검증**: 실제 Unity PlayMode 배치실행(4초 실벽시계 샘플링)으로 렌더된 실좌표가 공식과 일치+몸통클리어 확인. 음성대조(옛상수로 재현시 실패) 포함 신규테스트 2건. 관련 기존테스트(BodyLeanHeadAnchor/PetFallSync/AppearanceShapeBudget) 전량 무회귀. xcheck osx/win 0에러. Windows영향: 없음(플랫폼중립, 순수기하계산). 카드아이콘 모양은 무변경(이번 신고 범위 아님, 별도 카드↔월드 어휘분기 건은 여전히 리더판정 대기).
+
+## Windows 릴리즈 4차본 게시 — windows-preview-20260907d (커밋 1f8a3a9)
+
+상태표시줄제거 + 종이비행기궤도확대 반영. dGPU영수증PASS, 변경실착지 확인(CharacterPetRenderer 1건, 음성대조0건). PlayMode필터러너 10/10통과(PetFallSync6·PetPlaneOrbit2·PortraitPaperDoll2). ★agent가 리더의 필터지정 실수(EditMode로 지정했으나 실제론 전부PlayMode, PresenceText는 테스트명자체가 존재안함)를 사전에 걸러내 거짓통과 방지. 릴리즈: https://github.com/moonkj/StickMate/releases/tag/windows-preview-20260907d
+
+## FX/PET 카드↔월드 도형 불일치 4건 착지 + 종이비행기 궤도 몸통확장 (coder)
+
+**배경**: "펫 디자인이 반영이 안 됐다" 반복신고 — 원인은 카드(장비창 썸네일)만 인계본 새 디자인((다)군, r20_coords.txt)으로 갈리고 **월드(실제 착용 모습)는 옛 도형 그대로**였던 것(FX/PET 카드아이콘 라운드가 "카드만" 범위로 명시적으로 남겨둔 자리 — Tools/CardShapeGen/gen_fxpet_card_shapes.py 머리말 "몸(월드)은 여기서 한 점도 건드리지 않는다"). 리더 판정: 이번 라운드가 월드 쪽 마저 처리.
+
+**범위 재확인**: 신고 4건(발자국·작은공·종이비행기·나뭇잎) 외 나머지 8종(없음·반짝임·먼지·물방울·리틀스틱메이트·커서친구·풍선·달팽이)은 재확인 결과 카드-월드 어휘 분기가 없거나(반짝임 오목비·커서친구 2색분할은 이미 이전 라운드가 월드→카드로 옮김) 애초에 도형 자체가 카드 전용 신규 항목(먼지·물방울·풍선·달팽이는 (다)군이 아니라 R22 조형)이라 이번 4건이 전부였다.
+
+**핵심 제약(실측으로 확정)**: 인계본 새 디자인은 카드 64u 단위로 100+ 점짜리 고해상도 실루엣(발자국 112pt+엄지24pt, 나뭇잎 64pt)인데, 월드 렌더러(CharacterFxRenderer/CharacterPetRenderer)는 LineRenderer 윤곽선 전용(채움 없음)이고 37-6 규칙 1(획 예산 ≈0.344R)이 이 절대 크기에서 최대 6~8점짜리 저폴리곤만 허용한다. 그래서 **고해상도 원본을 그대로 옮기지 않고, 같은 실루엣 특징(비대칭·볼록 위치)을 보존한 저폴리곤으로 재작도**했다(자세한 유도는 AppearanceShapeBuilder.cs 각 함수 문서).
+
+**교체 4건** (전부 `Interaction/AppearanceShapeBuilder.cs`가 정본, `CharacterFxRenderer`/`CharacterPetRenderer`/`CharacterPortraitStage` 3곳이 동시 소비):
+1. **발자국**: `FootSole` 열린3점(옆모습)→닫힌6점(위에서 본 밑창을 눕힌 비대칭 윤곽). 엄지는 별도 도형으로는 예산상 불가능(잉크사각형 1.5획 확보하려면 발 길이의 절반을 넘음) — 앞쪽 볼록 편향으로만 반영.
+2. **작은공**: `BallSeamBulgeRatio` 0.4924(비대칭 단일호)→0.40(대칭 두 호, 카드 실측 0.3261을 그대로 쓰면 4점표본 실제부푼양이 0.478획으로 규칙1 미달 — 표본 vs 연속곡선 괴리를 검산 후 0.40으로 상향). `BallSeam`이 이제 남/북극 공유하는 닫힌 렌즈고리 6점(보조색 정확히 1개 유지, 규칙3-2 준수).
+3. **종이비행기**: `PlaneBody`+`PlaneFold`(대칭나비4점+장식선2점) → `PlaneWing`+`PlaneKeel`(기수·척추 공유하는 비대칭 접은종이 3점+4점, 둘 다 실제 조각). 오늘밤 궤도확대 커밋(1f8a3a9)의 위치/반경 로직은 무변경(도형함수만 교체, 호출부는 `BuildPlane()`만 수정 — `TickPlane()` 안건드림).
+4. **나뭇잎**: `LeafBlade` 대칭6점→비대칭6점(위/아래 마루 위치·높이 다르게, 뒤끝·잎끝 옛 접점 유지). 잎맥(카드 신규 요소, 잉크색 별도선)은 2색예산(정확히1개) 초과라 이식 보류 — 리더/디자인 후속판단 필요.
+
+**시각검증**: Unity 없이 오프라인 래스터로 카드좌표 vs 새 월드좌표 나란히 대조(`docs/verify/fxpet-world-r1/card_vs_world.png`) — 공/종이비행기/나뭇잎은 실루엣 계열이 뚜렷이 일치, 발자국은 저폴리곤 제약상 카드의 둥근 인상을 완전히는 못 살림(한계 기록, 후속 판단 필요).
+
+**테스트**: `AppearanceShapeBudgetTests` 기존 6건 시그니처 갱신(3점→6점 등) + 신규 2건(나뭇잎 비대칭 잠금·종이비행기 기수/척추공유+비대칭 잠금) — EditMode 41/41(1건 기존 기지부채 Ignore, 무관). 관련 PlayMode 8개 스위트(CharacterAppearanceLayer·PortraitNewItemPreview·AppearanceNewItemsRender·FullscreenSuspendCharacterInk·PetPlaneOrbitRadius·PetFallSync·BodyLeanHeadAnchorFollow·PetFollowsOwnerFoothold) 전량 무회귀.
+
+---
+
+**추가지시(같은 라운드 중 리더 긴급배정)** — 사용자 2차신고: "종이비행기 도는 범위 아직 좁음, 지금의 2배는 되어야함 + 머리쪽에서만 도는데 몸통까지 넓혀야함". 1차수정(오늘밤 1f8a3a9)이 세로반폭만 키우고 중심을 머리 위에 고정한 채였던 게 원인(타원 전체가 정수리 위에만 존재) — 가로축에서 이미 겪은 실패유형의 세로축 버전.
+
+**수정**: `PlaneOrbitHalfWidthInR` 3.00→6.00(요청대로 정확히 2배, 가로는 신체제약 없음). 세로는 몸통 실측 랜드마크(StickmanMetrics: 어깨 -1.318R·엉덩관절 -5.091R, 머리중심 기준)로 재유도 — 타원 바닥을 엉덩관절(몸통 하단 경계, "허리" 대응 랜드마크)에, 꼭대기를 정수리+0.6R 여유에 맞춰 `PlaneOrbitHalfHeightInR` 0.90→3.35, `PlaneCenterAboveHeadInR` 2.35→**-1.75**(부호전환 — 궤도중심이 이제 머리중심보다 아래, 몸통 쪽).
+
+**검증**: PlayMode 실측(벽시계, LeanedHeadWorld 실좌표) — 타원 [바닥 -11.1068, 꼭대기 -10.0013] vs 랜드마크(정수리 -10.0985/어깨 -10.4810/엉덩관절 -11.1035) → 바닥이 엉덩관절과 사실상 일치(오차 0.003), 꼭대기가 정수리 위 확보. 네거티브 대조(1차수정 직후 상수 2.35/0.90로 재계산시 바닥 -10.0242로 정수리보다도 위 = 몸통 미진입 재현) 포함 신규테스트 1건 + 기존 P1/P1n/P2 전량 무회귀(PetPlaneOrbitRadiusTests 3/3, BodyLeanHeadAnchorFollowTests 6/6).
+
+**xcheck osx/win 0에러(양쪽 다 이번 라운드 전체 diff 포함 재검증). Windows 영향: 없음 — 이 라운드 변경분 전부 플랫폼 중립 순수 도형/기하 계산(`Interaction/*.cs`, `Tests/*.cs`)이고 `#if UNITY_STANDALONE_*` 분기 0곳.**

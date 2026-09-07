@@ -1555,17 +1555,21 @@ namespace StickMate.Interaction
                         AppearanceShapeBuilder.BallRing(radius, AppearanceShapeBuilder.BallSegments),
                         x, radius, true, primary);
                     // 솔기는 실물과 같이 그린다(굴러가면 이 선이 회전을 읽히게 한다).
+                    // ★ 2026-09-07 — 테를 관통하는 닫힌 렌즈 고리로 바뀌어 loop:true다
+                    //   (AppearanceShapeBuilder.BallSeam 문서 참고).
                     AddPreviewLine("PetBallSeam", AppearanceShapeBuilder.BallSeam(radius), x, radius,
-                        false, secondary);
+                        true, secondary);
                     break;
                 }
 
                 case AppearanceShapeBuilder.PetPlane:
                 {
+                    // ★ 2026-09-07 — 좌우 대칭 나비형(PlaneBody+PlaneFold)에서 접은 종이비행기
+                    //   (PlaneWing+PlaneKeel, 기수·척추 공유하는 두 닫힌 도형)로. 실물과 같은 두 함수.
                     float span = r * AppearanceShapeBuilder.PlaneWingSpanInR;
                     float y = HeadCenterY + r * 0.60f;
-                    AddPreviewLine("PetPlaneBody", AppearanceShapeBuilder.PlaneBody(span), x, y, true, primary);
-                    AddPreviewLine("PetPlaneFold", AppearanceShapeBuilder.PlaneFold(span), x, y, false, secondary);
+                    AddPreviewLine("PetPlaneWing", AppearanceShapeBuilder.PlaneWing(span), x, y, true, primary);
+                    AddPreviewLine("PetPlaneKeel", AppearanceShapeBuilder.PlaneKeel(span), x, y, true, secondary);
                     break;
                 }
 
@@ -1631,14 +1635,16 @@ namespace StickMate.Interaction
             }
         }
 
-        /// <summary>발자국 한 짝(옆에서 본 밑창). 두께 인자를 넘기지 <b>않는</b> 것이 계약이다 —
-        /// 옛 <c>AddDotPreview</c>는 <c>radius * 2</c>를 넘겨 굵은 캡(둥근 점)을 만들었고,
-        /// 좌표만 바꾸고 그 두께를 남기면 밑창이 통째로 잉크에 먹혀 그림이 그대로다.</summary>
+        /// <summary>발자국 한 짝(위에서 본 밑창을 눕힌 닫힌 6점). 두께 인자를 넘기지 <b>않는</b> 것이
+        /// 계약이다 — 옛 <c>AddDotPreview</c>는 <c>radius * 2</c>를 넘겨 굵은 캡(둥근 점)을 만들었고,
+        /// 좌표만 바꾸고 그 두께를 남기면 밑창이 통째로 잉크에 먹혀 그림이 그대로다.
+        /// <para>★ 2026-09-07 — <see cref="AppearanceShapeBuilder.FootSole"/>이 닫힌 고리가 되어
+        /// loop:true다(옛 3점 열린 선).</para></summary>
         private void AddSolePreview(string name, float x, float size, Color ink)
         {
             Vector3[] pts = AppearanceShapeBuilder.FootSole(size, 1f);
             Offset(pts, x, 0f);
-            AddLine(name, pts, ink, false, PreviewSortingOrder);
+            AddLine(name, pts, ink, true, PreviewSortingOrder);
         }
 
         /// <summary>반짝임 한 알(윤곽 별 1도형).

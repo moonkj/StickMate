@@ -97,9 +97,53 @@ namespace StickMate.Interaction
         //     "몸 폭보다 밖에 있는" 위상 비율 = 2·arccos(0.4/0.66)/π ≈ 58.6%(옛 값은 0%였다 —
         //     0.33 < 0.4라 어느 위상에서도 몸 폭을 벗어나지 못했다).
         //   Tests/PlayMode/PetPlaneOrbitRadiusTests.cs가 "궤도 반폭 > 몸 물리 반폭"을 잠근다.
-        private const float PlaneCenterAboveHeadInR = 2.35f;
-        private const float PlaneOrbitHalfWidthInR = 3.00f;
-        private const float PlaneOrbitHalfHeightInR = 0.90f;
+        //
+        // ★★★ 2026-09-07 2차 신고(같은 밤) — 위 수정을 실기로 확인한 뒤에도 사용자가 다시 신고:
+        //   "종이비행기 도는 범위가 아직도 좁음 이전보다 넓어지긴했지만 지금의 2배는 되어야할듯.
+        //   그리고 머리쪽에서만 도는데 몸과 머리로 범위를 넓혀야함." — 리더가 이 라운드 안에서
+        //   "종이비행기 궤도/위치 로직은 건드리지 마라"던 제약을 이 항목에 한해 해제했다.
+        //
+        //   요구 둘: (가) 가로/세로 반폭을 <b>추가로 2배</b>. (나) 궤도가 <b>머리 근방에만</b> 머물지
+        //   않고 <b>몸통(가슴~허리)까지</b> 내려와야 한다 — 이게 핵심 결함이었다: 위 1차 수정은
+        //   세로 반폭만 키웠지 <b>중심을 머리 위에 고정한 채</b>였다(옛 중심 2.35r는 머리 중심보다
+        //   위, 정수리(+1.00r)보다도 위다). 그래서 세로로 아무리 키워도 타원 <b>전체가 머리 위쪽
+        //   공중에만</b> 머물렀다 — "머리 뒤에서만 돈다"의 세로축 버전이다.
+        //
+        //   고침의 축: (가)는 리터럴 2배(3.00→6.00 / 0.90→1.80... 이 아니라 아래처럼 <b>몸통 실측</b>으로
+        //   다시 유도). 실측 랜드마크(StickmanMetrics의 실제 프리팹 측정치, 배율 1.0 = r 1개):
+        //     정수리(HeadTopLocalY)   = 머리 중심 + 1.00r (머리 반경의 정의 그 자체)
+        //     어깨(ShoulderLocalY)    = 머리 중심 − 1.318r (2.0546944 vs 1.7646944, ÷0.22)
+        //     엉덩관절(HipLocalY)     = 머리 중심 − 5.091r (2.0546944 vs 0.9346944, ÷0.22) —
+        //       이 리그는 마디가 몸통+머리 하나, 다리 둘뿐이라 "허리" 전용 관절이 없다. 다리가
+        //       붙는 엉덩관절이 몸통의 하단 경계이므로 "가슴~허리"의 <b>허리</b> 쪽 대응점으로 쓴다
+        //       (엉덩관절까지 닿으면 그 위의 가슴은 자동으로 포함된다 — 사용자가 말한 "몸통까지"의
+        //       가장 보수적인 해석).
+        //   목표: 타원 <b>꼭대기</b>는 정수리보다 확실히 위(+0.6r 여유 — 종이비행기 자체 반폭
+        //   ≈1r의 절반 정도를 모자/머리카락 위로 더 빼서 상단에서도 잘리지 않게), <b>바닥</b>은
+        //   엉덩관절과 같은 높이. 머리 중심 기준 오프셋으로:
+        //     꼭대기 오프셋 = +1.00 + 0.60 = <b>+1.60r</b>
+        //     바닥 오프셋   = <b>−5.09r</b>(엉덩관절)
+        //     반높이 = (1.60 − (−5.09)) / 2 = <b>3.35r</b> (옛 0.90의 3.7배 — "정확히 2배"라는
+        //       사용자의 첫 어림값보다 크다. 이유: 어림값은 "지금 크기의 2배"였지만, 실제로
+        //       "머리 위 + 몸통까지"를 동시에 만족하려면 머리 하나 크기(1r)가 아니라 <b>몸통
+        //       전체 높이(어깨~엉덩관절 3.77r)</b>만큼 아래로 더 뻗어야 한다 — 신체 비율이
+        //       요구하는 값이지 임의로 부풀린 것이 아니다).
+        //     중심 오프셋 = (1.60 + (−5.09)) / 2 = <b>−1.75r</b>(이제 머리 중심보다 <b>아래</b> —
+        //       옛 설계의 "언제나 머리 위"라는 전제 자체가 이번에 뒤집힌다).
+        //   가로 반폭은 사용자 요청대로 <b>정확히 2배</b>(3.00 → 6.00r) — 가로축은 신체 랜드마크
+        //   제약이 없고(화면 클램프만 있음), 이미 몸 물리 반폭의 1.65배로 신고를 닫았던 축이라
+        //   추가 근거 유도 없이 순수 배증이 사용자 의도와 일치한다.
+        //
+        //   검산(배율 1.0, r=0.22, 발바닥=0 기준 절대 로컬 Y):
+        //     타원 꼭대기 = 2.0546944 + 1.60×0.22 = 2.4066944 (정수리 2.2746944보다 0.132 위)
+        //     타원 바닥   = 2.0546944 − 5.09×0.22  = 0.9348944 (엉덩관절 0.9346944와 사실상 일치)
+        //     엉덩관절~어깨(몸통) 전체가 타원 세로 범위 안에 든다 — "머리와 몸통을 함께 감싸는 궤도".
+        //   Tests/PlayMode/PetPlaneOrbitRadiusTests.cs의 새 테스트가 "바닥이 어깨선 아래(몸통 진입)"·
+        //   "꼭대기가 정수리 위"를 함께 잠근다(가로 반폭 테스트는 기존 그대로 — 상수를 실제로
+        //   읽으므로 값이 커지면 여유가 더 커질 뿐 그대로 통과한다).
+        private const float PlaneCenterAboveHeadInR = -1.75f;
+        private const float PlaneOrbitHalfWidthInR = 6.00f;
+        private const float PlaneOrbitHalfHeightInR = 3.35f;
         private const float PlaneWingSpanInR = AppearanceShapeBuilder.PlaneWingSpanInR;
 
         private const float MiniTrailInHeight = 0.75f;
@@ -274,7 +318,14 @@ namespace StickMate.Interaction
 
         /// <summary>머리 중심에서 <see cref="HeadAnchorWorldPosition"/>까지의 높이(월드 유닛) —
         /// 종이비행기 궤도 중심 기준. 테스트가 "기울이지 않았다면 어디였을지"를
-        /// <see cref="StickmanMetrics"/>만으로 계산할 수 있게 열어 둔다.</summary>
+        /// <see cref="StickmanMetrics"/>만으로 계산할 수 있게 열어 둔다.
+        ///
+        /// <para>★ 2026-09-07 — <see cref="PlaneCenterAboveHeadInR"/>가 <b>음수</b>로 바뀌면서
+        /// 이름과 달리 지금은 <b>머리 중심보다 아래</b>다(몸통까지 감싸는 궤도이므로 중심이 상체
+        /// 쪽으로 내려왔다). 이름은 유지한다 — 이 프로퍼티가 뜻하는 것은 항상 "머리 중심에서의
+        /// 부호 있는 오프셋"이었고(<c>LeanedHeadWorld</c>의 <c>extraAboveHead</c> 인자와 같은 계약),
+        /// 반짝임(<see cref="CharacterFxRenderer.HeadAnchorAboveHeadCenter"/>)처럼 항상 양수인
+        /// 경우도 같은 이름을 쓰므로 부호를 이름에 반영하면 그쪽과 계약이 갈라진다.</para></summary>
         public float HeadAnchorAboveHeadCenter => HeadRadius * PlaneCenterAboveHeadInR;
 
         /// <summary>테스트/진단용 — 종이비행기 궤도의 가로 반폭(월드 유닛, 지금 머리 반경 기준).
@@ -1241,23 +1292,30 @@ namespace StickMate.Interaction
         {
             float radius = Height * BallRadiusInHeight;
             // 솔기가 없으면 원이 아무리 굴러도 정지해 보인다 — 회전을 읽히게 하는 유일한 요소.
+            // ★ 2026-09-07 — 솔기가 이제 <b>테를 관통하는 닫힌 렌즈 고리</b>다(인계본 새 디자인이
+            //   대칭 두 호를 요구하는데, 보조색 도형은 37-6 규칙 3-2상 1개뿐이라 두 호를 한 고리로
+            //   합쳤다 — AppearanceShapeBuilder.BallSeam 문서 참고). loop:true로 바뀌었다(옛 열린 호).
             _lines = new[]
             {
                 MakeLine("BallRing",
                     AppearanceShapeBuilder.BallRing(radius, AppearanceShapeBuilder.BallSegments),
                     true, SortDefault, _primary),
-                MakeLine("BallSeam", AppearanceShapeBuilder.BallSeam(radius), false, SortDefault, _secondary),
+                MakeLine("BallSeam", AppearanceShapeBuilder.BallSeam(radius), true, SortDefault, _secondary),
             };
         }
 
         private void BuildPlane()
         {
             float w = HeadRadius * PlaneWingSpanInR;
-            // 외곽 4점 닫힌 선 + 접힘선 3점(icon-paths.json의 종이비행기 실루엣).
+            // ★ 2026-09-07 — 좌우 대칭 나비형(옛 PlaneBody+PlaneFold)에서 <b>접은 종이비행기</b>
+            //   (윗날개 M + 아랫날개·용골 M2, 기수·척추를 공유하는 두 닫힌 도형)로. 둘 다
+            //   loop:true다(옛 PlaneFold는 장식용 열린 2점이었다 — 이제는 실제 조각).
+            //   ★★ 이 함수는 EnsureBuilt가 아이템을 바꿀 때만 부른다 — 오늘 밤 궤도 확대
+            //   (PlaneCenterAboveHeadInR 등, TickPlane 소관)는 여기서 한 줄도 건드리지 않는다.
             _lines = new[]
             {
-                MakeLine("PlaneBody", AppearanceShapeBuilder.PlaneBody(w), true, SortDefault, _primary),
-                MakeLine("PlaneFold", AppearanceShapeBuilder.PlaneFold(w), false, SortDefault, _secondary),
+                MakeLine("PlaneWing", AppearanceShapeBuilder.PlaneWing(w), true, SortDefault, _primary),
+                MakeLine("PlaneKeel", AppearanceShapeBuilder.PlaneKeel(w), true, SortDefault, _secondary),
             };
         }
 

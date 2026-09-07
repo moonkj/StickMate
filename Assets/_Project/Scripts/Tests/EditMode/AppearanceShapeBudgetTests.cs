@@ -101,11 +101,12 @@ namespace StickMate.Tests.EditMode
                     return new WorldShape[0];
 
                 case AppearanceShapeBuilder.FxFootprint:
-                    // ★ 2026-09-06 — 둥근 점(면제)에서 <b>옆에서 본 밑창</b>으로. 크기 인자는 실물
-                    //   (CharacterFxRenderer.BuildSole)과 같이 <b>머리 반경</b>이다.
+                    // ★ 2026-09-07 — 옆에서 본 밑창(열린 3점)에서 <b>위에서 본 밑창을 눕힌 닫힌
+                    //   6점</b>으로(인계본 새 디자인 이식, AppearanceShapeBuilder.FootSole 문서).
+                    //   크기 인자는 실물(CharacterFxRenderer.BuildSole)과 같이 <b>머리 반경</b>이다.
                     return new[]
                     {
-                        new WorldShape("FootSole", AppearanceShapeBuilder.FootSole(R, 1f), false),
+                        new WorldShape("FootSole", AppearanceShapeBuilder.FootSole(R, 1f), true),
                     };
 
                 case AppearanceShapeBuilder.FxSparkle:
@@ -161,21 +162,25 @@ namespace StickMate.Tests.EditMode
                 case AppearanceShapeBuilder.PetBall:
                 {
                     float radius = H * AppearanceShapeBuilder.BallRadiusInHeight;
+                    // ★ 2026-09-07 — 솔기가 테를 관통하는 닫힌 렌즈 고리(6점)가 되어 loop:true다
+                    //   (양쪽 대칭 두 호를 보조색 1개 규칙 안에서 담는다 — BallSeam 문서 참고).
                     return new[]
                     {
                         new WorldShape("BallRing",
                             AppearanceShapeBuilder.BallRing(radius, AppearanceShapeBuilder.BallSegments), true),
-                        new WorldShape("BallSeam", AppearanceShapeBuilder.BallSeam(radius), false, accent: true),
+                        new WorldShape("BallSeam", AppearanceShapeBuilder.BallSeam(radius), true, accent: true),
                     };
                 }
 
                 case AppearanceShapeBuilder.PetPlane:
                 {
+                    // ★ 2026-09-07 — 좌우 대칭 나비형(PlaneBody+PlaneFold)에서 접은 종이비행기
+                    //   (PlaneWing+PlaneKeel, 기수·척추 공유하는 두 닫힌 도형)로.
                     float span = R * AppearanceShapeBuilder.PlaneWingSpanInR;
                     return new[]
                     {
-                        new WorldShape("PlaneBody", AppearanceShapeBuilder.PlaneBody(span), true),
-                        new WorldShape("PlaneFold", AppearanceShapeBuilder.PlaneFold(span), false, accent: true),
+                        new WorldShape("PlaneWing", AppearanceShapeBuilder.PlaneWing(span), true),
+                        new WorldShape("PlaneKeel", AppearanceShapeBuilder.PlaneKeel(span), true, accent: true),
                     };
                 }
 
@@ -445,17 +450,32 @@ namespace StickMate.Tests.EditMode
         // 아래 두 검사는 옛 결함으로 되돌아가는 순간 빨개진다.
 
         /// <summary>발자국이 <b>다시 둥근 점</b>이 되지 않는다. 되돌리는 방법이 두 가지라 둘 다 막는다:
-        /// 좌표를 2점으로 줄이거나(도형), 두께를 지름으로 잡거나(호출부).</summary>
+        /// 좌표를 2점으로 줄이거나(도형), 두께를 지름으로 잡거나(호출부).
+        ///
+        /// <para>★ 2026-09-07 — 인계본 새 디자인 이식으로 열린 3점 → <b>닫힌 6점</b>이 됐다
+        /// (AppearanceShapeBuilder.FootSole 문서). 점 개수 단언과 대칭 검사를 그에 맞춰 갱신한다 —
+        /// 옛 인덱스(0·2)를 그대로 두면 6점 배열에서 엉뚱한 점을 재게 된다.</para></summary>
         [Test]
         public void 발자국은_옆에서_본_밑창이고_보통_획으로_그린다()
         {
             Vector3[] sole = AppearanceShapeBuilder.FootSole(R, 1f);
-            Assert.AreEqual(3, sole.Length,
-                "발자국이 열린 3점(옆에서 본 밑창)이 아닙니다 — 옆에서 보는 이 앱에서 둥근 점은 발자국이 아닙니다.");
+            Assert.AreEqual(6, sole.Length,
+                "발자국이 닫힌 6점(위에서 본 밑창을 눕힌 윤곽)이 아닙니다 — 2026-09-07 인계본 새 디자인 " +
+                "이식 이후의 계약입니다.");
 
-            // 진행 방향(+x)으로 앞이 길다 — 뒤꿈치보다 발가락 쪽이 멀다는 것이 '밑창'의 정체다.
-            Assert.Greater(sole[2].x, -sole[0].x,
+            // 진행 방향(+x)으로 앞(발가락)이 뒤(뒤꿈치)보다 멀다는 것이 '밑창'의 정체다.
+            // 인덱스가 아니라 전체 점의 최댓값/최솟값으로 재서, 점을 늘리거나 순서를 바꿔도
+            // "방향이 있는 모양인가"라는 본질만 계속 검사한다.
+            float maxX = float.MinValue, minX = float.MaxValue;
+            for (int i = 0; i < sole.Length; i++) { maxX = Mathf.Max(maxX, sole[i].x); minX = Mathf.Min(minX, sole[i].x); }
+            Assert.Greater(maxX, -minX,
                 "밑창이 좌우 대칭입니다 — 앞뒤가 같으면 방향이 없는 알약이 됩니다.");
+
+            // 전부 y >= 0 — 접지선(월드 Root 위치) 아래로 파고들지 않는다(발자국이 땅에 박히면 안 된다).
+            for (int i = 0; i < sole.Length; i++)
+            {
+                Assert.GreaterOrEqual(sole[i].y, -1e-5f, $"{i}번 점이 접지선 아래({sole[i].y:F4})입니다.");
+            }
 
             // 좌우 반전은 x만 뒤집는다(달팽이와 같은 규약).
             Vector3[] left = AppearanceShapeBuilder.FootSole(R, -1f);
@@ -467,10 +487,10 @@ namespace StickMate.Tests.EditMode
 
             // ★ 호출부 계약 — 두께가 <b>보통 획</b>이어야 한다. 옛 BuildDot은 radius*2(= 1.19획)로
             //   못박았고, 그 두께를 남긴 채 좌표만 바꾸면 밑창이 통째로 잉크에 먹혀 그림이 그대로다.
-            //   문자열 니들이 아니라 <b>도형이 그 두께를 견디는가</b>로 잰다: 잉크 사각형 2.79획.
+            //   문자열 니들이 아니라 <b>도형이 그 두께를 견디는가</b>로 잰다.
             string ink = DescribeInkBoxViolation("FootSole", sole, W * R);
             Assert.IsNull(ink, ink);
-            string shortest = DescribeShortestEdgeViolation("FootSole", sole, false, W * R);
+            string shortest = DescribeShortestEdgeViolation("FootSole", sole, true, W * R);
             Assert.IsNull(shortest, shortest);
         }
 
@@ -698,26 +718,50 @@ namespace StickMate.Tests.EditMode
                 $"주머니 지름이 {(diameter / W):F2}획입니다 — 3획 미만이면 풍선이 통짜 점이 됩니다.");
         }
 
+        /// <summary>
+        /// ★ 2026-09-07 — 인계본 새 디자인(카드 <c>ball.S1</c>/<c>ball.S2</c>, 대칭 두 호)을
+        /// 반영해 솔기가 <b>테를 관통하는 닫힌 렌즈 고리(6점)</b>가 됐다(AppearanceShapeBuilder.BallSeam
+        /// 문서). 극점(테와 맞닿는 두 점)이 이제 배열의 <b>0번·3번</b>이다 — 옛 검사는 "첫 점·마지막
+        /// 점"이었는데, 닫힌 고리에서는 마지막 점(5번)이 극점이 아니라 반대쪽 호의 중간점이라
+        /// 그대로 두면 이 테스트가 잘못된 점을 잰다. 그리고 이제 솔기가 <b>양쪽으로</b> 부푸는지도
+        /// 함께 잠근다(한쪽만 부풀던 옛 비대칭 회귀를 잡기 위해서다).
+        /// </summary>
         [Test]
         public void 공의_솔기는_테_위에_정확히_얹힌다()
         {
             float radius = H * AppearanceShapeBuilder.BallRadiusInHeight;
             Vector3[] seam = AppearanceShapeBuilder.BallSeam(radius);
 
-            Assert.AreEqual(radius, seam[0].magnitude, 1e-4f,
-                "솔기의 첫 점이 테 위에 없습니다 — 37-6 규칙 4의 간격은 '0 또는 ≥1.5획'인데 " +
-                "솔기는 0(닿음) 쪽입니다. 어중간하게 띄우면 공 안에 뜬 실오라기가 됩니다.");
-            Assert.AreEqual(radius, seam[seam.Length - 1].magnitude, 1e-4f,
-                "솔기의 끝 점이 테 위에 없습니다.");
+            Assert.AreEqual(6, seam.Length,
+                "솔기가 닫힌 6점(양쪽 대칭 렌즈 고리)이 아닙니다 — 2026-09-07 인계본 새 디자인 " +
+                "이식 이후의 계약입니다.");
 
-            // 솔기가 <b>부풀어</b> 있어야 구(球)로 읽힌다 — 직선이면 그냥 지름선(= 바퀴살의 사촌)이다.
-            float bulge = 0f;
-            for (int i = 0; i < seam.Length; i++) bulge = Mathf.Max(bulge, seam[i].x);
+            // 극점(남/북)은 index 0·3이다 — 두 호가 만나는 공유점.
+            Assert.AreEqual(radius, seam[0].magnitude, 1e-4f,
+                "솔기의 남극(0번)이 테 위에 없습니다 — 37-6 규칙 4의 간격은 '0 또는 ≥1.5획'인데 " +
+                "솔기는 0(닿음) 쪽입니다. 어중간하게 띄우면 공 안에 뜬 실오라기가 됩니다.");
+            Assert.AreEqual(radius, seam[3].magnitude, 1e-4f,
+                "솔기의 북극(3번)이 테 위에 없습니다.");
+
+            // 솔기가 <b>양쪽으로</b> 부풀어 있어야 인계본 대칭 디자인과 같다 — 한쪽만 부풀면
+            // 옛 비대칭 단일 호로 되돌아간 것이다.
+            float bulgePos = 0f, bulgeNeg = 0f;
+            for (int i = 0; i < seam.Length; i++)
+            {
+                bulgePos = Mathf.Max(bulgePos, seam[i].x);
+                bulgeNeg = Mathf.Min(bulgeNeg, seam[i].x);
+            }
             // 문턱이 <b>획 반폭</b>인 이유: 마루가 그보다 가까우면 곡선 전체가 "같은 자리에 그은 직선"의
-            // 잉크 안에 들어가 버린다. 4점 표본이라 마루는 원호의 apex(0.28R)가 아니라 0.247R = 0.72획이다.
-            Assert.GreaterOrEqual(bulge, W * 0.5f,
-                $"솔기의 부푼 양이 {bulge / W:F2}획입니다 — 획 반폭(0.5획) 미만이면 직선의 잉크에 묻혀 " +
-                "지름선(= 바퀴살의 사촌)으로 보입니다.");
+            // 잉크 안에 들어가 버린다.
+            Assert.GreaterOrEqual(bulgePos, W * 0.5f,
+                $"솔기의 +x 부푼 양이 {bulgePos / W:F2}획입니다 — 획 반폭(0.5획) 미만이면 직선의 잉크에 " +
+                "묻혀 지름선(= 바퀴살의 사촌)으로 보입니다.");
+            Assert.LessOrEqual(bulgeNeg, -W * 0.5f,
+                $"솔기의 −x 부푼 양이 {-bulgeNeg / W:F2}획입니다 — 인계본 새 디자인은 <b>양쪽</b> 대칭으로 " +
+                "부풉니다. 한쪽만 부풀면 옛 비대칭 단일 호로 되돌아간 것입니다.");
+            Assert.AreEqual(bulgePos, -bulgeNeg, W * 0.05f,
+                $"솔기의 +x({bulgePos:F4})/−x({-bulgeNeg:F4}) 부푼 양이 다릅니다 — 인계본 대칭 디자인" +
+                $"(양쪽 {AppearanceShapeBuilder.BallSeamBulgeRatio:F2})과 어긋납니다.");
         }
 
         [Test]
@@ -892,7 +936,77 @@ namespace StickMate.Tests.EditMode
                 "CharacterPetRenderer.CursorMinGapPoints도 함께 올려야 합니다.");
         }
 
-        // ==================== 도구 ====================
+        // ============================================================================
+        // 6. ★ 2026-09-07 — 카드-월드 일치 이식(발자국·공·종이비행기·나뭇잎) 회귀 잠금
+        // ============================================================================
+        // 배경: 사용자가 "펫 디자인이 반영이 안 됐다"고 반복 신고했다. 원인은 카드(장비창 썸네일)만
+        // 인계본 새 디자인((다)군, design/equipment/verify/r20_coords.txt)으로 갈리고 <b>월드(실제
+        // 착용 모습)는 옛 도형 그대로</b>였던 것 — 위 발자국/공/종이비행기 개별 계약 테스트가 이미
+        // "닫힌 6점/렌즈 고리/기수·척추 공유"로 갱신됐지만, 그 테스트들은 <b>옛 결함으로 되돌아가면</b>
+        // 걸리는 형태이지 "이번에 실제로 바뀌었는가"를 직접 말하지 않는다. 아래는 그 직접 증거다 —
+        // 새 도형이 옛 도형과 <b>구조적으로 다른 성질</b>(비대칭·일방향 부풀음·기수 공유)을 갖는지 잰다.
+
+        /// <summary>나뭇잎 잎몸이 <b>다시 좌우(상하) 대칭</b>이 되지 않는다. 인계본 새 디자인은
+        /// 비대칭이 정체성이다(위 <see cref="AppearanceShapeBuilder.LeafBlade"/> 문서).</summary>
+        [Test]
+        public void 나뭇잎_잎몸은_이제_비대칭이다()
+        {
+            Vector3[] blade = AppearanceShapeBuilder.LeafBlade(1f);
+
+            float maxY = float.MinValue, minY = float.MaxValue;
+            int maxIdx = -1, minIdx = -1;
+            for (int i = 0; i < blade.Length; i++)
+            {
+                if (blade[i].y > maxY) { maxY = blade[i].y; maxIdx = i; }
+                if (blade[i].y < minY) { minY = blade[i].y; minIdx = i; }
+            }
+
+            // 대칭이던 옛 도형은 위 마루(index 2)와 아래 마루(index 4)의 x가 <b>같았다</b>(0.14, ±0.30).
+            // 새 도형은 위/아래 마루의 x와 |y| 둘 다 달라야 한다 — 우연히 하나만 다르면
+            // "거의 대칭인데 반올림 오차"로 오인될 여지가 있어 <b>둘 다</b> 잰다.
+            // (NUnit Assert.AreNotEqual에는 실수 오차 허용 오버로드가 없어 Abs 차로 직접 잰다.)
+            Assert.Greater(Mathf.Abs(blade[maxIdx].x - (-blade[minIdx].x)), 0.01f,
+                "위/아래 마루의 x가 거울상입니다 — 옛 대칭 잎으로 되돌아간 것처럼 보입니다.");
+            Assert.Greater(Mathf.Abs(maxY - (-minY)), 0.01f,
+                "위/아래 마루의 |y|가 같습니다 — 옛 대칭 잎(±0.30l)과 구분되지 않습니다.");
+
+            // 그래도 뒤끝(잎자루 접점)·잎끝은 옛 값 그대로다 — LeafStem 접점 계약을 깨면 안 된다.
+            Assert.AreEqual(new Vector3(-0.5f, 0f, 0f), blade[0], "뒤끝(index 0)이 옛 접점에서 벗어났습니다.");
+            Assert.AreEqual(new Vector3(0.5f, 0f, 0f), blade[3], "잎끝(index 3)이 옛 값에서 벗어났습니다.");
+        }
+
+        /// <summary>종이비행기가 <b>다시 좌우 대칭 나비형(옛 PlaneBody+PlaneFold)</b>이 되지 않는다.
+        /// 인계본 새 디자인은 기수·척추를 공유하는 <b>비대칭 접은 종이</b>다.</summary>
+        [Test]
+        public void 종이비행기는_이제_기수와_척추를_공유하는_두_장의_날개다()
+        {
+            const float w = 1f;
+            Vector3[] wing = AppearanceShapeBuilder.PlaneWing(w);
+            Vector3[] keel = AppearanceShapeBuilder.PlaneKeel(w);
+
+            Assert.AreEqual(3, wing.Length, "윗날개가 3점이 아닙니다.");
+            Assert.AreEqual(4, keel.Length, "아랫날개·용골이 4점이 아닙니다.");
+
+            // 기수(index 0)를 공유한다 — 궤도 접선 회전(TickPlane)이 이 점을 로컬 원점으로 쓴다.
+            Assert.AreEqual(new Vector3(w, 0f, 0f), wing[0], "윗날개의 기수가 (w,0)이 아닙니다.");
+            Assert.AreEqual(0f, Vector3.Distance(wing[0], keel[0]), 1e-5f,
+                "윗날개와 아랫날개의 기수가 다릅니다.");
+
+            // 척추 끝(윗날개 index 2 = 아랫날개 index 1)도 공유한다 — 접힌 종이 한 장의 두 면이므로
+            // 떨어져 있으면 37-6 규칙 4가 금지한 '떠 있는 조각'이다.
+            Assert.AreEqual(0f, Vector3.Distance(wing[2], keel[1]), 1e-5f,
+                "윗날개와 아랫날개가 척추에서 떨어져 있습니다.");
+
+            // 옛 나비형은 위(+0.62w)/아래(−0.62w)가 <b>거울상</b>이었다. 새 디자인은 윗날개가 +y
+            // 쪽으로만, 아랫날개가 −y 쪽으로만 뻗는 <b>비대칭 접힘</b>이라 두 극단의 |y|가 다르다.
+            float wingMaxY = 0f;
+            for (int i = 0; i < wing.Length; i++) wingMaxY = Mathf.Max(wingMaxY, wing[i].y);
+            float keelMinY = 0f;
+            for (int i = 0; i < keel.Length; i++) keelMinY = Mathf.Min(keelMinY, keel[i].y);
+            Assert.Greater(Mathf.Abs(wingMaxY - (-keelMinY)), 0.01f,
+                "윗날개 최고점과 아랫날개 최저점의 절대값이 같습니다 — 옛 좌우 대칭 나비형과 " +
+                "구분되지 않습니다.");
+        }
 
         private static Vector3 Center(Vector3[] pts)
         {

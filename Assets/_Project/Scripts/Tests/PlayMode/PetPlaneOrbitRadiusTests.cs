@@ -35,6 +35,17 @@ namespace StickMate.Tests.PlayMode
     ///  P2  <b>실제로 그려지는</b> 펫 위치(<see cref="CharacterPetRenderer.PetWorldPosition"/>)를
     ///      궤도 한 바퀴(3.2초)를 넘겨 실측한 최대 진폭이 공식값과 일치하고, 역시 물리 반폭보다
     ///      크다 — "공식은 맞는데 실제로 그려지는 것은 다르다"는 별개의 실패 유형을 반증한다.
+    ///
+    /// ============================================================================
+    /// ★★ 2026-09-07 같은 밤 2차 신고 — "그래도 좁다 + 머리쪽에서만 돈다"
+    /// ============================================================================
+    /// 위 P1/P2로 닫은 것은 <b>가로</b> 결함뿐이었다. 세로는 반폭만 키우고 <b>중심을 머리 위에
+    /// 고정</b>한 채였다(1차 수정 상수: 중심 2.35r · 반높이 0.90r → 타원이 통째로 정수리보다
+    /// 위였다). 그래서 사용자가 "머리쪽에서만 돈다"고 다시 신고했다 — 가로축에서 이미 한 번
+    /// 겪은 실패 유형의 <b>세로축 버전</b>이다.
+    ///  Q1  타원 바닥이 어깨선보다 아래(몸통 진입).
+    ///  Q2  타원 꼭대기가 정수리보다 위(머리 커버리지 유지).
+    ///  Q1n (네거티브) 1차 수정 직후 상수(2.35r/0.90r)로는 Q1이 성립하지 않는다.
     /// </summary>
     public sealed class PetPlaneOrbitRadiusTests
     {
@@ -45,10 +56,18 @@ namespace StickMate.Tests.PlayMode
         /// PetFollowsOwnerFootholdTests의 PetBall과 같은 이유).</summary>
         private const int PetPlaneItem = 1;
 
-        /// <summary>신고 당시(2026-09-07 수정 전) 궤도 가로 반폭 상수 — 네거티브 컨트롤 전용.
-        /// CharacterPetRenderer.PlaneOrbitHalfWidthInR의 옛 값을 그대로 복제한다. 이 상수를
-        /// <b>다시 프로덕션 값으로 되돌리지 마라</b> — 이 테스트가 그 값을 반증하는 대조군이다.</summary>
+        /// <summary>신고 당시(2026-09-07 1차 수정 전) 궤도 가로 반폭 상수 — 네거티브 컨트롤 전용.
+        /// CharacterPetRenderer.PlaneOrbitHalfWidthInR의 <b>맨 처음</b> 값을 그대로 복제한다.
+        /// 이 상수를 <b>다시 프로덕션 값으로 되돌리지 마라</b> — 이 테스트가 그 값을 반증하는
+        /// 대조군이다.</summary>
         private const float PreFixOrbitHalfWidthInR = 1.50f;
+
+        /// <summary>2026-09-07 1차 수정 직후(같은 밤 2차 신고 전) 값 — 아래 세로 커버리지 테스트의
+        /// 네거티브 컨트롤 전용. "가로/세로를 2배 키우기만 했지 중심을 몸통 쪽으로 내리지 않았던"
+        /// 상태를 그대로 복제한다. CharacterPetRenderer의 실제 상수를 <b>다시 이 값으로 되돌리지
+        /// 마라</b> — 이 테스트가 그 상태를 반증하는 대조군이다.</summary>
+        private const float PreSecondFixCenterAboveHeadInR = 2.35f;
+        private const float PreSecondFixOrbitHalfHeightInR = 0.90f;
 
         /// <summary>공식 진폭과 실측 진폭 사이에 허용하는 오차(월드 유닛) — 화면 클램프/부동소수
         /// 오차 정도만 흡수한다.</summary>
@@ -114,6 +133,79 @@ namespace StickMate.Tests.PlayMode
             Assert.LessOrEqual(preFixOrbitHalfWidth, physicalHalfWidth,
                 $"{LogPrefix} 신고 당시 상수로도 조건이 성립합니다({preFixOrbitHalfWidth:F4} vs " +
                 $"{physicalHalfWidth:F4}) — 이 테스트가 실제 신고를 반증하지 못합니다(무의미한 여유).");
+        }
+
+        /// <summary>
+        /// ★★ 2026-09-07 같은 밤 2차 신고 회귀 잠금: <i>"종이비행기 도는 범위가 아직도 좁음 이전보다
+        /// 넓어지긴했지만 지금의 2배는 되어야할듯. 그리고 머리쪽에서만 도는데 몸과 머리로 범위를
+        /// 넓혀야함."</i>
+        ///
+        /// 1차 수정은 세로 반폭만 키우고 <b>중심을 머리 위에 고정</b>한 채였다 — 그래서 타원 전체가
+        /// 정수리 위 공중에만 머물렀다(세로축 버전의 "머리 뒤에서만 도는" 결함). 이 테스트는 그 결함이
+        /// 다시 들어오지 않는지 <b>두 절대 조건</b>으로 잠근다:
+        ///   Q1 타원의 <b>바닥</b>(중심−세로반폭)이 <b>어깨선(ShoulderWorldY) 아래</b> — 궤도가
+        ///      머리를 벗어나 몸통(가슴~어깨 아래)까지 내려온다는 뜻이다.
+        ///   Q2 타원의 <b>꼭대기</b>(중심+세로반폭)가 <b>정수리(HeadTopWorldY) 위</b> — 몸통까지
+        ///      내려오면서 머리 위 커버리지를 잃지 않았다는 뜻이다.
+        /// 그리고 <b>네거티브 컨트롤</b>(Q1n) — 1차 수정 직후의 상수(중심 2.35r·반높이 0.90r)로
+        /// 같은 Q1 조건을 계산하면 성립하지 않아야 한다(그때는 바닥이 정수리보다도 위였다).
+        /// </summary>
+        [UnityTest]
+        [Timeout(180000)]
+        public IEnumerator 종이비행기_궤도가_머리_위부터_몸통까지_감싼다()
+        {
+            yield return LoadSceneAndPinIdle();
+            StickmanAgent agent = Agent();
+            StickmanMetrics metrics = agent.GetComponent<StickmanMetrics>();
+            Assert.IsNotNull(metrics, $"{LogPrefix} StickmanMetrics가 없습니다.");
+
+            CharacterPetRenderer pet = Object.FindFirstObjectByType<CharacterPetRenderer>();
+            Assert.IsNotNull(pet, $"{LogPrefix} CharacterPetRenderer가 씬에 없습니다.");
+
+            Assert.IsTrue(EquipmentModel.TryWear(EquipmentSlot.Pet, PetPlaneItem, null),
+                $"{LogPrefix} 종이비행기를 걸치지 못했습니다.");
+            for (int i = 0; i < 5; i++) yield return null;
+            Assert.AreEqual(PetPlaneItem, pet.ActivePetItemIndex,
+                $"{LogPrefix} 펫이 종이비행기로 빌드되지 않았습니다.");
+
+            float headRadius = metrics.HeadRadius;
+            float centerY = pet.HeadAnchorWorldPosition.y;
+            float halfHeight = pet.PlaneOrbitHalfHeightWorld;
+            float top = centerY + halfHeight;
+            float bottom = centerY - halfHeight;
+
+            float headTopY = metrics.HeadTopWorldY;
+            float shoulderY = metrics.ShoulderWorldY;
+            float hipY = metrics.HipWorldY;
+
+            Debug.Log($"{LogPrefix} 궤도 중심Y {centerY:F4}, 세로반폭 {halfHeight:F4} → " +
+                $"타원 [{bottom:F4}, {top:F4}]. 랜드마크 — 정수리 {headTopY:F4} / 어깨 {shoulderY:F4} / " +
+                $"엉덩관절 {hipY:F4}.");
+
+            // Q1 — 절대 조건: 바닥이 어깨선보다 아래(몸통 진입).
+            Assert.Less(bottom, shoulderY,
+                $"{LogPrefix} 타원 바닥({bottom:F4})이 어깨선({shoulderY:F4})보다 위입니다 — 궤도가 " +
+                $"여전히 머리 근방에만 머뭅니다(2차 신고 재현). 엉덩관절({hipY:F4})까지는 못 가더라도 " +
+                "최소한 어깨 아래(몸통)까지는 내려와야 합니다.");
+
+            // Q2 — 절대 조건: 꼭대기가 정수리보다 위(머리 커버리지 유지).
+            Assert.Greater(top, headTopY,
+                $"{LogPrefix} 타원 꼭대기({top:F4})가 정수리({headTopY:F4})보다 아래입니다 — 몸통까지 " +
+                "내려오면서 머리 위 커버리지를 잃었습니다.");
+
+            // Q1n — 네거티브 컨트롤: 1차 수정 직후 상수로는 Q1이 성립하지 않았어야 한다.
+            float preSecondCenterY = metrics.HeadCenterWorldY + headRadius * PreSecondFixCenterAboveHeadInR;
+            float preSecondBottom = preSecondCenterY - headRadius * PreSecondFixOrbitHalfHeightInR;
+            Debug.Log($"{LogPrefix} [네거티브] 1차 수정 직후 상수(중심 2.35r·반높이 0.90r)로 계산한 " +
+                $"바닥 {preSecondBottom:F4} — 어깨선 {shoulderY:F4}보다 " +
+                $"{(preSecondBottom < shoulderY ? "아래(성립, 대조 실패)" : "위(몸통 미진입, 신고 재현)")}.");
+            Assert.GreaterOrEqual(preSecondBottom, headTopY,
+                $"{LogPrefix} 1차 수정 직후 상수로도 바닥({preSecondBottom:F4})이 이미 정수리" +
+                $"({headTopY:F4})보다 아래였습니다 — 이 테스트가 2차 신고를 반증하지 못합니다" +
+                "(무의미한 대조).");
+
+            EquipmentModel.TryWear(EquipmentSlot.Pet, EquipmentModel.NotWorn, null);
+            yield return null;
         }
 
         [UnityTest]

@@ -281,19 +281,36 @@ namespace StickMate.Interaction
         // ==================== FX ====================
 
         /// <summary>
-        /// 발자국 한 짝 — <b>옆에서 본 밑창</b>(열린 3점). 원점은 발 한가운데,
-        /// <c>+x</c>가 <paramref name="facing"/>(진행 방향)이고 <paramref name="size"/>는 머리 반경이다.
+        /// 발자국 한 짝 — <b>위에서 본 밑창을 옆에서 보이는 세계에 눕힌 닫힌 6점</b>. 원점은 발
+        /// 한가운데, <c>+x</c>가 <paramref name="facing"/>(진행 방향, 뒤꿈치→발가락)이고
+        /// <paramref name="size"/>는 머리 반경이다.
         ///
-        /// <para>★ 2026-09-06 — 옛 도형은 <c>DotSegment</c>(굵은 캡 = 둥근 점)였다. 그건 위에서
-        /// 내려다본 어휘인데 <b>이 앱은 옆에서 본다</b>. 게다가 지름이 1.19획이라 규칙 1의 잉크 사각형
-        /// 하한(1.5획)에도 미달했다. 새 도형은 변 <b>1.14 / 1.69획</b>, 잉크 사각형 <b>2.79획</b>이다.</para>
+        /// <para>★ 2026-09-07 — 인계본 새 디자인(design/equipment/verify/r20_coords.txt
+        /// <c>look.fx.footprint</c>, (다)군)이 <b>위에서 본 발바닥(112점) + 엄지(24점)</b>로
+        /// 카드를 이미 갈았는데, 이 함수(월드/착용 실물)는 옛 3점 옆모습 그대로였다 — 사용자가
+        /// 반복 신고한 "카드는 바뀌었는데 실제로 보면 그대로다"의 발자국 쪽 정체.</para>
         ///
-        /// <para><b>부르는 쪽 계약</b>: 선 두께는 <b>보통 획</b>(<c>RenderStroke</c>)이다.
-        /// 옛 호출부처럼 <c>radius * 2</c>로 잡으면 밑창이 통째로 잉크에 먹혀 다시 뚱뚱한 점이 된다.</para>
+        /// <para><b>112점을 그대로 못 옮기는 이유(실측)</b> — 이 항목들은 전부
+        /// <c>ShippingStrokeBudgetInHeadRadii</c>(배율 0.75에서 <b>0.344R</b>) 이상인 변만 허용한다
+        /// (37-6 규칙 1, Tests/EditMode/AppearanceShapeBudgetTests가 잠근다). 카드의 발 길이는
+        /// 64u 상자에서 약 51u ≈ 3.2R 상당인데, 옛 발자국의 실제 크기(<paramref name="size"/> = 머리
+        /// 반경 1개)로 그 실루엣을 그대로 축소하면 112개 변의 평균 길이가 <b>0.02R</b> 안팎이 되어
+        /// 규칙 1을 수백 곳에서 어긴다(획 하나에 다 먹힌다). 카드처럼 확대하면 발자국이 머리보다 커진다.
+        /// 그래서 <b>같은 절대 크기 안에서 표현 가능한 최대 정점 수</b>(획 예산이 사는 상한, 6점 —
+        /// <see cref="MaxSegmentsForRadiusInR"/>와 같은 산술을 다각형 둘레에 적용한 값)로 실루엣을
+        /// 다시 그렸다. 별도 "엄지" 도형은 포기했다 — 독립 도형이 뚱뚱한 점이 아니려면 잉크 사각형이
+        /// 1.5획(0.52R) 이상이어야 하는데 그러면 엄지가 발 전체 길이(0.96R대)의 절반을 넘는다.
+        /// 대신 <b>앞쪽(발가락 쪽)을 위로 볼록하게</b> 몰아 "엄지가 있는 쪽"이라는 비대칭만 살렸다.</para>
         ///
-        /// <para>카드(<c>Resources/Items/look_fx_footprint.asset</c>)의 자국 세 개가 같은 비율이다 —
-        /// 첫 점 기준으로 (0,0) (0.396, −0.105) (1.000, −0.063)이고 y가 아래로 가는 카드 좌표계라
-        /// 부호만 뒤집힌다.</para>
+        /// <para><b>변환</b>: 카드 64u(y 아래) → R 배수(머리 중심 원점, y 위, 1R=16u)로 되돌린 뒤
+        /// 발의 <b>길이축</b>(카드에서는 세로, 엄지가 위쪽)을 세계의 <b>+x</b>(진행 방향)로 90도
+        /// 돌리고, <b>폭축</b>을 세계의 <b>y</b>로 삼아 옛 설계와 같은 "땅에 눕는 얇은 자국"으로
+        /// 짓눌렀다(옆에서 보는 이 앱에서 위에서 본 발을 그대로 세우면 땅에서 뜬 혹처럼 보인다).
+        /// 6점은 실루엣에서 곡률이 큰 지점(뒤꿈치·좌우 볼·앞쪽 볼록·발가락)만 남긴 것이다.</para>
+        ///
+        /// <para><b>부르는 쪽 계약</b>: 선 두께는 <b>보통 획</b>(<c>RenderStroke</c>)이고, 닫힌 고리
+        /// (<c>loop:true</c>)다 — 옛 3점 열린 선과 달리 이제 <b>윤곽이 스스로 닫힌다</b>(카드가 이미
+        /// <c>loop=1</c>이었다). 최단 변 <b>1.09획</b>, 잉크 사각형 <b>3.5획</b>(37-6 규칙 1 여유 확보).</para>
         /// </summary>
         internal static Vector3[] FootSole(float size, float facing)
         {
@@ -301,9 +318,12 @@ namespace StickMate.Interaction
             float s = size;
             return new[]
             {
-                new Vector3(-0.40f * s * f, 0.10f * s, 0f),
-                new Vector3(-0.02f * s * f, 0f, 0f),
-                new Vector3(0.56f * s * f, 0.04f * s, 0f),
+                new Vector3(-0.60f * s * f, 0.06f * s, 0f),   // 뒤꿈치
+                new Vector3(-0.15f * s * f, 0.11f * s, 0f),   // 뒤꿈치→볼 (위쪽 곡선)
+                new Vector3(0.25f * s * f, 0.14f * s, 0f),    // 볼 + 엄지 비대칭 (가장 볼록한 지점)
+                new Vector3(0.62f * s * f, 0.09f * s, 0f),    // 발가락 끝
+                new Vector3(0.20f * s * f, 0.02f * s, 0f),    // 볼→뒤꿈치 (아래쪽 곡선)
+                new Vector3(-0.20f * s * f, 0.03f * s, 0f),   // 아치
             };
         }
 
@@ -377,19 +397,38 @@ namespace StickMate.Interaction
         internal static Vector3[] BubbleRing(float radius, int maxSegments)
             => Circle(0f, 0f, radius, Mathf.Min(maxSegments, BubbleSegments));
 
-        /// <summary>나뭇잎 잎몸(닫힌 6점). 원점은 잎의 <b>중심</b>이고 +x가 잎끝이다.
-        /// 좌우 대칭이라 회전만으로 팔랑임이 만들어진다(좌우 반전 재구성이 필요 없다).</summary>
+        /// <summary>나뭇잎 잎몸(닫힌 6점). 원점은 <b>뒤끝</b>(잎자루가 붙는 자리, index 0)이고
+        /// +x가 잎끝(index 3)이다.
+        ///
+        /// <para>★ 2026-09-07 — 인계본 새 디자인(r20_coords.txt <c>look.fx.leaf</c>, (다)군)이
+        /// "대칭 6점"에서 <b>비대칭 64점</b>으로 갈렸는데 이 함수는 옛 대칭 그대로였다. 64점은
+        /// <see cref="FootSole"/> 문서와 같은 이유로 이 크기(<see cref="LeafLengthInR"/> = 1.15R)에서
+        /// 그대로 못 옮긴다(획 예산 0.344R당 변 하나, 둘레 ≈2.3R이면 최대 6~7변). 그래서 <b>점 개수는
+        /// 그대로 6</b>, 대신 위쪽 볼록(잎맥이 몰린 쪽, index 1·2)과 아래쪽 볼록(index 4·5)을
+        /// <b>서로 다르게</b> 틀었다 — 옛 도형은 상하가 완전한 거울상이었지만 새 디자인은 아니다
+        /// (실측: 위쪽 마루가 아래쪽 마루보다 앞으로 치우치고 살짝 더 높다). 그래서 이제
+        /// <b>회전만으로는 좌우(상하) 반전이 안 된다</b> — 팔랑이는 잎은 원래 몸 전체가 도는 것이라
+        /// (<c>CharacterFxRenderer.TickLeaves</c>의 <c>SpinDegrees</c>) 이 비대칭이 오히려 회전할 때
+        /// "같은 잎이 계속 돈다"는 인상을 준다(완전 대칭이면 180도마다 그림이 똑같아 안 도는 것처럼
+        /// 보일 수 있었다).</para>
+        ///
+        /// <para>뒤끝(index 0, (−0.50l,0))과 잎끝(index 3, (0.50l,0))은 옛 값 그대로다 —
+        /// <see cref="LeafStem"/>이 index 0에 접점을 두므로 여기를 옮기면 잎자루가 떨어진다
+        /// (Tests/EditMode/AppearanceShapeBudgetTests의 접점 계약 테스트가 잠근다).</para>
+        ///
+        /// <para>최단 변 <b>1.09획</b>(1.15R 적용, 옛 산술과 같은 자로 검산), 잉크 사각형 <b>2.9획</b>.</para>
+        /// </summary>
         internal static Vector3[] LeafBlade(float length)
         {
             float l = length;
             return new[]
             {
                 new Vector3(-0.50f * l, 0f, 0f),
-                new Vector3(-0.20f * l, 0.26f * l, 0f),
-                new Vector3(0.14f * l, 0.30f * l, 0f),
+                new Vector3(-0.22f * l, 0.25f * l, 0f),
+                new Vector3(0.10f * l, 0.31f * l, 0f),
                 new Vector3(0.50f * l, 0f, 0f),
-                new Vector3(0.14f * l, -0.30f * l, 0f),
-                new Vector3(-0.20f * l, -0.26f * l, 0f),
+                new Vector3(0.16f * l, -0.28f * l, 0f),
+                new Vector3(-0.18f * l, -0.20f * l, 0f),
             };
         }
 
@@ -422,23 +461,56 @@ namespace StickMate.Interaction
             return ring;
         }
 
-        /// <summary>솔기가 테에서 가장 멀리 부푼 거리 ÷ 공 반지름. 0.4924면 부푼 양이 0.28R이고
-        /// 세 점(위 테 · 부푼 마루 · 아래 테)을 지나는 원의 반지름이 0.7176R이 된다.</summary>
-        internal const float BallSeamBulgeRatio = 0.4924f;
+        /// <summary>솔기 호 하나가 테에서 가장 멀리 부푼 거리(연속 곡선 기준) ÷ 공 반지름.
+        ///
+        /// <para>★ 2026-09-07 — 인계본 새 디자인(r20_coords.txt <c>look.pet.ball</c>, (다)군)의
+        /// 카드는 솔기가 <b>둘</b>이고(<c>ball.S1</c>·<c>ball.S2</c>) <b>대칭</b>이다 — 중심 원(반지름
+        /// r)에서 양쪽으로 똑같이 7.5/23 = <b>0.3261</b>만큼 부푼다(실측: 카드 64u에서 공 중심 (32,32)
+        /// 반지름 23, 솔기 마루 x=39.50/24.50 → |32−39.50|/23 = 0.3261). 옛 값 0.4924는 실물이 한쪽으로만
+        /// 부푼 <b>비대칭</b> 단일 호였던 시절의 산출값이다.</para>
+        ///
+        /// <para>★ <b>그런데 카드 비율(0.3261)을 그대로 쓰면 획 예산 위반이 실측됐다</b> — 이 상수는
+        /// <b>연속 곡선</b>의 마루(원호 apex, t=0)를 뜻하는데, <see cref="BallSeam"/>은 호 하나를
+        /// <see cref="BallSeamPoints"/>(4점, 3분할) <b>표본</b>으로만 찍는다. 4점 표본에서는 t=0이 표본에
+        /// 없고 가장 가까운 표본이 t=±half/3이라, <b>실제로 그려지는 마루가 이론값보다 얕다</b>(옛
+        /// 단일 호도 같은 문제를 안고 있었다 — "마루는 원호의 apex(0.28R)가 아니라 0.247R" 문서가
+        /// 그 사례다). 카드 비율 0.3261을 그대로 넣으면 반지름 0.5687R에서 <b>실측 마루 0.164R =
+        /// 0.478획</b>으로 규칙 1의 획 반폭(0.5획) 문턱에 못 미친다
+        /// (Tests/EditMode/AppearanceShapeBudgetTests.공의_솔기는_테_위에_정확히_얹힌다 실측 실패).
+        /// 그래서 <b>표본 마루가 문턱을 확실히 넘도록</b> 0.40으로 올렸다 — 실측 마루
+        /// 0.201R = <b>1.17획</b>(17% 여유). 카드의 "대칭 두 호"라는 <b>형태</b>는 그대로 지키고,
+        /// 부푼 <b>양</b>만 이 크기의 획 예산에 맞춰 다시 잡았다 — 이 파일의
+        /// <see cref="BubbleMinRadiusInR"/>·<see cref="CursorSizeInR"/> 등도 같은 이유(카드/원안
+        /// 값이 이 절대 크기에서 획 예산을 못 산다)로 실측 후 올린 전례다.</para>
+        ///
+        /// <para><see cref="BallSeam"/>이 이 비율로 <b>테를 관통하는 두 호</b>(렌즈 모양 닫힌 고리)를
+        /// 만든다.</para>
+        /// </summary>
+        internal const float BallSeamBulgeRatio = 0.40f;
 
-        /// <summary>솔기 하나에 쓰는 점 개수. 4점(3분할)에서 변이 1.25획이다 — 5점으로 늘리면
-        /// 변이 0.94획으로 떨어져 <b>같은 실수를 반대편에서</b> 반복하게 된다.</summary>
+        /// <summary>호 하나(테에서 테까지)에 쓰는 점 개수. 4점(3분할)에서 변이 육안 산술상 충분하다
+        /// (아래 <see cref="BallSeam"/> 잉크 사각형 문서 참고) — 5점으로 늘리면 변이 짧아져
+        /// <b>같은 실수를 반대편에서</b> 반복하게 된다.</summary>
         private const int BallSeamPoints = 4;
 
         /// <summary>
-        /// 공의 <b>솔기</b>(구의 큰 원이 옆에서 보이는 완만한 호). 회전을 읽히게 하는 요소다.
+        /// 공의 <b>솔기</b> — 이제 <b>테를 관통하는 닫힌 렌즈 고리 1개</b>(6점)다. 회전을 읽히게 하는
+        /// 요소이자, 이 알의 <b>유일한 보조색 자리</b>(37-6 규칙 3-2 "정확히 1개")를 지킨다.
         ///
-        /// <para>★ 2026-09-01 — 옛 도형은 중심에서 테로 뻗는 <b>반지름 선</b>이었다. 그건 공이 아니라
-        /// <b>바퀴</b>의 어휘다(바큇살). 공을 공으로 읽게 하는 것은 솔기이고, 솔기는 부피를 뜻한다.
-        /// 회전 가독성은 그대로다 — 비대칭이라 오히려 더 낫다.</para>
+        /// <para>★ 2026-09-01 — 옛 도형은 중심에서 테로 뻗는 <b>반지름 선</b>이었다("바큇살"). 공을
+        /// 공으로 읽게 하는 것은 솔기이지 바큇살이 아니다.</para>
         ///
-        /// <para>양 끝점이 <b>테 위에 정확히 얹히므로</b> 링과의 간격이 0이다
-        /// (37-6 규칙 4의 "0 또는 ≥1.5획" 중 0 쪽 — 떠 있는 조각이 아니다).</para>
+        /// <para>★ 2026-09-07 — 인계본 새 디자인은 솔기가 <b>둘</b>(양쪽 대칭, <see cref="BallSeamBulgeRatio"/>
+        /// 문서)이다. 두 호를 <b>별개 도형</b>으로 만들면 이 알에 보조색 조각이 2개가 되어 규칙 3-2
+        /// ("정확히 1개")를 어긴다 — PET은 입자가 아니라 그 규칙에 예외가 없다(FX의 39-P와 다르다).
+        /// 그래서 두 호를 <b>양 극점(남/북 테)을 공유하는 하나의 닫힌 고리</b>로 잇는다: 남극→(+x 부푼
+        /// 호)→북극→(−x 부푼 호)→남극. 결과는 눈(eye) 또는 렌즈 모양의 <b>겹선</b>이고, 실제로는 두
+        /// 호를 <b>둘 다</b> 그리면서도 도형 수·보조색 수는 옛 설계와 똑같이 1개다.</para>
+        ///
+        /// <para>극점 두 개(index 0·3)가 <b>테 위에 정확히 얹히므로</b> 링과의 간격이 0이다
+        /// (37-6 규칙 4의 "0 또는 ≥1.5획" 중 0 쪽 — 떠 있는 조각이 아니다). 6점 전부의 최단 변이
+        /// <b>1.20획</b>, 표본 마루(실제로 그려지는 부푼 양)가 <b>1.17획</b>이다(반지름 0.5687R 기준
+        /// 검산 — <see cref="BallSeamBulgeRatio"/> 문서의 "표본 vs 연속 곡선" 참고).</para>
         /// </summary>
         internal static Vector3[] BallSeam(float radius)
         {
@@ -446,49 +518,80 @@ namespace StickMate.Interaction
             float bulge = r * BallSeamBulgeRatio;
             if (r <= 0f || bulge <= 0f) return new[] { Vector3.zero, new Vector3(r, 0f, 0f) };
 
-            // 세 점 (0,−r) (bulge,0) (0,+r)을 지나는 원.
+            // 세 점 (0,−r) (bulge,0) (0,+r)을 지나는 원 — 한쪽으로 부푼 호(南極→北極).
             float arcRadius = (r * r + bulge * bulge) / (2f * bulge);
             float centerX = bulge - arcRadius;
             float half = Mathf.Asin(Mathf.Min(1f, r / arcRadius));
 
-            var pts = new Vector3[BallSeamPoints];
+            var arc = new Vector3[BallSeamPoints];
             for (int i = 0; i < BallSeamPoints; i++)
             {
                 float t = -half + 2f * half * i / (BallSeamPoints - 1);
-                pts[i] = new Vector3(centerX + Mathf.Cos(t) * arcRadius, Mathf.Sin(t) * arcRadius, 0f);
+                arc[i] = new Vector3(centerX + Mathf.Cos(t) * arcRadius, Mathf.Sin(t) * arcRadius, 0f);
             }
-            return pts;
+
+            // 거울호(−x로 부푼 호)를 북극에서 남극으로 되짚어 이어 붙인다. 양 끝(남/북극)은
+            // 공유점이라 한 번만 들어간다 — 그래서 4+4가 아니라 4+(4−2)=6점이다.
+            var lens = new Vector3[BallSeamPoints + (BallSeamPoints - 2)];
+            for (int i = 0; i < BallSeamPoints; i++) lens[i] = arc[i];
+            for (int i = 0; i < BallSeamPoints - 2; i++)
+            {
+                Vector3 mirrored = arc[BallSeamPoints - 2 - i];
+                lens[BallSeamPoints + i] = new Vector3(-mirrored.x, mirrored.y, 0f);
+            }
+            return lens;
         }
 
         // ★ 2026-09-06 — 옛 이름 별칭 <c>BallSpoke</c>를 지웠다(호출부 둘을 <see cref="BallSeam"/>으로
         //   바꾸면서). 별칭이 남아 있던 이유는 그 두 파일이 편집 금지였기 때문이고, 그 사유는 끝났다.
         //   "바큇살(spoke)"이라는 낱말이 남아 있으면 다음 사람이 도형을 다시 반지름 선으로 되돌린다.
 
-        /// <summary>종이비행기 외곽(닫힌 4점) — icon-paths.json의 실루엣.</summary>
-        internal static Vector3[] PlaneBody(float halfSpan)
+        /// <summary>종이비행기 <b>윗날개</b>(닫힌 3점, 주색). 원점은 <b>기수(코)</b> — 궤도 접선 회전이
+        /// 여기(로컬 +x)를 진행 방향으로 돌린다(<c>CharacterPetRenderer.TickPlane</c>).
+        ///
+        /// <para>★ 2026-09-07 — 인계본 새 디자인(r20_coords.txt <c>look.pet.plane</c>, (다)군)은 옛
+        /// "좌우 대칭 나비형 4점"이 아니라 <b>접은 종이비행기</b>다: 윗날개(<c>plane.B0</c>, M)와
+        /// 아랫날개·용골(<c>plane.B1</c>, M2)이 <b>기수와 척추선(코→접힘점)을 공유</b>하는 서로 다른
+        /// 두 조각이다. 옛 <c>PlaneFold</c>(용골, 열린 2점 장식선)를 지우고 그 자리에 아랫날개
+        /// <b>본체</b>를 넣는다 — 장식선 하나였던 자리가 이제 실제 조각이 되어 잉크가 한 번만 얹힌다.</para>
+        ///
+        /// <para><b>변환</b>: 카드 64u 좌표의 기수(60,10)→척추 끝(24,34) 벡터를 로컬 −x축에 맞춰
+        /// 돌린 뒤, 기수-척추 거리가 <b>1.50w</b>가 되도록 등비 축소했다(옛 <c>PlaneBody</c>의
+        /// 기수-후단 거리 1.42w보다 살짝 크다 — 아랫날개·용골의 가장 빠듯한 변을 37-6 규칙 1
+        /// 문턱 위로 올리는 데 필요한 최소 여유다. <see cref="PlaneWingSpanInR"/> 자체는 그대로
+        /// 1.00R이라 절대 크기 규모는 유지된다). 기수는 이제 정확히 (w,0)이라 옛 계약과 같다.</para>
+        ///
+        /// <para>최단 변 <b>2.1획</b>, 잉크 사각형 <b>5.7획</b>(37-6 규칙 1 여유 큼).</para></summary>
+        internal static Vector3[] PlaneWing(float halfSpan)
         {
             float w = halfSpan;
             return new[]
             {
                 new Vector3(w, 0f, 0f),
-                new Vector3(-w * 0.75f, w * 0.62f, 0f),
-                new Vector3(-w * 0.42f, 0f, 0f),
-                new Vector3(-w * 0.75f, -w * 0.62f, 0f),
+                new Vector3(-w * 0.9615f, w * 0.5576f, 0f),
+                new Vector3(-w * 0.50f, 0f, 0f),
             };
         }
 
-        /// <summary>종이비행기의 <b>용골(keel) 접힘선</b>(열린 2점).
-        /// <para>★ 2026-09-01 3점 -> 2점. 옛 3번째 점이 만드는 변
-        /// <c>(−0.42w, 0) → (−0.75w, −0.62w)</c>은 <see cref="PlaneBody"/>의 변과 <b>완전히 같은
-        /// 두 점</b>이었다 — 잉크만 두 번 얹히고 새 정보가 0이다. 종이의 어휘는
-        /// "완벽히 곧은 모서리 + 접힌 자국 하나"다.</para></summary>
-        internal static Vector3[] PlaneFold(float halfSpan)
+        /// <summary>종이비행기 <b>아랫날개·용골</b>(닫힌 4점, 보조색). <see cref="PlaneWing"/>과
+        /// 기수(이 함수의 index 0 = <see cref="PlaneWing"/>의 index 0)·척추 끝(이 함수의 index 1 =
+        /// <see cref="PlaneWing"/>의 index 2)을 <b>정확히 공유</b>한다 — 접힌 종이 한 장의 두 면이라
+        /// 떨어져 있으면 안 된다(37-6 규칙 4의 간격 0 쪽).
+        ///
+        /// <para>★ 2026-09-07 — 카드 <c>plane.B1</c>을 같은 등비로 옮겼다. 옛
+        /// <c>PlaneFold</c>(열린 2점, 장식용 접힘선)를 대신하는 <b>실제 조각</b>이라
+        /// 종이비행기가 한쪽만 채워진 나비가 아니라 진짜 <b>접은 종이</b>로 읽힌다.</para>
+        ///
+        /// <para>최단 변 <b>1.08획</b>(가장 빠듯한 변), 잉크 사각형 <b>5.1획</b>.</para></summary>
+        internal static Vector3[] PlaneKeel(float halfSpan)
         {
             float w = halfSpan;
             return new[]
             {
                 new Vector3(w, 0f, 0f),
-                new Vector3(-w * 0.42f, 0f, 0f),
+                new Vector3(-w * 0.50f, 0f, 0f),
+                new Vector3(-w * 0.2884f, -w * 0.3077f, 0f),
+                new Vector3(-w * 0.75f, -w * 0.75f, 0f),
             };
         }
 

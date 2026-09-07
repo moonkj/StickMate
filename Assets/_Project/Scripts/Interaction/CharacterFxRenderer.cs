@@ -759,14 +759,18 @@ namespace StickMate.Interaction
         }
 
         /// <summary>
-        /// 발자국 한 짝 — <b>옆에서 본 밑창</b>(열린 3점). 좌표는
+        /// 발자국 한 짝 — <b>위에서 본 밑창을 눕힌 닫힌 6점</b>. 좌표는
         /// Interaction/AppearanceShapeBuilder.cs가 소유한다(초상화 미리보기와 같은 그림).
+        ///
+        /// <para>★ 2026-09-07 — 옛 3점 열린 선(<c>loop:false</c>)에서 <b>닫힌 6점 고리</b>로.
+        /// 인계본 새 디자인(카드)이 <c>filled=1 loop=1</c>이라 월드도 스스로 닫힌 윤곽이어야
+        /// 같은 실루엣으로 읽힌다(<see cref="AppearanceShapeBuilder.FootSole"/> 문서 참고).</para>
         ///
         /// <para>★ 두께가 <see cref="RenderStroke"/>인 것이 <b>계약</b>이다. 옛 <c>BuildDot</c>은
         /// 두께를 <c>radius * 2</c>(= 1.19획)로 못박아 굵은 캡 하나 = 둥근 점을 만들었는데,
         /// 그 두께를 그대로 두고 좌표만 바꾸면 밑창이 통째로 잉크에 먹혀 <b>아무것도 안 바뀐다</b>.</para></summary>
         private void BuildSole(LineRenderer lr, float size, float facing)
-            => SetShape(lr, AppearanceShapeBuilder.FootSole(size, facing), loop: false);
+            => SetShape(lr, AppearanceShapeBuilder.FootSole(size, facing), loop: true);
 
         /// <summary>반짝임 — 윤곽 별 하나(닫힌 8점). 옛 십자 2획과 달리 <b>도형이 하나</b>다.</summary>
         private void BuildStar(LineRenderer lr, float arm)
