@@ -275,73 +275,11 @@ namespace StickMate.Tests.PlayMode
         }
 
         // ============================================================================
-        // (3) 그림을 멈춘 것의 <b>직접 결과</b> — 프레즌스 줄이 유일한 움직임이 된다
+        // ★★ 2026-09-07 — 프레즌스 줄 자체가 프로덕션에서 제거되어(CharacterInfoWindow.cs,
+        //    사용자 신고: "현재 상태 추적하지말고 다빼줘") 이 자리에 있던 회귀 테스트
+        //    (PresenceLineHoldsLongEnoughToBeRead — hold 타이밍/폭주 방지 검증)를 함께 삭제했다.
+        //    되살리지 마라 — 검증 대상 자체(_presenceText/TickPresenceLine/WritePresence)가
+        //    더 이상 존재하지 않는다.
         // ============================================================================
-        //
-        // 실측(45-3-b): 이 줄은 분당 17.4~21.7회 바뀌고, 폭주 구간에서는 2.11초에 문구 4개가
-        // 지나갔다(최단 노출 0.22초 — 앱 자신의 가독예산 0.62초 미달). 그림이 멈추면 사용자가
-        // 장비를 비교하며 쳐다보는 자리에서 유일하게 깜빡이는 것이 이 줄이 된다.
-        //
-        // 상한을 <b>베끼지 않는다</b>: 말풍선이 쓰는 가독예산 하한(DialogueBudget.MinSeconds)에서
-        // "이 시간 동안 몇 번까지 바뀔 수 있는가"를 유도한다. hold가 그 값에서 나오므로,
-        // 언젠가 가독예산이 바뀌면 이 테스트의 기대치도 함께 따라간다.
-
-        [UnityTest]
-        [Timeout(180000)]
-        public IEnumerator PresenceLineHoldsLongEnoughToBeRead()
-        {
-            yield return OpenWindow();
-
-            StickmanBlackboard bb = _agent.Blackboard;
-            Assert.IsNotNull(bb, $"{LogPrefix} 블랙보드가 아직 없습니다.");
-
-            // 라벨이 서로 다른 두 상태를 번갈아 강제한다(둘 다 Standing 버킷이라 액자와는 무관하다 —
-            // 45-0-2에서 리더 가설이 반증된 바로 그 쌍이다).
-            var flip = new[] { StickmanStateId.Idle, StickmanStateId.Walk };
-            Assert.AreNotEqual(CharacterInfoWindow.StateLabel(flip[0]), CharacterInfoWindow.StateLabel(flip[1]),
-                $"{LogPrefix} 번갈아 쓸 두 상태의 문구가 같습니다 — 폭주를 만들 수 없습니다.");
-
-            const float StormSeconds = 1.5f;
-            const float FlipIntervalSeconds = 0.05f;   // 실측 최단 노출(0.22초)보다 훨씬 촘촘하게 몬다.
-
-            string last = _window.PresenceTextForTests;
-            int changes = 0, flips = 0;
-            float start = Time.realtimeSinceStartup;
-            float nextFlip = start;
-
-            while (Time.realtimeSinceStartup - start < StormSeconds)
-            {
-                if (Time.realtimeSinceStartup >= nextFlip)
-                {
-                    bb.Machine.ChangeState(flip[flips % flip.Length], isForcedInterrupt: true);
-                    flips++;
-                    nextFlip += FlipIntervalSeconds;
-                }
-                yield return null;
-
-                string now = _window.PresenceTextForTests;
-                if (now != last) { changes++; last = now; }
-            }
-            float elapsed = Time.realtimeSinceStartup - start;
-
-            // 대조군 — 입력이 실제로 폭주였는가. 아니면 "안 바뀐다"는 당연한 결과다.
-            Assert.Greater(flips, 10,
-                $"{LogPrefix} {elapsed:F2}초 동안 상태를 {flips}번밖에 못 바꿨습니다 — " +
-                "폭주를 만들지 못했으므로 아래 단언은 아무것도 증명하지 못합니다.");
-
-            int allowed = Mathf.CeilToInt(elapsed / StickMate.Dialogue.DialogueBudget.MinSeconds) + 1;
-            Debug.Log($"{LogPrefix} {elapsed:F2}초 동안 상태 {flips}회 강제 -> 프레즌스 문구 {changes}회 갱신 " +
-                $"(허용 {allowed}회, 가독예산 하한 {StickMate.Dialogue.DialogueBudget.MinSeconds:F2}초).");
-
-            Assert.LessOrEqual(changes, allowed,
-                $"{LogPrefix} {elapsed:F2}초 동안 프레즌스 문구가 {changes}번 바뀌었습니다 — " +
-                $"가독예산 하한({StickMate.Dialogue.DialogueBudget.MinSeconds:F2}초)으로는 최대 {allowed}번입니다. " +
-                "hold가 걸리지 않았습니다(45-3-c).");
-
-            // 그리고 <b>멈춰 버리지도</b> 않아야 한다 — hold는 지연이 아니라 최소 노출이다.
-            Assert.Greater(changes, 0,
-                $"{LogPrefix} 상태를 {flips}번 바꿨는데 문구가 한 번도 갱신되지 않았습니다 — " +
-                "hold가 '만료 시 재조회'를 하지 않고 줄을 얼려 버렸습니다.");
-        }
     }
 }

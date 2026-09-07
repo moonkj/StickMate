@@ -519,7 +519,6 @@ namespace StickMate.Interaction
         private Text _portraitFallback;
         private Text _previewLabel;
         private CharacterPortraitStage _stage;
-        private Text _presenceText;
 
         /// <summary>착용 슬롯 4행. 인덱스는 <b>카드 탭의 카테고리 순서</b>와 같다.</summary>
         private sealed class SlotRowView
@@ -763,11 +762,6 @@ namespace StickMate.Interaction
 
         private string _lastActionKey;
         private float _lastActionTime;
-        private StickmanStateId _lastShownState = (StickmanStateId)(-1);
-        private bool _hasShownState;
-
-        /// <summary>이 시각(unscaled)까지는 프레즌스 문구를 바꾸지 않는다 — <see cref="TickPresenceLine"/>.</summary>
-        private float _presenceHoldUntil;
         private float _lastDpiScale = -1f;
 
         /// <summary>히트테스트/호버 폴링이 돌려쓰는 코너 버퍼 — 이 앱은 하루 종일 켜져 있어서
@@ -965,7 +959,10 @@ namespace StickMate.Interaction
             ApplyCanvasScaleFactor();
             SyncClickBlocker();
             TickGlobalPointer();
-            TickPresenceLine();
+            // ★★ 2026-09-07 — 여기 있던 TickPresenceLine() 호출을 지웠다. 되살리지 마라 —
+            //    프리뷰 무대 하단의 "지금 · 걷는 중" 상태 텍스트를 사용자가 명시적으로 없애 달라고
+            //    했다("프리뷰화면에 자꾸 지금상태를 알려주는데 필요없음 지금걷는중 같은것들" ->
+            //    "현재 상태 추적하지말고 다빼줘"). 상세는 StateLabel(StickmanStateId) 문서 참고.
 
             _slowTimer += Time.unscaledDeltaTime;
             if (_slowTimer < SlowRefreshInterval) return;
@@ -975,76 +972,21 @@ namespace StickMate.Interaction
             if (Def(_tab).Page == TabPage.Shop) TickShopTab();
         }
 
-        /// <summary>
-        /// 프레즌스 줄 — <b>좌측 컬럼에서 유일하게 움직이는 것</b>(2026-09-02부터).
-        ///
-        /// ============================================================================
-        /// ★★ 여기 있던 초상화 포즈 갱신 한 줄을 걷어냈다 (docs/UX_FLOW.md 45-1)
-        /// ============================================================================
-        /// 사용자 신고: "캐릭터창에서 보이는 캐릭터는 장비 착용 모습<b>만</b> 적용되서 보여줘야하는데
-        /// 가끔 움직임". "만"이 범위를 닫는다 — 액자의 주제는 "무엇을 걸쳤는가" 하나다.
-        /// 옛 근거("그림과 문구를 같은 스냅샷에서 파생시켜 어긋남을 막는다")는 전수 대조로 반증됐다:
-        /// 4버킷 그림이 28행 문구를 <b>실제로 그리는</b> 상태는 3개(10.7%)뿐이었다.
-        /// 이제 <b>일치는 전부 글자가 진다</b> — 액자는 장비/해금/잉크/키에만 반응한다.
-        ///
-        /// ============================================================================
-        /// ★ 그래서 이 줄에 최소 노출(hold)이 필요해졌다 — 그림을 멈춘 것의 직접 결과다
-        /// ============================================================================
-        /// 실측(45-3-b): 이 줄은 <b>분당 17.4~21.7회</b> 바뀌고, 폭주 구간에서는 2.11초 동안 문구가
-        /// 4개 지나갔다(최단 노출 <b>0.22초</b>). 그림이 멈추면 사용자가 장비를 비교하며 쳐다보는
-        /// 자리에서 <b>유일하게 깜빡이는 것</b>이 이 줄이 된다.
-        ///
-        /// 규칙은 셋뿐이다:
-        /// <list type="number">
-        ///   <item>상태가 바뀌면 <b>즉시</b> 쓴다(지연 0 — 거짓말을 만들지 않는다).</item>
-        ///   <item>쓴 순간부터 <c>T_hold</c> 동안 바꾸지 않는다.</item>
-        ///   <item>만료되면 <b>그 순간의 현재 상태를 다시 읽어</b> 필요하면 갱신한다
-        ///         (놓치지 않는다 — 45-3-c의 검산에서 벽 타기 1.12초는 그대로 표시됐다).</item>
-        /// </list>
-        ///
-        /// <c>T_hold</c>는 <b>새 상수를 만들지 않는다</b> — 말풍선이 이미 쓰는 가독예산
-        /// (<see cref="StickMate.Dialogue.DialogueBudget.ReadingSeconds"/>)을 그대로 재사용한다.
-        /// 새 숫자를 여기 적으면 "몇 초면 읽히는가"의 정의가 두 곳으로 갈라진다.
-        /// 재는 대상은 <b>바뀌는 부분(상태 한 마디)</b>이다 — "지금  ·  " 접두는 한 번도 변하지 않아
-        /// 눈이 다시 읽지 않는다.
-        ///
-        /// <para><b>원칙 1 위반이 아니다.</b> hold는 <b>확정된 과거 상태만</b> 쓰고 미래를 예고하지
-        /// 않는다. 원칙 1이 금지하는 것은 "말해 놓고 안 하기"이지 "하고 나서 말하기"가 아니며,
-        /// <see cref="StateLabel"/>은 그 자신의 문서가 밝히듯 <b>대사가 아니다</b>
-        /// (<c>DialogueIntent</c>를 만들지 않는다).</para>
-        ///
-        /// <para><b>남는 대가(숨기지 않는다)</b>: hold 중에는 문구가 최대 <c>T_hold</c>만큼 낡는다.
-        /// 그 대가는 <b>읽을 수 없는 문구</b>보다 작다 — 0.22초짜리 문구의 정보량은 0이다.</para>
-        /// </summary>
-        private void TickPresenceLine()
-        {
-            if (_presenceText == null) return;
-
-            var machine = _agent != null && _agent.Blackboard != null ? _agent.Blackboard.Machine : null;
-            if (machine == null)
-            {
-                if (!_hasShownState) { WritePresence("—"); }
-                return;
-            }
-
-            StickmanStateId id = machine.CurrentStateId;
-            if (_hasShownState && id == _lastShownState) return;
-            // hold가 살아 있으면 <b>아무것도 하지 않는다</b> — _lastShownState도 건드리지 않는다.
-            // 만료되는 프레임에 이 함수가 다시 와서 그때의 현재 상태를 읽는 것이 규칙 3이다.
-            if (_hasShownState && Time.unscaledTime < _presenceHoldUntil) return;
-
-            _lastShownState = id;
-            WritePresence(StateLabel(id));
-        }
-
-        /// <summary>프레즌스 줄에 실제로 쓰는 곳 <b>한 군데</b>. 여기서만 hold 시계를 다시 감는다 —
-        /// 쓰는 곳과 시계를 감는 곳이 갈라지면 반드시 한쪽만 갱신된다.</summary>
-        private void WritePresence(string label)
-        {
-            _presenceText.text = $"지금  ·  {label}";
-            _hasShownState = true;
-            _presenceHoldUntil = Time.unscaledTime + StickMate.Dialogue.DialogueBudget.ReadingSeconds(label);
-        }
+        // ============================================================================
+        // ★★ 2026-09-07 — 프레즌스 줄(프리뷰 무대 하단의 "지금 · 걷는 중" 상태 텍스트)을 통째로
+        //    제거했다. 되살리지 마라 — 사용자 신고: "프리뷰화면에 자꾸 지금상태를 알려주는데
+        //    필요없음 지금걷는중 같은것들" 이어서 "현재 상태 추적하지말고 다빼줘"(전체 삭제 확정,
+        //    위치도 "캐릭터 정보창안 프리뷰화면하단"으로 직접 확정).
+        //    지웠던 것: _presenceText(Text 컴포넌트) · TickPresenceLine()/WritePresence() ·
+        //    관련 필드(_lastShownState/_hasShownState/_presenceHoldUntil) ·
+        //    Update()/RefreshAll() 호출 · ApplyPortraitTheme의 색 동기화 ·
+        //    TestApi.PresenceTextForTests · PortraitPaperDollTests.PresenceLineHoldsLongEnoughToBeRead.
+        //    StateLabel(StickmanStateId)은 이 줄의 유일한 호출자였고(그 어휘를 대조하던 테스트
+        //    PresenceLineHoldsLongEnoughToBeRead도 이 줄과 함께 삭제됐다), 지금은 호출자가 정말
+        //    0개다 — 그래도 남겨 둔 것은 27개 상태를 사람이 읽는 한 마디로 옮기는 유일한 정본 표이기
+        //    때문이다(중복 우려는 Core/StickMateDisplayNames 문서 참고, 그쪽은 별개 용도인
+        //    행동 명령창 불가 이유 문구다).
+        // ============================================================================
 
         private void OnProgressionChanged()
         {
@@ -1066,14 +1008,11 @@ namespace StickMate.Interaction
 
         private void RefreshAll()
         {
-            _hasShownState = false;
-            _presenceHoldUntil = 0f;   // 방금 연 창의 첫 문구는 지난 세션의 시계에 막히지 않는다.
             // ★ 가시성이 <b>먼저</b>다. RefreshCards가 캐러셀 폭을 즉시 다시 재는데
             //   (LayoutRebuilder.ForceRebuildLayoutImmediate), 꺼져 있는 페이지에서는 그 계산이 돌지 않아
             //   스크롤 한계가 옛 값으로 남는다.
             ApplyTabVisibility();
             ApplyPortraitTheme();   // 무대 바탕과 그 위 잉크는 잉크 프리셋에서 파생된다(L-6).
-            TickPresenceLine();
             RefreshNumbers();
             RefreshCards();
             RefreshDetail();
@@ -1242,10 +1181,6 @@ namespace StickMate.Interaction
             if (_previewLabel != null)
             {
                 _previewLabel.color = UiChrome.InkOnSurface(backdrop, UiChrome.InkRole.Meta, enabled: true);
-            }
-            if (_presenceText != null)
-            {
-                _presenceText.color = UiChrome.InkOnSurface(backdrop, UiChrome.InkRole.Body, enabled: true);
             }
             if (_portraitFallback != null)
             {
@@ -1665,11 +1600,6 @@ namespace StickMate.Interaction
                 TextAnchor.MiddleLeft, UiChrome.TextTertiary, 14f, -14f, 120f, 12f, "PREVIEW");
             _previewLabel.raycastTarget = false;
 
-            _presenceText = Label(_portraitFrame.rectTransform, "PresenceText", UiChrome.FontLabel,
-                TextAnchor.MiddleLeft, UiChrome.TextSecondary, 14f, -(StageHeight - 27f),
-                Col1ContentWidth - 28f, 15f, "지금  ·  —");
-            _presenceText.raycastTarget = false;
-
             _portraitFallback = UiChrome.AddText(_portraitFrame.rectTransform, "PortraitFallback",
                 UiChrome.FontBody, TextAnchor.MiddleCenter, UiChrome.TextTertiary, wrap: true);
             UiChrome.Stretch(_portraitFallback.rectTransform, UiChrome.Space4);
@@ -2036,7 +1966,14 @@ namespace StickMate.Interaction
         /// <para>★ 같은 이름이 두 벌이다 — <c>Core/StickMateDisplayNames.Of(StickmanStateId)</c>가
         /// 같은 27개 상태를 <b>다른 낱말</b>로 옮겨 행동 명령창의 "지금 ○○ 중이라 못 해요"에 쓴다
         /// (27개 중 19개가 다르다). 판정·통합안은 <c>docs/inspection/R2_거짓주석_전수조사.md</c> §2.
-        /// <b>여기에 상태를 추가하면 저기에도 추가해야 한다</b> — 안 하면 저쪽은 "딴 일"로 조용히 샌다.</para></summary>
+        /// <b>여기에 상태를 추가하면 저기에도 추가해야 한다</b> — 안 하면 저쪽은 "딴 일"로 조용히 샌다.</para>
+        ///
+        /// <para>★ 2026-09-07 — 이 함수의 <b>유일한 호출자였던 프레즌스 줄을 통째로 지웠다</b>
+        /// (사용자 신고: "현재 상태 추적하지말고 다빼줘"). 그 어휘를 대조하던 테스트
+        /// (<c>PortraitPaperDollTests.PresenceLineHoldsLongEnoughToBeRead</c>)도 같은 라운드에
+        /// 함께 삭제됐다 — 지금 이 함수의 호출자는 <b>정말 0개</b>다. 그래도 지우지 않은 이유는
+        /// 27개 상태를 사람이 읽는 한 마디로 옮기는 정본 표가 필요할 때 다시 만들지 않기 위해서다.
+        /// <b>이 표를 다시 화면에 이어 붙이지 마라</b> — 사용자가 명시적으로 닫은 기능이다.</para></summary>
         public static string StateLabel(StickmanStateId id)
         {
             switch (id)

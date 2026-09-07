@@ -25796,3 +25796,17 @@ font-rendering라운드의 관찰·diff분석은 정확했음(원인이 그쪽�
 **검증**: xcheck osx/win 0에러. EditMode 전체 2654건/2567통과/0실패/87스킵(기존). Windows/macOS 함께수정(플랫폼중립 코드, 양쪽define 교차컴파일 확인).
 
 **이제 기본 출하값은 divisor=2** — 사용자가 아무 설정 없이 실행해도 자동 적용됨.
+
+## Windows 릴리즈 3차본 게시 — windows-preview-20260907c (커밋 84e9b23)
+
+펫착용버그수정 + divisor=2자동기본값 반영. dGPU영수증PASS, EditMode필터러너(Equipment69/ActiveTierRenderDivisor17/AwayTierMotionGuard17/AdaptiveFramePacingPolicy15=118/118통과, 죽은필터 배제위해 사전 [Test]개수하한 대조). 활성타깃 판정프로브 개선(rsp파일→Runtime.dll타입존재, 1회만에 정확판정 확인). 릴리즈: https://github.com/moonkj/StickMate/releases/tag/windows-preview-20260907c
+
+★리더확인필요: activeTierRenderDivisor=2는 플랫폼중립 설정이라 **다음 macOS 빌드에도 동일적용됨**(Active등급 30fps제출) — macOS 실기 눈판정 아직 없음, 별도 배정 판단 필요.
+
+## 정보창 초상화미리보기 하단 "지금 · 걷는중" 상태표시줄 완전제거 (사용자 실기신고)
+
+**사용자 신고**: "프리뷰화면에 자꾸 지금상태를 알려주는데 필요없음" → "현재 상태 추적하지말고 다빼줘". 위치 확정: 캐릭터정보창 초상화미리보기(CharacterPortraitStage) 하단.
+
+**제거**: `CharacterInfoWindow.cs`의 `_presenceText`/`TickPresenceLine()`/`WritePresence()` 및 관련필드(`_lastShownState`/`_hasShownState`/`_presenceHoldUntil`) 전체 삭제. 테스트훅(`PresenceTextForTests`)·전용테스트(`PresenceLineHoldsLongEnoughToBeRead`) 동반삭제. 단일 인스턴스화 지점만 존재 확인(중복 표시 없음, 이게 유일한 소스였음). `StateLabel()` 헬퍼는 호출자 0이 됐지만 어휘테이블로만 유지(문서정정).
+
+**검증**: xcheck osx/win 0에러. Windows영향: 없음(플랫폼중립 UI, 양쪽define 교차컴파일 확인).
