@@ -22,6 +22,13 @@ namespace StickMate.Interaction
     ///  · 활쏘기 명중    : ArcheryShotChanged.Result == Bullseye (Release 시점 1회)
     ///                    ★ 2026-09-06 — <b>같은 훅이 동전 20도 낸다</b>(아래 「2차」 절). 관문 셋을
     ///                    공유하므로 «XP는 들어왔는데 동전은 안 들어왔다»가 구조적으로 불가능하다.
+    ///                    ★★ 2026-09-07 보안 결함 수정(design-systems 발견, §3-3) — <b>반대 방향도
+    ///                    막았다</b>. 옛 코드는 동전이 쿨다운(600초)·일일 상한(72회)에 막혀도 XP는
+    ///                    <b>무조건</b> 나갔다 — 연속 도배 시 시간당 ~6,478XP(패시브의 72배)로 Lv50
+    ///                    전체 요구량을 22.4시간에 채우는 익스플로잇이었다. 지금은
+    ///                    <see cref="AwardArcheryCoins"/>가 돌려주는 <c>coinsAwarded</c>(동전이 이미
+    ///                    통과한 쿨다운·일일상한 판정 결과)가 0이면 XP도 지급하지 않는다 — XP 전용
+    ///                    쿨다운을 새로 만들지 않고 동전 쪽 판정을 그대로 재사용한다.
     ///
     /// ★ 2026-09-02 — 보너스 소스가 <b>2종에서 1종</b>이 됐다(격파 승리 +25XP 삭제, 격파 놀이 기능
     ///   제거). 패시브가 주 경로라는 설계 덕에 성장 속도에 미치는 영향은 사실상 없다 —
@@ -499,13 +506,27 @@ namespace StickMate.Interaction
             if (shot.Phase != ArcheryShotPhase.Release) return;   // Aim/Release 중 한 번만.
             if (shot.ShotIndex == _lastRewardedShotIndex) return; // 같은 발 재발행 방어.
             _lastRewardedShotIndex = shot.ShotIndex;
-            Grant(_config != null ? _config.progressionBullseyeXp : 0f, "활쏘기 정중앙 명중");
 
-            // ★★ 2026-09-06 — 동전도 <b>이 한 이음매</b>에서 나간다. 위 세 관문(정중앙 · Release ·
+            // ★★ 2026-09-06 — 동전이 <b>이 한 이음매</b>에서 나간다. 위 세 관문(정중앙 · Release ·
             //    같은 발 방어)을 XP와 <b>그대로 공유</b>하는 것이 요점이다. 별도 구독을 새로 만들면
             //    「명중 1회」의 정의가 두 벌이 되고, 둘이 갈라지는 날 «XP는 들어왔는데 동전은
             //    안 들어왔다»(또는 그 반대)가 된다 — 재현도 설명도 불가능한 형태다.
-            AwardArcheryCoins();
+            //
+            // ★★★ 2026-09-07 보안 결함 수정(design-systems 발견, §3-3) — <b>XP도 이 지급의 성패에
+            //    묶는다</b>. 옛 코드는 위 세 관문만 지나면 XP를 <b>무조건</b> 지급했다 — 동전에는
+            //    이미 있는 쿨다운(단조 600초)·일일 상한(72회)이 XP에는 없어서, 연속 도배 시 시간당
+            //    ~6,478XP(패시브의 72배)로 Lv50 전체 요구량을 22.4시간 만에 채울 수 있었다
+            //    (docs/DESIGN_SYSTEMS_LEVEL_STAT_GROWTH_PROPOSAL.md §3-3). <b>새 쿨다운/카운터를
+            //    XP 전용으로 만들지 않는다</b> — <c>CurrencyModel.TryAwardArcheryCoins</c>가 이미
+            //    계산한 판정(쿨다운 통과 + 오늘 상한 이내)을 <c>coinsAwarded &gt; 0</c>으로 그대로
+            //    재사용한다. 코인과 XP가 같은 사용자 행동(정중앙 1회)을 보상하므로 같은 관문을
+            //    공유하는 것이 자연스럽고, 판정처가 하나면 「코인은 막혔는데 XP는 새는」 갈라짐이
+            //    구조적으로 불가능해진다.
+            int coinsAwarded = AwardArcheryCoins();
+            if (coinsAwarded > 0)
+            {
+                Grant(_config != null ? _config.progressionBullseyeXp : 0f, "활쏘기 정중앙 명중");
+            }
         }
 
         /// <summary>
@@ -528,8 +549,14 @@ namespace StickMate.Interaction
         /// 두드리지 않는다 — <c>DESIGN_SYSTEMS_STATS</c> §20-7 저장 빈도표가 이 채널에 대해
         /// <i>"<c>archeryCoinsToday</c> — <c>IsDirty</c>만, 주기 저장에 태운다(최악 1분/20동전 손실)"</i>로
         /// 명시적으로 고른 저울이다.</para>
+        ///
+        /// <para>★★ <b>반환값은 이제 XP 게이트로도 쓰인다</b>(2026-09-07 보안 결함 수정). 호출부
+        /// (<see cref="OnArcheryShotChanged"/>)가 이 값이 0보다 클 때만 XP를 지급한다 — 쿨다운·일일
+        /// 상한 판정을 이 함수 안에 <b>한 곳</b>에만 두고 XP가 그 결과를 빌려 쓰는 것이지, XP가
+        /// 따로 판정하는 것이 아니다.</para>
         /// </summary>
-        private void AwardArcheryCoins()
+        /// <returns>실제로 지급된 동전(0이면 쿨다운 중이거나 오늘 상한에 도달 — 이때 XP도 지급하지 않는다).</returns>
+        private int AwardArcheryCoins()
         {
             // 단조 시계다. 벽시계(DateTime.Now)를 넣으면 시계를 600초 되감는 것만으로 무한 파밍이
             // 되고(§20-3-b), Tests/EditMode/DailyLimitClampAuditTests가 그 순간 빨개진다.
@@ -540,10 +567,10 @@ namespace StickMate.Interaction
                 Debug.Log($"[재화] 활쏘기 정중앙 명중 — +{coins}동전. " +
                     $"잔액 {CurrencyModel.CoinBalance}동전(오늘 활쏘기 누계 {CurrencyModel.ArcheryCoinsToday}). " +
                     "저장은 다음 주기/종료 저장에 실립니다.");
-                return;
+                return coins;
             }
 
-            Debug.Log("[재화] 활쏘기 정중앙 명중 — 0동전. " +
+            Debug.Log("[재화] 활쏘기 정중앙 명중 — 0동전(XP도 함께 보류). " +
                 (CurrencyModel.ArcheryDailyLimitReached
                     ? $"오늘 활쏘기 상금이 상한({CurrencyModel.ArcheryCoinsToday}동전)에 도달했습니다 — " +
                       "고장이 아니라 의도된 천장이고(§20-3-b), 날짜가 바뀌면 다시 열립니다. " +
@@ -551,6 +578,7 @@ namespace StickMate.Interaction
                     : "상금 쿨다운 중입니다 — 고장이 아니라 의도된 간격이고(§20-3-b), " +
                       "쿨다운이 풀린 뒤 첫 정중앙에서 다시 나옵니다. " +
                       "쿨다운은 단조 시계로만 재므로 앱을 껐다 켜면 초기화됩니다(그 상한이 일일 총량입니다)."));
+            return 0;
         }
 
         /// <summary>

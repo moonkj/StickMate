@@ -214,6 +214,86 @@ namespace StickMate.Tests.PlayMode
             => StickmanEventBus.RaiseArcheryShotChanged(shotIndex, phase, result, Vector2.zero, 0.5f);
 
         // ====================================================================
+        // §3-보안. ★★ 활쏘기 XP 채널이 동전과 같은 쿨다운/일일상한을 공유하는가
+        //    (design-systems 발견 2026-09-06, coder-systems 수정 2026-09-07)
+        // ====================================================================
+        //
+        // 위 §3(동전)과 <b>대칭되는 XP 버전</b>이다 — 같은 시나리오를 그대로 재생하되 잔액이 아니라
+        // CharacterProgressionModel.TotalXpEarned를 본다.
+        //
+        // ★★ 이 파일이 존재하는 이유(수정 전 실측): OnArcheryShotChanged는 동전에는 이미 쿨다운
+        //    (단조 600초)·일일 상한(72회)을 걸었으면서 <b>XP는 같은 발 재발행 방어 하나만 걸고
+        //    무조건 지급</b>했다. 그래서 §3의 (마)와 똑같은 시나리오(쿨다운 중 새 발이 또 정중앙)에서
+        //    <b>동전은 안 늘고 XP만 늘었다</b> — 연속 도배 시 시간당 ~6,478XP(패시브의 72배)로
+        //    Lv50 전체 요구량(design-systems 곡선 기준)을 22.4시간 만에 채우는 익스플로잇이었다
+        //    (docs/DESIGN_SYSTEMS_LEVEL_STAT_GROWTH_PROPOSAL.md §3-3). 아래 (마)가 그 회귀를 정확히
+        //    재현한다 — 수정 전에는 여기서 빨갛다.
+        //
+        // ★ 지급량(progressionBullseyeXp)은 리터럴로 베끼지 않고 씬의 배포 설정에서 읽는다.
+
+        /// <summary>
+        /// ★★ 보안 결함 회귀 — 코인이 쿨다운/일일상한에 막히면 XP도 함께 막히는가.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator 정중앙_명중이_실제로_XP를_늘리고_코인과_같은_쿨다운을_공유한다()
+        {
+            yield return LoadSceneAndFindDirector();
+
+            // 깨끗한 지갑·깨끗한 XP로 시작한다(시드/이전 테스트 잔여가 증가분을 흐리지 않도록).
+            CurrencyModel.ResetForTesting();
+            CharacterProgressionModel.ResetForTesting();
+            Assert.AreEqual(0, CurrencyModel.CoinBalance, "전제 — 지갑이 비어 있어야 증가분을 잰다.");
+            Assert.AreEqual(0f, CharacterProgressionModel.TotalXpEarned, "전제 — 누적 XP가 0이어야 증가분을 잰다.");
+
+            var agent = Object.FindFirstObjectByType<StickmanAgent>();
+            Assert.IsNotNull(agent, $"{LogPrefix} 씬에 {nameof(StickmanAgent)}가 없습니다.");
+            float bullseyeXp = agent.Config != null ? agent.Config.progressionBullseyeXp : 0f;
+            Assert.Greater(bullseyeXp, 0f,
+                $"{LogPrefix} 배포 설정의 progressionBullseyeXp가 0입니다 — 아래 증가분 판정이 공허해집니다.");
+
+            // ── (가) 빗나간 발은 XP도 늘리지 않는다.
+            RaiseShot(10, ArcheryShotPhase.Release, ArcheryShotResult.Miss);
+            yield return null;
+            Assert.AreEqual(0f, CharacterProgressionModel.TotalXpEarned,
+                $"{LogPrefix} 빗나갔는데 XP가 나왔습니다.");
+
+            // ── (나) 조준(Aim) 시점도 아니다.
+            RaiseShot(11, ArcheryShotPhase.Aim, ArcheryShotResult.Bullseye);
+            yield return null;
+            Assert.AreEqual(0f, CharacterProgressionModel.TotalXpEarned,
+                $"{LogPrefix} 시위를 당긴 것만으로 XP가 나왔습니다.");
+
+            // ── (다) 정중앙 + Release = 코인과 XP가 함께 지급된다.
+            RaiseShot(11, ArcheryShotPhase.Release, ArcheryShotResult.Bullseye);
+            yield return null;
+            Assert.AreEqual(CurrencyRules.ArcheryCoinsPerAward, CurrencyModel.CoinBalance,
+                $"{LogPrefix} 전제 — 첫 명중은 코인이 나와야 아래 XP 대조가 의미를 갖습니다.");
+            Assert.AreEqual(bullseyeXp, CharacterProgressionModel.TotalXpEarned, 0.001f,
+                $"{LogPrefix} 첫 정중앙 명중인데 누적 XP가 {CharacterProgressionModel.TotalXpEarned}입니다 " +
+                $"(기대 {bullseyeXp}). 0이면 배선이 죽은 것이고, 다른 값이면 지급량이 두 곳에 있습니다.");
+
+            // ── (라) 같은 발 재발행 — 코인도 XP도 다시 늘지 않는다(기존 방어, §3-(라)와 대칭).
+            RaiseShot(11, ArcheryShotPhase.Release, ArcheryShotResult.Bullseye);
+            yield return null;
+            Assert.AreEqual(bullseyeXp, CharacterProgressionModel.TotalXpEarned, 0.001f,
+                $"{LogPrefix} 같은 발이 XP를 두 번 줬습니다.");
+
+            // ── (마) ★★ 회귀의 핵심 — 새 발(다른 shotIndex)이 또 정중앙이어도 코인이 쿨다운에
+            //    막히면 XP도 함께 막혀야 한다(§3-(마)와 대칭). 수정 전에는 코인은 0인데 XP만
+            //    계속 나갔다 — 그것이 이 보안 결함의 실체였다.
+            RaiseShot(12, ArcheryShotPhase.Release, ArcheryShotResult.Bullseye);
+            yield return null;
+            Assert.AreEqual(CurrencyRules.ArcheryCoinsPerAward, CurrencyModel.CoinBalance,
+                $"{LogPrefix} 전제 — 쿨다운({CurrencyRules.ArcheryAwardCooldownSeconds:F0}초) 중이라 " +
+                $"코인은 여전히 {CurrencyRules.ArcheryCoinsPerAward}이어야 합니다.");
+            Assert.AreEqual(bullseyeXp, CharacterProgressionModel.TotalXpEarned, 0.001f,
+                $"{LogPrefix} ★★ 코인은 쿨다운에 막혔는데 누적 XP가 {CharacterProgressionModel.TotalXpEarned}로 " +
+                $"늘었습니다(기대 {bullseyeXp}, 변화 없음) — 쿨다운 없는 XP 무한 파밍 결함이 되돌아왔습니다 " +
+                "(docs/DESIGN_SYSTEMS_LEVEL_STAT_GROWTH_PROPOSAL.md §3-3, 시간당 ~6,478XP 이론치로 " +
+                "Lv50 요구량을 22.4시간에 채울 수 있었던 그 구멍입니다).");
+        }
+
+        // ====================================================================
         // §4. ★★ 유휴 수급 — I-7′를 <b>실제 세션을 돌려</b> 잰다
         // ====================================================================
         //
