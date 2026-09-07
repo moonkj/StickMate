@@ -25850,3 +25850,17 @@ font-rendering라운드의 관찰·diff분석은 정확했음(원인이 그쪽�
 **검증**: PlayMode 실측(벽시계, LeanedHeadWorld 실좌표) — 타원 [바닥 -11.1068, 꼭대기 -10.0013] vs 랜드마크(정수리 -10.0985/어깨 -10.4810/엉덩관절 -11.1035) → 바닥이 엉덩관절과 사실상 일치(오차 0.003), 꼭대기가 정수리 위 확보. 네거티브 대조(1차수정 직후 상수 2.35/0.90로 재계산시 바닥 -10.0242로 정수리보다도 위 = 몸통 미진입 재현) 포함 신규테스트 1건 + 기존 P1/P1n/P2 전량 무회귀(PetPlaneOrbitRadiusTests 3/3, BodyLeanHeadAnchorFollowTests 6/6).
 
 **xcheck osx/win 0에러(양쪽 다 이번 라운드 전체 diff 포함 재검증). Windows 영향: 없음 — 이 라운드 변경분 전부 플랫폼 중립 순수 도형/기하 계산(`Interaction/*.cs`, `Tests/*.cs`)이고 `#if UNITY_STANDALONE_*` 분기 0곳.**
+
+## Windows 릴리즈 5차본 게시 — windows-preview-20260907e (커밋 91f14c2)
+
+FX/PET 4종 카드-월드 도형일치 + 종이비행기 궤도 몸통확장 반영. dGPU영수증PASS, 변경실착지 확인. EditMode(AppearanceShapeBudget 41)+PlayMode(PetPlaneOrbit/CharacterAppearanceLayer/PortraitNewItemPreview 25) 필터러너 실패0(스킵2건 전부 이번커밋과 무관한 기존갭, git diff로 확인). ★agent가 이번 라운드서 자기프로브 오류 2건 자체발견·수정(zsh `:A`경로수정자 오작동, `public void` 앵커로 IEnumerator PlayMode테스트 못찾음) — 둘다 "실패프로브 출력이 해당없음과 동일하게 생김" 패턴. 릴리즈: https://github.com/moonkj/StickMate/releases/tag/windows-preview-20260907e
+
+## 풍선/나뭇잎 실기신고 수정 + 물방울 자체발견 (같은 결함계열 3번째)
+
+**풍선**: `SortBalloon`이 `SortHead`(모자)와 sortingOrder **동률(둘다10)**이라 Unity가 임의순서로 처리 — 모자 착용시 풍선이 뒤로 가려질 수 있었음. `SortHead+1`로 유도수정.
+
+**나뭇잎**: 중심선대칭 스폰(±1.1R)이 몸통 물리반폭(1.8182R)보다 좁아 중심을 지날 때마다 몸통 관통. 옆줄기 최소3.5R 이상으로 재설계(스폰퍼짐은 거리를 더할뿐 빼지않도록).
+
+**★자체발견(3번째 동일결함)**: 훑어보던 중 물방울(FX)도 같은 결함(0.5R→2.5R, 엉덩이높이에서 몸통반폭 안쪽에 있었음) 발견·수정. 공/미니/달팽이는 안전(오프셋이 Height단위라 원래 몸밖), 발자국/먼지는 발밑 근접이 정상동작, 반짝임은 몸 위 부유라 무관, 커서친구는 OS커서 추적이라 무관.
+
+**검증**: 실제 PlayMode 배치실행(벽시계샘플링) 신규6/6통과(전부 음성대조 포함), 관련회귀 PlayMode45/45+EditMode96/96 무회귀. xcheck osx/win 0에러. Windows영향: 함께수정함(플랫폼중립).

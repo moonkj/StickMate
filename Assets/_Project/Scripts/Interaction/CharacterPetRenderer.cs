@@ -46,10 +46,37 @@ namespace StickMate.Interaction
         private const int PetBalloon = AppearanceShapeBuilder.PetBalloon;
         private const int PetSnail = AppearanceShapeBuilder.PetSnail;
 
-        // ---- 레이어(33-6). 종이비행기만 반주기마다 4 <-> 10을 오간다.
+        // ---- 레이어(33-6). 종이비행기만 반주기마다 4 <-> SortPlaneFront를 오간다.
         private const int SortDefault = 4;
-        private const int SortPlaneFront = 10;
-        private const int SortCursorFriend = 11;
+
+        /// <summary>펫이 "항상 캐릭터 앞"이어야 할 때 쓰는 레이어(종이비행기의 앞쪽 반주기 / 풍선).
+        ///
+        /// <para>★★ 2026-09-07 실기(Windows) 신고 — <i>"풍선이 너무 캐릭터 뒤에 있음 캐릭터 주변에
+        /// 있어야 하는데"</i>. 확정 원인(계산으로 확정, 추측 아님): 옛 값은 리터럴 <c>10</c>이었고,
+        /// 이 값은 <see cref="AccessoryShapeBuilder.SortHead"/>(모자류의 sortingOrder)도 <b>똑같이
+        /// 10</b>이다. 둘 다 같은 "Default" 정렬 레이어를 쓰므로(이 프로젝트 어디에도
+        /// sortingLayerName을 따로 지정하는 곳이 없다 — sortingOrder 정수 하나가 유일한 근거),
+        /// <b>동률이면 Unity가 어느 쪽이 위인지 정의하지 않는다.</b>
+        ///
+        /// <para>이 동률이 실제로 화면에 드러나는 이유(기하로 검산):
+        /// 풍선 매듭(<see cref="BalloonTetherAboveInR"/>=0.30R, 묶인 자리)은 머리 중심 위 0.30R이고,
+        /// 끈 끝(주머니 밑동)은 0.30R + <see cref="AppearanceShapeBuilder.BalloonStringInR"/>(1.70R)
+        /// = 2.00R이다. 모자 챙(<c>AccessoryShapeBuilder.HatBrimLocalY</c>)은 머리 중심 위 0.4482R,
+        /// 모자 꼭대기(<c>HatTopLocalY</c>)는 0.4482R + <c>HatCrownHeightRatio</c>(1.16R) = 1.608R다.
+        /// 즉 끈의 아래쪽 구간(0.30R~1.608R)이 모자의 세로 범위(0.4482R~1.608R)와 <b>고스란히
+        /// 겹친다</b> — 모자를 쓴 채 풍선을 걸치면 그 겹침 구간에서 동률 정렬이 임의로 풀리며
+        /// 풍선 끈이 모자/머리 뒤로 가려질 수 있다("풍선이 캐릭터 뒤에 있다"의 정확한 재현).
+        /// 종이비행기도 오늘 밤 궤도가 몸통까지 넓어지면서(<see cref="PlaneCenterAboveHeadInR"/>가
+        /// 음수로 내려옴) 같은 위험을 새로 안게 됐다 — 궤도 절반(sin≥0)이 이 값을 쓰는데, 그 절반의
+        /// 상당수가 이제 모자 높이 부근을 지난다.</para>
+        ///
+        /// <para>고침: 매직넘버 11을 새로 박지 않고 <see cref="AccessoryShapeBuilder.SortHead"/>에서
+        /// <b>+1로 유도</b>한다 — 이 저장소 액세서리 중 최댓값(모자)보다 항상 정확히 1 위이므로
+        /// 미래에 모자 레이어가 바뀌어도 동률이 재발하지 않는다. (참고로 이 값은 우연히
+        /// <see cref="SortCursorFriend"/>=11과 같아지는데, 커서 친구와 풍선/종이비행기는 PET
+        /// 슬롯 하나를 공유해 <b>동시에 존재할 수 없으므로</b> 실제 동률 충돌은 없다.)</para></summary>
+        private const int SortPlaneFront = AccessoryShapeBuilder.SortHead + 1;
+        private const int SortCursorFriend = SortPlaneFront + 1;
 
         /// <summary>풍선은 머리 위에 떠 있으므로 <b>항상 캐릭터 앞</b>이다(뒤로 가면 머리에 잘린다).
         /// 종이비행기의 "앞" 값과 같은 층을 쓴다 — 새 층을 발명하지 않는다.</summary>

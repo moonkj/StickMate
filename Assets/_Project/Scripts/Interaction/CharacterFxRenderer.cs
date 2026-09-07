@@ -98,7 +98,24 @@ namespace StickMate.Interaction
         private const float BubbleIntervalSeconds = 0.55f;
         private const float BubbleLifeSeconds = 1.5f;
         private const float BubbleRiseInR = 2.6f;            // 수명 동안 떠오르는 높이
-        private const float BubbleSideInR = 0.5f;            // 진행 반대쪽으로 벗어나는 거리
+
+        /// <summary>
+        /// ★ 2026-09-07 — 풍선/나뭇잎 신고를 계기로 같은 파일 안의 나머지 이펙트를 훑다가 발견한
+        /// <b>세 번째 사례</b>(사용자 신고 대상은 아니었다 — 자체 발견, CLAUDE.md "훑어보고 있으면
+        /// 같이 고친다" 조항).
+        ///
+        /// <para>확정 원인: 옛 값 0.5R=0.11유닛(배율 1.0, R=0.22)은 발생 높이(고관절,
+        /// <see cref="HipLocalY"/>)에서 몸통 물리 반폭(1.8182R=0.4유닛)보다 <b>훨씬 작다</b>. 방울의
+        /// 가장 잘 보이는 순간(수명의 절반, 산 모양 알파가 최댓값)에도 드리프트가 아직 25%밖에
+        /// 안 지나 있어(<c>ease = 1−(1−0.5)²=0.75</c>) 실제 편차가 0.5R×1.75=0.875R≈0.193유닛뿐이다
+        /// — 몸통 물리 반폭(0.4)의 절반도 안 된다. 즉 설계 의도("몸 옆에서 떠오른다")와 달리
+        /// 몸통 위에 <b>겹쳐서</b> 떠오르고 있었다.</para>
+        ///
+        /// <para>고침: 스폰 시점 편차 자체가 이미 여유를 두고 몸통 물리 반폭을 넘도록
+        /// 2.5R(=0.55유닛, 1.8182R의 1.375배 = 37.5% 여유)로 올렸다. 드리프트는 그 위에 <b>더</b>
+        /// 벌어지기만 하므로(뺄셈 없음) 스폰 순간이 곧 전 생애의 최소 편차다.</para>
+        /// </summary>
+        private const float BubbleSideInR = 2.5f;            // 진행 반대쪽으로 벗어나는 거리
         private const float BubbleStartScale = 0.90f;        // 지름 하한(3.0 W)을 이 배율까지 검산했다
         private const float BubbleEndScale = 1.15f;
         private const int BubbleCapacity = 3;
@@ -111,8 +128,41 @@ namespace StickMate.Interaction
         private const float LeafLifeSeconds = 2.6f;
         private const float LeafFadeSeconds = 0.7f;          // 마지막 이만큼만 옅어진다(발자국과 같은 규칙)
         private const float LeafSpawnAboveHeadInR = 2.2f;
+
+        /// <summary>
+        /// ★★ 2026-09-07 실기(Windows) 신고 — <i>"나뭇잎도 캐릭터와 겹쳐서 떨어짐 주변으로변경필요"</i>.
+        ///
+        /// <para>확정 원인(계산으로 확정, 추측 아님) — 옛 상수는 <c>spawnX = head.x + Random(-1.1, 1.1)·R</c>
+        /// 로 <b>몸 중심선 좌우 대칭</b>이었다. R=0.22 기준 최대 편차는 1.1R=0.242유닛인데, 캐릭터
+        /// 자신의 물리적 반폭(<see cref="StickmanBlackboard.CharacterPhysicalHalfWidthWorld"/>,
+        /// <see cref="StickConfig.BaselineBodyPhysicsHalfWidth"/>=0.4유닛)이 <b>그보다 크다</b> — 즉
+        /// 스폰 시점의 x는 <b>단 한 번도</b> 몸 폭 밖으로 나가지 못했다(0.242 &lt; 0.4). 게다가 스폰 후
+        /// 좌우로 더하는 팔랑임(<see cref="LeafSwayInR"/>=0.9R=0.198유닛)은 <b>중심선 기준 사인파</b>라
+        /// 스폰 x가 0에 가까운 잎(균등분포이므로 흔하다)은 낙하 <b>전체 구간</b>이 [-0.198, +0.198] 안에
+        /// 갇혀 몸 폭(±0.4) 안쪽에서만 오간다 — 종이비행기가 겪은 것과 <b>정확히 같은 실패 유형</b>
+        /// (진폭 &lt; 몸통 물리 반폭이라 위상 전체에서 몸을 못 벗어난다)의 나뭇잎 버전이다.
+        ///
+        /// <para>고침의 방향은 "중심에서 좌우로 퍼진다"가 아니라 <b>"몸 옆(왼쪽 또는 오른쪽) 한
+        /// 줄기를 골라 그 줄기를 따라 떨어진다"</b>다 — 실제 나뭇잎이 사람 옆을 스쳐 떨어지는 그림과
+        /// 더 가깝기도 하고, 편에 상관없이 몸 폭을 벗어난 채로 유지하기도 더 쉽다.
+        /// <see cref="LeafSideOffsetInR"/>가 그 줄기의 <b>최소 거리</b>(스윙이 안쪽으로 최대로 쏠려도
+        /// 지켜야 하는 바닥)이고, <see cref="LeafSpawnSpreadInR"/>는 그 위에 <b>추가로만</b> 더해지는
+        /// (뺄셈 없는) 무작위 변주다.</para>
+        ///
+        /// <para>검산(배율 1.0, R=0.22, 요구 여유는 종이비행기와 같은 관례인 몸통 물리 반폭×1.2):
+        ///   물리 반폭 0.4유닛 = 1.8182R → 요구 최소 편차 = 1.8182×1.2 = 2.1818R.
+        ///   이 수정의 <b>최악 표본</b>(추가 변주 0 + 팔랑임이 안쪽 최대 −0.9R)의 편차 =
+        ///   <see cref="LeafSideOffsetInR"/>(3.5) − <see cref="LeafSwayInR"/>(0.9) = 2.6R
+        ///   → 2.6 / 1.8182 = 1.43배(요구 1.2배를 넘는 여유). 옛 상수(스폰 0 + 팔랑임 최대 0.9R)로
+        ///   같은 식을 계산하면 0.9R &lt; 2.1818R이라 조건이 전혀 성립하지 않는다(네거티브 컨트롤).</para>
+        /// </summary>
+        private const float LeafSideOffsetInR = 3.5f;
+
+        /// <summary>줄기 위에 추가로 얹는 변주(뺄셈 없음) — 옛 <c>LeafSpawnSpreadInR</c>과 같은 이름과
+        /// 같은 값을 유지해 "다양성의 크기"라는 튜닝 의도는 그대로 살리되, 역할만 "중심에서의 편차"
+        /// 에서 "줄기에서의 추가 거리"로 바꿨다.</summary>
         private const float LeafSpawnSpreadInR = 1.1f;
-        private const float LeafSwayInR = 0.9f;              // 팔랑임 좌우 폭
+        private const float LeafSwayInR = 0.9f;              // 팔랑임 좌우 폭(줄기를 축으로 오간다)
         private const float LeafSwayCycles = 1.5f;           // 수명 동안 좌우로 오가는 횟수
         private const float LeafSpinDegrees = 210f;          // 수명 동안 도는 각도(부호는 매번 무작위)
         private const int LeafCapacity = 3;
@@ -247,6 +297,37 @@ namespace StickMate.Interaction
                 n += CountStale(_bubbles, FxBubble);
                 n += CountStale(_leaves, FxLeaf);
                 return n;
+            }
+        }
+
+        /// <summary>
+        /// 테스트/진단용 — 지금 살아 있는 나뭇잎 조각들의 <b>실제 렌더 위치</b>(월드 좌표 =
+        /// <c>Root.position + Pivot.localPosition</c>, 팔랑임/낙하가 전부 반영된 값).
+        ///
+        /// <para>2026-09-07 실기 신고("나뭇잎도 캐릭터와 겹쳐서 떨어짐") 회귀 잠금의 관측 창구다.
+        /// <see cref="LeafSideOffsetInR"/>/<see cref="LeafSwayInR"/> 같은 <b>공식</b>만 검산하면
+        /// "공식은 맞는데 실제로 그려지는 것은 다르다"는 별개의 실패 유형을 놓친다(종이비행기 궤도
+        /// 검증이 이미 겪은 유형 — <c>실제로_그려지는_궤도_진폭이_공식값과_일치하고_몸통보다_크다</c>와
+        /// 같은 이유로 연다).</para>
+        /// </summary>
+        public Vector2[] LiveLeafWorldPositionsForTests
+        {
+            get
+            {
+                int count = CountAlive(_leaves);
+                var result = new Vector2[count];
+                if (_leaves != null)
+                {
+                    int idx = 0;
+                    for (int i = 0; i < _leaves.Length; i++)
+                    {
+                        Puff p = _leaves[i];
+                        if (p == null || !p.Alive || p.Root == null) continue;
+                        Vector2 pivotOffset = p.Pivot != null ? (Vector2)p.Pivot.localPosition : Vector2.zero;
+                        result[idx++] = (Vector2)p.Root.position + pivotOffset;
+                    }
+                }
+                return result;
             }
         }
 
@@ -598,7 +679,12 @@ namespace StickMate.Interaction
 
             float r = HeadRadius;
             Vector2 head = LeanedHeadWorld(bb, r * LeafSpawnAboveHeadInR);
-            float spawnX = head.x + Random.Range(-LeafSpawnSpreadInR, LeafSpawnSpreadInR) * r;
+            // ★ 2026-09-07 — 중심선 좌우 대칭 스폰(±1.1R)이 몸통 물리 반폭(1.8182R)보다 좁아 잎이
+            //   몸을 벗어나지 못하고 겹쳐 떨어졌다(위 LeafSideOffsetInR 문서의 검산 참고). 이제 한쪽
+            //   "줄기"를 무작위로 고르고, 그 줄기에서 최소 LeafSideOffsetInR만큼(추가 변주는 더하기만)
+            //   떨어진 자리에서 시작한다 — 팔랑임이 안쪽으로 최대로 쏠려도 몸 폭 밖에 남는다.
+            float side = Random.value < 0.5f ? -1f : 1f;
+            float spawnX = head.x + side * (LeafSideOffsetInR + Random.Range(0f, LeafSpawnSpreadInR)) * r;
             float spawnY = head.y;
             float surfaceY = ResolveOwnerGroundWorldY(bb);
 
