@@ -252,10 +252,24 @@ namespace StickMate.Core
         /// 스위치가 꺼지면 원래 규칙으로 돌아온다.
         /// <para>★ 2026-09-01: 그 스위치는 더 이상 "사람이 출시 전에 되돌려야 하는 상수"가 아니다 —
         /// 빌드 구성으로 갈린다(<b>사용자에게 나가는 릴리스 빌드에서는 자동으로 꺼진다</b>).
-        /// 근거와 검증은 <c>EquipmentDebugUnlock</c> 문서 / <c>EquipmentDebugUnlockReleaseGateTests</c>.</para></summary>
+        /// 근거와 검증은 <c>EquipmentDebugUnlock</c> 문서 / <c>EquipmentDebugUnlockReleaseGateTests</c>.</para>
+        /// <para>★★ 2026-09-07 P0 핫픽스 — <b>합집합 셋째 항(상점 구매)이 빠져 있었다</b>
+        /// (실기 신고: "종이비행기 펫샀는데 착용이 안됨"). <see cref="ItemCatalogEntry.IsOwned"/>는
+        /// 레벨 파생 ∪ <see cref="CurrencyModel.IsPurchasedItem"/>을 보는데, 착용을 실제로 거는
+        /// <see cref="TryWear"/>는 <b>이 메서드</b>만 보고 이 메서드는 레벨만 봤다. 그래서 보관함
+        /// 카드는 "보유"로 보이고 착용 버튼도 눌리는데(<c>OnActionClicked</c>의 <c>entry.IsOwned</c>
+        /// 관문은 통과), 그 아래 <see cref="TryWear"/>가 조용히 false를 돌려줘 <b>클릭이 아무 효과가
+        /// 없었다</b> — 로그도 0줄이다. 상점 설계 자체가 "동전으로 처음 살 수 있는 것은 레벨 위쪽
+        /// 아이템"이라 <b>상점에서 산 것은 거의 전부 이 구멍에 걸린다</b>(펫 한 종의 문제가 아니라
+        /// 코인 구매 → 착용 경로 전체의 문제). <c>CohortId</c>/<c>IsRetiredItem</c>/카드프레임 배선과는
+        /// 무관 — 이 아이템은 은퇴 판정을 타지 않는다(Pet 슬롯은 <see cref="IsRetiredSlot"/> 대상이 아니고,
+        /// <see cref="IsRetiredItem"/>은 Hair 카테고리 전체와 FX의 "없음" 하나만 가린다).
+        /// <see cref="Tests.EditMode.ItemOwnershipUnionTests"/>가 이 합집합을 <c>ItemCatalogEntry.IsOwned</c>
+        /// 한 곳에서만 잠그고 있었고 <see cref="TryWear"/> 경로는 대조하지 않아 놓쳤다.</para></summary>
         public static bool IsItemOwned(EquipmentSlot slot, int itemIndex)
             => EquipmentDebugUnlock.UnlockAll
-               || CharacterProgressionModel.Level >= RequiredLevel(slot, itemIndex);
+               || CharacterProgressionModel.Level >= RequiredLevel(slot, itemIndex)
+               || CurrencyModel.IsPurchasedItem(ItemId(slot, itemIndex));
 
         /// <summary>이 카테고리에서 지금 보유한 아이템 수(정보창 카테고리 카드의 "n/4").</summary>
         public static int OwnedItemCount(EquipmentSlot slot)

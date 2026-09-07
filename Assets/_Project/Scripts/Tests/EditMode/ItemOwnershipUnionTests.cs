@@ -27,6 +27,7 @@ namespace StickMate.Tests.EditMode
             EquipmentDebugUnlock.SetTestOverride(false);
             CharacterProgressionModel.ResetForTesting();
             CurrencyModel.ResetForTesting();
+            EquipmentModel.ResetForTesting();
             _config = ScriptableObject.CreateInstance<StickConfig>();
         }
 
@@ -40,6 +41,7 @@ namespace StickMate.Tests.EditMode
             EquipmentDebugUnlock.SetTestOverride(false);
             CharacterProgressionModel.ResetForTesting();
             CurrencyModel.ResetForTesting();
+            EquipmentModel.ResetForTesting();
             if (_config != null) Object.DestroyImmediate(_config);
         }
 
@@ -119,6 +121,48 @@ namespace StickMate.Tests.EditMode
             // 같은 것을 두 번 살 수 없다(경제 원칙 E-1) — 이력이 한 줄이어야 아래 합집합이 「집합」이다.
             Assert.IsFalse(CurrencyModel.TryPurchaseItem(locked.Id, 0));
             Assert.AreEqual(1, CurrencyModel.PurchasedItemIds.Count);
+        }
+
+        /// <summary>
+        /// ★ 2026-09-07 P0 회귀 잠금 — 실기 신고 "종이비행기 펫샀는데 착용이 안됨"의 재현.
+        ///
+        /// <para>위 <c>상점_구매는_레벨_파생_보유에_더해지지_대체하지_않는다</c>는 <see cref="ItemCatalogEntry.IsOwned"/>
+        /// 까지만 대조하고 끝난다. 실제 사고는 그 <b>한 단계 아래</b>에 있었다 — 착용을 실제로 거는
+        /// <see cref="EquipmentModel.TryWear"/>는 <see cref="ItemCatalogEntry.IsOwned"/>가 아니라
+        /// <see cref="EquipmentModel.IsItemOwned"/>를 보는데, 그 메서드는 레벨만 보고 구매 이력을
+        /// 보지 않았다. 그래서 보관함 카드는 "보유"로 뜨고 착용 버튼도 눌리는데(관문 통과),
+        /// <see cref="EquipmentModel.TryWear"/>가 조용히 false를 돌려줘 클릭이 아무 효과가 없었다.
+        /// 이 테스트는 <b>카탈로그 단언이 아니라 실제 착용 API 호출 결과</b>를 대조해 그 층을 잠근다 —
+        /// 카드가 "보유"라고 말하는 아이템은 반드시 <see cref="EquipmentModel.TryWear"/>로도 걸쳐져야 한다.</para>
+        /// </summary>
+        [Test]
+        public void 상점에서_산_아이템은_실제로_착용된다()
+        {
+            List<ItemCatalogEntry> items = BaseCohortEquipment();
+            ItemCatalogEntry locked = null;
+            foreach (ItemCatalogEntry e in items)
+            {
+                if (e.RequiredLevel.Value > 1 && (locked == null || e.RequiredLevel.Value > locked.RequiredLevel.Value)) locked = e;
+            }
+            Assert.IsNotNull(locked, "요구 레벨 > 1 인 장비가 없습니다 — 이 대조가 공허합니다.");
+            Assert.IsTrue(locked.Slot.HasValue, $"{locked.Id}: 장비인데 슬롯이 없습니다.");
+
+            SetLevel(1);
+
+            // 음성 대조 — 사기 전에는 착용 관문이 실제로 막혀 있어야 이 테스트가 뭔가를 재는 것이다.
+            Assert.IsFalse(EquipmentModel.TryWear(locked.Slot.Value, locked.ItemIndex, _config),
+                $"{locked.Id}: 사기 전인데 착용이 됩니다 — 레벨 잠금 자체가 깨져 있어 아래 양성 대조가 뜻을 잃습니다.");
+            Assert.AreEqual(EquipmentModel.NotWorn, EquipmentModel.WornIndex(locked.Slot.Value));
+
+            Assert.IsTrue(CurrencyModel.TryPurchaseItem(locked.Id, 0), $"{locked.Id}: 구매가 거절됐습니다.");
+            Assert.IsTrue(locked.IsOwned(_config), $"{locked.Id}: 샀는데 카탈로그가 보유로 안 봅니다 — 카드 자체가 잠긴 채로 뜹니다.");
+
+            // 양성 대조 — 실기 신고가 정확히 이 줄에서 실패했다: 카드는 "보유"인데 착용 API가 false를 돌려줬다.
+            Assert.IsTrue(EquipmentModel.TryWear(locked.Slot.Value, locked.ItemIndex, _config),
+                $"{locked.Id}: 카탈로그는 보유라는데 EquipmentModel.TryWear가 거절합니다 — " +
+                "IsItemOwned가 상점 구매를 안 보고 레벨만 보는 회귀입니다(실기 신고: 구매했는데 착용 안됨).");
+            Assert.AreEqual(locked.ItemIndex, EquipmentModel.WornIndex(locked.Slot.Value),
+                $"{locked.Id}: TryWear는 참을 돌려줬는데 실제 착용 슬롯이 그 아이템이 아닙니다.");
         }
 
         /// <summary>양성 대조 — QA 해금 스위치가 켜지면 위 두 검사의 「거짓」쪽이 전부 가려진다. 그래서 SetUp 이 스위치를 강제로 끈다.</summary>

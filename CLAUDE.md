@@ -152,7 +152,8 @@ Unity 에디터의 **활성 빌드 타깃 반대편 플랫폼 파일은 컴파�
 macOS 타깃에서는 **타입이 존재하지 않고**, 리플렉션 기반 감사는 없는 타입을 셀 수 없다.
 
 즉 **한쪽 타깃에서 돌린 EditMode 초록은 반대쪽 절반을 구조적으로 못 본 결과다.**
-- 현재 타깃 확인: `Library/Bee/artifacts/*/StickMate.Runtime.rsp`의 `UNITY_STANDALONE_*`
+- ★ **현재 타깃 확인법 정정(2026-09-07, 실측 2건으로 반증)**: `Library/Bee/artifacts/*/StickMate.Runtime.rsp`의 `UNITY_STANDALONE_*`는 **쓰지 마라** — Unity가 타깃별 dag 디렉터리를 각각 보존하므로 "가장 최신 rsp"는 **마지막으로 컴파일한 타깃**일 뿐 활성 타깃이 아니다(실측: 활성 타깃을 OSX로 전환한 시도가 rc=0·락충돌 0으로 35회 성공했는데도 최신 rsp는 계속 `UNITY_STANDALONE_WIN`으로 나와, **전환 성공이 실패처럼 보였다** — 이 저장소가 반복해서 당한 "죽은 프로브가 산 프로브와 똑같이 생겼다"의 또 다른 사례).
+  대신 **활성 타깃으로만 컴파일되는 `Library/ScriptAssemblies/StickMate.Runtime.dll`**에 `Win32WindowService`(Windows 전용) / `MacWindowService`(macOS 전용) 중 어느 타입이 존재하는지로 판정한다 — 바로 위 문단이 못박은 그 구조적 사실을 그대로 계기로 쓰는 것이다. 음성 대조로 존재하지 않는 타입 이름을, 양성 대조로 양쪽 공통 타입(`FramePacing` 등)을 함께 확인하면 판정 자체가 살아있는지도 검증된다.
 - 플랫폼 감사 테스트는 **타입이 아니라 소스 파일을 읽도록** 짠다(타깃 무관).
 - 타깃 전환은 **전역 상태 변경**이라 동시 진행 라운드를 방해한다 — **리더 승인 후에만.**
 
