@@ -16,7 +16,8 @@ MonoBehaviour:
   slot: 0
   itemIndex: 7
   displayName: Miner Helmet
-  description: A hard shell with a wedge brim thrown forward. The ridge line is where it took the last hit.
+  description: A hard shell with a wedge brim thrown forward. The ridge line is where
+    it took the last hit.
   requiredLevel: 1
   hidesHair: 0
   cohortId: 7
@@ -72,6 +73,7 @@ MonoBehaviour:
     - 16.99
     color: {r: 0.788235, g: 0.435294, b: 0, a: 1}
     tone: 0
+  cardIconOverride: {fileID: 21300000, guid: 1699e041198a74dbeb7b82d7037f61c0, type: 3}
   wornShapes:
   - name: HelmetShell
     loop: 1

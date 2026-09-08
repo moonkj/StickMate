@@ -658,6 +658,32 @@ namespace StickMate.Core
         public AccessoryIconPartData[] icon;
 
         /// <summary>
+        /// ★ <b>카드/상점 진열 전용 비트맵 아이콘</b>(2026-09-08, 사용자 요청 «렌더링 이미지»).
+        /// 비어 있으면(= 기본값 <c>null</c>) 아무 일도 일어나지 않고 카드는 지금까지처럼
+        /// 벡터 경로(<see cref="AccessoryDefSO.icon"/> → <c>AccessoryCardIcon.TryBuild</c>)를 탄다.
+        /// <b>출하 42종은 이 칸을 비운다</b> — 한 바이트도 고치지 않았고, 그래서 하위 호환이
+        /// 「기본값이 곧 옛 동작」이라는 구조적 사실로 보장된다(<c>cohortId</c>가 간 길과 같다).
+        ///
+        /// <para>★★ <b>몸에 붙는 그림은 이 칸을 절대 보지 않는다.</b> 착용 표면은 여전히
+        /// <see cref="wornShapes"/> 벡터 하나이고, 그것이 이 필드 이름에 «card»가 들어간 이유다.
+        /// 비트맵을 몸에 붙이면 캐릭터가 <b>부위별로 다른 화법</b>(선화 몸 + 사진 같은 모자)이 되어
+        /// 스틱메이트라는 그림 자체가 갈라진다 — 2026-09-08 리더 판단으로 <b>범위 밖</b>이다.
+        /// 소비자를 늘리기 전에 그 판단부터 다시 받아라.</para>
+        ///
+        /// <para><b>왜 <see cref="icon"/>을 지우고 이걸로 대체하지 않는가</b>: 비트맵은 잉크색
+        /// 전환·재질색(M/M2) 파생을 태울 수 없다. <see cref="ItemCatalogEntry.PrimaryColor"/>는
+        /// <see cref="icon"/> 조각에서 뽑히고, 그 색을 상세 패널·몸·감사가 읽는다. 벡터를 지우면
+        /// 그 원천이 통째로 사라진다 — 두 벌을 <b>일부러</b> 남긴다.</para>
+        ///
+        /// <para>값이 실리는 자리는 병렬 표(<c>ItemCatalog.CardSprite</c>) 하나다.
+        /// <see cref="ItemCatalogEntry"/>에 얹지 않는 이유는 <see cref="hidesHair"/>와 <b>같다</b> —
+        /// 항목에 필드를 더하면 골든 덤프·감사가 함께 흔들린다.</para>
+        /// </summary>
+        [Tooltip("카드/상점 진열 전용 비트맵 아이콘. 비우면(기본) 벡터 아이콘을 그대로 쓴다. " +
+                 "★ 몸에 붙는 그림(wornShapes)은 이 칸을 보지 않는다 — 카드 표면 전용이다.")]
+        public Sprite cardIconOverride;
+
+        /// <summary>
         /// ★ <b>몸에 붙는 형상</b>. 비어 있으면 그 자리는 아직
         /// <c>Interaction/AccessoryShapeBuilder.cs</c>의 코드 분기가 갖고 있다는 뜻이다
         /// (2026-09-02 현재 NECK 6종만 여기로 내려왔다 — B-2 파일럿).

@@ -16,7 +16,8 @@ MonoBehaviour:
   slot: 0
   itemIndex: 8
   displayName: Wizard Hat
-  description: A tall cone that leans with the night. The crescent on the front is stitched, not painted.
+  description: A tall cone that leans with the night. The crescent on the front is
+    stitched, not painted.
   requiredLevel: 1
   hidesHair: 0
   cohortId: 8
@@ -110,6 +111,7 @@ MonoBehaviour:
     - 24.8
     color: {r: 0, g: 0.6, b: 0.180392, a: 1}
     tone: 0
+  cardIconOverride: {fileID: 21300000, guid: bb460312469dc4066859a37227722f39, type: 3}
   wornShapes:
   - name: HatBrim
     loop: 1

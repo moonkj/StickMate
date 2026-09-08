@@ -16,7 +16,8 @@ MonoBehaviour:
   slot: 2
   itemIndex: 7
   displayName: Mine Lamp
-  description: A lamp carried on the chest, not on the head. The wedge shade throws the light down the tunnel.
+  description: A lamp carried on the chest, not on the head. The wedge shade throws
+    the light down the tunnel.
   requiredLevel: 1
   hidesHair: 0
   cohortId: 7
@@ -64,6 +65,7 @@ MonoBehaviour:
     - 23.66
     color: {r: 0.788235, g: 0.435294, b: 0, a: 1}
     tone: 0
+  cardIconOverride: {fileID: 21300000, guid: 158ff67245fbd473288b9cf5898d6827, type: 3}
   wornShapes:
   - name: LampStrap
     loop: 0

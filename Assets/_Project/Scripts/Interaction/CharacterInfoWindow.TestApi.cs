@@ -7,7 +7,10 @@ using StickMate.Platform;
 namespace StickMate.Interaction
 {
     /// <summary>
-    /// 진단/테스트 전용 관측 창구. <b>여기에는 화면을 바꾸는 코드가 없다</b> — 전부 읽기다.
+    /// 진단/테스트 전용 관측 창구. <b>여기에는 이 창의 화면을 바꾸는 코드가 없다</b> — 전부 읽기다.
+    /// <para>★ 2026-09-08 정정 — 예외가 <b>하나</b> 생겼다: <see cref="BuildCardArtForTests"/>는 그림을
+    /// «그린다». 다만 그리는 대상은 <b>부르는 쪽이 준 <c>root</c></b>이고 이 창의 트리에는 한 노드도
+    /// 붙지 않는다. 그래서 위 문장의 뜻(이 파일은 창의 상태를 바꾸지 않는다)은 그대로다.</para>
     /// <para>2026-09-02 <see cref="CharacterInfoWindow"/> 3,556줄을 <c>partial</c>로 나눈 조각이다.
     /// <b>분할은 줄 단위로 그대로 옮겼다</b>(옮기기 전후로 코드 줄 집합이 동일함을 확인).
     /// 그 뒤 같은 라운드에서 탭 판정만 <see cref="CharacterInfoWindow.TabTable"/> 기반으로 바꿨다.</para>
@@ -524,6 +527,28 @@ namespace StickMate.Interaction
         /// <summary>보관함 상세 카드의 제목 줄(<c>이름 · 등급 · 카테고리 · 상태</c>).</summary>
         public string InventoryDetailNameTextForTests
             => _inventoryDetailName != null ? _inventoryDetailName.text : null;
+
+        // ============================================================================
+        // ★ 카드 그림 경로 — 창을 띄우지 않고 부른다 (2026-09-08, 비트맵 아이콘 회귀용)
+        // ============================================================================
+        // <b>왜 리플렉션이 아니라 훅인가</b>: 리플렉션은 <c>"BuildCardArt"</c>라는 문자열 니들을
+        // 테스트에 심는다. 프로덕션이 이름을 바꾸면 그 니들은 <b>조용히 null</b>이 되고, 그때
+        // 「그리기 경로가 사라졌다」와 「이름이 바뀌었다」가 <b>출력상 구분되지 않는다</b> —
+        // CLAUDE.md 가 못박은 죽은 니들의 형태 그대로다. 훅이면 이름이 바뀌는 순간 <b>컴파일이</b> 깨진다.
+
+        /// <summary>카드 썸네일 그림 한 벌을 <paramref name="root"/> 아래에 <b>실제 경로 그대로</b> 굽는다.
+        /// <para>[장비]·[상점]·[DLC] 세 탭이 공유하는 그 함수를 그대로 부른다 — 테스트용 사본을
+        /// 따로 만들면 두 벌이 갈라진다(이 창이 카드와 몸을 통합한 이유와 같은 이유다).</para></summary>
+        public static void BuildCardArtForTests(RectTransform root, EquipmentSlot slot, int itemIndex,
+            ItemCatalogEntry entry)
+            => BuildCardArt(root, slot, itemIndex, entry);
+
+        /// <summary>비트맵 카드 아이콘의 정사각 변(카드 썸네일 자리). 테스트가 숫자를 베끼지 않도록 연다.</summary>
+        public static float BitmapIconSizeForTests => BitmapIconSize;
+
+        /// <summary>벡터 카드 아이콘의 정사각 변. <see cref="BitmapIconSizeForTests"/>와 <b>다르다</b>는
+        /// 사실 자체가 설계이고, 그 부등식을 테스트가 잠근다.</summary>
+        public static float VectorIconSizeForTests => IconSize;
 
         /// <summary>트랙 색이 아닌 칸을 센다. 이 한 곳만 색을 비교한다 — 두 곳에서 세면 갈라진다.</summary>
         private static int CountFilled(RarityRibbon ribbon)

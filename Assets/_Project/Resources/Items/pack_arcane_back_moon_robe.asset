@@ -16,7 +16,8 @@ MonoBehaviour:
   slot: 3
   itemIndex: 8
   displayName: Moon Robe
-  description: A robe whose hem is cut into a crescent. The same moon is stitched across the back.
+  description: A robe whose hem is cut into a crescent. The same moon is stitched
+    across the back.
   requiredLevel: 1
   hidesHair: 0
   cohortId: 8
@@ -120,6 +121,7 @@ MonoBehaviour:
     - 5.37
     color: {r: 0, g: 0.6, b: 0.180392, a: 1}
     tone: 0
+  cardIconOverride: {fileID: 21300000, guid: 7de4aa304154f44cc8872797b4df1f06, type: 3}
   wornShapes:
   - name: RobeBody
     loop: 1

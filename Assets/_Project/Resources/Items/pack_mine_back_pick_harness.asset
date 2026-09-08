@@ -16,7 +16,8 @@ MonoBehaviour:
   slot: 3
   itemIndex: 7
   displayName: Pick Harness
-  description: A pick slung across the back. The wedge blade is the part that still bites.
+  description: A pick slung across the back. The wedge blade is the part that still
+    bites.
   requiredLevel: 1
   hidesHair: 0
   cohortId: 7
@@ -68,6 +69,7 @@ MonoBehaviour:
     - 19.73
     color: {r: 0.788235, g: 0.435294, b: 0, a: 1}
     tone: 0
+  cardIconOverride: {fileID: 21300000, guid: 3a73bc002e566465a963c0ec6dbf7c1c, type: 3}
   wornShapes:
   - name: PickHaft
     loop: 1

@@ -16,7 +16,8 @@ MonoBehaviour:
   slot: 1
   itemIndex: 7
   displayName: Dust Goggles
-  description: Two panes against the coal dust. The wedge beneath them seals off the nose.
+  description: Two panes against the coal dust. The wedge beneath them seals off
+    the nose.
   requiredLevel: 1
   hidesHair: 0
   cohortId: 7
@@ -64,6 +65,7 @@ MonoBehaviour:
     - 10.14
     color: {r: 0.788235, g: 0.435294, b: 0, a: 1}
     tone: 0
+  cardIconOverride: {fileID: 21300000, guid: bc745d8e81c064d9e8cce7df0c84317a, type: 3}
   wornShapes:
   - name: GoggleFrame
     loop: 1

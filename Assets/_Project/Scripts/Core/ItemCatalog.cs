@@ -510,6 +510,12 @@ namespace StickMate.Core
         /// 위 두 표와 같은 이유로 항목이 아니라 여기 있다(<see cref="HidesHair"/> 문단).</summary>
         private static bool[][] _hidesHairBySlot;
 
+        /// <summary>★ 2026-09-08 — 「카드/상점 진열에 쓸 <b>비트맵</b> 아이콘」
+        /// (<see cref="AccessoryDefSO.cardIconOverride"/>). 위 세 표와 <b>같은 이유</b>로 항목이 아니라
+        /// 여기 있다(<see cref="CardSprite"/> 문단). 안 적은 자리는 <c>null</c>이고, 그것이 곧
+        /// 「벡터 경로를 그대로 탄다」는 뜻이다 — 출하 42종 전부가 그 자리다.</summary>
+        private static Sprite[][] _cardSpriteBySlot;
+
         private static ItemCatalogEntry[][] BySlot
         {
             get { EnsureLoaded(); return _bySlot; }
@@ -549,12 +555,14 @@ namespace StickMate.Core
             var wornBySlot = new AccessoryWornShapeData[slots][][];
             var wornTransformBySlot = new AccessoryWornTransform[slots][];
             var hidesHairBySlot = new bool[slots][];
+            var cardSpriteBySlot = new Sprite[slots][];
             for (int s = 0; s < slots; s++)
             {
                 bySlot[s] = new ItemCatalogEntry[counts[s]];
                 wornBySlot[s] = new AccessoryWornShapeData[counts[s]][];
                 wornTransformBySlot[s] = new AccessoryWornTransform[counts[s]];
                 hidesHairBySlot[s] = new bool[counts[s]];
+                cardSpriteBySlot[s] = new Sprite[counts[s]];
             }
 
             for (int i = 0; i < defs.Length; i++)
@@ -576,6 +584,7 @@ namespace StickMate.Core
                 wornTransformBySlot[(int)def.slot][def.itemIndex] = new AccessoryWornTransform(
                     def.wornGroupAlpha, def.wornScale, def.wornScaleY, def.wornOffsetYInR, def.wornMirrorX);
                 hidesHairBySlot[(int)def.slot][def.itemIndex] = def.hidesHair;
+                cardSpriteBySlot[(int)def.slot][def.itemIndex] = def.cardIconOverride;
             }
 
             if (defs.Length == 0)
@@ -587,6 +596,7 @@ namespace StickMate.Core
                 _wornBySlot = wornBySlot;
                 _wornTransformBySlot = wornTransformBySlot;
                 _hidesHairBySlot = hidesHairBySlot;
+                _cardSpriteBySlot = cardSpriteBySlot;
                 _entries = BuildFlat(bySlot);
                 return;
             }
@@ -629,6 +639,7 @@ namespace StickMate.Core
             //   몸 파라미터(줄무늬타이 dy −0.287 R)가 런타임에 전부 0이 됐다. CardShapeContractTests 가 잡았다.
             _wornTransformBySlot = wornTransformBySlot;
             _hidesHairBySlot = hidesHairBySlot;
+            _cardSpriteBySlot = cardSpriteBySlot;
             _entries = BuildFlat(bySlot);
         }
 
@@ -682,6 +693,35 @@ namespace StickMate.Core
             if (_hidesHairBySlot == null || s < 0 || s >= _hidesHairBySlot.Length) return false;
             bool[] row = _hidesHairBySlot[s];
             if (row == null || itemIndex < 0 || itemIndex >= row.Length) return false;
+            return row[itemIndex];
+        }
+
+        /// <summary>
+        /// ★ 이 아이템이 <b>카드/상점 진열용 비트맵</b>을 선언했는가, 했다면 무엇을
+        /// (<see cref="AccessoryDefSO.cardIconOverride"/>). 안 적은 자리·없는 자리는 <c>null</c>이고
+        /// 그것은 <b>결함이 아니라 기본 상태</b>다 — 출하 42종 전부가 여기 해당하고, <c>null</c>이
+        /// 곧 「지금까지의 벡터 경로를 그대로 탄다」는 뜻이다.
+        ///
+        /// <para><b>왜 <see cref="ItemCatalogEntry"/>가 아니라 병렬 표인가</b>: <see cref="WornShapes"/>·
+        /// <see cref="WornTransform"/>·<see cref="HidesHair"/>와 <b>같은 성격</b>(에셋이 실어 오는 렌더
+        /// 자원)이고, 항목에 필드를 더하면 골든 덤프(<c>ItemCatalogDigest</c>)·감사·다른 라운드가
+        /// 잡고 있는 테스트 파일까지 함께 흔들린다. 여기 두면 <b>출하 42종의 항목은 한 바이트도
+        /// 안 바뀐다</b>. 그리고 <c>Sprite</c>는 <b>직렬화할 수 없는 런타임 자원</b>이라 골든 텍스트에
+        /// 실을 수단 자체가 없다 — 항목에 얹었다면 덤프가 그 필드를 <b>조용히 빠뜨렸을</b> 것이다.</para>
+        ///
+        /// <para>★ <b>소비자는 카드 표면 하나뿐이다</b>(<c>CharacterInfoWindow.BuildCardArt</c> →
+        /// [장비]·[상점]·[DLC] 세 탭이 그 함수 하나를 공유한다). 몸에 붙는 렌더러
+        /// (<c>CharacterAccessoryRenderer</c>)는 이 함수를 <b>부르지 않는다</b> — 그 선은
+        /// 2026-09-08 리더 판단이고, 넘기 전에 그 판단을 다시 받아라
+        /// (<see cref="AccessoryDefSO.cardIconOverride"/> 문단).</para>
+        /// </summary>
+        public static Sprite CardSprite(EquipmentSlot slot, int itemIndex)
+        {
+            EnsureLoaded();
+            int s = (int)slot;
+            if (_cardSpriteBySlot == null || s < 0 || s >= _cardSpriteBySlot.Length) return null;
+            Sprite[] row = _cardSpriteBySlot[s];
+            if (row == null || itemIndex < 0 || itemIndex >= row.Length) return null;
             return row[itemIndex];
         }
 

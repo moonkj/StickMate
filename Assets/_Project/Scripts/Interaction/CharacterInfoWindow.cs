@@ -315,6 +315,42 @@ namespace StickMate.Interaction
         /// <summary>아이콘 획 두께. 핸드오프 스펙은 <b>40 viewBox 기준 1.7</b>이므로 <see cref="IconSize"/>가
         /// 커지면 <b>같은 비율로</b> 따라와야 형태가 원본과 같다(두께만 그대로 두면 선이 가늘어진다).</summary>
         private const float IconStroke = 1.7f * (IconSize / 40f);
+
+        /// <summary>
+        /// ★ <b>비트맵</b> 카드 아이콘의 정사각 변(2026-09-08). 벡터 <see cref="IconSize"/> 58과
+        /// <b>일부러 다르다</b> — 두 그림의 «담는 방식»이 다르기 때문이다.
+        ///
+        /// <para>벡터 조각은 <c>AccessoryCardIcon.Frame</c>이 슬롯 고정 배율로 <b>상자를 꽉 채우도록</b>
+        /// 배치한다. 비트맵은 512px 캔버스 안에 <b>자기 여백(둥근 판 + 그 바깥 배경)</b>을 이미 갖고
+        /// 들어온다 — 실측 여백이 사방 6.25%(<c>16/256</c>)이고, 물건 자체는 대략 캔버스의 2/3다.
+        /// 그래서 같은 58에 넣으면 팩 12종만 <b>눈에 띄게 작게</b> 보인다.</para>
+        ///
+        /// <para>값을 <see cref="ThumbHeight"/>에서 <b>파생</b>시키는 것이 핵심이다. 78을 직접 적으면
+        /// 썸네일 높이가 바뀌는 날 이 숫자만 남는다 — 이 저장소가 폭 1042 확대에서 실제로 당한
+        /// 형태(헤더는 갔는데 카드줄에는 안 갔다)를 그대로 밟는 자리다. 빼는 6은 위아래로 3pt씩
+        /// 숨 쉴 틈이고, 그 틈이 있어야 비트맵의 <b>사각</b> 바깥 모서리가 썸네일의 둥근 모서리와
+        /// 부딪히지 않는다 — <b>12장 전부 알파 채널이 없어</b>(PNG 컬러타입 2 = RGB) 바깥 배경이
+        /// <b>칠해져</b> 들어오기 때문이다. 2026-09-08 실측이고, 그날 오전 판(4장이 RGBA였다)과
+        /// <b>다르다</b>: 이 그림들은 라운드 도중에 한 번 교체됐다. 다시 잴 때는 파일 mtime부터 봐라.</para>
+        /// </summary>
+        private const float BitmapIconSize = ThumbHeight - BitmapIconInset;   // 72
+
+        /// <summary>비트맵이 «자기가 앉는 판»보다 이만큼 작다(위아래·좌우 각 3pt). 판마다 다시 정하지
+        /// 않는다 — 카드 썸네일(78)과 상세 썸네일(<see cref="DetailThumbSize"/> 52)이 같은 규칙을 쓴다.</summary>
+        private const float BitmapIconInset = 6f;
+
+        /// <summary>상세 패널 썸네일 판의 한 변. <b>2026-09-08에 지역 상수에서 올라왔다</b> —
+        /// 비트맵 크기(<see cref="BitmapDetailArtSize"/>)가 이 값에서 파생돼야 판이 커지는 날
+        /// 한쪽만 남지 않는다.</summary>
+        private const float DetailThumbSize = 52f;
+
+        /// <summary>상세 패널 썸네일 안에서 비트맵이 차지하는 정사각 변(= 46). 벡터
+        /// <see cref="DetailThumbArtSize"/> 38보다 큰 이유는 <see cref="BitmapIconSize"/>와 같다 —
+        /// 비트맵은 자기 여백을 갖고 들어온다.
+        /// <para>판(52)보다 6 작으므로 등급 테두리(<see cref="UiChrome.AddOutline"/> 두께 1)가
+        /// <b>사방 3pt 여백 안에 그대로 남는다</b>. 그 테두리는 이 자리의 유일한 등급 신호라
+        /// 비트맵이 덮으면 안 된다.</para></summary>
+        private const float BitmapDetailArtSize = DetailThumbSize - BitmapIconInset;   // 46
         private const float LockBadgeWidth = 18f;
         private const float LockBadgeHeight = 17f;
 

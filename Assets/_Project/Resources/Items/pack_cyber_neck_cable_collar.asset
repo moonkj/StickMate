@@ -16,7 +16,8 @@ MonoBehaviour:
   slot: 2
   itemIndex: 6
   displayName: Cable Collar
-  description: A collar of bundled cable. The pad at the throat is the only clean part left.
+  description: A collar of bundled cable. The pad at the throat is the only clean
+    part left.
   requiredLevel: 1
   hidesHair: 0
   cohortId: 2
@@ -70,6 +71,7 @@ MonoBehaviour:
     - 33.91
     color: {r: 0, g: 0.588235, b: 0.509804, a: 1}
     tone: 0
+  cardIconOverride: {fileID: 21300000, guid: 162b878634fe044c79cb834288cb37c0, type: 3}
   wornShapes:
   - name: CollarBand
     loop: 1

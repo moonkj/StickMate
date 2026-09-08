@@ -745,7 +745,18 @@ namespace StickMate.Interaction
                 Object.Destroy(_detailThumbArt.GetChild(i).gameObject);
             }
 
-            if (!AccessoryCardIcon.TryBuild(_detailThumbArt, _selectedSlot, _selectedItem, DetailThumbArtSize,
+            // ★ 2026-09-08 — 카드와 <b>같은 갈래</b>를 여기서도 먼저 묻는다. 안 물으면 같은 화면에서
+            //   카드는 비트맵, 바로 아래 상세 썸네일은 벡터가 되어 <b>한 아이템이 두 그림</b>으로
+            //   보인다 — 이 창이 2026-09-01에 정확히 그 이유로 카드와 몸을 통합한 자리다.
+            //   선언이 없으면(출하 42종 전부) `bitmap`은 null이고 옛 벡터 경로(if→else if로
+            //   한 칸 밀림, 동작은 무변경)를 그대로 탄다 — 카드 쪽(BuildCardArt)과 달리 여기는
+            //   조기 return이 아니라 else-if라 diff에 두 줄이 실제로 찍힌다.
+            Sprite bitmap = ItemCatalog.CardSprite(_selectedSlot, _selectedItem);
+            if (bitmap != null)
+            {
+                BuildBitmapCardArt(_detailThumbArt, bitmap, BitmapDetailArtSize);
+            }
+            else if (!AccessoryCardIcon.TryBuild(_detailThumbArt, _selectedSlot, _selectedItem, DetailThumbArtSize,
                     IconStroke * (DetailThumbArtSize / IconSize), entry.PrimaryColor, entry.SecondaryColor))
             {
                 BuildIcon(_detailThumbArt, entry.Icon, DetailThumbArtSize);
@@ -1187,6 +1198,18 @@ namespace StickMate.Interaction
         private static void BuildCardArt(RectTransform root, EquipmentSlot slot, int itemIndex,
             ItemCatalogEntry entry)
         {
+            // ★ 2026-09-08 — <b>비트맵 카드 아이콘</b>이 선언된 자리(팩 12종)는 그 한 장으로 끝낸다.
+            //   <b>분기 하나가 전부이고 아래 두 줄은 한 글자도 안 바뀌었다</b>: 선언이 없으면
+            //   (= 출하 42종 전부, <c>ItemCatalog.CardSprite</c>가 null) 이 if는 통째로 없는 것과 같다.
+            //   그것이 이 필드의 하위 호환 계약이다 — 「기본값이 곧 옛 동작」.
+            //   ★ 몸에 붙는 그림은 이 갈래를 <b>타지 않는다</b>(AccessoryDefSO.cardIconOverride 문단).
+            Sprite bitmap = ItemCatalog.CardSprite(slot, itemIndex);
+            if (bitmap != null)
+            {
+                BuildBitmapCardArt(root, bitmap, BitmapIconSize);
+                return;
+            }
+
             // 색은 <b>카탈로그 색 그대로</b>다(몸의 WornColor 변환을 태우지 않는다). 착용 색 정책은
             // 로드맵 P5의 몫이고, 도형 통합과 색 정책을 한 라운드에 같이 바꾸면 카드 그림이 달라진
             // 이유가 좌표 때문인지 색 때문인지 판정할 수 없게 된다.
@@ -1196,6 +1219,59 @@ namespace StickMate.Interaction
                 return;
             }
             BuildIcon(root, entry.Icon, IconSize);
+        }
+
+        /// <summary>
+        /// ★ 비트맵 카드 아이콘 한 장(2026-09-08). <b>이미지 하나가 전부다</b> — 배경도 테두리도
+        /// 그리지 않는다.
+        ///
+        /// <para><b>왜 카드 UI가 배경/테두리를 얹지 않는가</b>: 이 512px 그림들은 자기 안에
+        /// <b>배경(vignette)까지</b> 그려서 온다. 위에 판을 하나 더 깔면 그 자리가 <b>이중 테두리</b>가 된다.
+        /// 실기 캡처로 확인했다 — 테두리는 <b>한 겹</b>이고, 겹친 선은 0개다.</para>
+        ///
+        /// <para>★ <b>다만 「배경이 안 보인다」는 아니다</b>(2026-09-08 실측, 팩마다 다르다).
+        /// 썸네일 면 <see cref="UiChrome.CardSurfaceMuted"/>는 <c>#15181E</c>인데 그림의 바깥 배경은:
+        /// <list type="bullet">
+        ///   <item><b>cyber</b> <c>#0D141F</c> — 채널차 (8,4,1). 이음매가 눈에 <b>안 띈다</b>.</item>
+        ///   <item><b>arcane</b> <c>#091124</c>~<c>#0C1A36</c> — 파랑이 최대 +24.</item>
+        ///   <item><b>mine</b> <c>#101F40</c>~<c>#142950</c> — 파랑이 최대 <b>+50</b>. 카드 안에
+        ///     <b>남색 타일</b>로 또렷하게 보인다.</item>
+        /// </list>
+        /// 이건 <b>그림이 갖고 온 색</b>이지 카드 UI가 더한 것이 아니다. 톤을 맞추려면 그림을 다시
+        /// 굽는 쪽(<c>design-equipment</c>)이 정본이고, 여기서 색을 곱해 «고치면» 그라데이션·금속광택이
+        /// 통째로 어두워진다 — 그래서 <b>손대지 않는다</b>. 판단은 리더/디자인 몫으로 남긴다.</para>
+        ///
+        /// <para><see cref="Image.preserveAspect"/>를 켜는 이유는 레터박스가 아니라 <b>왜곡</b>을 막기
+        /// 위해서다: 12장 전부 1:1(512×512)이고 상자도 정사각이라 <b>지금은 항등</b>이지만, 정사각이
+        /// 아닌 그림이 하나 섞이는 날 이것이 없으면 조용히 늘어난다(그 증상은 「원래 그런 아이콘」으로
+        /// 읽혀 아무도 신고하지 않는다 — 이 파일이 <c>BuildIcon</c>의 <c>default:</c>에 적어 둔 것과 같은 병).</para>
+        ///
+        /// <para><b>부모(<paramref name="root"/>)보다 크게 만든다</b>(<see cref="BitmapIconSize"/> 72 &gt;
+        /// <see cref="IconSize"/> 58). <paramref name="root"/>는 마스크가 아니라 <b>중심을 잡아 주는 자리</b>이고
+        /// (uGUI는 부모 <c>RectTransform</c>으로 자르지 않는다), 그 중심이 곧 썸네일의 중심이다.</para>
+        ///
+        /// <para><b>색은 흰색으로 둔다</b>(= 텍스처 원본). 그래야 <c>ItemCard.IconBaseColors</c>가 흰색을
+        /// 기억하고, 잠금 실루엣(<see cref="SetIconColor"/>)과 복원(<see cref="RestoreIconColors"/>)이
+        /// 벡터 조각과 <b>같은 배관</b>으로 이 한 장에도 그대로 걸린다 — 상태 처리를 두 벌로 만들지 않는다.</para>
+        /// </summary>
+        private static void BuildBitmapCardArt(RectTransform root, Sprite bitmap, float size)
+        {
+            var go = new GameObject("BitmapIcon", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+            go.transform.SetParent(root, false);
+
+            var rt = go.GetComponent<RectTransform>();
+            rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.sizeDelta = new Vector2(size, size);
+            rt.anchoredPosition = Vector2.zero;
+
+            var image = go.GetComponent<Image>();
+            image.sprite = bitmap;
+            image.type = Image.Type.Simple;
+            image.preserveAspect = true;
+            image.color = Color.white;
+            // 카드 본체 버튼이 클릭을 받는다 — 아이콘이 레이캐스트를 먹으면 썸네일 가운데 72pt가
+            // "눌러도 아무 일 없는 칸"이 된다(등급 리본이 raycastTarget을 끄는 것과 같은 이유).
+            image.raycastTarget = false;
         }
 
         private static void BuildIcon(RectTransform root, ItemIconPart[] parts, float renderSize)
@@ -1322,7 +1398,7 @@ namespace StickMate.Interaction
                 UiChrome.Flatten(UiChrome.CardBorder, UiChrome.CardSurfaceMuted), UiChrome.RadiusCard);
 
             const float DetailPadX = 14f;
-            const float DetailThumbSize = 52f;
+            // ★ DetailThumbSize 는 2026-09-08에 클래스 상수로 올라갔다(비트맵 크기가 여기서 파생된다).
             float textX = DetailPadX + DetailThumbSize + UiChrome.Space3;
             float textWidth = Col1ContentWidth - textX - DetailPadX;
 

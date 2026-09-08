@@ -16,7 +16,8 @@ MonoBehaviour:
   slot: 1
   itemIndex: 6
   displayName: Slit Visor
-  description: One narrow band of light. The corner terminals are where it was spliced back on.
+  description: One narrow band of light. The corner terminals are where it was spliced
+    back on.
   requiredLevel: 1
   hidesHair: 0
   cohortId: 2
@@ -68,6 +69,7 @@ MonoBehaviour:
     - 16.39
     color: {r: 0, g: 0.588235, b: 0.509804, a: 1}
     tone: 0
+  cardIconOverride: {fileID: 21300000, guid: a31f66208a88d41dd883e28efb6b9596, type: 3}
   wornShapes:
   - name: VisorBar
     loop: 1

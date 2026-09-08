@@ -16,7 +16,8 @@ MonoBehaviour:
   slot: 1
   itemIndex: 8
   displayName: Astro Lens
-  description: Two lenses on a crescent cradle. The cradle sits low so a hat cannot eat it.
+  description: Two lenses on a crescent cradle. The cradle sits low so a hat cannot
+    eat it.
   requiredLevel: 1
   hidesHair: 0
   cohortId: 8
@@ -146,6 +147,7 @@ MonoBehaviour:
     - 3.9
     color: {r: 0, g: 0.6, b: 0.180392, a: 1}
     tone: 0
+  cardIconOverride: {fileID: 21300000, guid: c4fc753e6dad44c47a7ad1fc891e4a92, type: 3}
   wornShapes:
   - name: LensFront
     loop: 1

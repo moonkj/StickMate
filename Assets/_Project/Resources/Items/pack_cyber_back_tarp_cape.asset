@@ -16,7 +16,8 @@ MonoBehaviour:
   slot: 3
   itemIndex: 6
   displayName: Tarp Cape
-  description: Cut from a roof tarp. The shoulder pad is what keeps it from tearing off.
+  description: Cut from a roof tarp. The shoulder pad is what keeps it from tearing
+    off.
   requiredLevel: 1
   hidesHair: 0
   cohortId: 2
@@ -70,6 +71,7 @@ MonoBehaviour:
     - 34.54
     color: {r: 0, g: 0.588235, b: 0.509804, a: 1}
     tone: 0
+  cardIconOverride: {fileID: 21300000, guid: 0a784972a124c44ca88fa636fd42e272, type: 3}
   wornShapes:
   - name: CapeBody
     loop: 1
