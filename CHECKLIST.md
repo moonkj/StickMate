@@ -543,3 +543,8 @@
         태그(코드기준 `1dd245a`) → xcheck osx/win 둘 다 0에러 확인 후 zip
         (33,730,223 bytes) 첨부해 게시:
         https://github.com/moonkj/StickMate/releases/tag/windows-preview-20260908n
+  - [x] 재게시(8차) 완료 — DLC 12종 착용 벡터 R3 재설계(카드 비트맵에 맞춰
+        크림-금 트림·톤 반전 수정) + 대마법사 색상각 보정까지 반영.
+        `windows-preview-20260909a` 태그(코드기준 `8a91cb7`) → zip
+        (33,730,826 bytes) 첨부해 게시:
+        https://github.com/moonkj/StickMate/releases/tag/windows-preview-20260909a
