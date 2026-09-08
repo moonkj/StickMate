@@ -66,9 +66,25 @@
   - [ ] **2-2 세트별 집중 모드 행동 4종 — 광부/노가다 · 사이버펑크 연구원 · 판타지 대마법사 · 현대
         직장인/독서실.** 실측: **독서실(office) 세트 1개만 데이터 존재**
         (`CostumeManifest_office.asset` + `CostumeKeyposeTable_office.asset`). **광부·사이버펑크·
-        대마법사 3종은 매니페스트/키포즈 에셋 자체가 없음 — 완전 미착수.** → design-equipment(조형)
-        + design-motion(모션/타이핑·곡괭이질·주문영창 타이밍) + coder-systems(에셋 배선+ItemCatalog
-        DLC 엔타이틀먼트 등록) 병렬 착수 지시함(2026-09-08, 아래 진행 로그 참조).
+        대마법사 3종은 매니페스트/키포즈 에셋 자체가 없음.**
+    - [x] design-motion 완료(`docs/UX_MOTION_COSTUME_FOCUS.md` §16) — 3세트 전부 4프레임 키포즈
+          사이클 표 + 몰입기 3소구간(진입/절정/이완) 감정선 + 프롭 접촉좌표 확정. 정정: "완전
+          미착수"는 데이터(.asset) 기준으로만 참 — 각도표·프롭좌표 자체는 09-07 라운드에 이미
+          있었고 이번 라운드는 "전사+재검산"이었음. **재검산이 결함 4건을 새로 잡음**:
+          (가) 09-07 각도표가 몸 기울임 오프셋을 안 넣어 광부 K2 손끝~섬광 원점이 실제 2.76pt
+          벌어져 있었음 — 이번에 수정 (나) 대마법사 조형이 바뀐 뒤 낡은 판정 잣대 사용 중이던 것
+          교정 (다) `CostumeKeypose.leanDegrees` 툴팁이 실제 클램프값(30°)과 다른 7.60°를 적어
+          거짓 주석이었음 — **coder가 즉시 정정함**(아래) (라) `RelaxLeanBiasDegrees` 1.5°가
+          설계 자신의 가시 하한(1.0pt)의 57%뿐이라 안 보이는 수준 — **coder가 2.8°로 조정함**
+          (아래, EditMode 2,829건 실패 0 확인).
+      - [x] **coder 즉시 반영 2건**: `CostumeKeyposeTableSO.cs`의 `leanDegrees` 거짓 툴팁 정정
+            (7.60→실제 30) / `RelaxLeanBiasDegrees` 1.5°→2.8°(가시 하한 미달 수정). 둘 다 문서
+            결함·수치 보정이라 즉시 적용, 검증 통과.
+      - [ ] **리더 판정 남은 3건**: J-3(§5 접촉오차 숫자 문서 정정, 문서만) / J-4(각도 3건 채택
+            여부 재확인) / J-5(착수 순서 = 코호트(ItemCatalog) → 매니페스트 → 키포즈표 — 순서
+            뒤바뀌면 `CostumeResolver`가 못 찾음, coder-systems 착수 시 지킬 것).
+      - [ ] design-equipment(조형, 진행 중) + coder-systems(에셋 배선+ItemCatalog DLC 엔타이틀먼트
+            등록, 착수 전 — 위 J-5 순서 지킬 것) 병렬 착수(2026-09-08 지시).
   - [ ] **2-3 시각적 성장 콘텐츠 — 단계별 실제 비주얼.** 메커니즘(`CostumeStageOverride`,
         `ResolveStageShapes`)은 있으나, office 세트조차 `stage: 0`(기본형) 하나만 있고 10h/50h/100h
         진화 오버라이드가 **비어 있음**. 4세트 전부에 대해 단계별 조형 데이터 신규 저작 필요.

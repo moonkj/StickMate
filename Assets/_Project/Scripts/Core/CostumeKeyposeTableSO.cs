@@ -55,7 +55,9 @@ namespace StickMate.Core
         [Tooltip("A(앞팔) 팔꿈치 굽힘(도, ≥ 0).")]
         public float rightLowerArm;
 
-        [Tooltip("상체 기울임(도, + = 앞). 포즈 층의 MaxBodyLeanDegrees(7.60)로 클램프된다.")]
+        [Tooltip("상체 기울임(도, + = 앞). 포즈 층의 StickmanPoseAnimator.MaxBodyLeanDegrees(30)로 " +
+                 "클램프된다 — 7.60°는 이 필드와 무관한 다른 상수(유휴 미세 흔들림 상한)다. " +
+                 "2026-09-08 design-motion 재검산으로 정정: 옛 툴팁이 7.60을 잘못 적어 놓았었다.")]
         public float leanDegrees;
 
         [Tooltip("몸통 상하 오프셋 — 신장 H 배수(월드 유닛이 아니다). 「내려앉기」용.\n" +
@@ -232,8 +234,13 @@ namespace StickMate.Core
         public const float RelaxDuty = 1f / 6f;
 
         /// <summary>이완 소구간의 정지 자세에 더하는 앞쪽 기울임(도) — <b>힘이 빠진다</b>.
-        /// ★ 새 키포즈를 만들지 않는다: 표가 늘면 도달 원·규칙 B 검증 대상이 코스튬당 25% 늘어난다.</summary>
-        public const float RelaxLeanBiasDegrees = 1.5f;
+        /// ★ 새 키포즈를 만들지 않는다: 표가 늘면 도달 원·규칙 B 검증 대상이 코스튬당 25% 늘어난다.
+        /// ★★ 2026-09-08 — design-motion 재검산(코스튬 3종 키포즈)이 옛 값 1.5°가 어깨를 0.57pt만
+        /// 움직여 설계 자신의 가시 하한(1.0pt)의 57%뿐임을 계산으로 확인했다. 2.6~3.0° 구간이면
+        /// 하한을 넘는다는 권고를 받아 중간값 2.8°로 정한다(어깨 이동량이 하한을 넉넉히 넘으면서
+        /// 기울임 상한(MaxBodyLeanDegrees=30, CostumeKeypose.leanDegrees 문서 참고)과는 여전히
+        /// 거리가 먼 값). 이완 구간의 실제 주 신호는 여전히 정지 6.67초이고, 이 각도는 보조 신호다.</summary>
+        public const float RelaxLeanBiasDegrees = 2.8f;
 
         /// <summary>몰입기 안의 소구간 번호(0 진입 / 1 절정 / 2 이완).</summary>
         public static int SubPhaseOf(float immersionSeconds, float immersionElapsedSeconds)
