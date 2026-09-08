@@ -86,6 +86,21 @@ namespace StickMate.Interaction
         protected override Vector2 PanelSizePoints => new Vector2(Width, Height);
         protected override string TitleText => "오늘 할일";
 
+        // ★★ 2026-09-08 (사용자 신고 "각 메뉴들의 창을 마우스로 끌어서 움직일수있게 변경했었는데
+        //   지금은 또 안됨") — 이 팝오버는 <b>드래그가 애초에 안 붙어 있었다</b>.
+        //   2026-09-07 라운드의 요청 원문이 "모든 창(집중모드 타이머, 캐릭터 정보창, 설정창)"으로
+        //   세 개만 지목했고, 나머지 팝오버 2종은 그때 배정 밖이었다 — 그래서 «되던 게 깨진 것»이
+        //   아니라 «처음부터 없던 것»인데, 사용자에게는 <b>겉보기가 같다</b>.
+        //   FocusSessionPopover가 남겨 둔 예고("켜려면 이 두 줄과 세이브 칸만 있으면 된다")대로
+        //   두 줄과 UiWindowId·CharacterSaveStore 3필드를 더해 켠다.
+        //
+        //   손잡이는 «패널 안이면서 어떤 버튼 위도 아닌» 자리다 — 버튼 목록은
+        //   <see cref="PopoverPanel"/>가 빌드 직후 한 번 긁어 자동으로 들고 있으므로
+        //   여기서 사각형을 손으로 적지 않는다(새 버튼이 늘어도 판정이 따라온다).
+        protected override bool WindowDragEnabled => true;
+
+        protected override UiWindowId WindowDragId => UiWindowId.TodoBoard;
+
         /// <summary>지금 보고 있는 탭(0=할일, 1=완료함) — 테스트/진단 전용.</summary>
         public int ActiveTab => (int)_tab;
 

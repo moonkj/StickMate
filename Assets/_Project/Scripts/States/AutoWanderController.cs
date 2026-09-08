@@ -1013,16 +1013,32 @@ namespace StickMate.States
         {
             float h = blackboard != null ? blackboard.CharacterHeightWorld : StickConfig.BaselineCharacterTotalHeight;
             float configuredHeights = blackboard != null && blackboard.Config != null
-                ? blackboard.Config.ropeClimbMaxHeights : 6.6f;
-            float byConfig = Mathf.Max(0f, configuredHeights) * h;
+                ? blackboard.Config.ropeClimbMaxHeights : 13.6f;
+            // 「몇 초까지」 천장 — 이 값 ÷ ropeClimbSpeedHeightsPerSecond 가 곧 최대 등반 소요다.
+            float byDuration = Mathf.Max(0f, configuredHeights) * h;
 
-            float byScreen = byConfig;
+            // ★★★ 2026-09-08 — 주 상한을 「신장 배수 고정값」에서 「화면 도달범위 비례」로 옮겼다.
+            //   사용자 지시: "6.6배는 너무 작은거 같아 화면자체가 캐릭터보다 많이 큰데 6.6배면 너무
+            //   작은거 같은데 화면 해상도에 따라 계산해서 나눠야할거같은데".
+            //
+            //   실측이 그 지적을 뒷받침한다(배포 기본 배율, macOS 1512x982pt):
+            //     화면 높이 23.99유닛 = 13.0H / 발밑(Dock)→화면상단 도달범위 22.16유닛 = 12.1H
+            //     옛 상한 6.6H = 12.14유닛 → 도달범위의 **55%**밖에 못 덮었다.
+            //   화면이 커질수록 도달범위(H 단위)만 늘고 고정 배수는 그대로라 커버율이 더 떨어진다 —
+            //   해상도 의존이 **잘못된 방향으로** 걸려 있었다. 비율로 잡으면 어느 해상도에서나 같다.
+            //
+            //   ★ 도달범위를 못 구하면(카메라/몸 미배선) 소요시간 천장만으로 판정한다 — 클램프가
+            //     없다고 등반 자체를 막을 이유는 없다(아래 기존 폴백 어법 그대로 유지).
+            float resolved = byDuration;
             if (blackboard != null && blackboard.TryGetWalkableScreenTopWorldY(out float screenTopWorldY))
             {
-                byScreen = screenTopWorldY - startWorldY;
+                float reach = screenTopWorldY - startWorldY;
+                float fraction = blackboard.Config != null ? blackboard.Config.ropeClimbMaxScreenFraction : 0.90f;
+                float byScreen = reach * Mathf.Clamp01(fraction);
+                resolved = Mathf.Min(byDuration, byScreen);
             }
 
-            return Mathf.Max(0f, Mathf.Min(byConfig, byScreen));
+            return Mathf.Max(0f, resolved);
         }
 
         /// <summary>Dock 발판 상단 − 바닥 안전망 상단 = 지금 이 화면의 진짜 낙차(월드 유닛).

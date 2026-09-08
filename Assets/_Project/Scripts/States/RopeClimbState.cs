@@ -190,7 +190,7 @@ namespace StickMate.States
             float hookSec = Mathf.Max(0.01f, cfg != null ? cfg.ropeThrowHookConfirmSeconds : 0.18f);
             float throwTotalSeconds = windUpSec + Mathf.Max(swingSec, _flightSeconds) + hookSec;
 
-            float speed = Mathf.Max(0.01f, cfg != null ? cfg.ropeClimbSpeedHeightsPerSecond : 0.88f)
+            float speed = Mathf.Max(0.01f, cfg != null ? cfg.ropeClimbSpeedHeightsPerSecond : 1.36f)
                 * _blackboard.CharacterHeightWorld;
             float ascendEstimateSeconds = climbHeightWorld / speed;
 
@@ -340,7 +340,7 @@ namespace StickMate.States
             _ascendElapsed = 0f;
             _anchorWorld = new Vector2(_anchorWorldX, _wallTopWorldY);
 
-            float speed = Mathf.Max(0.01f, _blackboard.Config != null ? _blackboard.Config.ropeClimbSpeedHeightsPerSecond : 0.88f)
+            float speed = Mathf.Max(0.01f, _blackboard.Config != null ? _blackboard.Config.ropeClimbSpeedHeightsPerSecond : 1.36f)
                 * _blackboard.CharacterHeightWorld;
             _totalRiseWorld = Mathf.Max(0.0001f, _wallTopWorldY - _startWorldY);
             _ascendTotalSeconds = _totalRiseWorld / speed;

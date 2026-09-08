@@ -874,7 +874,21 @@ namespace StickMate.Interaction
                 // ★ 헤더의 빈 자리를 잡았으면 클릭 처리로 넘기지 않는다(정보창과 같은 순서).
                 //   손잡이는 «누를 때 아무 일도 일어나지 않는 자리»라 클릭을 삼켜도 잃는 것이 없다.
                 if (TryBeginWindowDrag(cursor)) return;
-                FeedClick(cursor);
+                bool routed = FeedClick(cursor);
+
+                // ★★ 2026-09-08 (사용자 신고 — 정보창과 같은 건) — 손잡이가 <b>헤더 48pt뿐</b>이라
+                //   본문을 잡으면 아무 일도 일어나지 않았고, 그건 「드래그가 또 깨졌다」와 겉보기가
+                //   같다. 팝오버는 이미 「창 전체가 핸들」이므로, 여기를 맞추면 다섯 창의 손 감각이
+                //   같아진다.
+                //
+                //   ★ 「여기가 컨트롤인가」를 다시 적지 않는다 — <see cref="FeedClick"/>가 방금
+                //   돌려준 답을 그대로 쓴다(그 함수가 이 창의 클릭 라우팅 정본이다).
+                //   ★ 슬라이더는 <b>따로 뺀다</b>: 끌기 시작한 슬라이더는 <c>_dragIndex</c>가 잡고
+                //   있고, 그 자리는 손잡이가 아니라 <b>값 조절</b>이다.
+                if (!routed && _dragIndex < 0)
+                {
+                    TryBeginWindowDragFromBody(cursor);
+                }
                 return;
             }
             if (buttonDown && _windowDrag.IsGrabbed)
@@ -911,6 +925,23 @@ namespace StickMate.Interaction
             if (_headerRect == null || _panel == null) return false;
             if (!RectContainsScreenPoint(_headerRect, cursor)) return false;
             if (UiWindowDrag.AnyContains(_headerNonDragRects, cursor)) return false;
+
+            _windowDrag.Grab(UiWindowDrag.ScreenToCenterOriginPoints(cursor, CanvasScale()),
+                _panel.anchoredPosition);
+            return true;
+        }
+
+        /// <summary>
+        /// ★ 2026-09-08 — <b>헤더가 아닌 빈 바탕</b>을 잡았을 때의 손잡이(정보창
+        /// <c>TryBeginPanelDragFromBody</c>와 같은 규칙·같은 기구).
+        /// <para>여기 오는 좌표는 호출부가 이미 «컨트롤도 슬라이더도 아니다»를 확인한 것뿐이다 —
+        /// 그 판정은 <see cref="FeedClick"/> 한 곳에 있고 이 함수는 다시 묻지 않는다. 스스로
+        /// 확인하는 것은 «패널 안인가» 하나뿐이다(밖이면 창 밖 클릭이고 아무 일도 하지 않는다).</para>
+        /// </summary>
+        private bool TryBeginWindowDragFromBody(Vector2 cursor)
+        {
+            if (_panel == null) return false;
+            if (!RectContainsScreenPoint(_panel, cursor)) return false;
 
             _windowDrag.Grab(UiWindowDrag.ScreenToCenterOriginPoints(cursor, CanvasScale()),
                 _panel.anchoredPosition);
@@ -986,29 +1017,29 @@ namespace StickMate.Interaction
         /// <see cref="UiWindowDrag.ScreenMarginPoints"/>이고 정보창도 같은 값을 참조한다.</summary>
         public const float ScreenMarginPoints = UiWindowDrag.ScreenMarginPoints;
 
-        private void FeedClick(Vector2 cursor)
+        private bool FeedClick(Vector2 cursor)
         {
-            if (!_open) return;
+            if (!_open) return true;
 
             if (!RectContainsScreenPoint(_panel, cursor))
             {
                 // ★ 2026-09-02 사용자 지시 — 창 밖 클릭으로는 닫지 않는다(UiChrome "창을 닫는 법").
                 //   그 클릭을 <b>먹지도 않는다</b>: 차단막은 패널 사각형만 덮으므로 이 좌표에는
                 //   콜라이더가 없고 히트테스트가 그대로 밑의 앱에 넘긴다(원칙 2).
-                return;
+                return true;
             }
 
             if (ContainsScreenPoint(_closeRect, cursor))
             {
                 if (TryClaimAction("close")) Close("[✕] 클릭");
-                return;
+                return true;
             }
 
             for (int i = 0; i < TabCount; i++)
             {
                 if (!ContainsScreenPoint(_tabRects[i], cursor)) continue;
                 if (TryClaimAction("tab" + i)) SetTab((Tab)i, "탭 클릭");
-                return;
+                return true;
             }
 
             // 푸터 [지금 종료]는 카드 행이 아니라 <b>창 크롬</b>이라 _host가 모른다 — [✕]/탭과 같은
@@ -1016,21 +1047,26 @@ namespace StickMate.Interaction
             if (ContainsScreenPoint(_quitRect, cursor))
             {
                 if (TryClaimAction("quit")) OnQuitClicked();
-                return;
+                return true;
             }
 
             if (ContainsScreenPoint(_pageUpRect, cursor))
             {
                 if (CanScroll(-1) && TryClaimAction("pageUp")) ScrollPage(-1);
-                return;
+                return true;
             }
             if (ContainsScreenPoint(_pageDownRect, cursor))
             {
                 if (CanScroll(+1) && TryClaimAction("pageDown")) ScrollPage(+1);
-                return;
+                return true;
             }
 
             _host.TryClick(cursor, out _dragIndex);
+
+            // ★ 2026-09-08 — 여기까지 왔다 = 어떤 컨트롤에도 맞지 않았다.
+            //   호출부는 이 false를 «그 자리가 창 손잡이다»로 읽는다(목록을 두 벌로 만들지 않기
+            //   위해 판정을 이 함수 하나에 남긴다 — CLAUDE.md "기준과 대상이 갈라지면 아무도 모른다").
+            return false;
         }
 
         private bool TryClaimAction(string key)

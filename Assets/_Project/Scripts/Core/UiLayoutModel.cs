@@ -22,6 +22,13 @@ namespace StickMate.Core
 
         /// <summary>집중 모드 팝오버(Interaction/FocusSessionPopover.cs).</summary>
         FocusSession = 2,
+
+        /// <summary>오늘 할일 팝오버(Interaction/TodoBoardPopover.cs). 2026-09-08 사용자 지시로 추가 —
+        /// 그때까지 드래그가 붙은 팝오버는 집중 모드 하나뿐이었다.</summary>
+        TodoBoard = 3,
+
+        /// <summary>행동 팝오버(Interaction/ActionCommandPopover.cs). 2026-09-08 사용자 지시로 추가.</summary>
+        ActionCommand = 4,
     }
 
     /// <summary>
@@ -180,7 +187,7 @@ namespace StickMate.Core
 
         /// <summary><see cref="UiWindowId"/>의 개수. 배열 길이를 손으로 적지 않기 위한 단일 출처다
         /// (테스트도 이 값을 참조한다 — 숫자를 베끼면 창이 하나 늘 때 조용히 갈라진다).</summary>
-        public const int WindowCount = 3;
+        public const int WindowCount = 5;
 
         /// <summary>사용자가 그 창을 한 번이라도 옮겼는가. false면 창이 기본 자리(화면 중앙 /
         /// 팝오버는 부채꼴 앵커)에서 열린다.</summary>

@@ -307,6 +307,16 @@ namespace StickMate.Core
             public bool focusPopoverPositionSaved;
             public float focusPopoverOffsetXPoints;
             public float focusPopoverOffsetYPoints;
+            // ★ 2026-09-08 — 팝오버 2종에 드래그가 붙으면서 자리 칸도 함께 생겼다(사용자 지시).
+            //   위 3종과 완전히 같은 형태라 <b>버전 분기가 없다</b>: 옛 파일에는 이 키가 없어
+            //   *PositionSaved가 false로 채워지고, 그 false가 "아직 옮긴 적 없다 = 기본 자리"라는
+            //   정확한 사실이다(바로 위 focusPopover* 3종이 v11에서 그랬던 것과 같다).
+            public bool todoPopoverPositionSaved;
+            public float todoPopoverOffsetXPoints;
+            public float todoPopoverOffsetYPoints;
+            public bool actionPopoverPositionSaved;
+            public float actionPopoverOffsetXPoints;
+            public float actionPopoverOffsetYPoints;
 
             // ---- v4: 할일 목록(Core/TodoListModel.cs) ----
 
@@ -769,6 +779,10 @@ namespace StickMate.Core
                     data.settingsWindowPositionSaved, data.settingsWindowOffsetXPoints, data.settingsWindowOffsetYPoints);
                 UiLayoutModel.RestoreWindowFromSave(UiWindowId.FocusSession,
                     data.focusPopoverPositionSaved, data.focusPopoverOffsetXPoints, data.focusPopoverOffsetYPoints);
+                UiLayoutModel.RestoreWindowFromSave(UiWindowId.TodoBoard,
+                    data.todoPopoverPositionSaved, data.todoPopoverOffsetXPoints, data.todoPopoverOffsetYPoints);
+                UiLayoutModel.RestoreWindowFromSave(UiWindowId.ActionCommand,
+                    data.actionPopoverPositionSaved, data.actionPopoverOffsetXPoints, data.actionPopoverOffsetYPoints);
                 // v5 이하에는 cornerPanelEnabled 키가 없다 — 읽으면 false(꺼짐)로 오해되므로 기본값(켜짐)을 쓴다.
                 UiLayoutModel.RestoreCornerPanelFromSave(data.characterScaleSaved, data.characterScale,
                     data.version >= FirstVersionWithCornerPanel ? data.cornerPanelEnabled : true);
@@ -1501,6 +1515,12 @@ namespace StickMate.Core
                     focusPopoverPositionSaved = UiLayoutModel.HasWindowOffset(UiWindowId.FocusSession),
                     focusPopoverOffsetXPoints = UiLayoutModel.WindowOffsetPoints(UiWindowId.FocusSession).x,
                     focusPopoverOffsetYPoints = UiLayoutModel.WindowOffsetPoints(UiWindowId.FocusSession).y,
+                    todoPopoverPositionSaved = UiLayoutModel.HasWindowOffset(UiWindowId.TodoBoard),
+                    todoPopoverOffsetXPoints = UiLayoutModel.WindowOffsetPoints(UiWindowId.TodoBoard).x,
+                    todoPopoverOffsetYPoints = UiLayoutModel.WindowOffsetPoints(UiWindowId.TodoBoard).y,
+                    actionPopoverPositionSaved = UiLayoutModel.HasWindowOffset(UiWindowId.ActionCommand),
+                    actionPopoverOffsetXPoints = UiLayoutModel.WindowOffsetPoints(UiWindowId.ActionCommand).x,
+                    actionPopoverOffsetYPoints = UiLayoutModel.WindowOffsetPoints(UiWindowId.ActionCommand).y,
                     characterScaleSaved = UiLayoutModel.HasCharacterScale,
                     characterScale = UiLayoutModel.CharacterScale,
                     cornerPanelEnabled = UiLayoutModel.CornerPanelEnabled,

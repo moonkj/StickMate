@@ -104,7 +104,26 @@ namespace StickMate.Interaction
                 ArmGridDrag(cursor);
                 ArmCol2Drag(cursor);
                 ArmShopDrag(cursor);   // [상점] 격자도 밀린다 — 세 뷰포트는 서로 겹치지 않는다.
-                FeedClick(cursor);
+                bool routed = FeedClick(cursor);
+
+                // ★★ 2026-09-08 (사용자 신고 "각 메뉴들의 창을 마우스로 끌어서 움직일수있게
+                //   변경했었는데 지금은 또 안됨") — 손잡이가 <b>헤더 66pt뿐</b>이었다. 팝오버는
+                //   「창 전체가 핸들」인데 큰 창 2종만 헤더 전용이라, 같은 앱 안에서 손 감각이
+                //   창마다 달랐다. 본문을 잡으면 아무 일도 일어나지 않고, 그건 사용자에게
+                //   「드래그가 또 깨졌다」와 <b>겉보기가 같다</b>.
+                //
+                //   ★ 목록을 두 벌로 만들지 않는다: 「여기가 컨트롤인가」를 다시 적는 대신
+                //   <see cref="FeedClick"/>가 방금 돌려준 답을 그대로 쓴다. 그 함수가 이 창의
+                //   클릭 라우팅 <b>정본</b>이고, 새 컨트롤이 늘어도 판정이 자동으로 따라온다
+                //   (CLAUDE.md — 기준과 대상이 갈라지면 아무도 모른다).
+                //
+                //   ★ 격자 3종은 <b>따로 뺀다</b>: 그쪽은 «잡아만 두고 누름을 삼키지 않는» 규칙이라
+                //   FeedClick이 false를 돌려줄 수 있는데, 그 자리는 손잡이가 아니라 <b>스크롤</b>이다.
+                //   플래그를 보는 이유가 이것이다(Arm*가 세운다).
+                if (!routed && !_gridGrabbed && !_col2Grabbed && !_shopGrabbed)
+                {
+                    TryBeginPanelDragFromBody(cursor);
+                }
                 return;
             }
             if (buttonDown)
@@ -248,6 +267,27 @@ namespace StickMate.Interaction
             return true;
         }
 
+        /// <summary>
+        /// ★ 2026-09-08 — <b>헤더가 아닌 빈 바탕</b>을 잡았을 때의 손잡이(사용자 신고 대응).
+        /// <para>여기 오는 것은 호출부가 이미 «컨트롤도 격자도 아니다»를 확인한 좌표뿐이다 —
+        /// 그 판정은 <see cref="FeedClick"/> 한 곳에 있고 이 함수는 <b>다시 묻지 않는다</b>.
+        /// 이 함수가 스스로 확인하는 것은 «패널 안인가» 하나뿐이다(밖이면 창 밖 클릭이고,
+        /// 그건 아무 일도 하지 않는다 — 2026-09-02 사용자 지시).</para>
+        /// <para>잡는 방식은 <see cref="TryBeginPanelDrag"/>와 <b>같은 기구</b>다(문턱·좌표·클램프·
+        /// 저장 전부 <see cref="UiWindowDrag"/> 한 벌). 다른 것은 «어디가 손잡이인가»뿐이다.</para>
+        /// </summary>
+        private bool TryBeginPanelDragFromBody(Vector2 cursor)
+        {
+            if (_panel == null) return false;
+            if (!RectContainsScreenPoint(_panel, cursor)) return false;
+
+            _windowDrag.Grab(UiWindowDrag.ScreenToCenterOriginPoints(cursor, CanvasScale()),
+                _panel.anchoredPosition);
+            _dragStartOffsetPoints = _panel.anchoredPosition;
+            _draggingPanel = true;
+            return true;
+        }
+
         private void DragPanelTo(Vector2 cursor)
         {
             if (_panel == null) return;
@@ -308,37 +348,37 @@ namespace StickMate.Interaction
             return Rect.MinMaxRect(_corners[0].x, _corners[0].y, _corners[2].x, _corners[2].y);
         }
 
-        private void FeedClick(Vector2 cursor)
+        private bool FeedClick(Vector2 cursor)
         {
             if (ContainsScreenPoint(_settingsRect, cursor))
             {
                 if (TryClaimAction("settings")) OpenSettings("정보창 헤더 [설정]");
-                return;
+                return true;
             }
 
             if (ContainsScreenPoint(_closeRect, cursor))
             {
                 if (TryClaimAction("close")) Close("[✕] 클릭");
-                return;
+                return true;
             }
 
             if (ContainsScreenPoint(_nameRect, cursor) && !_editingName)
             {
                 if (TryClaimAction("nameEdit")) BeginNameEdit();
-                return;
+                return true;
             }
             for (int i = 0; i < _inkRects.Length; i++)
             {
                 if (!ContainsScreenPoint(_inkRects[i], cursor)) continue;
                 if (TryClaimAction("ink" + i)) OnInkSwatchClicked(i == 1);
-                return;
+                return true;
             }
 
             for (int i = 0; i < _tabRects.Length; i++)
             {
                 if (!ContainsScreenPoint(_tabRects[i], cursor)) continue;
                 if (TryClaimAction("tab" + i)) OnTabClicked((Tab)i);
-                return;
+                return true;
             }
 
             TabPage page = Def(_tab).Page;
@@ -350,12 +390,12 @@ namespace StickMate.Interaction
                 if (ContainsScreenPoint(_pageUpRect, cursor))
                 {
                     if (CanScrollInventory(-1) && TryClaimAction("pageUp")) ScrollInventory(-1);
-                    return;
+                    return true;
                 }
                 if (ContainsScreenPoint(_pageDownRect, cursor))
                 {
                     if (CanScrollInventory(+1) && TryClaimAction("pageDown")) ScrollInventory(+1);
-                    return;
+                    return true;
                 }
                 for (int i = 0; i < _inventoryViews.Length; i++)
                 {
@@ -363,9 +403,9 @@ namespace StickMate.Interaction
                     if (view == null || view.BoundCatalogIndex < 0) continue;
                     if (!ContainsScreenPoint(view.Rect, cursor)) continue;
                     if (TryClaimAction("inv" + i)) OnInventoryRowClicked(view.BoundCatalogIndex);
-                    return;
+                    return true;
                 }
-                return;
+                return true;
             }
 
             if (page == TabPage.Shop)
@@ -374,12 +414,12 @@ namespace StickMate.Interaction
                 //   다른 쪽이 그대로 뚫린다 — 그래서 살 수 있는가의 판정은 칩의 interactable이 아니라
                 //   OnShopBuyClicked 안에 있다(45-9-b ④와 같은 규칙).
                 FeedShopClick(cursor);
-                return;
+                return true;
             }
 
             // 카드가 없는 탭은 여기서 끝이다. 아래 카드 루프는 숨겨진 카드를 activeInHierarchy로
             // 걸러 내지만, 그건 <b>우연한 방어</b>다 — 어떤 탭이 카드를 갖는지는 표가 정한다.
-            if (page != TabPage.Cards) return;
+            if (page != TabPage.Cards) return true;
 
             for (int i = 0; i < _cards.Length; i++)
             {
@@ -390,11 +430,11 @@ namespace StickMate.Interaction
                     // 누른 순간에는 아무 일도 하지 않는다 — 착용은 <b>뗄 때</b> 확정한다
                     // (그 사이에 카드를 밀었다면 그건 스크롤이다. _pendingEquipCard 문서 참고).
                     _pendingEquipCard = i;
-                    return;
+                    return true;
                 }
                 if (!ContainsScreenPoint(card.Rect, cursor)) continue;
                 if (TryClaimAction("card" + i)) OnCardClicked(i);
-                return;
+                return true;
             }
 
             // ★ 2026-09-02 사용자 지시 — 여기까지 왔다는 것은 어떤 컨트롤에도 맞지 않았다는 뜻이고,
@@ -407,6 +447,11 @@ namespace StickMate.Interaction
             //     덮으므로 창 밖 좌표에는 콜라이더가 없고, 히트테스트(hitTestType=Raycast)가 그대로
             //     밑의 앱에 넘긴다. "안 닫히는 것"과 "클릭을 뺏는 것"은 다른 문제이고, 후자면 원칙 2
             //     위반이다(Tests/PlayMode/SurfaceOutsideClickTests가 그 경계를 픽셀로 잠근다).
+
+            // ★ 2026-09-08 — 여기까지 왔다 = 어떤 컨트롤에도 맞지 않았다.
+            //   호출부는 이 false를 «그 자리가 창 손잡이다»로 읽는다(목록을 두 벌로 만들지 않기
+            //   위해 판정을 이 함수 하나에 남긴다 — CLAUDE.md "기준과 대상이 갈라지면 아무도 모른다").
+            return false;
         }
 
         /// <summary>

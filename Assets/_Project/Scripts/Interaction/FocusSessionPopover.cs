@@ -263,8 +263,10 @@ namespace StickMate.Interaction
         //   값 상자 <c>CustomValue</c>는 버튼이 아니라 <b>손잡이에 포함된다</b> — 그건 옳다.
         //   그 상자는 누를 곳이 아니고(BuildCustomRow의 판단), 그래서 잡아 끌어도 잃는 조작이 없다.
         //
-        // ★ 나머지 팝오버 2종(오늘 할일 / 행동)은 <b>이 라운드의 배정 밖</b>이라 켜지 않았다.
-        //   켜려면 이 두 줄과 세이브 칸(UiWindowId + CharacterSaveStore 3필드)만 있으면 된다.
+        // ★ 2026-09-08 정정 — 여기 있던 "나머지 팝오버 2종(오늘 할일 / 행동)은 이 라운드의 배정
+        //   밖이라 켜지 않았다"는 <b>더 이상 참이 아니다</b>. 사용자 신고로 그 둘도 켰다
+        //   (TodoBoardPopover / ActionCommandPopover 의 같은 두 줄). 예고했던 대로 «이 두 줄과
+        //   세이브 칸»만으로 끝났다 — 그 예고가 맞았다는 것을 기록으로 남긴다.
 
         protected override bool WindowDragEnabled => true;
 
