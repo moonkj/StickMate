@@ -190,8 +190,7 @@ namespace StickMate.States
             float hookSec = Mathf.Max(0.01f, cfg != null ? cfg.ropeThrowHookConfirmSeconds : 0.18f);
             float throwTotalSeconds = windUpSec + Mathf.Max(swingSec, _flightSeconds) + hookSec;
 
-            float speed = Mathf.Max(0.01f, cfg != null ? cfg.ropeClimbSpeedHeightsPerSecond : 1.36f)
-                * _blackboard.CharacterHeightWorld;
+            float speed = ResolveAscendSpeedWorld(cfg, _blackboard.CharacterHeightWorld, climbHeightWorld);
             float ascendEstimateSeconds = climbHeightWorld / speed;
 
             // ★★ §8-6-B 위험 경고 — Throw만 넘기면 규칙 8(발화 자격 게이트)에 거의 항상 막힌다
@@ -334,15 +333,42 @@ namespace StickMate.States
         // Ascend
         // ============================================================================
 
+
+        /// <summary>
+        /// ★★★ 2026-09-08 — 등반 <b>속도를 오를 높이에서 유도한다</b>(단일 계산원).
+        ///
+        /// <para>왜: 예전에는 속도가 상수(H/초)였고, 대신 <b>높이</b>를 잘라 소요시간을 묶었다
+        /// (<c>ropeClimbMaxHeights</c>). 그런데 그 상한이 <b>H 배수</b>라 캐릭터 배율에 따라 커버율이
+        /// 달라졌다 — 실기(Windows·4K·배율 0.35x)에서 화면이 30H나 되어 상한 13.6H가 도달범위의 47%
+        /// 밖에 못 덮었고, <b>화면의 모든 창이 후보에서 탈락</b>했다(사용자 신고 4회의 직접 원인).</para>
+        ///
+        /// <para>지금은 반대로 <b>시간을 묶고 속도를 유도</b>한다:
+        /// <c>speed = max(기본속도 x 신장, 오를높이 / 목표시간)</c>.
+        /// 짧은 벽은 기본 속도 그대로라 손맛이 보존되고(유도값이 기본보다 작으므로 max가 기본을
+        /// 고른다), 높은 벽만 목표시간에 맞춰 빨라진다. 배율·해상도가 무엇이든
+        /// «한 번의 등반은 대략 목표시간»이 유지된다.</para>
+        ///
+        /// <para>★ <b>두 호출부가 이 함수를 공유한다</b> — 진입 시 «예상 소요»(발화 자격 게이트에 넘기는
+        /// 값)와 Ascend 시작 시 «실제 소요»가 서로 다른 식으로 계산되면 대사 예산이 어긋나 말풍선이
+        /// 잘린다(§8-6-B가 경고한 그 함정). 그래서 식은 여기 한 곳뿐이다.</para>
+        /// </summary>
+        private static float ResolveAscendSpeedWorld(StickConfig cfg, float characterHeightWorld, float riseWorld)
+        {
+            float baseSpeed = Mathf.Max(0.01f, cfg != null ? cfg.ropeClimbSpeedHeightsPerSecond : 1.36f)
+                * Mathf.Max(0.0001f, characterHeightWorld);
+            float targetSeconds = Mathf.Max(0.5f, cfg != null ? cfg.ropeClimbTargetDurationSeconds : 7f);
+            float byDuration = Mathf.Max(0.0001f, riseWorld) / targetSeconds;
+            return Mathf.Max(baseSpeed, byDuration);
+        }
+
         private void BeginAscend()
         {
             _phase = Phase.Ascend;
             _ascendElapsed = 0f;
             _anchorWorld = new Vector2(_anchorWorldX, _wallTopWorldY);
 
-            float speed = Mathf.Max(0.01f, _blackboard.Config != null ? _blackboard.Config.ropeClimbSpeedHeightsPerSecond : 1.36f)
-                * _blackboard.CharacterHeightWorld;
             _totalRiseWorld = Mathf.Max(0.0001f, _wallTopWorldY - _startWorldY);
+            float speed = ResolveAscendSpeedWorld(_blackboard.Config, _blackboard.CharacterHeightWorld, _totalRiseWorld);
             _ascendTotalSeconds = _totalRiseWorld / speed;
 
             // §8-0/8-3-A — 마감 구간은 손 등반 상한으로 고정한다(기존 필드 재사용, 새 기준점 아님).

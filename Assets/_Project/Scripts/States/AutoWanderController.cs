@@ -1269,7 +1269,7 @@ namespace StickMate.States
         {
             float h = blackboard != null ? blackboard.CharacterHeightWorld : StickConfig.BaselineCharacterTotalHeight;
             float configuredHeights = blackboard != null && blackboard.Config != null
-                ? blackboard.Config.ropeClimbMaxHeights : 13.6f;
+                ? blackboard.Config.ropeClimbMaxHeights : 60f;
             // 「몇 초까지」 천장 — 이 값 ÷ ropeClimbSpeedHeightsPerSecond 가 곧 최대 등반 소요다.
             float byDuration = Mathf.Max(0f, configuredHeights) * h;
 

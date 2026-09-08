@@ -56,9 +56,10 @@ MonoBehaviour:
   parkourClimbTorsoLeanDegrees: 24
   parkourClimbMaxBodySagHeights: 0.75
   parkourClimbPoseSmoothingRate: 44
-  ropeClimbMaxHeights: 13.6
+  ropeClimbMaxHeights: 60
   ropeClimbMaxScreenFraction: 0.9
   climbSeekIntervalSeconds: 100
+  ropeClimbTargetDurationSeconds: 7
   ropeClimbSpeedHeightsPerSecond: 1.36
   ropeClimbChance: 0.85
   ropeClimbAdjacentSearchRadiusMultiplier: 16
