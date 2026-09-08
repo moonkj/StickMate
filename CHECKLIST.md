@@ -235,3 +235,7 @@
         (exit 0, DLL 갱신 확인) → `windows-preview-20260908i` 태그(코드기준 `f35cf04` = 종이비행기
         궤도+대사 4건+코스튬 모션 상수 조정 전부 포함) → zip(32,361,187 bytes) 첨부해 게시:
         https://github.com/moonkj/StickMate/releases/tag/windows-preview-20260908i
+  - [x] 재게시(2차) 완료 — 오늘 할일 위젯 1단계(팝오버 클램프+v13 스키마+말줄임/취소선 통일) +
+        코스튬 팩 3종 콘텐츠 저작까지 반영. `windows-preview-20260908j` 태그(코드기준 `cac40b3`)
+        → zip(32,365,763 bytes) 첨부해 게시:
+        https://github.com/moonkj/StickMate/releases/tag/windows-preview-20260908j
