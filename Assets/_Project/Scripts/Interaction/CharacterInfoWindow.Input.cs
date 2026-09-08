@@ -103,7 +103,8 @@ namespace StickMate.Interaction
                 //   서로 겹치지 않으므로 둘 중 하나만 잡힌다 — 잡기 판정이 각자 자기 뷰포트를 본다.
                 ArmGridDrag(cursor);
                 ArmCol2Drag(cursor);
-                ArmShopDrag(cursor);   // [상점] 격자도 밀린다 — 세 뷰포트는 서로 겹치지 않는다.
+                ArmShopDrag(cursor);   // [상점] 격자도 밀린다 — 네 뷰포트는 서로 겹치지 않는다.
+                ArmDlcDrag(cursor);    // [DLC] 격자도 같은 규칙(탭이 다르면 한쪽은 꺼져 있다).
                 bool routed = FeedClick(cursor);
 
                 // ★★ 2026-09-08 (사용자 신고 "각 메뉴들의 창을 마우스로 끌어서 움직일수있게
@@ -120,7 +121,7 @@ namespace StickMate.Interaction
                 //   ★ 격자 3종은 <b>따로 뺀다</b>: 그쪽은 «잡아만 두고 누름을 삼키지 않는» 규칙이라
                 //   FeedClick이 false를 돌려줄 수 있는데, 그 자리는 손잡이가 아니라 <b>스크롤</b>이다.
                 //   플래그를 보는 이유가 이것이다(Arm*가 세운다).
-                if (!routed && !_gridGrabbed && !_col2Grabbed && !_shopGrabbed)
+                if (!routed && !_gridGrabbed && !_col2Grabbed && !_shopGrabbed && !_dlcGrabbed)
                 {
                     TryBeginPanelDragFromBody(cursor);
                 }
@@ -130,16 +131,18 @@ namespace StickMate.Interaction
             {
                 if (!hasCursor) return;
                 if (_draggingPanel) DragPanelTo(cursor);
-                else { DragGridTo(cursor); DragCol2To(cursor); DragShopTo(cursor); }
+                else { DragGridTo(cursor); DragCol2To(cursor); DragShopTo(cursor); DragDlcTo(cursor); }
                 return;
             }
             if (!buttonDown && prev)
             {
                 ResolvePendingEquip(cursor, hasCursor);
                 ResolvePendingShopBuy(cursor, hasCursor);
+                ResolvePendingDlcEquip(cursor, hasCursor);
                 EndGridDrag();
                 EndCol2Drag();
                 EndShopDrag();
+                EndDlcDrag();
                 EndPanelDrag();
             }
         }
@@ -405,6 +408,13 @@ namespace StickMate.Interaction
                     if (TryClaimAction("inv" + i)) OnInventoryRowClicked(view.BoundCatalogIndex);
                     return true;
                 }
+                return true;
+            }
+
+            if (page == TabPage.Dlc)
+            {
+                // [상점]과 같은 형태 — 누름은 보류하고 <b>뗄 때</b> 확정한다(미는 손짓이 착용이 되면 안 된다).
+                FeedDlcClick(cursor);
                 return true;
             }
 

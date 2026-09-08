@@ -889,9 +889,11 @@ namespace StickMate.Interaction
             _hoveredCard = -1;
             _pendingEquipCard = -1;
             _pendingShopCard = -1;
+            _pendingDlcCard = -1;
             ClearShopConfirm();        // 지난 세션의 「정말 살까요?」를 새로 연 창이 물려받지 않는다.
             EndGridDrag();
             EndShopDrag();
+            EndDlcDrag();
             if (_canvas != null) _canvas.gameObject.SetActive(true);
             if (_clickBlocker != null) _clickBlocker.enabled = true;
             EndNameEdit(commit: false);
@@ -913,9 +915,11 @@ namespace StickMate.Interaction
             _windowDrag.Cancel();
             _pendingEquipCard = -1;
             _pendingShopCard = -1;
+            _pendingDlcCard = -1;
             ClearShopConfirm();        // 창을 닫는 것도 「가만히 두기」다 — 확정되지 않은 구매는 사라진다.
             EndGridDrag();
             EndShopDrag();
+            EndDlcDrag();
             EndNameEdit(commit: true);
             if (_canvas != null) _canvas.gameObject.SetActive(false);
             if (_clickBlocker != null) _clickBlocker.enabled = false;
@@ -1020,6 +1024,9 @@ namespace StickMate.Interaction
             RefreshCards();
             RefreshDetail();
             RefreshInventoryList();
+            // ★ [DLC] 카드의 착용 칩도 같은 사실을 말한다 — 빼면 다른 탭에서 갈아입고 온 사람에게
+            //   「착용」이라고 적힌 칩이 이미 입고 있는 아이템 위에 남는다.
+            RefreshDlc();
         }
 
         private void RefreshAll()
@@ -1034,6 +1041,7 @@ namespace StickMate.Interaction
             RefreshDetail();
             RefreshInventoryList();
             RefreshShop();
+            RefreshDlc();
             RefreshInkSwatches();
         }
 
@@ -1345,6 +1353,7 @@ namespace StickMate.Interaction
             BuildSectionPage(body);
             BuildInventoryPage(body);
             BuildShopPage(body);
+            BuildDlcPage(body);
             ApplyTabVisibility();
 
             // 클릭관통 차단막 — 씬 루트에 둔다(캐릭터의 자식으로 두면 캐릭터가 걷거나 랙돌로 회전할 때

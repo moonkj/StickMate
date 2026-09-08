@@ -48,12 +48,20 @@ namespace StickMate.Interaction
             /// 죽은 자리를 남겨 두면 <c>ShopNotice</c>("상점은 다음 업데이트에 들어옵니다")가 코드에
             /// 남아 언젠가 다시 화면에 나간다 — 그 문장은 이제 <b>거짓</b>이다.</para></summary>
             Shop,
+
+            /// <summary>팩별 카드 진열 + 상세 줄([DLC], 2026-09-08).
+            /// <para>★ <b>[상점]과 같은 페이지 종류로 만들지 않았다.</b> 그 탭의 상품 필터는
+            /// <c>CohortId == BaseCohortId</c>이고 그것은 «팩이 동전으로 팔리는 사고»를 막는 장치다
+            /// (<c>CharacterInfoWindow.Shop.cs</c> 클래스 문서). 팩을 그 격자에 섞으려면 그 필터를
+            /// 풀어야 하고, 푸는 순간 $4.99짜리가 동전에 팔린다 — 그래서 <b>선반을 하나 더</b> 만들었다.
+            /// 본문은 <c>CharacterInfoWindow.Dlc.cs</c>.</para></summary>
+            Dlc,
         }
 
         /// <summary>탭 순서. <b>값을 박아 둔다</b> — 이 창의 로그·테스트가 정수 인덱스로 탭을 부르고
         /// (<see cref="TabScreenRect"/>), 중간에서 하나를 지우면 그 뒤가 한 칸씩 당겨진다
         /// (<see cref="StickmanStateId"/>가 실제로 겪은 사고와 같은 종류).</summary>
-        private enum Tab { Equipment = 0, Appearance = 1, Inventory = 2, Shop = 3 }
+        private enum Tab { Equipment = 0, Appearance = 1, Inventory = 2, Shop = 3, Dlc = 4 }
 
         /// <summary>카드 페이지가 아니라 아이콘셋이 없다는 표시.</summary>
         private const int NoIconSet = -1;
@@ -93,6 +101,11 @@ namespace StickMate.Interaction
             new TabDef("외형",   TabPage.Cards, appearanceSlots: true,  iconSet: 1),
             new TabDef("보관함", TabPage.Inventory),
             new TabDef("상점",   TabPage.Shop),
+            // ★ 이름이 <b>라틴 3글자</b>인 이유: 팩의 한글 이름은 오늘 존재하지 않는다
+            //   (매니페스트가 들고 있는 것은 로컬라이즈 «키»뿐 — CharacterInfoWindow.Dlc.cs 참고).
+            //   여기에 한글 상품명을 지어 넣으면 스토어 페이지와 다른 이름이 화면에 박힌다.
+            //   ★ TODO(design-narrative · marketing): 번역 테이블이 오는 라운드에 이 낱말을 재확정.
+            new TabDef("DLC",    TabPage.Dlc),
         };
 
         /// <summary>탭 수. 상수로 적지 않고 <b>표에서 센다</b>.</summary>
@@ -206,6 +219,9 @@ namespace StickMate.Interaction
             // (탭이 꺼져 있는 동안에는 0.25초 주기 갱신도 이 페이지를 보지 않는다).
             if (def.Page == TabPage.Shop) RefreshShop();
 
+            // [DLC]도 같은 이유다 — 다른 탭에서 팩 아이템을 갈아입고 오면 착용 칩이 옛 낱말로 남는다.
+            if (def.Page == TabPage.Dlc) RefreshDlc();
+
             Debug.Log($"[정보창] 탭 전환 -> [{def.Name}].");
         }
 
@@ -221,6 +237,7 @@ namespace StickMate.Interaction
             if (_sectionPage != null) _sectionPage.SetActive(cards);
             if (_inventoryPage != null) _inventoryPage.SetActive(page == TabPage.Inventory);
             ApplyShopPage(page == TabPage.Shop);
+            ApplyDlcPage(page == TabPage.Dlc);
 
             // ★ 2026-09-06 — 여기 있던 <c>ready</c>(= 준비 중 탭인가) 분기와 <b>탭 밑줄</b>을 지웠다.
             //   네 탭이 전부 본문을 갖게 되면서 <c>ready</c>가 언제나 참이 됐고, 밑줄은 오직
