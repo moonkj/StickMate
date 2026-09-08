@@ -949,6 +949,26 @@ namespace StickMate.Tests.EditMode
                           "«핵심 검사는 어떤 러너에서도 꺼지지 않는다»에 얹혀 있어서, 그 검사가 조용히 지워지면 " +
                           "근거가 통째로 무너진다. 명부의 <b>동반 실재 확인</b>이 그 경로를 막는다.",
                 },
+                new IgnoreEntry
+                {
+                    File = "CostumePackCostumeAssetTests.cs",
+                    Method = "광부_propFrame_1은_아직_아무도_안_읽는다",
+                    Kind = RatchetKind.자동,
+                    Why = "2026-09-08 R30(코스튬 3종 저작) 등록. <b>선언은 됐는데 아무도 안 읽는 값</b>이다 — " +
+                          "광부 키포즈 K2가 propFrame=1을 적고(설계 UX_MOTION_COSTUME_FOCUS 16-3), " +
+                          "조형도 타격 섬광 3획을 좌표까지 냈는데" +
+                          "(EQUIPMENT_SHAPE_SPEC_COSTUME_PROPS 3-3), <b>CostumePropRenderer는 그 값을 " +
+                          "한 번도 안 읽고</b> CostumeManifestSO에 「프레임별 조각」을 담을 자리도 없다. " +
+                          "자리를 만들면 코스튬 스키마 v2->v3이라 <b>되돌릴 수 없는 결정</b>이고, " +
+                          "그 판단은 game-architect·리더 몫이라 저작 라운드에서 임의로 열지 않았다. " +
+                          "★ 역방향 장치는 <b>같은 메서드 안</b>에 있다: 렌더러 소스에 'propFrame'이 " +
+                          "나타나는 순간 Assert.Pass 가지로 갈라져 «이제 실제 검증으로 승격하라»고 말한다 — " +
+                          "켤 스위치가 없다. 그리고 Ignore <b>앞에서</b> 두 전제를 실단언한다: " +
+                          "(가) 파서가 렌더러에서 실재하는 이름(ResolveStageShapes)을 찾는가 " +
+                          "— 못 찾으면 «propFrame이 없다»는 «못 본다»다. " +
+                          "(나) 광부 표에 propFrame != 0 인 키가 실제로 있는가 " +
+                          "— 없으면 이 건너뜀은 «미배선»이 아니라 «설계가 사라졌다»는 다른 사실이다.",
+                },
             };
         }
 

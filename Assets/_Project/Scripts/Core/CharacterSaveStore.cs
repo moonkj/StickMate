@@ -180,7 +180,37 @@ namespace StickMate.Core
         /// <para>★ <b>이 필드들은 엔타이틀먼트가 아니다.</b> 저장된 것은 «입은 채 몇 분을 보냈는가»이지
         /// «가졌는가»가 아니다 — <c>CostumeResolver</c>·<c>CostumeEntitlement</c>는 세이브를 한 글자도
         /// 읽지 않는다(규칙 C-3). 그 둘을 섞으면 <b>세이브 파일이 결제 우회 표적이 된다</b>.</para>
-        internal const int CurrentVersion = 12;
+        /// 13 = 2026-09-08 <b>[오늘 할일] 날짜 축</b>(사용자 요청 "오늘/내일 둘 다 입력 · 달별·일별
+        /// 확인 · 날짜별로 완료/미완료 동시 열람" — docs/UX_WIDGETS.md R6, 리더 판정 R6-13 ③).
+        /// 새 필드는 <c>todos[].plannedDayIndex</c> / <c>todoArchive[].plannedDayIndex</c>
+        /// <b>하나</b>다(같은 레코드 타입이라 한 필드다 — <c>Core/TodoListModel.TodoItem.PlannedDayIndex</c>).
+        /// <para>★ <b>필드를 하나만 넣는다</b>(R6-6 UW-6-4). <c>CompletedDayIndex</c>는 «오늘 몇 개
+        /// 끝냈나»라는 <b>아직 없는 화면</b>이 필요로 하는 값이라 <b>미리 넣지 않는다</b>. 그리고
+        /// 남은 것을 나눠 넣지도 않는다 — v10 게임화 묶음이 세운 판단 그대로다:
+        /// <b>필드를 나눌 때마다 다운그레이드 창이 한 번씩 열린다.</b></para>
+        /// <para>★ <b>값의 정의를 새로 만들지 않았다</b>: <see cref="CurrencyRules.LocalDayIndex"/>가 내는
+        /// <b>바로 그 정수</b>다(에폭 이후 일수). 화면의 "오늘"은 <see cref="CurrencyModel.DayIndex"/>
+        /// 하나에서만 오고, 이 스키마는 <c>DateTime</c>을 담지 않는다 — 벽시계를 두 벌 만들면 하루 1회
+        /// 동전과 화면의 «오늘»이 서로 다른 순간에 넘어간다(UW-6-2 · persona-stress R-8).</para>
+        /// <para>★ <b>이 버전 상승의 근거도 v10·v11·v12와 글자 하나까지 같다 — 「없음 ≠ 0」이 아니라
+        /// 다운그레이드 방어다.</b> <c>plannedDayIndex</c>의 「없음」은 <c>0</c>이고 그 0은
+        /// <see cref="TodoItem.UnknownPlannedDay"/> = <i>"이 항목엔 날짜가 없다"</i>는 <b>정확한 사실</b>이라
+        /// (v12 사용자에게는 실제로 날짜가 없었다), 그 규칙만으로는 v13이 강제되지 않는다. 그런데도
+        /// 올리는 이유: 이 필드를 v12 번호로 디스크에 앉히면 v12 시절 빌드가 그 파일을
+        /// <c>data.version &gt; CurrentVersion</c> 검사 없이 <b>자기 버전</b>으로 읽고,
+        /// <see cref="SaveSuspended"/>가 안 걸린 채 60초 뒤 자동 저장이 <b>사용자가 내일 몫으로 적어 둔
+        /// 날짜를 전부 0으로 지운다</b>(그 빌드의 <c>ToRecords</c>에는 그 필드가 없다). 되돌릴 방법이
+        /// 없는 손실이라는 점에서 코스튬 누적 100시간과 같은 등급이다.</para>
+        /// <para>★ <b>0을 실재하는 날짜로 읽으면 이 설계는 전부 무효다</b>(UW-6-4의 경고 원문).
+        /// v12 파일의 모든 항목이 0으로 떨어지므로, 0을 1970-01-01로 다루는 계산 경로가 하나라도
+        /// 생기면 <b>기존 사용자의 할일 전부가 그 칸에 쌓이고 테스트는 초록이다</b>. 그래서
+        /// <c>TodoListModel</c>의 날짜 조회 API는 전부 0을 «어느 날에도 속하지 않음»으로 처리하고,
+        /// 하위 호환 테스트가 그 두 단언을 함께 잠근다(R6-6: (a) v12 파일 → 0,
+        /// (b) 0 → 날짜 라벨·달력 카운트 미포함).</para>
+        /// <para>하위 호환은 v10~v12와 <b>같은 방식으로 저절로</b> 성립한다 — <c>FirstVersionWith…</c>
+        /// 로드 분기를 <b>하나도 추가하지 않는다</b>(기본이 <c>true</c>/비-0인 값이 없다).
+        /// 검증은 <c>Tests/EditMode/TodoPlannedDayMigrationTests</c>가 한다.</para>
+        internal const int CurrentVersion = 13;
 
         /// <summary>설정창 값이 처음 들어간 버전. 이 값보다 낮은 파일에는 <c>autoHideOnFullscreen</c>/
         /// <c>gearIconVisible</c> 키가 없으므로 읽으면 안 된다(false = 꺼짐으로 오해된다 —
@@ -222,6 +252,14 @@ namespace StickMate.Core
         /// 않게 하기 위해서다).
         /// </summary>
         internal const int FirstVersionWithCostumeFocus = 12;
+
+        /// <summary>
+        /// ★ 할일의 계획 날짜(<c>todos[].plannedDayIndex</c>)가 처음 들어간 버전 —
+        /// <see cref="FirstVersionWithGameplayCurrency"/>·<see cref="FirstVersionWithFocusXpDailyCap"/>·
+        /// <see cref="FirstVersionWithCostumeFocus"/>와 <b>같은 이유</b>로 존재한다(로드 분기용이 아니라,
+        /// 다운그레이드 방어 테스트가 숫자를 베끼지 않게 하기 위해서다).
+        /// </summary>
+        internal const int FirstVersionWithPlannedTodoDay = 13;
 
         /// <summary>
         /// 직렬화 스키마. JsonUtility는 프로퍼티를 직렬화하지 않으므로 public 필드로만 구성한다.
@@ -320,7 +358,10 @@ namespace StickMate.Core
 
             // ---- v4: 할일 목록(Core/TodoListModel.cs) ----
 
-            /// <summary>미완료/유예 중인 활성 목록. v1~v3 파일에는 없어 null이 되고, null은 "없음"이다.</summary>
+            /// <summary>미완료/유예 중인 활성 목록. v1~v3 파일에는 없어 null이 되고, null은 "없음"이다.
+            /// <para>★ v13에서 <b>레코드 안에</b> <c>plannedDayIndex</c>가 생겼다(배열 자체는 그대로다) —
+            /// <see cref="TodoRecord.plannedDayIndex"/> 문단 참고. v12 이하 파일에서는 0으로 채워지고
+            /// 그 0은 <b>「날짜 미상」</b>이다(1970-01-01이 아니다).</para></summary>
             public TodoRecord[] todos;
 
             /// <summary>완료함(17절 데이터 보존 원칙 — 지우지 않고 모아둔다).</summary>
@@ -528,6 +569,13 @@ namespace StickMate.Core
             public int id;
             public string text;
             public bool completed;
+
+            /// <summary>★ v13 — 이 할일이 <b>어느 날의 것</b>인가(에폭 이후 일수).
+            /// <para>v12 이하 파일에는 이 키가 없어 JsonUtility가 <b>0</b>으로 채우고, 그 0은
+            /// <see cref="TodoItem.UnknownPlannedDay"/> = <b>「날짜 미상」</b>이라는 정확한 사실이다.
+            /// <b>0을 1970-01-01로 읽으면 안 된다</b> — 그 경고는 <see cref="TodoItem.UnknownPlannedDay"/>
+            /// 문단에 있다.</para></summary>
+            public int plannedDayIndex;
         }
 
         private static TodoRecord[] ToRecords(IReadOnlyList<TodoItem> items)
@@ -535,7 +583,13 @@ namespace StickMate.Core
             var records = new TodoRecord[items.Count];
             for (int i = 0; i < items.Count; i++)
             {
-                records[i] = new TodoRecord { id = items[i].Id, text = items[i].Text, completed = items[i].Completed };
+                records[i] = new TodoRecord
+                {
+                    id = items[i].Id,
+                    text = items[i].Text,
+                    completed = items[i].Completed,
+                    plannedDayIndex = items[i].PlannedDayIndex,
+                };
             }
             return records;
         }
@@ -548,7 +602,9 @@ namespace StickMate.Core
             {
                 TodoRecord r = records[i];
                 if (r == null) continue;
-                items[i] = new TodoItem(r.id, r.text) { Completed = r.completed };
+                // ★ 날짜 정규화(음수 → 미상)는 TodoItem 생성자 하나에만 있다 — 여기서 다시 판정하면
+                //   같은 사실이 두 곳에서 계산된다(그게 다음 버그다).
+                items[i] = new TodoItem(r.id, r.text, r.plannedDayIndex) { Completed = r.completed };
             }
             return items;
         }

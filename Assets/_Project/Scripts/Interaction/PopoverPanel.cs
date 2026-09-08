@@ -64,6 +64,99 @@ namespace StickMate.Interaction
 
         protected const float ClickPollInterval = 0.05f;
 
+        // ==================== 화면 클램프 (2026-09-08 · R6-13 ⑤ / persona-stress R-1·R-2·R-4) ====
+
+        // ★ 왜 이 기구가 이제야 생겼나 — 이 클래스에는 «화면에 맞춰 줄이는» 기구가 <b>없었다</b>.
+        //   Awake의 `_panel.sizeDelta = PanelSizePoints`가 전부였고 UpdatePlacement는 <b>중심만</b>
+        //   잘랐다. 그래서 안전영역보다 큰 팝오버는 그대로 넘쳤다(persona-stress R-1/R-2 실측 산술):
+        //     Windows 1920×1080 @150% = 1280×720pt · 작업표시줄 48pt
+        //       → 세로 안전영역 = 720 − 48 − 12×2 = 648pt.  700pt짜리 창은 52pt가 넘치고,
+        //         SurfaceSafeAreaPolicy.ClampCenterY가 «상단 우선»으로 접히므로 그 52pt는
+        //         <b>작업표시줄 위</b>로 나간다 — 차단막까지 함께.
+        //   정보창은 같은 병을 이미 앓고 고쳤다(CharacterInfoWindow.Layout.ClampPanelToScreen —
+        //   2026-08-30 디버거 실측 "640폭 화면에서 좌우로 각각 120pt씩 흘러나갔다").
+        //   여기 있는 것은 <b>그 계약의 이식</b>이지 신규 설계가 아니다.
+        //
+        // ★★ 그런데 이 라운드의 진짜 이유는 크기가 아니라 <b>이음매</b>다(persona-stress R-4).
+        //   예전에는 «보이는 크기»(_panel.sizeDelta — Awake 1회 + FocusSessionPopover가 손으로 재대입)와
+        //   «차단막이 덮는 크기»(PanelScreenRect ← PanelSizePoints)가 <b>서로 다른 두 곳</b>에서 나왔다.
+        //   크기가 바뀌는 팝오버가 재대입을 한 번 잊으면 «아무것도 안 보이는 자리가 클릭을 먹는다».
+        //   이제 UpdatePlacement가 값 <b>하나</b>를 만들어 sizeDelta에도, PanelScreenRect에도,
+        //   (그 사각형을 그대로 쓰는) SyncClickBlocker에도 쓴다 — 갈라질 자리가 구조적으로 없다.
+        //   그래서 자식이 sizeDelta를 스스로 만질 이유도 사라졌다(만져도 다음 프레임에 다시 맞춰진다).
+
+        /// <summary>
+        /// 줄일 수 있는 <b>폭</b>의 하한. ★ <b>임의의 숫자가 아니다</b> — «<see cref="CloseButtonRect"/>가
+        /// 온전히 패널 안에 남는 가장 작은 상자»이고, 그래서 <see cref="CloseChipWidth"/>와
+        /// <see cref="UiChrome.Space4"/>에서 <b>파생</b>한다(둘 중 하나가 바뀌면 이 하한도 함께 움직인다).
+        ///
+        /// <para>근거: 2026-09-02 사용자 지시로 바깥 클릭이 이 창을 닫지 않게 되면서 [✕]는
+        /// <b>이 앱에서 팝오버를 닫는 유일한 마우스 경로</b>가 됐다(UiChrome "창을 닫는 법").
+        /// 클램프가 그 칩을 화면 밖으로 밀어내면 사용자는 그 창을 <b>영영 닫을 수 없다</b> —
+        /// <see cref="UiWindowDrag"/> 클래스 문서의 "클램프" 절이 창 이동에 대해 세운 것과 같은 판단이다.</para>
+        /// </summary>
+        public static float MinPanelWidthPoints => UiChrome.Space4 * 2f + CloseChipWidth;
+
+        /// <summary>줄일 수 있는 <b>높이</b>의 하한 — 타이틀 줄(<see cref="CloseChipHeight"/>)과
+        /// 위아래 여백만 남긴 상자다. 근거는 <see cref="MinPanelWidthPoints"/>와 같다.</summary>
+        public static float MinPanelHeightPoints => UiChrome.Space3 + CloseChipHeight + UiChrome.Space4;
+
+        /// <inheritdoc cref="MinPanelWidthPoints"/>
+        public static Vector2 MinPanelSizePoints => new Vector2(MinPanelWidthPoints, MinPanelHeightPoints);
+
+        /// <summary>
+        /// ★ 화면(안전영역)에 맞춘 <b>패널 크기</b>. 정보창 <c>ClampPanelToScreen</c>의 첫 두 줄과
+        /// <b>같은 계약</b>이고, 다른 점은 하단 예약 띠를 함께 뺀다는 것뿐이다 — 팝오버는 그 띠를
+        /// 이미 <b>배치</b>에서 쓰고 있었으므로(<see cref="SurfaceSafeAreaPolicy"/>) 크기에서만
+        /// 빠져 있던 것이 결함이었다.
+        ///
+        /// <para><b>순수 함수다</b> — <c>Screen</c>도 <c>#if</c>도 읽지 않고 인셋을 <b>인자</b>로 받는다.
+        /// 그래서 Windows가 없는 이 개발 머신의 EditMode가 <b>Windows 쪽 답까지 실행해서</b> 검증할 수
+        /// 있다(CLAUDE.md 활성 빌드 타깃 사각지대 — <see cref="SurfaceSafeAreaPolicy"/>가 같은 이유로
+        /// 같은 형태를 하고 있다).</para>
+        ///
+        /// <para><b>단위를 묻지 않는다</b>: 한 호출에 들어가는 인자가 전부 같은 단위이기만 하면 된다
+        /// (픽셀이든 포인트든). 섞어 넣는 것이 유일한 오용이다.</para>
+        ///
+        /// <para>화면이 하한보다도 좁으면 <b>하한을 지킨다</b>(넘치더라도 [✕]는 남긴다) — 그 선택의
+        /// 근거가 <see cref="MinPanelWidthPoints"/> 문단이다.</para>
+        /// </summary>
+        public static Vector2 ResolvePanelSizePoints(Vector2 desiredSizePoints, Vector2 screenSizePoints,
+            float topInsetPoints, float bottomInsetPoints, float marginPoints)
+        {
+            if (!(screenSizePoints.x > 0f) || !(screenSizePoints.y > 0f)) return desiredSizePoints;
+
+            float margin = SafeInsetPoints(marginPoints);
+            float top = SafeInsetPoints(topInsetPoints);
+            float bottom = SafeInsetPoints(bottomInsetPoints);
+
+            float availableWidth = screenSizePoints.x - margin * 2f;
+            float availableHeight = screenSizePoints.y - top - bottom - margin * 2f;
+
+            return new Vector2(
+                Mathf.Min(desiredSizePoints.x, Mathf.Max(MinPanelWidthPoints, availableWidth)),
+                Mathf.Min(desiredSizePoints.y, Mathf.Max(MinPanelHeightPoints, availableHeight)));
+        }
+
+        /// <summary>
+        /// ★ 화면(안전영역)에 맞춘 <b>패널 중심</b>(화면 중앙 원점, OS 포인트).
+        /// <b>정보창·설정창과 완전히 같은 코드</b>(<see cref="UiWindowDrag.ClampCenterPoints"/>)를 지난다 —
+        /// 세 창의 클램프가 갈라지면 반드시 한 벌만 낡는다(그 파일의 "클램프" 절).
+        ///
+        /// <para>여기 넘기는 <paramref name="sizePoints"/>는 <b>줄이고 난 뒤</b>의 크기여야 한다.
+        /// 설계 크기를 넘기면 «크기는 줄었는데 자리는 안 줄어든 크기 기준»이 되어 한쪽으로 치우친다.</para>
+        /// </summary>
+        public static Vector2 ResolvePanelCenterPoints(Vector2 sizePoints, Vector2 desiredCenterPoints,
+            Vector2 screenSizePoints, float topInsetPoints, float bottomInsetPoints, float marginPoints)
+            => UiWindowDrag.ClampCenterPoints(desiredCenterPoints, sizePoints, screenSizePoints,
+                SafeInsetPoints(topInsetPoints), SafeInsetPoints(bottomInsetPoints),
+                SafeInsetPoints(marginPoints));
+
+        /// <summary>NaN·무한대·음수는 0으로 접는다(<see cref="SurfaceSafeAreaPolicy"/>와 같은 규약) —
+        /// 조회가 어긋난 값으로 화면을 깎으면 표면이 이유 없이 밀리거나 사라진다.</summary>
+        private static float SafeInsetPoints(float value)
+            => float.IsNaN(value) || float.IsInfinity(value) || value < 0f ? 0f : value;
+
         /// <summary>같은 손잡이를 연달아 누를 때 두 입력 경로가 한 클릭을 두 번 처리하지 않게 하는 창(초).
         /// <para>★ <b>public인 이유</b>: 같은 버튼을 연타하는 PlayMode 테스트는 이만큼을 <b>벽시계로</b>
         /// 기다린 뒤에 다시 눌러야 한다. 0.35를 테스트에 베끼면 이 값이 한 번 바뀔 때 그 테스트가
@@ -201,8 +294,19 @@ namespace StickMate.Interaction
         public Bounds ClickBlockerWorldBounds
             => _clickBlocker != null && _clickBlocker.enabled ? _clickBlocker.bounds : default;
 
-        /// <summary>패널 사각형(Unity 스크린 픽셀) — 바깥 클릭 판정/차단막이 쓰는 값.</summary>
+        /// <summary>패널 사각형(Unity 스크린 픽셀) — 바깥 클릭 판정/차단막이 쓰는 값.
+        /// <para>★ 2026-09-08부터 이 사각형의 크기는 <see cref="PanelSizePoints"/>(설계 크기)가 아니라
+        /// <see cref="AppliedPanelSizePoints"/>(클램프를 지난 크기)에서 온다 — 그림·히트테스트·차단막
+        /// 셋이 <b>한 값</b>을 보게 하는 이음매다(<see cref="ApplyPanelSize"/>).</para></summary>
         public Rect PanelScreenRect { get; private set; }
+
+        private Vector2 _appliedPanelSizePoints;
+
+        /// <summary>지금 실제로 패널에 앉아 있는 크기(OS 포인트) — <b>차단막이 덮는 크기와 같은 값</b>이다.
+        /// 작은 화면에서는 설계 크기(<see cref="PanelSizePoints"/>)보다 작을 수 있다.
+        /// <para>레이아웃을 얹는 자식(그리고 그 자식을 재는 테스트)은 설계 상수가 아니라 이 값을 봐야
+        /// «지금 화면에서 실제로 몇 행이 보이는가»를 알 수 있다.</para></summary>
+        public Vector2 AppliedPanelSizePoints => _appliedPanelSizePoints;
 
         protected RectTransform Panel => _panel;
 
@@ -283,8 +387,15 @@ namespace StickMate.Interaction
             RestoreUserPlacement();     // ★ 2026-09-07 — 옮긴 적이 있으면 그 자리에서 연다.
             if (_canvas != null) _canvas.gameObject.SetActive(true);
             if (_clickBlocker != null) _clickBlocker.enabled = true;
-            UpdatePlacement();
+            // ★ 2026-09-08 — 순서를 <b>RefreshContent → UpdatePlacement → SyncClickBlocker</b>로 바꿨다.
+            //   크기가 페이지마다 다른 팝오버(FocusSessionPopover)는 RefreshContent에서 PanelSizePoints가
+            //   확정된다. 예전 순서(UpdatePlacement 먼저)로는 <b>여는 프레임 한 장 동안</b> 차단막이
+            //   «직전 페이지의 크기»로 앉았다 — 보이는 것과 클릭을 먹는 것이 어긋나는 그 창이
+            //   persona-stress R-4가 지목한 자리다. 차단막 기하도 여기서 함께 맞춘다(예전에는 첫
+            //   Update가 올 때까지 지난번 사각형이 켜진 채 남았다).
             RefreshContent();
+            UpdatePlacement();
+            SyncClickBlocker();
             OnOpened();
             Debug.Log($"[팝오버] {TitleText} 열림({source}) — {PanelSizePoints.x:F0}×{PanelSizePoints.y:F0}pt. " +
                 "[✕] / 버튼 재클릭으로 닫힙니다(바깥 클릭은 닫지 않습니다 — 2026-09-02 사용자 지시).");
@@ -354,6 +465,7 @@ namespace StickMate.Interaction
             UpdatePlacement();
             SyncClickBlocker();
             TickGlobalClickPolling();
+            TickFramePacingHold();
             if (TickIdleAutoClose()) return;   // 이번 프레임에 스스로 닫았다.
 
             _slowTimer += Time.unscaledDeltaTime;
@@ -470,31 +582,9 @@ namespace StickMate.Interaction
             if (_panel == null) return;
 
             float pxPerPoint = ScreenCoordinateConverter.CanvasToUnityScreen(1f, Config);
-            Vector2 size = PanelSizePoints * pxPerPoint;
+            if (!(pxPerPoint > 0f)) pxPerPoint = 1f;
             var screenCenter = new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
-
-            Vector2 center;
-            if (_hasUserCenter)
-            {
-                // ★ 2026-09-07 — 사용자가 끌어다 놓은 자리가 앵커를 <b>이긴다</b>. 아래 앵커 배치는
-                //   "아직 한 번도 안 옮겼다"의 기본값으로 남는다(옮긴 적 없는 사용자에게는 이 분기가
-                //   존재하지 않는 것과 결과가 같다 — 회귀는 그 집합에서 0이다).
-                center = screenCenter + _userCenterPoints * pxPerPoint;
-            }
-            else
-            {
-                Vector2 dir = screenCenter - _anchorCenterScreen;
-                if (dir.sqrMagnitude < 1e-4f) dir = Vector2.down;
-                dir.Normalize();
-
-                // 팝오버 중심까지의 거리 = 버튼 반지름 + 간격 + 그 방향의 패널 반폭.
-                float halfExtent = Mathf.Abs(dir.x) * size.x * 0.5f + Mathf.Abs(dir.y) * size.y * 0.5f;
-                center = _anchorCenterScreen + dir * (_anchorRadiusScreen + AnchorGapPoints * pxPerPoint + halfExtent);
-            }
-
-            float margin = ScreenMarginPoints * pxPerPoint;
-            float minX = margin + size.x * 0.5f;
-            center.x = Mathf.Clamp(center.x, minX, Mathf.Max(minX, Screen.width - minX));
+            var screenPoints = new Vector2(Screen.width / pxPerPoint, Screen.height / pxPerPoint);
 
             // ★ 2026-09-02 — 세로는 <b>대칭이 아니다</b>. 옛 코드는 네 변에 똑같이 12pt를 줘서 팝오버를
             //   상단 y=12pt에 앉혔고, macOS 메뉴바(y 0~33pt)를 <b>21pt 덮었다</b>(원칙 2 위반).
@@ -504,13 +594,51 @@ namespace StickMate.Interaction
             //   macOS: 0이다. Dock은 이 앱이 의도적으로 쓰는 캐릭터 발판이라 예전과 한 픽셀도 안 바뀐다.
             //   Windows: 작업표시줄 두께가 그대로 들어온다 — 신고 "작업표시줄에 걸쳐서 돌아다닌다"(2026-08-31).
             //   갈림 규칙은 SurfaceSafeAreaPolicy.EnforcesBottomReservedBand 한 곳에만 있고 여기엔 #if가 없다.
-            float topInsetPx = ReservedTopBarProbe.TopInsetPoints(Agent != null ? Agent.PlatformService : null)
-                * pxPerPoint;
-            float bottomInsetPx =
-                ReservedEdgeProbe.EnforcedBottomInsetPoints(Agent != null ? Agent.PlatformService : null)
-                * pxPerPoint;
-            center.y = SurfaceSafeAreaPolicy.ClampCenterY(center.y, size.y, Screen.height,
-                topInsetPx, bottomInsetPx, margin);
+            //
+            // ★★★ 2026-09-08 — 두 인셋을 <b>포인트</b>로 한 번만 물어 크기·자리에 함께 쓴다.
+            //   예전에는 여기서 곧바로 픽셀로 곱해 «자리»에만 썼고, 그래서 «크기»가 안전영역을
+            //   모르는 채로 남았다(persona-stress R-1). 프로브를 <b>직접</b> 부르는 형태는 그대로다 —
+            //   두 감사 테스트(PlatformParityAuditTests / ReservedScreenEdgeContractTests)가
+            //   «이 표면이 네 방향 프로브를 실제로 소비하는가»를 이 호출로 센다.
+            IPlatformWindowService platformService = Agent != null ? Agent.PlatformService : null;
+            float topInsetPoints = ReservedTopBarProbe.TopInsetPoints(platformService);
+            float bottomInsetPoints = ReservedEdgeProbe.EnforcedBottomInsetPoints(platformService);
+
+            // ① 크기 — 화면(안전영역)에 맞춰 줄인다. <b>이 값 하나</b>가 아래 셋의 공통 출처다:
+            //    보이는 패널(sizeDelta) · 히트테스트 사각형(PanelScreenRect) · 차단막(SyncClickBlocker).
+            Vector2 sizePoints = ResolvePanelSizePoints(PanelSizePoints, screenPoints,
+                topInsetPoints, bottomInsetPoints, ScreenMarginPoints);
+            ApplyPanelSize(sizePoints);
+            Vector2 size = sizePoints * pxPerPoint;
+
+            // ② 희망 자리(화면 중앙 원점, OS 포인트).
+            Vector2 desiredCenterPoints;
+            if (_hasUserCenter)
+            {
+                // ★ 2026-09-07 — 사용자가 끌어다 놓은 자리가 앵커를 <b>이긴다</b>. 아래 앵커 배치는
+                //   "아직 한 번도 안 옮겼다"의 기본값으로 남는다(옮긴 적 없는 사용자에게는 이 분기가
+                //   존재하지 않는 것과 결과가 같다 — 회귀는 그 집합에서 0이다).
+                desiredCenterPoints = _userCenterPoints;
+            }
+            else
+            {
+                Vector2 dir = screenCenter - _anchorCenterScreen;
+                if (dir.sqrMagnitude < 1e-4f) dir = Vector2.down;
+                dir.Normalize();
+
+                // 팝오버 중심까지의 거리 = 버튼 반지름 + 간격 + 그 방향의 패널 반폭.
+                // ★ 반폭은 <b>줄이고 난 뒤</b>의 크기에서 센다 — 설계 크기로 재면 줄어든 창이
+                //   버튼에서 필요 이상으로 멀어진다(자라나는 연출의 출발점이 어긋난다).
+                float halfExtent = Mathf.Abs(dir.x) * size.x * 0.5f + Mathf.Abs(dir.y) * size.y * 0.5f;
+                Vector2 anchored = _anchorCenterScreen
+                    + dir * (_anchorRadiusScreen + AnchorGapPoints * pxPerPoint + halfExtent);
+                desiredCenterPoints = (anchored - screenCenter) / pxPerPoint;
+            }
+
+            // ③ 자리 — 정보창·설정창과 <b>같은 코드</b>를 지난다(UiWindowDrag.ClampCenterPoints).
+            Vector2 centerPoints = ResolvePanelCenterPoints(sizePoints, desiredCenterPoints, screenPoints,
+                topInsetPoints, bottomInsetPoints, ScreenMarginPoints);
+            Vector2 center = screenCenter + centerPoints * pxPerPoint;
 
             PanelScreenRect = new Rect(center.x - size.x * 0.5f, center.y - size.y * 0.5f, size.x, size.y);
             _panel.anchoredPosition = new Vector2(
@@ -519,11 +647,33 @@ namespace StickMate.Interaction
 
             // ★ 세이브에 내려가는 것은 <b>클램프를 지난</b> 자리다 — 화면 밖으로 끌어낸 좌표가
             //   파일에 앉으면 다음 실행에서 «닫을 수 없는 창»이 된다(창 밖 클릭은 창을 닫지 않는다).
-            if (!_hasUserCenter || pxPerPoint <= 0f) return;
-            _userCenterPoints = (center - screenCenter) / pxPerPoint;
+            if (!_hasUserCenter) return;
+            _userCenterPoints = centerPoints;
             _windowDrag?.NoteAppliedCenter(_userCenterPoints);
         }
 
+        /// <summary>
+        /// «보이는 크기»를 실제로 패널에 앉힌다 — <b>이 대입이 여기 한 곳에만 있어야</b>
+        /// 그림과 차단막이 갈라지지 않는다(persona-stress R-4).
+        ///
+        /// <para>값이 실제로 바뀐 프레임에만 쓴다(24시간 상주 앱) — 그리고 바뀐 그 프레임에
+        /// <see cref="OnPanelSizeChanged"/>로 자식에게 알린다. 자식이 스스로 <c>sizeDelta</c>를
+        /// 만질 필요는 없다: 다음 <see cref="UpdatePlacement"/>가 <see cref="PanelSizePoints"/>를
+        /// 다시 읽어 여기로 데려온다.</para>
+        /// </summary>
+        private void ApplyPanelSize(Vector2 sizePoints)
+        {
+            _appliedPanelSizePoints = sizePoints;
+            if (Mathf.Approximately(_panel.sizeDelta.x, sizePoints.x)
+                && Mathf.Approximately(_panel.sizeDelta.y, sizePoints.y)) return;
+            _panel.sizeDelta = sizePoints;
+            OnPanelSizeChanged(sizePoints);
+        }
+
+        /// <summary>패널이 실제로 <b>줄거나 늘어난</b> 프레임에 불린다(작은 화면 클램프 · 페이지 전환).
+        /// 기본은 아무것도 하지 않는다 — 크롬(제목/[✕])은 앵커가 패널을 따라가게 걸려 있고,
+        /// 내용은 자식이 자기 사정을 안다.</summary>
+        protected virtual void OnPanelSizeChanged(Vector2 sizePoints) { }
         private void ApplyCanvasScaleFactor()
         {
             if (_scaler == null) return;
@@ -542,6 +692,44 @@ namespace StickMate.Interaction
             _clickBlocker.enabled = !_closing;
             _clickBlocker.transform.position = new Vector3((bl.x + tr.x) * 0.5f, (bl.y + tr.y) * 0.5f, 0f);
             _clickBlocker.size = new Vector2(Mathf.Abs(tr.x - bl.x), Mathf.Abs(tr.y - bl.y));
+        }
+
+        // ==================== 프레임 페이싱 홀드 (2026-09-08 · persona-stress R-9) ====================
+
+        /// <summary>마지막으로 이 창을 «조작 중»이었던 시각(<c>Time.unscaledTime</c>).
+        /// <para>초깃값이 <see cref="float.NegativeInfinity"/>인 이유: 0으로 두면 앱이 켜진 직후
+        /// «방금 만졌다»로 읽혀(경과 ≈ 0초) 아무도 안 만진 창이 절전을 붙잡는다.</para></summary>
+        private float _lastDragTouchTime = float.NegativeInfinity;
+
+        /// <summary>
+        /// ★ 창을 <b>끄는 동안</b>에는 절전 등급을 붙잡는다 — 정보창
+        /// (<c>CharacterInfoWindow.TickFramePacingHold</c>)·설정창(<c>SettingsWindow.TickFramePacingHold</c>)이
+        /// 이미 쓰는 판정(<see cref="FramePacingPolicy.ShouldHoldForSurface"/>)을 <b>같은 함수</b>로 부른다.
+        /// 2026-09-07에 팝오버에 드래그가 붙었는데 이 호출만 빠져 있었다(persona-stress R-9 실측:
+        /// 이 클래스에 <c>HoldActiveForInteraction</c> 호출 <b>0건</b>).
+        ///
+        /// <para><b>왜 「커서가 창 위에 있다」는 안 보는가</b> — 두 창과 다른 유일한 점이다.
+        /// 이 클래스는 커서를 <b>필요할 때만</b> 묻는다(<see cref="TickGlobalClickPolling"/>의
+        /// <c>needCursor</c>). 홀드를 위해 매 프레임 OS 커서를 물으면 그 규약이 깨지고 — 그 문단이
+        /// "팝오버 3종의 상시 비용이 이 라운드로 늘지 않는다"를 명시한다 — 얻는 것은 «잡기 직전
+        /// 한 폴링»뿐이다. 놓은 뒤의 클릭은 <see cref="FramePacingPolicy.ShouldHoldForSurface"/>의
+        /// linger 꼬리가 이미 덮는다.</para>
+        ///
+        /// <para>팝오버는 <b>사용자가 [✕]를 누를 때까지</b> 열려 있을 수 있으므로(2026-09-02 지시),
+        /// «열려 있다»를 홀드 조건으로 쓰면 열린 창 하나가 적응형 절전을 통째로 무력화한다 —
+        /// <see cref="FramePacingPolicy.ShouldHoldForSurface"/> 문서가 실측 125분으로 기록한 그 사고다.
+        /// 그래서 조건은 «조작 중»뿐이다.</para>
+        /// </summary>
+        private void TickFramePacingHold()
+        {
+            bool manipulating = _windowDrag != null && _windowDrag.IsGrabbed;
+            if (manipulating) _lastDragTouchTime = Time.unscaledTime;
+
+            if (FramePacingPolicy.ShouldHoldForSurface(cursorOverSurface: false, manipulating,
+                    Time.unscaledTime - _lastDragTouchTime))
+            {
+                FramePacing.HoldActiveForInteraction();
+            }
         }
 
         private void TickGlobalClickPolling()
@@ -746,6 +934,48 @@ namespace StickMate.Interaction
             return Rect.MinMaxRect(CornerBuffer[0].x, CornerBuffer[0].y, CornerBuffer[2].x, CornerBuffer[2].y);
         }
 
+        // ==================== 배치 도구 — <b>패널을 따라가는</b> 앵커 (2026-09-08) ====================
+        //
+        // ★ UiChrome.PlaceTopLeft 하나만 있던 시절에는 모든 부품이 «설계 폭에서 역산한 x»에 고정됐다.
+        //   패널이 화면에 맞춰 줄어드는 순간 그 부품들만 창 밖에 남는다 — 정보창이 2026-08-30에
+        //   겪은 사고이고, 그쪽은 [✕]와 구분선의 앵커를 오른쪽/양끝으로 옮겨 고쳤다. 여기 셋은
+        //   그 처방을 팝오버 계열에 그대로 옮긴 것이다.
+        //   ★ UiChrome이 아니라 이 클래스에 둔 이유: 이번 라운드의 파일 범위가 여기까지다.
+        //     세 번째 창이 같은 것을 필요로 하는 날 UiChrome으로 승격시켜라(두 벌이 되기 전에).
+
+        /// <summary>부모의 <b>우상단</b>을 원점으로 배치한다 — 부모가 좁아지면 따라 들어온다.
+        /// <para><paramref name="right"/>는 오른쪽 여백, <paramref name="y"/>는 위에서 아래로 음수다
+        /// (<see cref="UiChrome.PlaceTopLeft"/>와 같은 규약).</para></summary>
+        protected static void PlaceTopRight(RectTransform rt, float right, float y, float width, float height)
+        {
+            rt.anchorMin = rt.anchorMax = new Vector2(1f, 1f);
+            rt.pivot = new Vector2(1f, 1f);
+            rt.sizeDelta = new Vector2(width, height);
+            rt.anchoredPosition = new Vector2(-right, y);
+        }
+
+        /// <summary>부모의 <b>위쪽에 가로로 걸친</b> 상자 — 좌우 여백만 고정하고 폭은 부모를 따라간다.
+        /// <para>결과 사각형: x ∈ [<paramref name="left"/>, 부모폭 − <paramref name="right"/>],
+        /// y ∈ [<paramref name="y"/> − <paramref name="height"/>, <paramref name="y"/>](부모 위쪽 기준).</para></summary>
+        protected static void PlaceTopStretch(RectTransform rt, float left, float right, float y, float height)
+        {
+            rt.anchorMin = new Vector2(0f, 1f);
+            rt.anchorMax = new Vector2(1f, 1f);
+            rt.pivot = new Vector2(0.5f, 1f);
+            rt.offsetMin = new Vector2(left, y - height);
+            rt.offsetMax = new Vector2(-right, y);
+        }
+
+        /// <summary>부모를 <b>네 변 여백만 남기고</b> 가득 채운다(자식은 이 상자의 좌상단에 앵커된다).</summary>
+        protected static void PlaceStretch(RectTransform rt, float left, float right, float top, float bottom)
+        {
+            rt.anchorMin = Vector2.zero;
+            rt.anchorMax = Vector2.one;
+            rt.pivot = new Vector2(0f, 1f);
+            rt.offsetMin = new Vector2(left, bottom);
+            rt.offsetMax = new Vector2(-right, -top);
+        }
+
         /// <summary>ScreenSpaceOverlay 캔버스에서는 RectTransform의 월드 좌표가 곧 스크린 픽셀 좌표다.</summary>
         protected static bool ContainsScreenPoint(RectTransform rt, Vector2 screenPoint)
         {
@@ -802,6 +1032,7 @@ namespace StickMate.Interaction
             _panel.anchorMin = _panel.anchorMax = Vector2.zero;
             _panel.pivot = new Vector2(0.5f, 0.5f);
             _panel.sizeDelta = PanelSizePoints;
+            _appliedPanelSizePoints = PanelSizePoints;   // 첫 UpdatePlacement 전까지의 «지금 크기».
 
             // ★ 2026-09-02 — 닫기 힌트("창 밖을 클릭해도 닫혀요")를 <b>같은 날 걷어냈다</b>. 바깥 클릭이
             //   더 이상 닫지 않으므로 그 문장은 거짓이 됐고, 화면이 거짓말을 하느니 아무 말도 안 하는
@@ -815,20 +1046,32 @@ namespace StickMate.Interaction
             //     2pt 줄여서 팝오버 3종의 마지막 행을 자를 수 있고, 리더 지시가 "빌드 캡처로 3종 전부
             //     확인하지 못하면 적용하지 마라"였다. 칩(높이 24)은 −Space3에서 시작해 아래로 24pt이고
             //     Content는 −(12+22+8)=−42에서 시작하므로 <b>6pt 여유</b>가 있어 겹치지 않는다.
-            float closeLeft = CloseChipLeft;
-            float titleWidth = closeLeft - UiChrome.Space1 - UiChrome.Space4;
+            // ※ 예전 여기 있던 `closeLeft`/`titleWidth` 지역 변수는 사라졌다 — 두 상자 모두
+            //   오른쪽 앵커/스트레치로 걸리면서 «설계 폭에서 역산한 x»가 필요 없어졌다.
+            //   설계 폭에서의 결과 사각형은 그때와 같다(아래 두 배치의 주석에 검산이 있다).
+            //   자식이 타이틀 줄에 무언가를 놓을 때 쓰는 <see cref="CloseChipLeft"/>는 그대로다.
 
             Text title = UiChrome.AddText(_panel, "Title", UiChrome.FontTitle, TextAnchor.MiddleLeft,
                 UiChrome.TextPrimary, bold: true);
             _titleText = title;
-            UiChrome.PlaceTopLeft(title.rectTransform, UiChrome.Space4, -UiChrome.Space3, titleWidth, 22f);
+            // ★ 2026-09-08 — 제목 상자는 <b>가로로 늘어나는 앵커</b>로 건다. 설계 폭에서의 사각형은
+            //   예전 PlaceTopLeft(Space4, titleWidth)와 <b>한 픽셀도 다르지 않다</b>
+            //   (오른쪽 끝 = W − Space4 − CloseChipWidth − Space1 = closeLeft − Space1, 같은 값).
+            //   달라지는 것은 «패널이 줄었을 때»뿐이다 — 고정 폭이면 제목 상자만 [✕] 위로 올라탄다.
+            PlaceTopStretch(title.rectTransform, UiChrome.Space4,
+                UiChrome.Space4 + CloseChipWidth + UiChrome.Space1, -UiChrome.Space3, 22f);
             title.text = TitleText;
 
             // 세 표면 공통 세 줄 — 면은 ChromeButtonSurface, 잉크는 InkOnSurface, 테두리는 없다.
             // (생 CardBorder α0.10 테두리를 지운 부수 효과: 그 화소의 창 알파가 0.91 → 1.00으로
             //  돌아와 어두운 바탕화면에서 데스크톱이 9% 비치던 것이 사라진다. UiChrome 절 참고.)
             Image close = UiChrome.AddSurface(_panel, "Close", UiChrome.ChromeButtonSurface, UiChrome.RadiusChip);
-            UiChrome.PlaceTopLeft(close.rectTransform, closeLeft, -UiChrome.Space3,
+            // ★ 2026-09-08 — [✕]는 <b>우상단 앵커</b>다. 설계 폭에서는 PlaceTopLeft(closeLeft, …)와
+            //   같은 자리이고(closeLeft = W − Space4 − CloseChipWidth), 패널이 줄면 <b>따라 들어온다</b>.
+            //   왼쪽 앵커로 두면 줄어든 창에서 [✕]만 창 밖에 떠 있게 되고 — 정보창이 2026-08-30에
+            //   똑같이 당해 앵커를 오른쪽으로 옮겼다 — 그 순간 이 창은 <b>영영 닫을 수 없는 창</b>이
+            //   된다(2026-09-02부터 바깥 클릭은 닫지 않는다).
+            PlaceTopRight(close.rectTransform, UiChrome.Space4, -UiChrome.Space3,
                 CloseChipWidth, CloseChipHeight);
             Text closeLabel = UiChrome.AddText(close.rectTransform, "Label", UiChrome.FontBody,
                 TextAnchor.MiddleCenter,
@@ -845,9 +1088,14 @@ namespace StickMate.Interaction
             var contentGo = new GameObject("Content", typeof(RectTransform));
             contentGo.transform.SetParent(_panel, false);
             var content = contentGo.GetComponent<RectTransform>();
-            UiChrome.PlaceTopLeft(content, UiChrome.Space4, -(UiChrome.Space3 + 22f + UiChrome.Space2),
-                PanelSizePoints.x - UiChrome.Space4 * 2f,
-                PanelSizePoints.y - (UiChrome.Space3 + 22f + UiChrome.Space2) - UiChrome.Space4);
+            // ★ 2026-09-08 — 내용 상자도 <b>패널을 따라 늘어나는 앵커</b>다. 설계 크기에서의 사각형은
+            //   예전 PlaceTopLeft(Space4, −42, W−32, H−58)와 <b>같은 값</b>이고(offset 4개가 같은 식),
+            //   자식은 이 상자의 좌상단에 앵커되므로 <b>화면상 자리가 한 픽셀도 안 바뀐다</b>.
+            //   달라지는 것은 패널이 줄었을 때 이 상자가 그 사실을 아는가뿐이다.
+            //   ※ 줄어든 창에서 <b>내용을 잘라 주는 마스크/말줄임</b>은 여기 없다 — 그건 이미 알려진
+            //     별건 결함(docs/UX_WIDGETS.md R6-0-2 (가))이고 `coder-ui` 배정이다.
+            PlaceStretch(content, UiChrome.Space4, UiChrome.Space4,
+                UiChrome.Space3 + 22f + UiChrome.Space2, UiChrome.Space4);
             BuildContent(content);
 
             // ★ 손잡이에서 뺄 사각형 = 이 창의 <b>모든 버튼</b>. 빌드가 끝난 지금 한 번만 긁는다

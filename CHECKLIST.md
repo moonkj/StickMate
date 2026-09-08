@@ -109,8 +109,7 @@
       - [ ] **리더 판정 남은 3건**: J-3(§5 접촉오차 숫자 문서 정정, 문서만) / J-4(각도 3건 채택
             여부 재확인) / J-5(착수 순서 = 코호트(ItemCatalog) → 매니페스트 → 키포즈표 — 순서
             뒤바뀌면 `CostumeResolver`가 못 찾음, coder-systems 착수 시 지킬 것).
-      - [ ] design-equipment(조형, 진행 중) + coder-systems(에셋 배선+ItemCatalog DLC 엔타이틀먼트
-            등록, 착수 전 — 위 J-5 순서 지킬 것) 병렬 착수(2026-09-08 지시).
+      - [x] design-equipment 완료(위 §2-3 참조). coder-systems(에셋 저작) **완료** — 아래.
   - [ ] **2-3 시각적 성장 콘텐츠 — 단계별 실제 비주얼.** 메커니즘(`CostumeStageOverride`,
         `ResolveStageShapes`)은 있으나, office 세트조차 `stage: 0`(기본형) 하나만 있고 10h/50h/100h
         진화 오버라이드가 **비어 있음**.
@@ -129,11 +128,30 @@
       - R29-4(`filled`=메시로 통일하는 구조 수정 vs 좌표로 우회) — **당장은 좌표 우회**(design-
         equipment가 이미 수정 좌표를 냄, 채택). 렌더러 2곳의 `filled` 의미 불일치 자체는
         `game-architect` 별도 배정 대상으로 체크시트에만 남겨둠(이번 라운드 범위 밖).
-    - [ ] coder-systems 착수함(백그라운드, 2026-09-08) — 경로 B로 office 세트 진화 3단계 저작 +
-          광부/사이버펑크/대마법사 3종 신규 매니페스트·키포즈 에셋 저작 + `ItemCatalog` DLC
-          코호트 등록(`pack.mine`/`pack.cyber`/`pack.arcane`, J-5 순서 지시함).
-          product-strategy 결정(가격 3종 각 $4.99, `sourceKind: Pack` 필수 — BaseTheme 감사
-          구멍 방지) 반영 지시함. 오늘 할일 위젯 작업과는 파일 완전 분리(동시 진행 안전).
+    - [x] coder-systems 완료(R30, 2026-09-08) — office 경로 B 접붙이기(DeskTop/DeskLeg/DeskLip
+          3건 좌표 수정 + stage1/2/3 신설, 4/10/14/18선) 골든 5개 무손상 확인. 광부/사이버/
+          대마법사 3종 신규 매니페스트+키포즈 저작, **전부 `sourceKind: Pack`으로 저작 확인**
+          (office만 BaseTheme). `CostumeManifestCorridorTests` 6건 전부 통과,
+          `CostumePropForbiddenZoneTests` 감사 대상 2집합→20집합(944쌍, 위반 0)으로 확대.
+          RED(에셋 없이 테스트만) → GREEN(에셋 저작 후) 절차 지킴 — 저작 전 실제로
+          "진화 4단계가 전부 같은 그림"이 빨갛게 재현됨을 먼저 확인.
+      - [x] ★ **ItemCatalog는 의도적으로 안 건드림(맞는 판단)** — `pack.mine` 등 팩 ID를
+            프로덕션 문자열로 넣으면 기존 회귀 테스트(`PackManifestCorridorTests`, "팩 ID
+            리터럴 0건" 감사)가 깨짐. `CostumeCatalog.AuditSource`는 매니페스트 감사에
+            ItemCatalog가 필요 없어(sourceKind==Pack이면 그 자리에서 통과) 이번 목표는
+            달성했음. 다만 **`CostumeResolver.Resolve()`가 실제로 이 3종을 돌려주진
+            못한다**(코호트 아이템 6종×2팩 + `StickPackManifestSO` 팩 매니페스트 자체가
+            없음 — 이건 "구매 가능하게 만들기"이고 이번 라운드는 "만들어서 감사 통과시키기"
+            였음). **다음 라운드 필요**: 실제 팩 구매/엔타이틀먼트 배선(product-strategy
+            출시순서 — 사이버펑크 먼저 → 광부/대마법사 순으로 우선순위 삼을 것).
+      - [ ] ★ 리더 판정 대기 2건(coder-systems 신규 발견) — (가) R29 §6-4 광부 채움-간격
+            수정이 불완전: `RockFace×Vein1`(2.16 W_P) · `Vein1×Vein2`(2.44 W_P)가 아직
+            채움 하한(2.60) 밑 — 프로덕션 느슨한 규칙(2.00)은 통과해 지금 안 깨짐, 급하지
+            않음, design-equipment 재배정. (나) 광부 K2의 `propFrame: 1`(타격 섬광 3획)을
+            `CostumePropRenderer`가 **아무도 안 읽어서 실제로 안 뜬다** — 프레임별 조각을
+            담을 스키마 자리가 없음(고치려면 코스튬 스키마 v2→v3, 되돌릴 수 없는 결정) →
+            일단 `Assert.Ignore`로 회귀 명부에 등재만 해둠(승격 시 자동 감지되게 배선함),
+            **game-architect 판단 필요**(v3 승격 여부).
   - [x] product-strategy 완료(10회차, `docs/strategy/CHANNEL_PRICING_DECISIONS.md`) — **가격은
         한 칸도 안 바뀜**: 독서실 $0(BaseTheme 4종, 이미 무료로 존재) / 사이버펑크·대마법사 각
         $4.99. ★ **광부는 스펙 문구("기본 or 인게임 골드")와 달리 사용자가 이미 "유료 DLC로,

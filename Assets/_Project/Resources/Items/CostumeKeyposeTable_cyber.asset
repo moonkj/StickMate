@@ -1,0 +1,45 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d2b1ce56d60945b497cbc5b6209eecfe, type: 3}
+  m_Name: CostumeKeyposeTable_cyber
+  m_EditorClassIdentifier: 
+  stepsPerSecond: 3
+  keyposes:
+  - leftUpperArm: 48
+    leftLowerArm: 68
+    rightUpperArm: 62
+    rightLowerArm: 56
+    leanDegrees: -2
+    bodyOffsetY: 0
+    propFrame: 0
+  - leftUpperArm: 44
+    leftLowerArm: 72
+    rightUpperArm: 80
+    rightLowerArm: 36.5
+    leanDegrees: -1
+    bodyOffsetY: 0
+    propFrame: 0
+  - leftUpperArm: 63
+    leftLowerArm: 34.5
+    rightUpperArm: 58
+    rightLowerArm: 60
+    leanDegrees: -1
+    bodyOffsetY: 0
+    propFrame: 0
+  - leftUpperArm: 56
+    leftLowerArm: 58
+    rightUpperArm: 70
+    rightLowerArm: 44
+    leanDegrees: 2
+    bodyOffsetY: -0.018
+    propFrame: 0
+  stageKeyposeStart: []

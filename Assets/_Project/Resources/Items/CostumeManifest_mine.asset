@@ -10,16 +10,16 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 921083ded11b413aa0607beccccafa0d, type: 3}
-  m_Name: CostumeManifest_office
+  m_Name: CostumeManifest_mine
   m_EditorClassIdentifier: 
-  costumeKey: costume.office
+  costumeKey: costume.mine
   requiresSchemaVersion: 2
-  sourceKind: 0
-  sourceId: office
-  displayNameKey: costume.office.name
+  sourceKind: 1
+  sourceId: pack.mine
+  displayNameKey: costume.mine.name
   propShapes:
-  - name: Partition
-    loop: 1
+  - name: RockFace
+    loop: 0
     filled: 0
     tone: 0
     swayStart: -1
@@ -35,56 +35,128 @@ MonoBehaviour:
     layer: 0
     bodyFixed: 0
     terms:
-    - 4
+    - 10
     - 1
     - 8
     - 0
     - 0
     - 1
-    - 0.72
+    - 0.28
     - 1
     - 8
     - 0
     - 0
     - 1
-    - 0.1
+    - 0
     - 1
     - 8
     - 0
     - 0
     - 1
-    - 1
-    - 1
-    - 8
-    - 0
-    - 0
-    - 1
-    - 0.1
+    - 0.3
     - 1
     - 8
     - 0
     - 0
     - 1
-    - 1
-    - 1
-    - 8
-    - 0
-    - 0
-    - 1
-    - 0.88
+    - 0.2
     - 1
     - 8
     - 0
     - 0
     - 1
-    - 0.72
+    - 0.28
     - 1
     - 8
     - 0
     - 0
     - 1
-    - 0.88
-  - name: DeskTop
+    - 0.44
+    - 1
+    - 8
+    - 0
+    - 0
+    - 1
+    - 0.28
+    - 1
+    - 8
+    - 0
+    - 0
+    - 1
+    - 0.65
+    - 1
+    - 8
+    - 0
+    - 0
+    - 1
+    - 0.32
+    - 1
+    - 8
+    - 0
+    - 0
+    - 1
+    - 0.76
+    - 1
+    - 8
+    - 0
+    - 0
+    - 1
+    - 0.28
+    - 1
+    - 8
+    - 0
+    - 0
+    - 1
+    - 0.85
+    - 1
+    - 8
+    - 0
+    - 0
+    - 1
+    - 0.38
+    - 1
+    - 8
+    - 0
+    - 0
+    - 1
+    - 0.94
+    - 1
+    - 8
+    - 0
+    - 0
+    - 1
+    - 0.6
+    - 1
+    - 8
+    - 0
+    - 0
+    - 1
+    - 0.9
+    - 1
+    - 8
+    - 0
+    - 0
+    - 1
+    - 0.76
+    - 1
+    - 8
+    - 0
+    - 0
+    - 1
+    - 0.56
+    - 1
+    - 8
+    - 0
+    - 0
+    - 1
+    - 0.76
+    - 1
+    - 8
+    - 0
+    - 0
+    - 1
+    - 0
+  - name: GroundSeam
     loop: 0
     filled: 0
     tone: 0
@@ -107,49 +179,7 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - 0.4
-    - 1
-    - 8
-    - 0
-    - 0
-    - 1
-    - 0.62
-    - 1
-    - 8
-    - 0
-    - 0
-    - 1
-    - 1
-    - 1
-    - 8
-    - 0
-    - 0
-    - 1
-    - 0.62
-  - name: DeskLeg
-    loop: 0
-    filled: 0
-    tone: 0
-    swayStart: -1
-    swayCount: 0
-    swingDegrees: 0
-    surfaces: 0
-    strokeMult: 1
-    strokeInR: 0
-    noStroke: 0
-    alpha: 0
-    lineAlpha: 0
-    underBack: 0
-    layer: 0
-    bodyFixed: 0
-    terms:
-    - 2
-    - 1
-    - 8
-    - 0
-    - 0
-    - 1
-    - 0.32
+    - 0.1
     - 1
     - 8
     - 0
@@ -161,14 +191,14 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - 0.32
+    - 0.8
     - 1
     - 8
     - 0
     - 0
     - 1
-    - 0.552
-  - name: DeskLip
+    - 0
+  - name: Vein1
     loop: 1
     filled: 1
     tone: 1
@@ -191,50 +221,50 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - 0.26
+    - 0.4808799
     - 1
     - 8
     - 0
     - 0
     - 1
-    - 0.552
+    - 0.7717999
     - 1
     - 8
     - 0
     - 0
     - 1
-    - 0.4
+    - 0.5512
     - 1
     - 8
     - 0
     - 0
     - 1
-    - 0.552
+    - 0.59325
     - 1
     - 8
     - 0
     - 0
     - 1
-    - 0.4
+    - 0.5088
     - 1
     - 8
     - 0
     - 0
     - 1
-    - 0.62
+    - 0.56675
     - 1
     - 8
     - 0
     - 0
     - 1
-    - 0.26
+    - 0.3791201
     - 1
     - 8
     - 0
     - 0
     - 1
-    - 0.62
-  - name: LampPost
+    - 0.7082001
+  - name: TimberL
     loop: 0
     filled: 0
     tone: 0
@@ -257,26 +287,26 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - 0.92
+    - 0.38
     - 1
     - 8
     - 0
     - 0
     - 1
-    - 0.88
+    - 0
     - 1
     - 8
     - 0
     - 0
     - 1
-    - 0.92
+    - 0.38
     - 1
     - 8
     - 0
     - 0
     - 1
-    - 1.02
-  - name: LampShade
+    - 0.42
+  - name: TimberR
     loop: 0
     filled: 0
     tone: 0
@@ -299,26 +329,68 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - 0.92
+    - 0.68
     - 1
     - 8
     - 0
     - 0
     - 1
-    - 1.02
+    - 0
     - 1
     - 8
     - 0
     - 0
     - 1
-    - 0.78
+    - 0.68
     - 1
     - 8
     - 0
     - 0
     - 1
-    - 0.97
-  - name: LampRay1
+    - 0.42
+  - name: TimberCap
+    loop: 0
+    filled: 0
+    tone: 0
+    swayStart: -1
+    swayCount: 0
+    swingDegrees: 0
+    surfaces: 0
+    strokeMult: 1
+    strokeInR: 0
+    noStroke: 0
+    alpha: 0
+    lineAlpha: 0
+    underBack: 0
+    layer: 0
+    bodyFixed: 0
+    terms:
+    - 2
+    - 1
+    - 8
+    - 0
+    - 0
+    - 1
+    - 0.38
+    - 1
+    - 8
+    - 0
+    - 0
+    - 1
+    - 0.42
+    - 1
+    - 8
+    - 0
+    - 0
+    - 1
+    - 0.68
+    - 1
+    - 8
+    - 0
+    - 0
+    - 1
+    - 0.42
+  - name: Chip1
     loop: 0
     filled: 0
     tone: 0
@@ -341,38 +413,38 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - 0.78
+    - 0.1
     - 1
     - 8
     - 0
     - 0
     - 1
-    - 0.97
+    - 0
     - 1
     - 8
     - 0
     - 0
     - 1
-    - 0.72
+    - 0.135
     - 1
     - 8
     - 0
     - 0
     - 1
-    - 0.88
+    - 0.052
     - 1
     - 8
     - 0
     - 0
     - 1
-    - 0.54
+    - 0.17
     - 1
     - 8
     - 0
     - 0
     - 1
-    - 0.62
-  - name: LampRay2
+    - 0
+  - name: Vein2
     loop: 0
     filled: 0
     tone: 0
@@ -389,121 +461,49 @@ MonoBehaviour:
     layer: 0
     bodyFixed: 0
     terms:
-    - 2
+    - 3
     - 1
     - 8
     - 0
     - 0
     - 1
-    - 0.78
+    - 0.61
     - 1
     - 8
     - 0
     - 0
     - 1
-    - 0.97
+    - 0.67
     - 1
     - 8
     - 0
     - 0
     - 1
-    - 0.86
+    - 0.65
     - 1
     - 8
     - 0
     - 0
     - 1
-    - 0.62
-  - name: PartitionSlot1
-    loop: 0
-    filled: 0
-    tone: 0
-    swayStart: -1
-    swayCount: 0
-    swingDegrees: 0
-    surfaces: 0
-    strokeMult: 1
-    strokeInR: 0
-    noStroke: 0
-    alpha: 0
-    lineAlpha: 0
-    underBack: 0
-    layer: 0
-    bodyFixed: 0
-    terms:
-    - 2
+    - 0.59
     - 1
     - 8
     - 0
     - 0
     - 1
-    - 0.79
+    - 0.63
     - 1
     - 8
     - 0
     - 0
     - 1
-    - 0.3
-    - 1
-    - 8
-    - 0
-    - 0
-    - 1
-    - 0.93
-    - 1
-    - 8
-    - 0
-    - 0
-    - 1
-    - 0.3
-  - name: PartitionSlot2
-    loop: 0
-    filled: 0
-    tone: 0
-    swayStart: -1
-    swayCount: 0
-    swingDegrees: 0
-    surfaces: 0
-    strokeMult: 1
-    strokeInR: 0
-    noStroke: 0
-    alpha: 0
-    lineAlpha: 0
-    underBack: 0
-    layer: 0
-    bodyFixed: 0
-    terms:
-    - 2
-    - 1
-    - 8
-    - 0
-    - 0
-    - 1
-    - 0.79
-    - 1
-    - 8
-    - 0
-    - 0
-    - 1
-    - 0.44
-    - 1
-    - 8
-    - 0
-    - 0
-    - 1
-    - 0.93
-    - 1
-    - 8
-    - 0
-    - 0
-    - 1
-    - 0.44
+    - 0.53
   propAnchorOffsetXInH: 0
   stageShapes:
   - stage: 0
     shapes:
-    - name: Partition
-      loop: 1
+    - name: RockFace
+      loop: 0
       filled: 0
       tone: 0
       swayStart: -1
@@ -519,56 +519,128 @@ MonoBehaviour:
       layer: 0
       bodyFixed: 0
       terms:
-      - 4
+      - 10
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.72
+      - 0.28
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.1
+      - 0
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 1
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.1
+      - 0.3
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 1
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.88
+      - 0.2
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.72
+      - 0.28
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.88
-    - name: DeskTop
+      - 0.44
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.28
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.65
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.32
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.76
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.28
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.85
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.38
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.94
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.6
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.9
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.76
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.56
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.76
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0
+    - name: GroundSeam
       loop: 0
       filled: 0
       tone: 0
@@ -591,49 +663,7 @@ MonoBehaviour:
       - 0
       - 0
       - 1
-      - 0.4
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.62
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 1
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.62
-    - name: DeskLeg
-      loop: 0
-      filled: 0
-      tone: 0
-      swayStart: -1
-      swayCount: 0
-      swingDegrees: 0
-      surfaces: 0
-      strokeMult: 1
-      strokeInR: 0
-      noStroke: 0
-      alpha: 0
-      lineAlpha: 0
-      underBack: 0
-      layer: 0
-      bodyFixed: 0
-      terms:
-      - 2
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.32
+      - 0.1
       - 1
       - 8
       - 0
@@ -645,14 +675,14 @@ MonoBehaviour:
       - 0
       - 0
       - 1
-      - 0.32
+      - 0.8
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.552
-    - name: DeskLip
+      - 0
+    - name: Vein1
       loop: 1
       filled: 1
       tone: 1
@@ -675,53 +705,53 @@ MonoBehaviour:
       - 0
       - 0
       - 1
-      - 0.26
+      - 0.4808799
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.552
+      - 0.7717999
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.4
+      - 0.5512
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.552
+      - 0.59325
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.4
+      - 0.5088
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.62
+      - 0.56675
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.26
+      - 0.3791201
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.62
+      - 0.7082001
   - stage: 1
     shapes:
-    - name: Partition
-      loop: 1
+    - name: RockFace
+      loop: 0
       filled: 0
       tone: 0
       swayStart: -1
@@ -737,56 +767,128 @@ MonoBehaviour:
       layer: 0
       bodyFixed: 0
       terms:
-      - 4
+      - 10
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.72
+      - 0.28
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.1
+      - 0
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 1
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.1
+      - 0.3
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 1
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.88
+      - 0.2
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.72
+      - 0.28
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.88
-    - name: DeskTop
+      - 0.44
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.28
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.65
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.32
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.76
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.28
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.85
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.38
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.94
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.6
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.9
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.76
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.56
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.76
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0
+    - name: GroundSeam
       loop: 0
       filled: 0
       tone: 0
@@ -809,49 +911,7 @@ MonoBehaviour:
       - 0
       - 0
       - 1
-      - 0.4
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.62
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 1
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.62
-    - name: DeskLeg
-      loop: 0
-      filled: 0
-      tone: 0
-      swayStart: -1
-      swayCount: 0
-      swingDegrees: 0
-      surfaces: 0
-      strokeMult: 1
-      strokeInR: 0
-      noStroke: 0
-      alpha: 0
-      lineAlpha: 0
-      underBack: 0
-      layer: 0
-      bodyFixed: 0
-      terms:
-      - 2
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.32
+      - 0.1
       - 1
       - 8
       - 0
@@ -863,14 +923,14 @@ MonoBehaviour:
       - 0
       - 0
       - 1
-      - 0.32
+      - 0.8
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.552
-    - name: DeskLip
+      - 0
+    - name: Vein1
       loop: 1
       filled: 1
       tone: 1
@@ -893,50 +953,50 @@ MonoBehaviour:
       - 0
       - 0
       - 1
-      - 0.26
+      - 0.4808799
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.552
+      - 0.7717999
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.4
+      - 0.5512
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.552
+      - 0.59325
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.4
+      - 0.5088
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.62
+      - 0.56675
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.26
+      - 0.3791201
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.62
-    - name: LampPost
+      - 0.7082001
+    - name: TimberL
       loop: 0
       filled: 0
       tone: 0
@@ -959,26 +1019,26 @@ MonoBehaviour:
       - 0
       - 0
       - 1
-      - 0.92
+      - 0.38
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.88
+      - 0
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.92
+      - 0.38
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 1.02
-    - name: LampShade
+      - 0.42
+    - name: TimberR
       loop: 0
       filled: 0
       tone: 0
@@ -1001,26 +1061,68 @@ MonoBehaviour:
       - 0
       - 0
       - 1
-      - 0.92
+      - 0.68
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 1.02
+      - 0
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.78
+      - 0.68
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.97
-    - name: LampRay1
+      - 0.42
+    - name: TimberCap
+      loop: 0
+      filled: 0
+      tone: 0
+      swayStart: -1
+      swayCount: 0
+      swingDegrees: 0
+      surfaces: 0
+      strokeMult: 1
+      strokeInR: 0
+      noStroke: 0
+      alpha: 0
+      lineAlpha: 0
+      underBack: 0
+      layer: 0
+      bodyFixed: 0
+      terms:
+      - 2
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.38
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.42
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.68
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.42
+    - name: Chip1
       loop: 0
       filled: 0
       tone: 0
@@ -1043,38 +1145,38 @@ MonoBehaviour:
       - 0
       - 0
       - 1
-      - 0.78
+      - 0.1
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.97
+      - 0
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.72
+      - 0.135
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.88
+      - 0.052
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.54
+      - 0.17
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.62
-    - name: LampRay2
+      - 0
+    - name: Vein2
       loop: 0
       filled: 0
       tone: 0
@@ -1091,119 +1193,47 @@ MonoBehaviour:
       layer: 0
       bodyFixed: 0
       terms:
-      - 2
+      - 3
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.78
+      - 0.61
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.97
+      - 0.67
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.86
+      - 0.65
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.62
-    - name: PartitionSlot1
-      loop: 0
-      filled: 0
-      tone: 0
-      swayStart: -1
-      swayCount: 0
-      swingDegrees: 0
-      surfaces: 0
-      strokeMult: 1
-      strokeInR: 0
-      noStroke: 0
-      alpha: 0
-      lineAlpha: 0
-      underBack: 0
-      layer: 0
-      bodyFixed: 0
-      terms:
-      - 2
+      - 0.59
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.79
+      - 0.63
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.3
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.93
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.3
-    - name: PartitionSlot2
-      loop: 0
-      filled: 0
-      tone: 0
-      swayStart: -1
-      swayCount: 0
-      swingDegrees: 0
-      surfaces: 0
-      strokeMult: 1
-      strokeInR: 0
-      noStroke: 0
-      alpha: 0
-      lineAlpha: 0
-      underBack: 0
-      layer: 0
-      bodyFixed: 0
-      terms:
-      - 2
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.79
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.44
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.93
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.44
+      - 0.53
   - stage: 2
     shapes:
-    - name: Partition
-      loop: 1
+    - name: RockFace
+      loop: 0
       filled: 0
       tone: 0
       swayStart: -1
@@ -1219,56 +1249,128 @@ MonoBehaviour:
       layer: 0
       bodyFixed: 0
       terms:
-      - 4
+      - 10
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.72
+      - 0.28
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.1
+      - 0
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 1
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.1
+      - 0.3
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 1
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.88
+      - 0.2
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.72
+      - 0.28
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.88
-    - name: DeskTop
+      - 0.44
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.28
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.65
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.32
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.76
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.28
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.85
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.38
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.94
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.6
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.9
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.76
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.56
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.76
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0
+    - name: GroundSeam
       loop: 0
       filled: 0
       tone: 0
@@ -1291,49 +1393,7 @@ MonoBehaviour:
       - 0
       - 0
       - 1
-      - 0.4
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.62
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 1
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.62
-    - name: DeskLeg
-      loop: 0
-      filled: 0
-      tone: 0
-      swayStart: -1
-      swayCount: 0
-      swingDegrees: 0
-      surfaces: 0
-      strokeMult: 1
-      strokeInR: 0
-      noStroke: 0
-      alpha: 0
-      lineAlpha: 0
-      underBack: 0
-      layer: 0
-      bodyFixed: 0
-      terms:
-      - 2
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.32
+      - 0.1
       - 1
       - 8
       - 0
@@ -1345,14 +1405,14 @@ MonoBehaviour:
       - 0
       - 0
       - 1
-      - 0.32
+      - 0.8
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.552
-    - name: DeskLip
+      - 0
+    - name: Vein1
       loop: 1
       filled: 1
       tone: 1
@@ -1375,50 +1435,50 @@ MonoBehaviour:
       - 0
       - 0
       - 1
-      - 0.26
+      - 0.4808799
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.552
+      - 0.7717999
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.4
+      - 0.5512
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.552
+      - 0.59325
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.4
+      - 0.5088
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.62
+      - 0.56675
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.26
+      - 0.3791201
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.62
-    - name: LampPost
+      - 0.7082001
+    - name: TimberL
       loop: 0
       filled: 0
       tone: 0
@@ -1441,26 +1501,26 @@ MonoBehaviour:
       - 0
       - 0
       - 1
-      - 0.92
+      - 0.38
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.88
+      - 0
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.92
+      - 0.38
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 1.02
-    - name: LampShade
+      - 0.42
+    - name: TimberR
       loop: 0
       filled: 0
       tone: 0
@@ -1483,26 +1543,68 @@ MonoBehaviour:
       - 0
       - 0
       - 1
-      - 0.92
+      - 0.68
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 1.02
+      - 0
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.78
+      - 0.68
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.97
-    - name: LampRay1
+      - 0.42
+    - name: TimberCap
+      loop: 0
+      filled: 0
+      tone: 0
+      swayStart: -1
+      swayCount: 0
+      swingDegrees: 0
+      surfaces: 0
+      strokeMult: 1
+      strokeInR: 0
+      noStroke: 0
+      alpha: 0
+      lineAlpha: 0
+      underBack: 0
+      layer: 0
+      bodyFixed: 0
+      terms:
+      - 2
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.38
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.42
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.68
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.42
+    - name: Chip1
       loop: 0
       filled: 0
       tone: 0
@@ -1525,38 +1627,38 @@ MonoBehaviour:
       - 0
       - 0
       - 1
-      - 0.78
+      - 0.1
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.97
+      - 0
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.72
+      - 0.135
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.88
+      - 0.052
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.54
+      - 0.17
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.62
-    - name: LampRay2
+      - 0
+    - name: Vein2
       loop: 0
       filled: 0
       tone: 0
@@ -1573,158 +1675,44 @@ MonoBehaviour:
       layer: 0
       bodyFixed: 0
       terms:
-      - 2
+      - 3
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.78
+      - 0.61
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.97
+      - 0.67
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.86
+      - 0.65
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.62
-    - name: PartitionSlot1
-      loop: 0
-      filled: 0
-      tone: 0
-      swayStart: -1
-      swayCount: 0
-      swingDegrees: 0
-      surfaces: 0
-      strokeMult: 1
-      strokeInR: 0
-      noStroke: 0
-      alpha: 0
-      lineAlpha: 0
-      underBack: 0
-      layer: 0
-      bodyFixed: 0
-      terms:
-      - 2
+      - 0.59
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.79
+      - 0.63
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.3
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.93
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.3
-    - name: PartitionSlot2
-      loop: 0
-      filled: 0
-      tone: 0
-      swayStart: -1
-      swayCount: 0
-      swingDegrees: 0
-      surfaces: 0
-      strokeMult: 1
-      strokeInR: 0
-      noStroke: 0
-      alpha: 0
-      lineAlpha: 0
-      underBack: 0
-      layer: 0
-      bodyFixed: 0
-      terms:
-      - 2
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.79
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.44
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.93
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.44
-    - name: Shelf
-      loop: 0
-      filled: 0
-      tone: 0
-      swayStart: -1
-      swayCount: 0
-      swingDegrees: 0
-      surfaces: 0
-      strokeMult: 1
-      strokeInR: 0
-      noStroke: 0
-      alpha: 0
-      lineAlpha: 0
-      underBack: 0
-      layer: 0
-      bodyFixed: 0
-      terms:
-      - 2
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.32
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.3
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.72
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.3
-    - name: Box
+      - 0.53
+    - name: Notch
       loop: 0
       filled: 0
       tone: 0
@@ -1747,116 +1735,50 @@ MonoBehaviour:
       - 0
       - 0
       - 1
-      - 0.39
+      - 0.46
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.3
+      - 0
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.39
+      - 0.46
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.38
+      - 0.14
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.49
+      - 0.6
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.38
+      - 0.14
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.49
+      - 0.6
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.3
-    - name: Book
-      loop: 0
-      filled: 0
-      tone: 0
-      swayStart: -1
-      swayCount: 0
-      swingDegrees: 0
-      surfaces: 0
-      strokeMult: 1
-      strokeInR: 0
-      noStroke: 0
-      alpha: 0
-      lineAlpha: 0
-      underBack: 0
-      layer: 0
-      bodyFixed: 0
-      terms:
-      - 4
-      - 1
-      - 8
       - 0
-      - 0
-      - 1
-      - 0.56
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.3
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.56
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.365
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.65
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.365
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.65
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.3
-    - name: Mat
+    - name: BraceL
       loop: 0
       filled: 0
       tone: 0
@@ -1879,29 +1801,71 @@ MonoBehaviour:
       - 0
       - 0
       - 1
-      - 0.26
+      - 0.38
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0
+      - 0.34
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.72
+      - 0.46
       - 1
       - 8
       - 0
       - 0
       - 1
+      - 0.42
+    - name: BraceR
+      loop: 0
+      filled: 0
+      tone: 0
+      swayStart: -1
+      swayCount: 0
+      swingDegrees: 0
+      surfaces: 0
+      strokeMult: 1
+      strokeInR: 0
+      noStroke: 0
+      alpha: 0
+      lineAlpha: 0
+      underBack: 0
+      layer: 0
+      bodyFixed: 0
+      terms:
+      - 2
+      - 1
+      - 8
       - 0
+      - 0
+      - 1
+      - 0.68
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.34
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.6
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.42
   - stage: 3
     shapes:
-    - name: Partition
-      loop: 1
+    - name: RockFace
+      loop: 0
       filled: 0
       tone: 0
       swayStart: -1
@@ -1917,56 +1881,128 @@ MonoBehaviour:
       layer: 0
       bodyFixed: 0
       terms:
-      - 4
+      - 10
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.72
+      - 0.28
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.1
+      - 0
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 1
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.1
+      - 0.3
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 1
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.88
+      - 0.2
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.72
+      - 0.28
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.88
-    - name: DeskTop
+      - 0.44
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.28
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.65
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.32
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.76
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.28
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.85
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.38
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.94
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.6
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.9
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.76
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.56
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.76
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0
+    - name: GroundSeam
       loop: 0
       filled: 0
       tone: 0
@@ -1989,49 +2025,7 @@ MonoBehaviour:
       - 0
       - 0
       - 1
-      - 0.4
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.62
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 1
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.62
-    - name: DeskLeg
-      loop: 0
-      filled: 0
-      tone: 0
-      swayStart: -1
-      swayCount: 0
-      swingDegrees: 0
-      surfaces: 0
-      strokeMult: 1
-      strokeInR: 0
-      noStroke: 0
-      alpha: 0
-      lineAlpha: 0
-      underBack: 0
-      layer: 0
-      bodyFixed: 0
-      terms:
-      - 2
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.32
+      - 0.1
       - 1
       - 8
       - 0
@@ -2043,14 +2037,14 @@ MonoBehaviour:
       - 0
       - 0
       - 1
-      - 0.32
+      - 0.8
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.552
-    - name: DeskLip
+      - 0
+    - name: Vein1
       loop: 1
       filled: 1
       tone: 1
@@ -2073,50 +2067,50 @@ MonoBehaviour:
       - 0
       - 0
       - 1
-      - 0.26
+      - 0.4808799
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.552
+      - 0.7717999
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.4
+      - 0.5512
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.552
+      - 0.59325
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.4
+      - 0.5088
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.62
+      - 0.56675
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.26
+      - 0.3791201
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.62
-    - name: LampPost
+      - 0.7082001
+    - name: TimberL
       loop: 0
       filled: 0
       tone: 0
@@ -2139,26 +2133,26 @@ MonoBehaviour:
       - 0
       - 0
       - 1
-      - 0.92
+      - 0.38
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.88
+      - 0
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.92
+      - 0.38
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 1.02
-    - name: LampShade
+      - 0.42
+    - name: TimberR
       loop: 0
       filled: 0
       tone: 0
@@ -2181,26 +2175,68 @@ MonoBehaviour:
       - 0
       - 0
       - 1
-      - 0.92
+      - 0.68
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 1.02
+      - 0
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.78
+      - 0.68
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.97
-    - name: LampRay1
+      - 0.42
+    - name: TimberCap
+      loop: 0
+      filled: 0
+      tone: 0
+      swayStart: -1
+      swayCount: 0
+      swingDegrees: 0
+      surfaces: 0
+      strokeMult: 1
+      strokeInR: 0
+      noStroke: 0
+      alpha: 0
+      lineAlpha: 0
+      underBack: 0
+      layer: 0
+      bodyFixed: 0
+      terms:
+      - 2
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.38
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.42
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.68
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.42
+    - name: Chip1
       loop: 0
       filled: 0
       tone: 0
@@ -2223,38 +2259,38 @@ MonoBehaviour:
       - 0
       - 0
       - 1
-      - 0.78
+      - 0.1
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.97
+      - 0
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.72
+      - 0.135
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.88
+      - 0.052
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.54
+      - 0.17
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.62
-    - name: LampRay2
+      - 0
+    - name: Vein2
       loop: 0
       filled: 0
       tone: 0
@@ -2271,158 +2307,44 @@ MonoBehaviour:
       layer: 0
       bodyFixed: 0
       terms:
-      - 2
+      - 3
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.78
+      - 0.61
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.97
+      - 0.67
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.86
+      - 0.65
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.62
-    - name: PartitionSlot1
-      loop: 0
-      filled: 0
-      tone: 0
-      swayStart: -1
-      swayCount: 0
-      swingDegrees: 0
-      surfaces: 0
-      strokeMult: 1
-      strokeInR: 0
-      noStroke: 0
-      alpha: 0
-      lineAlpha: 0
-      underBack: 0
-      layer: 0
-      bodyFixed: 0
-      terms:
-      - 2
+      - 0.59
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.79
+      - 0.63
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.3
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.93
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.3
-    - name: PartitionSlot2
-      loop: 0
-      filled: 0
-      tone: 0
-      swayStart: -1
-      swayCount: 0
-      swingDegrees: 0
-      surfaces: 0
-      strokeMult: 1
-      strokeInR: 0
-      noStroke: 0
-      alpha: 0
-      lineAlpha: 0
-      underBack: 0
-      layer: 0
-      bodyFixed: 0
-      terms:
-      - 2
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.79
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.44
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.93
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.44
-    - name: Shelf
-      loop: 0
-      filled: 0
-      tone: 0
-      swayStart: -1
-      swayCount: 0
-      swingDegrees: 0
-      surfaces: 0
-      strokeMult: 1
-      strokeInR: 0
-      noStroke: 0
-      alpha: 0
-      lineAlpha: 0
-      underBack: 0
-      layer: 0
-      bodyFixed: 0
-      terms:
-      - 2
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.32
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.3
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.72
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.3
-    - name: Box
+      - 0.53
+    - name: Notch
       loop: 0
       filled: 0
       tone: 0
@@ -2445,116 +2367,50 @@ MonoBehaviour:
       - 0
       - 0
       - 1
-      - 0.39
+      - 0.46
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.3
+      - 0
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.39
+      - 0.46
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.38
+      - 0.14
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.49
+      - 0.6
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.38
+      - 0.14
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.49
+      - 0.6
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.3
-    - name: Book
-      loop: 0
-      filled: 0
-      tone: 0
-      swayStart: -1
-      swayCount: 0
-      swingDegrees: 0
-      surfaces: 0
-      strokeMult: 1
-      strokeInR: 0
-      noStroke: 0
-      alpha: 0
-      lineAlpha: 0
-      underBack: 0
-      layer: 0
-      bodyFixed: 0
-      terms:
-      - 4
-      - 1
-      - 8
       - 0
-      - 0
-      - 1
-      - 0.56
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.3
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.56
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.365
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.65
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.365
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.65
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.3
-    - name: Mat
+    - name: BraceL
       loop: 0
       filled: 0
       tone: 0
@@ -2572,6 +2428,96 @@ MonoBehaviour:
       bodyFixed: 0
       terms:
       - 2
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.38
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.34
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.46
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.42
+    - name: BraceR
+      loop: 0
+      filled: 0
+      tone: 0
+      swayStart: -1
+      swayCount: 0
+      swingDegrees: 0
+      surfaces: 0
+      strokeMult: 1
+      strokeInR: 0
+      noStroke: 0
+      alpha: 0
+      lineAlpha: 0
+      underBack: 0
+      layer: 0
+      bodyFixed: 0
+      terms:
+      - 2
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.68
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.34
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.6
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.42
+    - name: CapTie
+      loop: 0
+      filled: 0
+      tone: 0
+      swayStart: -1
+      swayCount: 0
+      swingDegrees: 0
+      surfaces: 0
+      strokeMult: 1
+      strokeInR: 0
+      noStroke: 0
+      alpha: 0
+      lineAlpha: 0
+      underBack: 0
+      layer: 0
+      bodyFixed: 0
+      terms:
+      - 2
+      - 1
+      - 8
+      - 0
+      - 0
+      - 1
+      - 0.38
       - 1
       - 8
       - 0
@@ -2583,20 +2529,14 @@ MonoBehaviour:
       - 0
       - 0
       - 1
-      - 0
+      - 0.68
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.72
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0
-    - name: Shelf2
+      - 0.26
+    - name: Crack1
       loop: 0
       filled: 0
       tone: 0
@@ -2619,197 +2559,23 @@ MonoBehaviour:
       - 0
       - 0
       - 1
-      - 0.32
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.455
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.72
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.455
-    - name: LowRail
-      loop: 0
-      filled: 0
-      tone: 0
-      swayStart: -1
-      swayCount: 0
-      swingDegrees: 0
-      surfaces: 0
-      strokeMult: 1
-      strokeInR: 0
-      noStroke: 0
-      alpha: 0
-      lineAlpha: 0
-      underBack: 0
-      layer: 0
-      bodyFixed: 0
-      terms:
-      - 2
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.32
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.16
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.72
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.16
-    - name: FloorBox
-      loop: 0
-      filled: 0
-      tone: 0
-      swayStart: -1
-      swayCount: 0
-      swingDegrees: 0
-      surfaces: 0
-      strokeMult: 1
-      strokeInR: 0
-      noStroke: 0
-      alpha: 0
-      lineAlpha: 0
-      underBack: 0
-      layer: 0
-      bodyFixed: 0
-      terms:
-      - 4
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
       - 0.39
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0
+      - 0.855
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.39
+      - 0.45
       - 1
       - 8
       - 0
       - 0
       - 1
-      - 0.09
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.51
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.09
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.51
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0
-    - name: FloorBin
-      loop: 0
-      filled: 0
-      tone: 0
-      swayStart: -1
-      swayCount: 0
-      swingDegrees: 0
-      surfaces: 0
-      strokeMult: 1
-      strokeInR: 0
-      noStroke: 0
-      alpha: 0
-      lineAlpha: 0
-      underBack: 0
-      layer: 0
-      bodyFixed: 0
-      terms:
-      - 4
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.58
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.58
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.07
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.64
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.07
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0.64
-      - 1
-      - 8
-      - 0
-      - 0
-      - 1
-      - 0
-  keyposes: {fileID: 11400000, guid: e9596ab807f943ecb2ad565236f3c8ba, type: 2}
+      - 0.855
+  keyposes: {fileID: 11400000, guid: fad21ae2c038a94563d93cf77a6d0ded, type: 2}
