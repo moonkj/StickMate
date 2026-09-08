@@ -159,6 +159,73 @@ namespace StickMate.Interaction
         /// </summary>
         public static float IdleAutoCollapseSeconds => PopoverPanel.IdleAutoCloseSeconds;
 
+        // ====================================================================================
+        // ★ 2026-09-08 P0 — 이 카드는 «내 클릭이 아닌 클릭»을 먹고 있었다
+        // ====================================================================================
+        // 사용자 신고: <c>[오늘 할일]</c> 팝오버의 <c>[추가]</c>를 눌렀는데 그 아래 겹친 이 카드의
+        // 체크박스까지 함께 반응해 <b>항목이 자동 완료</b>되고 하루 1회 300동전이 소진됐다.
+        //
+        // 원인은 아래 <see cref="TickGlobalClickPolling"/>이다 — 전역 폴링은 <b>생 사각형 히트테스트</b>라
+        // z-순서를 모른다. uGUI 경로는 <c>GraphicRaycaster</c>가 캔버스 <c>sortingOrder</c>로 이미
+        // 풀어 주지만(위 캔버스가 아래를 가린다) 이쪽에는 그 판정이 없었고,
+        // <see cref="TryClaimAction"/>은 <b>자기 안의</b> 두 경로만 막는다(서로 다른 두 표면은 못 막는다).
+        //
+        // 이제 «이 클릭이 누구 것인가»를 <see cref="UiClickArbiter"/>에게 묻는다. 판정은 <b>순서에
+        // 의존하지 않는다</b> — 단순한 «먼저 잡는 쪽이 이긴다»로 두면 이 카드가 먼저 도는 프레임에
+        // <c>[추가]</c>가 삼켜져 「추가가 안 된다」는 다른 버그로 증상만 바뀐다.
+
+        /// <summary>이 표면이 <see cref="UiClickArbiter"/>에 쓰는 이름.</summary>
+        public const string ClickArbiterSurfaceId = nameof(TodoPostItWidget);
+
+        /// <summary>이 표면의 «층» — 사용자가 열지 않은 <b>상시</b> 카드라 가장 아래다.
+        /// <para><see cref="SortingOrderTopMost"/>를 여기 베끼지 않는다. 필요한 것은 절댓값이 아니라
+        /// 순서뿐이고, 모형과 실제가 갈라지면 <see cref="CanvasSortingOrderForTests"/>를 팝오버의
+        /// 같은 창구와 대조하는 테스트가 잡는다.</para></summary>
+        public const int ClickArbiterLayer = UiClickArbiter.LayerAmbientCard;
+
+        // ====================================================================================
+        // ★ 2026-09-08 R-7 — 「내일 할일」이 상시 표면으로 새어나가면 안 된다
+        // ====================================================================================
+        // persona-stress 감사 원문: *"이 위젯은 TodoListModel.ActiveItems를 그대로 그리고 행 수만큼
+        // 높이가 자란다. 「내일 할일」을 같은 _active에 넣으면 사용자가 아무것도 열지 않았는데
+        // 상시 표면이 커지고 내일 것까지 뜬다."*
+        //
+        // 팝오버(사용자가 <b>직접 연</b> 창)는 날짜를 넘겨 가며 다 볼 수 있지만, 이 카드는 부르지
+        // 않아도 떠 있는 표면이라 «오늘 몫»만 진다. 그게 비침해(원칙 2)의 이 표면 몫이다.
+
+        /// <summary>이 상시 카드가 그려야 하는 항목인가 — <b>순수 함수</b>(벽시계를 읽지 않는다).
+        /// <list type="bullet">
+        ///  <item><b>오늘 것</b>(<c>PlannedDayIndex == todayIndex</c>)</item>
+        ///  <item><b>날짜 미상</b>(v12 이하 세이브에서 올라온 것 — R6-6의 «오늘 페이지 몫»)</item>
+        ///  <item><b>밀린 것</b>(오늘보다 이른 날짜)</item>
+        /// </list>
+        /// 완료된 항목도 같은 날짜 조건을 지나야 한다 — 「완료 임박」(<c>SweepCompleted</c>가 거두기
+        /// 전의 유예 상태)만 남기고 <b>내일 것은 완료돼도 뜨지 않는다</b>.
+        /// <para><paramref name="todayIndex"/>가 <see cref="TodoItem.UnknownPlannedDay"/>면(저장 파일을
+        /// 읽고 롤오버 시계가 돌기 전) <b>거르지 않는다</b> — 0을 1970-01-01로 읽어 카드를 통째로
+        /// 비우는 경로를 만들지 않는다(UW-6-4).</para></summary>
+        public static bool IsTodaySurfaceItem(TodoItem item, int todayIndex)
+        {
+            if (item == null) return false;
+            if (todayIndex == TodoItem.UnknownPlannedDay) return true;
+            if (!item.IsPlannedDayKnown) return true;
+            return item.PlannedDayIndex <= todayIndex;
+        }
+
+        /// <summary><see cref="IsTodaySurfaceItem"/>을 통과한 것만 <paramref name="buffer"/>에 담는다.
+        /// 새 리스트를 굽지 않는다 — 하루 종일 켜져 있는 앱이다(Core/DockGeometry 무할당 관례).</summary>
+        public static void FilterTodaySurface(IReadOnlyList<TodoItem> source, int todayIndex,
+            List<TodoItem> buffer)
+        {
+            if (buffer == null) return;
+            buffer.Clear();
+            if (source == null) return;
+            for (int i = 0; i < source.Count; i++)
+            {
+                if (IsTodaySurfaceItem(source[i], todayIndex)) buffer.Add(source[i]);
+            }
+        }
+
         /// <summary>무입력 시계를 다시 재는 주기(초). <see cref="PopoverPanel"/>과 같은 0.25초 —
         /// 3분짜리 판정에 매 프레임 OS 커서를 물을 이유가 없다.</summary>
         private const float IdlePollInterval = 0.25f;
@@ -193,6 +260,8 @@ namespace StickMate.Interaction
         private RectTransform _panelRoot;
         private RectTransform _rowContainer;
         private readonly List<RowWidgets> _rows = new List<RowWidgets>();
+        /// <summary>이번 갱신에 실제로 그릴 항목(오늘 몫만). 재사용한다 — 무할당 관례.</summary>
+        private readonly List<TodoItem> _surfaceItems = new List<TodoItem>(16);
         private Text _moreLabel;
         private Button _moreButton;
         private Button _hideButton;
@@ -399,17 +468,19 @@ namespace StickMate.Interaction
             if (_agent == null || !_agent.TryGetCursorPosition(out Vector2 osScreen)) return;
             Vector2 cursor = ScreenCoordinateConverter.OsScreenToUnityScreen(osScreen, _agentConfig);
 
+            // ★ 2026-09-08 P0 — <b>히트한 뒤에</b> 소유권을 묻는다. 히트테스트 앞에서 물으면
+            //   카드 밖에 떨어진 클릭까지 이 표면이 «먹었다»고 도장을 찍어 남의 클릭을 삼킨다.
             if (_hideButton != null && _hideButton.gameObject.activeInHierarchy &&
                 ContainsScreenPoint(_hideButton.GetComponent<RectTransform>(), cursor))
             {
-                if (TryClaimAction("hide")) OnHideClicked();
+                if (ClaimGlobalClick(cursor) && TryClaimAction("hide")) OnHideClicked();
                 return;
             }
 
             if (_moreButton != null && _moreLabel != null && _moreLabel.gameObject.activeSelf &&
                 ContainsScreenPoint(_moreButton.GetComponent<RectTransform>(), cursor))
             {
-                if (TryClaimAction("more")) OnMoreClicked();
+                if (ClaimGlobalClick(cursor) && TryClaimAction("more")) OnMoreClicked();
                 return;
             }
 
@@ -418,7 +489,7 @@ namespace StickMate.Interaction
                 RowWidgets row = _rows[i];
                 if (row?.Root == null || !row.Root.activeSelf) continue;
                 if (!ContainsScreenPoint(row.Root.GetComponent<RectTransform>(), cursor)) continue;
-                if (TryClaimAction("row" + row.TodoId)) OnRowCheckboxClicked(row);
+                if (ClaimGlobalClick(cursor) && TryClaimAction("row" + row.TodoId)) OnRowCheckboxClicked(row);
                 return;
             }
         }
@@ -714,6 +785,24 @@ namespace StickMate.Interaction
                    screenPoint.y >= corners[0].y && screenPoint.y <= corners[2].y;
         }
 
+        /// <summary>
+        /// 전역 폴링이 잡은 이 클릭이 <b>이 표면 것인가</b>. 위에 열려 있는 창(팝오버)이 그 지점을
+        /// 덮고 있으면 false다 — 그 판정은 z-순서라 <c>Update</c> 실행 순서에 의존하지 않는다.
+        /// <para><see cref="TryClaimAction"/>과 <b>역할이 다르다</b>: 저쪽은 «한 표면 안의 두 입력
+        /// 경로»를, 이쪽은 «두 표면»을 가른다. 둘을 하나로 합치지 마라 — 창(0.35초)과 프레임은
+        /// 서로 다른 시간 단위다.</para>
+        /// </summary>
+        private static bool ClaimGlobalClick(Vector2 cursor)
+            => UiClickArbiter.TryClaimClick(ClickArbiterSurfaceId, ClickArbiterLayer, cursor);
+
+        /// <summary>uGUI <c>Button.onClick</c> 경로의 소유권 — 좌표 판정 없이 프레임만 잡는다
+        /// (<c>GraphicRaycaster</c>가 z-순서를 이미 풀었다).</summary>
+        private static bool ClaimUguiClick() => UiClickArbiter.TryClaimFrame(ClickArbiterSurfaceId);
+
+        /// <summary>이 카드 캔버스의 <c>sortingOrder</c> — <see cref="UiClickArbiter"/>의 층 모형이
+        /// 실제 z-순서와 같은지 대조하는 창구다(모형과 실제가 갈라지면 이 값이 증인이다).</summary>
+        public int CanvasSortingOrderForTests => _canvas != null ? _canvas.sortingOrder : 0;
+
         /// <summary>같은 클릭이 uGUI 경로와 전역 폴링 경로로 두 번 들어와 체크가 즉시 원복되는 것을 막는다.</summary>
         private bool TryClaimAction(string key)
         {
@@ -905,7 +994,12 @@ namespace StickMate.Interaction
         {
             if (_panelRoot == null) return;
 
-            var items = TodoListModel.ActiveItems;
+            // ★ 2026-09-08 R-7 — 여기서 <b>오늘 몫만</b> 거른다(위 IsTodaySurfaceItem 문단).
+            //   예전에는 TodoListModel.ActiveItems를 그대로 그렸는데, 날짜 축이 생긴 뒤로는
+            //   그것이 곧 «내일 것까지 상시 노출»이다. 「오늘」은 CurrencyModel.DayIndex 하나에서만
+            //   온다 — 이 파일에 두 번째 시계를 만들지 않는다(UW-6-2).
+            FilterTodaySurface(TodoListModel.ActiveItems, CurrencyModel.DayIndex, _surfaceItems);
+            List<TodoItem> items = _surfaceItems;
             // _hiddenForFullscreen이 여기 들어가야 한다 — TodoListChanged는 전체화면 게임 중에도
             // 날아오고(다른 경로가 할 일을 정리할 수 있다), 그때 RefreshView가 카드를 되살리면
             // Update()의 가드가 있어도 한 프레임 동안 게임 위에 카드가 뜬다.
@@ -1049,7 +1143,7 @@ namespace StickMate.Interaction
 
             _hideButton = CreateSmallButton(panelGo.transform, "HideButton", "숨기기", new Vector2(1f, 1f),
                 new Vector2(-UiChrome.Space2, -UiChrome.Space1), chip: true);
-            _hideButton.onClick.AddListener(() => { if (TryClaimAction("hide")) OnHideClicked(); });
+            _hideButton.onClick.AddListener(() => { if (ClaimUguiClick() && TryClaimAction("hide")) OnHideClicked(); });
 
             var rowContainerGo = new GameObject("Rows", typeof(RectTransform));
             rowContainerGo.transform.SetParent(panelGo.transform, false);
@@ -1060,7 +1154,7 @@ namespace StickMate.Interaction
             _rowContainer.offsetMax = new Vector2(0f, -RowHeight); // 상단 [숨기기] 줄 아래부터 시작
 
             _moreButton = CreateSmallButton(rowContainerGo.transform, "MoreButton", "+N개 더보기", new Vector2(0f, 1f), Vector2.zero);
-            _moreButton.onClick.AddListener(() => { if (TryClaimAction("more")) OnMoreClicked(); });
+            _moreButton.onClick.AddListener(() => { if (ClaimUguiClick() && TryClaimAction("more")) OnMoreClicked(); });
             _moreLabel = _moreButton.GetComponentInChildren<Text>();
             _moreLabel.gameObject.SetActive(false);
             _moreButton.gameObject.SetActive(true);
@@ -1119,7 +1213,7 @@ namespace StickMate.Interaction
             };
             row.CheckboxButton.onClick.AddListener(() =>
             {
-                if (TryClaimAction("row" + row.TodoId)) OnRowCheckboxClicked(row);
+                if (ClaimUguiClick() && TryClaimAction("row" + row.TodoId)) OnRowCheckboxClicked(row);
             });
             return row;
         }
