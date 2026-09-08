@@ -65,8 +65,14 @@ namespace StickMate.Core
                  "상한 0.032는 머리 시각반경의 1/3(그 위는 「몸이 뛴다」로 읽힌다).")]
         public float bodyOffsetY;
 
-        [Tooltip("프롭의 몇 번째 미리 구운 변형인가(0 = 변형 없음). 프롭 렌더러가 enabled 토글만 한다 " +
-                 "— 좌표 재계산도 SetPositions도 0이다.")]
+        [Tooltip("프롭의 몇 번째 미리 구운 변형인가(0 = 변형 없음). ★ 2026-09-08 game-architect 정정 " +
+                 "— 이전 문구는 「프롭 렌더러가 enabled 토글만 한다」고 현재형으로 적어 거짓 주석이었다. " +
+                 "실제로는 CostumePropRenderer가 이 필드를 전혀 읽지 않는다(값을 선언해도 프레임 " +
+                 "전환이 화면에 안 나타난다 — 광부 K2의 타격 섬광이 그 사례). v3 스키마 승격 여부는 " +
+                 "출시 이후 폴리싱 라운드로 미뤄졌다(docs/GAME_ARCHITECTURE_REVIEW.md §18-1). " +
+                 "되살릴 조건: 이 필드를 쓰는 코스튬이 2종 이상이고 그중 하나라도 프레임 수가 2를 " +
+                 "넘을 때. TestClaimExpiryAuditTests.cs의 Ignore 등재가 승격 시점을 자동 감지한다 " +
+                 "— 그 역방향 장치는 건드리지 마라.")]
         public byte propFrame;
     }
 

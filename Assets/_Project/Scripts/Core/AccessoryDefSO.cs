@@ -149,7 +149,15 @@ namespace StickMate.Core
         /// <summary>마지막 점과 첫 점을 잇는가.</summary>
         public bool loop;
 
-        /// <summary>윤곽선 아래에 <b>채움 면</b>을 한 장 깔 것인가(안에 있는 것을 가려야 하는 물건).</summary>
+        /// <summary>윤곽선 아래에 <b>채움 면</b>을 한 장 깔 것인가(안에 있는 것을 가려야 하는 물건).
+        /// ★ 2026-09-08 game-architect — <b>소비자마다 이 비트를 다르게 구현한다</b>. 장비
+        /// 렌더러(<c>CharacterAccessoryRenderer.BuildFillMesh</c>)는 실제 <c>MeshRenderer</c>를
+        /// 만든다. 코스튬 프롭 렌더러(<c>CostumePropRenderer</c>)는 메시를 안 만들고 같은
+        /// 폴리라인을 <c>stroke × 2.2</c>로 굵게 한 번 더 긋는다 — 안쪽이 완전히 안 막히므로
+        /// 획 폭이 도형 안쪽 여백보다 좁으면 <b>가운데가 뚫려 보인다</b>(design-equipment가
+        /// R28에서 장비의 자를 그대로 옮겼다가 R29에서 실측으로 발견한 함정). 이 비트를 쓰는
+        /// 새 소비자를 만들 때는 어느 쪽 구현을 따를지 먼저 확인해라 — 이름이 같다고 뜻도
+        /// 같다고 가정하지 마라.</summary>
         public bool filled;
 
         /// <summary>색 역할 — <see cref="AccessoryTone"/>(0 주색 / 1 보조색 / 2 그늘 / 3 하이라이트).
