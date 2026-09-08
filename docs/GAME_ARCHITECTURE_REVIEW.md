@@ -6236,3 +6236,457 @@ DLC 6팩을 상품 전략에 올려 둔 상태에서 이 경로가 미실증이�
 그리고 재검증은 반드시 §17-0의 양·음 대조를 먼저 통과시킨 뒤에 할 것.
 
 ---
+# 18. 【2026-09-08 16:2x】 코스튬 DLC × 집중 모드 — 되돌릴 수 없는 결정 3건 판정 (game-architect)
+
+> 리더 의뢰 3건에 대한 판정. **프로덕션 `.cs` / `.asset` 0줄.** 측정은 전부 이 절 안에서 재현된다.
+> 재현 스크립트: 세션 스크래치패드(`parse.py` / `fill.py` / `zone.py`) — 아래 §18-0에 전문 요약.
+
+## 18-0. 먼저 — 교정과 mtime (이게 없으면 아래 숫자는 전부 폐기)
+
+### 18-0-1. mtime 대조 — **R29 보고서는 지금 트리에 대해 낡았다**
+
+```
+docs/EQUIPMENT_SHAPE_SPEC_COSTUME_PROPS_R29.md      2026-09-08 15:16:27
+docs/UX_MOTION_COSTUME_FOCUS.md                     2026-09-08 15:13:11
+Assets/_Project/Resources/Items/CostumeManifest_*.asset   2026-09-08 15:57:29   ← 41분 뒤
+Assets/_Project/Resources/Items/CostumeKeyposeTable_*.asset  2026-09-08 15:57:29
+```
+
+⇒ **R29가 «출하 오피스 프롭에 채움이 0개다»(R29-1)라고 쓴 뒤에 에셋이 다시 저작됐다.**
+지금 4종 전부 `filled: 1`이 **정확히 5개씩**(propShapes 1 + stage 0~3 각 1) 들어 있다.
+**R29의 R29-1·R29-2는 이미 해소됐다 — 리더는 그 두 건을 미결로 들고 가지 마라.**
+(R29-2 「단계가 2개뿐」도 해소: 오피스가 stage 0/1/2/3 = 4/10/14/18조각으로 전부 실려 있다.)
+
+### 18-0-2. 파서 교정 — 알려진 값으로 먼저 맞췄다
+
+`Core/AccessoryDefSO.cs`의 `AccessoryWornShapeReader.TryBuild`/`ReadSum`/`TryBasis` 문법을
+그대로 옮겨 `.asset`의 `terms` 스트림을 풀었다(기저 `Height=8`을 1.0으로 두어 좌표를 H 배수로 읽는다).
+
+| 교정 대상 | 프로덕션/문서가 말하는 값 | 내 파서 출력 | 판정 |
+|---|---:|---:|---|
+| 오피스 `propShapes` 조각 수 | 10 (`CostumeOfficeAssetTests.GoldenShapeCountS1`) | **10** | ✅ |
+| 〃 `stageShapes[0]` | 4 (`GoldenShapeCountS0`) | **4** | ✅ |
+| 〃 근단 X | 0.26 (`GoldenNearEdgeH`) | **0.2600** | ✅ |
+| 〃 원단 X | 1.00 (`GoldenFarEdgeH`) | **1.0000** | ✅ |
+| 〃 상단 Y | 1.02 (`GoldenTopH`) | **1.0200** | ✅ |
+
+**5/5 일치. 이 교정이 깨지면 §18-2의 숫자는 전부 폐기한다.**
+
+### 18-0-3. H → pt 환산의 교정 (§18-1에서 쓴다)
+
+`CostumePropRenderer.cs:66` `StrokeWidthRatio = 0.0339f`, 클래스 문서의 실측
+*"배율 0.75에서 2.039pt"* ⇒ **배율 0.75에서 1 H = 60.15 pt.**
+독립 대조 2건이 이 환산을 확인한다(둘 다 남이 쓴 숫자다):
+`EQUIPMENT_SHAPE_SPEC_COSTUME_PROPS.md` §3-3 *"0.04 H = 2.41pt @0.75"*(→ 60.25) ·
+`UX_MOTION_COSTUME_FOCUS.md` §5-3 *"0.048 H(2.89 pt @0.75)"*(→ 60.21). **오차 0.2% 이내.**
+
+---
+
+## 18-1. 【판정 1】 `propFrame` 코스튬 스키마 v2 → v3 — **지금 올리지 않는다. 출시 이후 폴리싱 라운드로 미룬다**
+
+### 18-1-1. 사실 확인 (전부 코드/에셋에서 직접 읽음)
+
+| # | 사실 | 근거 |
+|---|---|---|
+| 1 | `propFrame`은 **`CostumeManifestSO`가 아니라 `CostumeKeyposeTableSO`의 필드**다 | `Core/CostumeKeyposeTableSO.cs:70` `public byte propFrame;` |
+| 2 | 프로덕션 소비자 **0건** | `grep -rn propFrame --include=*.cs`가 내는 것은 선언 1곳 + 테스트 명부 1곳뿐. `Interaction/`·`States/` **0건** |
+| 3 | 실제로 `propFrame != 0`인 에셋은 **광부 K2 한 칸뿐** | `CostumeKeyposeTable_mine.asset:37`. 나머지 3종 12칸 전부 0 |
+| 4 | 매니페스트에 **「프레임별 조각」을 담을 자리가 없다** | `CostumeManifestSO`의 배열은 `propShapes` · `stageShapes` 둘뿐이고 둘 다 「단계」 축이다 |
+| 5 | 회귀 명부 등재는 **역방향 장치까지 갖춘 모범 형태**다 | `TestClaimExpiryAuditTests.cs:955` — 렌더러 소스에 `propFrame`이 나타나면 `Assert.Pass`로 갈라져 «승격하라»고 말한다. 전제 실단언 2개(파서 생존 · 광부 표에 실제로 1이 있는가)가 `Ignore` **앞에** 있다 |
+
+⇒ **리더 브리핑의 전제(“v2→v3을 올려야 고칠 수 있다”)는 참이다.** 우회로는 없다 —
+조각에 「몇 번 프레임인가」를 실을 비트가 어디에도 없고, `name` 문자열 규약으로 때우는 것은
+이 저장소가 반복해 당한 «암묵 계약»이라 더 비싸다.
+
+### 18-1-2. 그런데 **이 스키마 승격이 사는 값이 작다** — 실측 3줄
+
+**(가) 없어도 타격은 읽힌다. 그 근거를 쓴 사람이 `design-motion` 자신이다.**
+`UX_MOTION_COSTUME_FOCUS.md` §5-3 원문:
+
+> **K1(dY +0.018, lean −4.0) → K2(dY −0.030, lean +5.0)의 한 스텝 만에 0.048 H(2.89 pt @0.75)
+> 낙차 + 9.0° 기울임 반전이 <u>타격의 전부</u>다.**
+
+여기에 **손의 이동이 더 크다**: K1은 «손이 머리 위 1.0653 H», K2 접촉점은 (0.28, **0.85**) H
+⇒ **0.215 H = 12.9 pt @0.75**가 **보간 없이 한 프레임에** 일어난다.
+**섬광은 그 위에 얹는 장식이지 타격의 하중을 지지 않는다.**
+
+**(나) 섬광 자체가 이 배율에서 「획 3개」로 안 읽힌다.**
+`EQUIPMENT_SHAPE_SPEC_COSTUME_PROPS.md` §3-3의 확정 좌표는 세 획이 **접촉점을 공유**하고(d=0)
+길이가 0.0606 / 0.0611 / 0.0636 H = **3.65 / 3.67 / 3.82 pt @0.75**, 획 폭은 **2.04 pt**다.
+⇒ 세 획의 합집합은 **반경 ≈ 4.9 pt짜리 잉크 덩어리 하나**(최장 획 3.83 + 획 반폭 1.02)다. 방향 3개(150°/190°/258°)는
+**설계상으로만 셋이고 화면에서는 하나**다. (design-equipment가 모션 초안의 0.04 H를
+«1.18 W_P < 하한 1.50»으로 이미 한 번 기각했다 — 확정값도 1.79~1.88 W_P로 **하한 바로 위**다.)
+
+**(다) 노출 시간을 실제로 계산했다** — `CostumeFocusRhythm` 산식 그대로, 25분 세션 기준.
+`FocusSessionPhases`: D=1500s, E=clamp(0.2×1500,60,300)=300 ⇒ **몰입기 900 s**, 소구간 각 300 s.
+`PeriodSeconds = clamp(900/3/3, 4, 8) = 8`, `loopSeconds = 4키 / fps`.
+
+| 소구간 | fps | duty | loop(s) | LoopCount | W(s) | 주기 수 | K2 노출 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 진입 | 3 | 1/3 | 1.3333 | 2 | 2.667 | 37.5 | 75회 × 0.333s = **25.0 s** |
+| 절정 | 5 | 1/2 | 0.8000 | 5 | 4.000 | 37.5 | 187.5회 × 0.200s = **37.5 s** |
+| 이완 | 3 | 1/6 | 1.3333 | 1 | 1.333 | 37.5 | 37.5회 × 0.333s = **12.5 s** |
+| **합** | | | | | | **300회** | **75.0 s** (세션의 5.0%) |
+
+⇒ **광부 코스튬을 입은 사용자 한정으로, 25분에 300번 점멸하는 4.7pt짜리 점 하나**가
+이 스키마 승격이 사는 전부다.
+
+### 18-1-3. 반대편 — 지금 올릴 때의 **되돌릴 수 없는 비용**
+
+1. **v2 앱이 v3 매니페스트를 통째로 거부한다**(`CostumeCatalog.cs:242`). `StickPackManifestSO.SchemaVersion`
+   문단이 2026-09-08에 스스로 못박은 판단 기준이 **그대로 적용된다**:
+   > **판단 기준은 하나다: 팩보다 먼저 출하되는 앱 빌드가 존재하는가.**
+   지금은 **없다**(팩 매니페스트 0개, 앱 미출시). ⇒ **서두를 이유가 구조적으로 없다.**
+2. **승격은 한 번에 두 축을 건드린다.** 「프레임」 축을 열면 `stageShapes`(단계 축)와
+   **곱집합**이 된다 — 단계 4 × 프레임 N. 그 곱을 어느 쪽이 소유하는지를 정하는 것이
+   진짜 설계이고, **광부 1종 · 프레임 2벌**은 그 설계를 정당화할 표본이 못 된다.
+   표본이 하나일 때 연 통로는 두 번째 사용자에게 거의 항상 안 맞는다.
+3. **PC-1(「1회만 그린다」)의 검증 자산이 흔들린다.** 지금 `PointWriteCount`는 «빌드 뒤 0»을
+   문자 그대로 잰다(합격선 P-1). 프레임 축이 들어오면 조각이 «지어두고 꺼둔» 상태로 늘어나
+   `ActiveVisualCount` / `ActiveColliderCount` 기준선이 코스튬마다 달라진다.
+
+### 18-1-4. 판정
+
+> ### ★ **미룬다.** 이번 4세트 출시에 `propFrame`을 넣지 않는다. **스키마는 v2로 동결.**
+> **대신 3가지를 이 라운드에 처리한다(전부 싸다):**
+> 1. **명부 등재를 유지한다.** `TestClaimExpiryAuditTests.cs:955`의 역방향 장치가 이미 옳다 — **건드리지 마라.**
+> 2. ★ **`CostumeKeyposeTableSO.propFrame`의 툴팁에 「아직 아무도 안 읽는다」를 적는다.**
+>    지금 툴팁은 *"프롭 렌더러가 enabled 토글만 한다"*라고 **현재형으로 거짓말**을 하고 있다
+>    (`CostumeKeyposeTableSO.cs:69`). 다음 저작자가 이 툴팁을 믿고 값을 적으면
+>    «적었는데 왜 안 되지»가 반복된다 — 이 저장소가 `AuditBaseCohortSilentDeclaration`을 만든 바로 그 병이다.
+>    **이것은 `.cs` 1줄 수정이므로 리더가 coder에게 배정할 일이고, 나는 하지 않는다.**
+> 3. **광부 K2의 「접촉」 신호를 섬광 없이 보강할 수 있는지는 `design-motion` 축**이다
+>    (예: K2의 `bodyOffsetY`를 −0.030에서 대역 상한 −0.032로). **내 소관이 아니라 리더 라우팅.**
+>
+> **되살릴 조건(이것이 오면 그때 v3을 연다)**: 프레임 축을 **쓰는 코스튬이 2종 이상** 나오고,
+> 그중 하나라도 **프레임 수가 2를 넘을** 때. 그 전에는 표본이 하나라 통로를 잘못 판다.
+
+---
+
+## 18-2. 【판정 2】 `filled` 비트의 렌더러 2곳 의미 불일치 — **통합하지 않는다. 문서에 못박고 좌표로 푼다**
+
+### 18-2-1. 두 뜻의 실체 (코드 실측)
+
+| 렌더러 | `filled == true`가 하는 일 | 근거 |
+|---|---|---|
+| **장비** `CharacterAccessoryRenderer` | `AccessoryShapeBuilder.BuildFillMesh` → **진짜 `MeshFilter`+`MeshRenderer`**, 그리고 **윤곽 색이 `FillOutlineColor`로 바뀐다** | `:988-992`, `:1061-1063` |
+| **프롭** `CostumePropRenderer` | **같은 폴리라인을 `stroke × 2.2f`로 한 번 더 긋는다.** 메시 0줄 | `:278`, `:525-549` |
+
+```
+CostumePropRenderer.cs:278
+    if (meta.filled) CreateShapeLine(pts, meta, ink, stroke * 2.2f, SortingPropFill, fill: true);
+```
+
+### 18-2-2. ★ **지금 실제로 문제를 일으키고 있다** — 출하 에셋 실측(R29 이후 재저작본)
+
+채움 반폭 = 1.10 W_P = **0.0373 H**. 닫힌 도형의 최대 내접원 ρ_in이 그보다 크면 **가운데가 뚫린다**.
+
+| 코스튬 | 채움 조각 | ρ_in | 판정 | 단계 |
+|---|---|---:|---|---|
+| `costume.cyber` | `BasePad` | **0.0600 H (1.77 W_P)** | ✗ **구멍 반경 0.0227 H = 1.37 pt** | S0~S3 **전부** |
+| `costume.mine` | `Vein1` | **0.0494 H (1.46 W_P)** | ✗ **구멍 반경 0.0121 H = 0.73 pt** | S0~S3 **전부** |
+| `costume.arcane` | `StaffMoon` | 0.0337 H (1.00 W_P) | ✅ 꽉 참 | 전부 |
+| `costume.office` | `DeskLip` | 0.0335 H (0.99 W_P) | ✅ 꽉 참 | 전부 |
+
+★ **R29 §6-2의 네 값(0.0600 / 0.0494 / 0.0337 / 0.0335)을 내가 독립 파서로 그대로 재현했다.**
+다만 R29는 **설계본**을 쟀고 나는 **15:57 재저작된 출하 에셋**을 쟀다 —
+⇒ **결함이 설계 문서에만 있는 것이 아니라 지금 화면에 나가는 데이터에 들어 있다.**
+`EQUIPMENT_SHAPE_SPEC_COSTUME_PROPS.md` §5-1이 «팩 정체는 채움 1개가 진다»라고 못박은 그 조각이,
+**4종 중 2종에서 「색면」이 아니라 「가운데 뚫린 굵은 테두리」로 나온다.**
+
+### 18-2-3. 금지대 하한도 함께 재봤다 (채움이 낀 쌍만, 하한 2.60 W_P = 0.0881 H)
+
+| 코스튬 | 최악 쌍 | d | 판정 |
+|---|---|---:|---|
+| `cyber` | `Mast × BasePad` | **0.0300 H (0.88 W_P)** | ★ **미확인 — 의도 판정 필요**(기둥이 발판 «위에 선» 것이면 잉크 합쳐짐이 정상이다) |
+| `mine` | `RockFace × Vein1` | **0.0733 H (2.16 W_P)** | ★ **위반 후보** — 광맥이 벽 «안의 다른 것»으로 읽혀야 하는데 2.2배 획끼리 붙는다 |
+| `arcane` | — | — | ✅ 위반 0건 (R29 §6-4의 `Ring1/2/3` 재배치가 **에셋에 반영돼 있다**) |
+| `office` | — | — | ✅ 위반 0건 |
+
+> ★ **자기 한계 신고**: 내 하니스는 «떨어져 보여야 하는 쌍»과 «붙어 있는 것이 의도인 쌍»을
+> 구분하지 못한다(R29의 `r28_props.py`는 구분한다). 위 두 줄은 **숫자만 참**이고
+> **의도 판정은 `design-equipment` 소관**이다 — 리더 라우팅.
+
+### 18-2-4. 통합(프롭을 메시 채움으로) 비용 — 세어 봤다
+
+| 항목 | 무엇이 바뀌는가 |
+|---|---|
+| 새 코드 경로 | `AddFill` 계열(삼각분할 + `MeshFilter`/`MeshRenderer` + 정점색 + `FillDepthOffset`)이 프롭 렌더러에 복제된다. 장비 쪽 실물은 `CharacterAccessoryRenderer.cs:1050-1085` **35줄 + 메시 수명 관리**(`_fillMeshes` 직접 파괴 — GameObject를 지워도 메시는 남는다) |
+| 검증 자산 | `ActiveVisualCount`가 `LineRenderer` 수로 정의돼 있다(`:99-101`). 메시가 오면 **이 계기의 뜻이 바뀐다** — V14/P-1/P-5의 기준선을 전부 다시 잡아야 한다 |
+| 불변 원칙 2 | **투명 오버레이 위 불투명 면적이 커진다.** 프롭은 −8/−7층이라 바탕화면 바로 위다 |
+| 되돌릴 수 없나 | **아니다.** 이건 렌더링 구현이지 **계약이 아니다** — 에셋의 `filled` 비트는 한 글자도 안 바뀐다 |
+
+### 18-2-5. 판정
+
+> ### ★ **통합하지 않는다.** 다만 **「문서에 적고 끝」도 아니다** — 지금 화면에 결함이 나가고 있다.
+> **근거**: (가) 통합은 **되돌릴 수 없는 결정이 아니다** — 언제든 나중에 할 수 있고, 지금 해야 할
+> 이유가 «이름이 같다»뿐이다. (나) 원칙 2(비침해)가 **반대 방향으로** 민다 — 바탕화면 위 불투명
+> 면적을 늘리는 변경을 «이름 통일»을 위해 하지 않는다. (다) `filled` 조각은 **4종에 5개씩, 전부
+> 같은 하나의 조각**이라 좌표로 푸는 비용이 압도적으로 싸다.
+>
+> **그래서 3단으로 나눈다:**
+> 1. **(구조·이번 라운드)** ★ **이름을 안 바꾸는 대신, 뜻을 코드가 말하게 한다.**
+>    `AccessoryWornShapeData.filled`의 XML 문서가 지금 *"윤곽선 아래에 <b>채움 면</b>을 한 장 깔 것인가"*
+>    라고 **장비의 뜻만** 적고 있다(`AccessoryDefSO.cs:152`). 이 한 문장이 R28을 함정에 빠뜨린 원인이다.
+>    ⇒ **«소비자마다 뜻이 다르다 — 장비=메시, 프롭=2.2배 획»을 그 문서에 적는다.**
+>    조각 계약은 두 렌더러의 **공유 계약**이므로, 뜻이 갈린다는 사실은 **계약서에 있어야 한다.**
+>    (`.cs` 주석 수정 → **리더가 coder에게 배정**. 나는 안 한다.)
+> 2. **(회귀·이번 라운드)** ★ **하한을 테스트로 잠근다.** `CostumePackCostumeAssetTests`에
+>    «`filled && loop`인 조각의 ρ_in ≤ 1.10 × `StrokeWidthRatio`»를 넣는다. **숫자를 베끼지 말고
+>    `CostumePropRenderer`의 상수를 참조**할 것(CLAUDE.md 하드코딩 금지). 이게 없으면 다음 저작자가
+>    같은 함정에 **세 번째로** 빠진다. `design-equipment`가 R28→R29에서 이미 두 번 빠졌다.
+> 3. **(조형·다음 라운드)** `cyber/BasePad` · `mine/Vein1` 좌표를 ρ_in ≤ 0.0373 H로 줄이거나
+>    (얇은 띠로 쪼개거나) **채움을 포기하고 보조색 선으로 정체를 지게 한다**. → `design-equipment`.
+
+---
+
+## 18-3. 【판정 3】 코스튬 3팩을 **이 게임 최초의 유료 DLC**로 만들 때 — **스토어 채널을 지금 확정하지 않는다**
+
+### 18-3-1. 오늘의 실물 (전수, 양·음 대조 포함)
+
+```
+# 음성 확인
+$ find Assets -iname "*StickPackManifest*"        → .cs / .cs.meta 2건. .asset 0건
+$ grep -rl "packId:" Assets/                      → 0건
+# 양성 대조(같은 명령이 같은 트리에서 실제로 파일을 찾는가)
+$ grep -rl "costumeKey:" Assets/                  → 4건 (cyber/mine/arcane/office)
+$ ls Assets/_Project/Resources/Items/*.asset | wc -l → 50  (아이템 42 + 코스튬 8)
+# 스토어 심볼
+$ grep -rn STICKMATE_STEAMWORKS_INSTALLED ProjectSettings/  → 0건
+  ProjectSettings.asset:685  scriptingDefineSymbols: {}     ← 비어 있다
+```
+
+⇒ **팩 매니페스트 0개 · Steamworks 미설치.** `SteamPackEntitlementSource.Query`는
+`#else` 가지로 컴파일돼 **언제나 `Unknown`**이고, `Unknown`은 «새로 시작 거부»다.
+
+### 18-3-2. ★ 오늘 트리에서 `costume.cyber/mine/arcane`이 **화면에 뜰 수 없는 이유는 4겹**이다
+
+`CostumeResolver.Resolve()`를 위에서부터 실제로 밟았다. 팩 갈래(코호트 ≠ 0)에 **도달조차 못 한다**:
+
+| 겹 | 어디서 죽는가 | 무엇이 없어서 |
+|---|---|---|
+| ① | `Resolve()` 2단 — 4슬롯 코호트 합의 | **팩 코호트 아이템이 0개**라 착용 4자리가 언제나 코호트 0 ⇒ 기본 테마 갈래로 빠진다 |
+| ② | `CostumeCatalog.FindByBaseTheme` | 세 코스튬은 `sourceKind: 1(Pack)`이라 **기본 테마 갈래에서 안 잡힌다**(에셋 실측: `:17`) |
+| ③ | `PackRegistry.FindByCohort` (4a) | **매니페스트 0개** ⇒ `null` ⇒ 즉시 `null` 반환 |
+| ④ | `CostumeEntitlement.IsOpen` (4c) | 매니페스트가 생겨도 `entitlements`에 항목이 있으면 `StateOf` → `Unknown` → **닫힘** |
+
+★ **①②는 «순서» 문제가 아니라 «없으면 통째로 안 보임»이다.** 그리고 그 화면은
+`CostumeEntitlement.cs` 클래스 문서가 아홉 번 당했다고 적은 그 형태 —
+**«기능이 아직 안 붙었다»와 화면상 완전히 같다.**
+
+### 18-3-3. (a) **지금 실제 스토어 채널을 확정할 만큼 정보가 충분한가 → 아니다. 그리고 확정할 필요도 없다**
+
+**충분하지 않은 쪽:**
+- `PackEntitlementRef.entitlementId`의 툴팁이 **동결 대상**이라고 못박는다: *"절대 바꾸지 말 것 —
+  출시 후 재변경하면 이미 산 사람이 이 팩을 못 쓰게 됩니다."* 스팀 DLC appid는 **Steamworks에
+  DLC를 실제로 생성해야 나오는 숫자**다. 오늘 그 숫자는 **존재하지 않는다.**
+  존재하지 않는 값을 «자리표시자»로 적으면 그것이 곧 «바꿀 수 없는 값을 임시로 적는 것»이다.
+- `CHANNEL_PRICING_DECISIONS.md` 자신이 *"출시 결재 직전 재확인 필수"*라고 적었고,
+  10회차 배너까지 와서도 스팀 appid는 한 칸도 없다.
+
+**그런데 확정이 필요 없는 쪽 — 이게 핵심이다:**
+- `PackRegistry.Accepts`는 **`entitlements`가 비어도 팩을 싣는다.** 검사는 «항목이 있을 때
+  식별자가 비었는가»뿐이다(`PackRegistry.cs:319~337` — 검사는 `:324`의 «항목이 있는데 식별자가 비었는가» 하나뿐이다).
+- `CostumeEntitlement.IsOpen(pack)`: `pack.Entitlements.Count == 0` ⇒ **`StateOf`를 아예 안 부르고 `true`.**
+  **«무료는 안 묻는 것»**이 그 파일의 규칙 C-1이다.
+- 이 두 성질은 **이미 테스트가 잠그고 있다**:
+  `PackRegistryContractTests.cs:392` `Assert.AreEqual(0, loaded[0].Entitlements.Count)` ·
+  `CostumeEntitlementSingleGateTests.cs:305` *"채널 항목이 0개인 팩이 닫혔습니다"*.
+
+> ### ⇒ **`entitlements: []`(빈 배열)로 저작하면 채널을 한 글자도 안 정한 채 팩이 살아난다.**
+> **그리고 나중에 항목을 «추가»하는 것은 되돌릴 수 없는 결정이 아니다** —
+> 되돌릴 수 없는 것은 **이미 팔린 식별자를 바꾸는 것**이고, 아직 아무것도 안 팔았다.
+> **동결 시점은 «에셋을 저작하는 날»이 아니라 «스팀에 DLC를 올리는 날»이다.**
+
+### 18-3-4. (a′) 개발/QA 전용 채널은 **만들지 마라** — 감사가 그 길을 이미 막고 있다
+
+`EquipmentDebugUnlock` 패턴을 팩에 복제하려면 새 `IPackEntitlementSource`를 만들고
+`PackEntitlements.UseSource`를 불러야 한다. 그런데:
+
+```
+SteamEntitlementAdapterAuditTests.cs:260-269
+    // UseSource를 부르는 파일은 어댑터 자신뿐이어야 한다.
+    Assert.That(callers, Is.EquivalentTo(new[] { ApprovedFileName }));
+```
+
+⇒ **파일 하나만 승인돼 있다.** 새 출처를 만들면 이 관문을 손대야 하고, 그건 «결제 경계를 여는
+파일을 하나 더 승인하는» 결정이라 **`entitlements: []`보다 훨씬 비싸고 훨씬 덜 되돌릴 수 있다.**
+게다가 `UseSource`는 **1회 성공만** 허용해서 스팀 어댑터와 공존도 안 된다.
+**⇒ 개발용 채널은 기각. 안전한 첫걸음은 「빈 배열」 하나다.**
+
+### 18-3-5. (b) ★★ 안전한 첫걸음 — **다음 coder-systems 라운드가 그대로 실행할 수 있는 형태**
+
+> **범위 한 줄: 「사이버펑크 팩 하나」만 만든다.** (`CHANNEL_PRICING_DECISIONS` §53 Y-6 출시 순서:
+> 무료 독서실 → **사이버펑크** → 광부·대마법사. 그 순서를 그대로 따른다.)
+> **3팩을 한꺼번에 만들지 마라** — 아래 §18-3-6의 관문 3개를 **한 팩으로 먼저 뚫어야**
+> 두 번째·세 번째가 「에셋만 추가」가 된다. 그게 원칙 4의 합격 기준 자체다.
+
+#### 단계 1 — 팩 아이템 6개 저작 (`Assets/_Project/Resources/Items/`)
+
+`AccessoryDefSO` 6개. **슬롯 배분은 `design/art/PACK_THEME_SPEC.md` §2-1 확정: 6슬롯 × 1종
+(HEAD·EYES·NECK·BACK·FX·PET), HAIR 제외.** 각 에셋이 반드시 채워야 하는 칸(전부 `ItemCatalog`
+감사가 강제한다 — 빠지면 `Debug.LogError`가 뜨고 팩이 «조용히 약한 상품»이 된다):
+
+| 필드 | 값 | 강제하는 감사 |
+|---|---|---|
+| `cohortId` | **2** (9회차 SKU 표가 `pack.cyber` = 코호트 2로 확정) · 0 금지 | `PackRegistry.Accepts` |
+| `itemIndex` | **6** (기본 42종이 슬롯마다 0~5를 쓴다 — 실측 완료) | `ItemCatalog.EnsureLoaded` 자리 충돌 |
+| `requiredLevel` | **1** (`ItemCatalog.PackRequiredLevel`) | `AuditDeclarations` ⑥ |
+| `declaredRarity` | **Rare** — 6개 전부 같은 값(`MaxDeclaredRarityForPack` 상한) | 〃 ③④⑤ |
+| `themeKey` | **스탯 4슬롯만** 채운다. ★ **`"cyber"`를 쓰면 안 된다** — `IsBaseTheme("cyber") == true`라 무료 세트에 유료 아이템이 섞인다(`AuditPackThemeAndSubStat` ⑨). 별도 키(예: `packcyber`) | 〃 ⑧⑨⑫ |
+| `declaredSubStat` | **스탯 4슬롯만** 채운다(안 채우면 «현금 아이템이 무료 아이템보다 약하다») | 〃 ⑪ |
+| 〃 (FX·PET) | `themeKey` 비움 · `declaredSubStat` = None | 〃 ⑩ |
+| `wornShapes` | **HEAD/EYES/NECK/BACK 4종만** 좌표 스트림을 싣는다(§18-3-6 ③ 참조) | `AccessoryWornShapeReader.Validate` |
+
+#### 단계 2 — 팩 매니페스트 1개 (`Resources/Items/PackManifest_cyber.asset`)
+
+```
+packId: pack.cyber          ← ★ 동결. costume.cyber 에셋의 sourceId 와 문자 그대로 같아야 한다
+cohortId: 2                 ← 단계 1과 같은 값
+requiresSchemaVersion: 2    ← 3으로 올리지 마라(§18-3-7)
+displayNameKey: pack.cyber.name
+descriptionKey: pack.cyber.desc     ← ★ 둘 다 필수. 비면 매니페스트가 실리지 않는다
+declaredItemCount: 6        ← 실제 로드 수와 다르면 팩이 거부된다
+itemIndexBase: 6            ← 0 이하 금지. 실물이 6번보다 아래 있으면 거부된다
+paletteOrigin / paletteHueDegrees / primaryColor / secondaryColor  ← design-art 확정값
+entitlements: []            ← ★★ 이번 라운드의 핵심. 비우면 「무료 = 안 묻는다」로 열린다
+```
+
+#### 단계 3 — **같은 라운드에** 회귀 관문 3개를 넓힌다 (안 하면 라운드가 빨갛게 끝난다)
+
+★ **이게 이 판정에서 가장 실용적인 부분이다. 셋 다 내가 소스에서 직접 확인했다.**
+
+| # | 지금 무엇을 단언하는가 | 왜 깨지는가 |
+|---|---|---|
+| ① | `ItemCatalogAssetParityTests.cs:121` `Assert.AreEqual(42, defs.Length)` | 아이템이 48개가 된다 |
+| ② | 〃 `:137` `Assert.That(def.itemIndex, Is.InRange(0, 5))` | 팩 아이템이 6번이다 |
+| ③ | 〃 `:84` 골든 digest **«한 글자도 다르지 않다»** (`ItemCatalogGolden.txt`) | `ItemCatalogDigest.Build()`가 슬롯 전 자리를 훑으므로 6개가 추가된다 |
+
+> **넓히는 방향(권고)**: ①②는 **«기본 코호트만»**으로 좁혀 재정의한다
+> (`cohortId == BaseCohortId`인 것이 42개 · 자리 0~5). 팩 축의 개수·자리는 이미
+> `PackRegistry.Build`의 `declaredItemCount`/`itemIndexBase` 검사가 **더 정확하게** 잡고 있으므로
+> 여기서 또 세면 같은 사실이 두 곳에 앉는다(이 저장소가 반복해 금지한 형태).
+> ③은 **골든을 의도적으로 갱신**한다 — 그 파일 머리에 «2026-09-0x 첫 팩 6종 추가»를 남길 것.
+> **골든을 갱신하는 라운드는 갱신 전후 diff를 커밋 메시지에 붙인다**(값 보존이 전제인 테스트라
+> 조용히 갱신하면 이 테스트가 그날부터 아무것도 안 지킨다).
+
+#### 단계 4 — 화면에서 실제로 확인 (이게 없으면 «반쯤 착지»다)
+
+`EquipmentDebugUnlock`이 에디터에서 켜져 있으므로 6종이 보관함에 뜬다.
+**스탯 4슬롯에 팩 아이템을 걸치고 집중 세션을 몰입기까지 돌려 `costume.cyber` 프롭이 서는지**
+실기로 본다. `[코스튬프롭] 소환 —` 로그가 나와야 한다.
+
+### 18-3-6. ★★ 그러나 **먼저 리더가 알아야 할 구조 결함 3건** (전부 이번 라운드에 새로 실측)
+
+#### ① **`IsOwned`가 엔타이틀먼트를 보지 않는다** — 팩 아이템이 **Lv.1에 전원 무료**가 된다
+
+```
+ItemCatalogEntry.IsOwned(config)                       ← ItemCatalog.cs:403
+    => !RequiredLevel.HasValue
+       || EquipmentDebugUnlock.UnlockAll
+       || CharacterProgressionModel.Level >= RequiredLevel.Value    ← 팩은 1이다
+       || CurrencyModel.IsPurchasedItem(Id);
+```
+그 문서가 스스로 적어 뒀다: *"`IsOwned` = 레벨 파생 ∪ purchasedItemIds ∪ **(훗날) 엔타이틀먼트**"*.
+**그 «훗날»이 아직 안 왔다.** `EquipmentModel.IsItemOwned(:269)`도 같다.
+
+⇒ **팩 아이템 에셋이 폴더에 놓이는 순간, $4.99 팩의 6종이 Lv.1 전원에게 착용 가능해진다.**
+C층 게이트(`CostumeResolver`)가 닫는 것은 **집중 세션 연출**뿐이고 **아이템 자체가 아니다.**
+**출시 전에는 무해하지만 «안전한 첫걸음»이 재화 축에서 중립이 아니다** — 리더가 알고 넘어가야 한다.
+**권고**: 단계 3에서 `Tests/EditMode`에 **«팩 코호트 아이템의 보유 판정이 엔타이틀먼트를 본다»를
+`Assert.Ignore`(사유 포함)로 등재**해 러너에 계속 보이게 한다(CLAUDE.md 관례).
+지금 등재하지 않으면 이 구멍은 **출시 직전 패리티 감사에서야** 발견되는 종류다.
+
+#### ② **FX·PET 슬롯은 플러그인이 아니다** — 6종 중 **2종이 프로덕션 `.cs` 없이는 안 그려진다**
+
+| 슬롯 | 에셋 조형 통로 | 실측 |
+|---|---|---|
+| Head / Eyes / Neck / Shoulders | **있다** — `AccessoryShapeBuilder.TryWornAssetSlotOrder(:1617)`가 이 4개만 `true` | ✅ 에셋만으로 그려진다 |
+| **Fx / Pet** | **없다.** `CharacterFxRenderer.cs:448` · `CharacterPetRenderer.cs:1431`이 **`switch (item)`으로 0~5를 하드코딩** | ✗ 6번은 `default:` → `ShapeCoverageGuard.ReportMissing*Shape` |
+
+⇒ **불변 원칙 4의 구멍이 장비 슬롯이 아니라 「외형 2슬롯」에 있다.**
+(다행히 **조용히 실패하지 않는다** — `ShapeCoverageGuard`가 크게 신고한다. 그 장치는 옳다.)
+**선택지 2개, 리더 판정:**
+- **(가) 1차 팩을 4종(스탯 슬롯)으로 줄인다.** `declaredItemCount: 4`. `.cs` 0줄.
+  단 `design-art` §2-1의 «6슬롯 × 1종»과 `product-strategy`의 «슬롯당 12종» 분모 모형이 함께 흔들린다.
+- **(나) FX/PET에도 에셋 조형 통로를 연다.** 원칙 4가 원래 약속한 것이고 언젠가 해야 한다.
+  다만 FX/PET은 **좌표가 아니라 «거동»**(`TickSparkle`/`TickBalloon` …)이라 통로 설계가 별건이다.
+  ★ 그리고 `design-art` `PACK_THEME_SPEC` §6-2 실측이 이미 경고했다: **«FX 슬롯의 예약 가능 대역 0개»**.
+  **⇒ 나는 (가)에 기운다.** (나)는 §18-1과 같은 이유로 **표본이 늘어난 뒤에** 여는 것이 옳다.
+
+#### ③ **`costume.cyber`는 이미 «Pack 소스»로 저작돼 있고 그것이 옳다** — 되돌리지 마라
+
+`CostumeCatalog.AllowedBaseThemes()`는 **`office` 하나만** 허용한다. `cyber`를 BaseTheme으로 바꾸면
+감사가 «$4.99 팩의 간판 연출이 동전 6,600에 열린다»로 **거부**한다. 에셋(`sourceKind: 1`)이 맞다.
+
+### 18-3-7. 되돌릴 수 없는 결정 — 이번 라운드에 **동결되는 것 / 동결되지 않는 것**
+
+| | 항목 | 지금 동결되는가 |
+|---|---|---|
+| **동결** | `packId = "pack.cyber"` | ★ **예.** 엔타이틀먼트 키이자 세트 아이디. 그리고 `CostumeManifest_cyber.asset:18`의 `sourceId`가 **이미 이 문자열을 가리키고 있다** |
+| **동결** | `cohortId = 2` | ★ **예.** 등급 모집단이자 코스튬 해석의 축 |
+| **동결** | `costumeKey = "costume.cyber"` | ★ **이미 동결됐다** — 세이브의 누적 분이 이 문자열로 앉는다(`CostumeFocusRecord.costumeKey`) |
+| **동결** | 팩 아이템의 `itemId` 문자열 | ★ **예.** 세이브가 착용을 **아이디 문자열**로 적는다(v5부터) |
+| 동결 아님 | `entitlements[]` **항목** | 아직 아무것도 안 팔았다. **스팀에 DLC를 올리는 날 동결된다** |
+| 동결 아님 | `PackStoreChannel` **선택** | 항목이 비어 있으므로 선택 자체가 없다 |
+| 동결 아님 | `declaredItemCount` · `itemIndexBase` | 출시 전에는 얼마든지 조정 가능(검사값이지 계약이 아니다) |
+| **안 올린다** | `StickPackManifestSO.SchemaVersion` | **2 유지.** 그 필드 문서가 2026-09-08에 스스로 세운 기준 «팩보다 먼저 출하되는 앱 빌드가 존재하는가»에 대해 **답이 아니오**다. 첫 팩과 첫 팩-지원 앱이 **같은 빌드**다 |
+| **안 올린다** | `CharacterSaveStore.CurrentVersion` | 팩 보유는 저장하지 않는다(§E-4-a). 이 라운드는 세이브를 **한 칸도** 건드리지 않는다 |
+
+### 18-3-8. 착수 순서 — 「A를 안 하면 B가 어떻게 막히는가」
+
+```
+0. (리더 판정) 팩 구성 6종 → 4종인가                     ← §18-3-6 ②. 이걸 안 정하면 단계 1의 에셋 수가 안 정해진다
+1. 팩 아이템 에셋 (cohort 2, index 6)                    ← 이게 없으면 PackRegistry.Build 가 declaredItemCount 불일치로 팩을 거부한다
+2. 팩 매니페스트 (entitlements: [])                      ← 1이 먼저다. 순서를 바꾸면 «고아 매니페스트»로 거부된다
+3. 관문 3개 확장 (42종 · 자리 0~5 · 골든)                 ← 1·2와 같은 라운드. 안 하면 라운드가 빨갛게 끝나고 «무엇이 진짜 실패인지» 안 보인다
+4. 실기 확인 (프롭이 서는가)                              ← 1~3이 다 있어야 CostumeResolver 가 4단까지 간다
+5. (별건·나중) IsOwned 엔타이틀먼트 항                     ← 출시 전 아무 때나. 단 §18-3-6 ①을 지금 Assert.Ignore로 등재해 둘 것
+6. (별건·훨씬 나중) Steamworks 설치 + appid + entitlements 채우기
+```
+
+★ **3을 «다음 라운드»로 미루지 마라.** 이 저장소의 §17-14 자기 정정이 정확히 그 형태였다 —
+*"모델 + 테스트만 만들고 배선을 다음 라운드로 넘겼다"*.
+
+---
+
+## 18-4. 플랫폼 영향 (§18 라운드)
+
+- **Windows 영향: 없음(문서·판정만).** 다만 판정 3이 Windows에 **비대칭으로 유리**하다:
+  1차 출시가 Windows 단독(`CHANNEL_PRICING_DECISIONS` §45)이고 `Store/SteamPackEntitlementSource.cs`가
+  `#if UNITY_STANDALONE_WIN || UNITY_STANDALONE_OSX`라 **양쪽 다 컴파일되지만**
+  `STICKMATE_STEAMWORKS_INSTALLED`가 없어(`ProjectSettings.asset:685` `scriptingDefineSymbols: {}`)
+  **두 데스크톱 모두 `Unknown`**이다. `entitlements: []` 안은 **이 심볼을 전혀 건드리지 않으므로**
+  Windows/macOS 어느 쪽도 새 분기가 생기지 않는다.
+- **macOS 영향: 없음(문서·판정만).** `PackStoreChannel.MacAppStore`는 열거형에만 있고 어댑터가 없다.
+  `CHANNEL_PRICING_DECISIONS` §0-0(가)가 «맥 앱스토어 1차 제외»를 확정했으므로 **지금 비워 두는 것이
+  전략과 일치**한다.
+- **iPad / iPhone 영향: ★ 여기서만 갈린다(리더가 알아야 할 것).**
+  `SteamPackEntitlementSource.cs`는 파일 전체가 위 `#if` 안이라 **iOS 타깃에서는 타입이 존재하지 않는다.**
+  ⇒ 모바일에서는 출처가 영원히 `NullPackEntitlementSource` ⇒ **항목이 있는 팩은 전원 닫힘.**
+  **`entitlements: []` 안은 이 문제도 함께 피한다**(4플랫폼 전부에서 열린다).
+  항목을 채우는 날에는 **`AppleStoreKit` 어댑터가 선결 조건**이고, 그때
+  `SteamEntitlementAdapterAuditTests`의 `ApprovedFileName` 단일 승인(:268)을 **2개로 넓히는 결정**이
+  함께 필요하다 — **그 순간이 판정 3이 진짜로 되돌릴 수 없어지는 시점**이다.
+- 판정 1·2는 `Interaction/`·`Core/`의 플랫폼 중립 코드만 다룬다. 분기 0건.
+
+## 18-5. 미확인 — 추측으로 메우지 않은 것
+
+1. **`cyber/Mast × BasePad`(0.0300 H)가 결함인가 의도인가** — 내 하니스는 «붙는 것이 의도인 쌍»을
+   구분 못 한다. `design-equipment`의 `r28_props.py`가 구분한다. **판정은 그쪽.**
+2. **팩 아이템 6종의 실제 조형 좌표** — `design/art/PACK_THEME_SPEC.md` §5-2가 사이버 6종의 **이름과
+   붙는 자리**는 정했지만, `wornShapes` 스트림으로 넣을 **H/R 배수 좌표 전문**이 있는지는 안 셌다.
+   단계 1의 진짜 규모는 **그 좌표가 있는가**에 달려 있고 나는 **세지 않았다.**
+3. **보관함/상점 UI가 코호트 ≠ 0 아이템을 어떻게 그리는가** — `CharacterInfoWindow.*`는 이번 라운드
+   범위 밖이라 안 읽었다. 팩 카드에 «구매» 문구가 필요한지는 **`ux-designer` 축**이다.
+4. ★ **이름이 갈라져 있다 — 「같은 팩인가」를 내가 못 정한다.** `design/art/PACK_THEME_SPEC.md` §5-2의
+   `pack.cyber`는 **「사이버 아포칼립스 — 덧대어 살아남은 것」**(172° 독성 청록)이고,
+   `product-strategy`가 그 팩에 묶은 코스튬은 **「사이버펑크 연구원」**이다.
+   ⇒ **찢어진 방수포 망토와 부서진 드론을 걸치면 「연구원」 홀로그램 콘솔이 뜬다.**
+   구조는 성립한다(코호트만 맞으면 된다). **어조가 성립하는가는 `design-art` × `product-strategy` 축**이고,
+   §18-3-5 단계 1이 이 6종의 이름을 `itemId`로 굳히므로 **저작 전에 정하는 편이 싸다**(아이디는 동결 대상이다).
+5. **EditMode 러너를 돌리지 않았다.** §18-3-5 단계 3의 «세 관문이 빨개진다»는 **소스 단언을 읽고 낸
+   결론**이지 실행 결과가 아니다. 리더가 그 라운드에서 **실제로 빨간 것을 먼저 확인**하고
+   고치게 할 것 — 안 빨개지면 내 독해가 틀린 것이므로 그 사실이 더 중요하다.
+
+---
