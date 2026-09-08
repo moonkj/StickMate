@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using StickMate.Core;
 using StickMate.Platform;
@@ -3537,7 +3538,61 @@ namespace StickMate.States
         /// 목표도 생기지 않는다 — 발판 목록은 전부 화면 안의 창이고, 상한은 호출부가
         /// <see cref="AutoWanderController.ResolveRopeClimbMaxHeight"/>로 화면 클램프까지 잘라 넘긴다.</para>
         /// </summary>
+        /// <summary>목표 지향 등반의 후보 하나. <see cref="TryPickClimbTarget"/>이 전부 모은 뒤
+        /// 무작위로 하나를 고른다(아래 <c>rng</c> 문단 참고) — 필드 하나짜리 구조체라 리스트에
+        /// 값으로 쌓아도 박싱이 없다.</summary>
+        private readonly struct ClimbCandidate
+        {
+            public readonly long Handle;
+            public readonly float TopWorldY;
+            public readonly float ApproachWorldX;
+            public readonly int Direction;
+
+            public ClimbCandidate(long handle, float topWorldY, float approachWorldX, int direction)
+            {
+                Handle = handle; TopWorldY = topWorldY; ApproachWorldX = approachWorldX; Direction = direction;
+            }
+        }
+
+        /// <summary>목표 지향 등반이 후보를 모을 때 재사용하는 버퍼 — 24시간 상주 앱이라 호출마다
+        /// 새 리스트를 할당하지 않는다(이 메서드는 climbSeekIntervalSeconds 주기로만 불리므로 GC
+        /// 압박이 크진 않지만, 이 저장소의 다른 재사용 버퍼(_reportBuilder 등)와 같은 관례를 따른다).</summary>
+        private readonly List<ClimbCandidate> _climbCandidateBuffer = new List<ClimbCandidate>(8);
+
+        /// <summary>
+        /// ★★★ 2026-09-08 — <b>무작위 선택</b>으로 바꿨다(사용자 지시: "높은창에서 낮은창으로 밧줄만
+        /// 안던지게 하고 낮은창에서는 높은창으로 밧줄던져서 이동가능 그렇게만 하면되는거 아니야?
+        /// 올라갈때는 낮은창이든 높은창이든 랜덤").
+        ///
+        /// <para>이전에는 <b>최단거리 하나만</b> 골랐다(`distance &lt; bestDistance`로 계속 갱신). 그
+        /// 결과 화면에 가까운 저층 창이 있으면 매번 그 창만 결정론적으로 뽑혔고, 먼 고층 창은 사실상
+        /// 영영 선택되지 않았다 — 사용자 신고 "낮은창과 높은창이 있으면 무조건 낮은창에 밧줄던짐" /
+        /// "움직이는 행동 범위 자체가 너무 좁음" / "창에서 창으로 이동하기도 했는데 지금은 전혀 안함"이
+        /// 전부 이 결정론 하나에서 나왔다 — 항상 같은 가까운 목표로 수렴하니 범위가 좁아 보이고, 매번
+        /// 같은 곳만 오가니 다른 창으로 이어지는(체이닝) 그림도 안 나왔다.</para>
+        ///
+        /// <para>지금은 대역·화면 안 필터를 통과한 후보를 <b>전부</b> 모은 뒤 <paramref name="rng"/>로
+        /// 균등 무작위 선택한다. 그러면 낮은 창과 높은 창이 같은 확률로 뽑히고("올라갈때는 낮은창이든
+        /// 높은창이든 랜덤"), 어느 창에 올라서든 다음 주기엔 또 다른 창이 뽑힐 수 있어 여러 창을 잇는
+        /// 이동이 자연히 나온다.</para>
+        ///
+        /// <para>★ <b>"높은 창→낮은 창으로는 절대 안 던진다"는 이 무작위화와 무관하게 이미 구조적으로
+        /// 보장돼 있다</b> — 아래 <c>height = topLeftWorld.y - info.GroundWorldY</c>가 <b>지금 딛고
+        /// 선 자리 기준 상대 높이</b>이고, <c>height &gt; minHeight</c> 필터를 못 넘으면(= 지금 서 있는
+        /// 높이보다 낮거나 같으면) 애초에 후보 목록에 들어오지 못한다. 그래서 무작위 선택 범위 자체가
+        /// «지금보다 위에 있는 것들»로만 한정된다 — 사용자가 지시한 두 규칙("높은→낮은 금지",
+        /// "낮은→높은 허용")을 이 필터 하나가 이미 함께 만족시킨다. 새 게이트를 추가하지 않는다.</para>
+        ///
+        /// <para>★ 직전에 뽑았던 벽은 <paramref name="excludeHandle"/>로 넘기면 후보가 둘 이상일 때만
+        /// 제외한다(하나뿐이면 그거라도 쓴다) — 그래야 창 2개 사이를 왕복하는 대신 세 번째 창으로
+        /// 이어질 여지가 생긴다. 필수 규칙은 아니라 후보가 그것 하나뿐이면 배제하지 않는다.</para>
+        ///
+        /// <para>★ <paramref name="rng"/>를 <see cref="AutoWanderController"/>가 이미 갖고 있는 시드
+        /// 가능한 <c>System.Random</c>을 그대로 받는다 — <c>UnityEngine.Random</c>을 새로 쓰면 이
+        /// 메서드만 테스트에서 결정론을 잃는다(그 클래스의 기존 확률 추첨들과 같은 관례).</para>
+        /// </summary>
         public bool TryPickClimbTarget(GroundSensor.GroundInfo info, float minHeight, float maxHeight,
+            System.Random rng, long excludeHandle,
             out long wallHandle, out float wallTopWorldY, out float approachWorldX, out int approachDirection)
         {
             wallHandle = 0L;
@@ -3545,20 +3600,18 @@ namespace StickMate.States
             approachWorldX = 0f;
             approachDirection = 0;
 
-            if (MainCamera == null || Body == null || !info.Grounded) return false;
+            if (MainCamera == null || Body == null || !info.Grounded || rng == null) return false;
             var footholds = FootholdPoller != null ? FootholdPoller.CachedFootholds : null;
             if (footholds == null || footholds.Count == 0) return false;
             if (!(maxHeight > minHeight)) return false;
 
-            float bodyX = Body.position.x;
             _ = ScreenCoordinateConverter.WorldToOsScreen(MainCamera, Body.position, Config, out float depth);
             float standoff = ClimbApproachToleranceWorld;
 
             // 화면 안에서만 목표를 고른다 — 걸어갈 수 없는 자리를 고르면 영원히 도착하지 못한다.
             bool hasWalkable = TryGetWalkableScreenBoundsWorld(out float walkLeftX, out float walkRightX);
 
-            float bestDistance = float.PositiveInfinity;
-            bool found = false;
+            _climbCandidateBuffer.Clear();
 
             for (int i = 0; i < footholds.Count; i++)
             {
@@ -3571,6 +3624,7 @@ namespace StickMate.States
                 float candMin = Mathf.Min(topLeftWorld.x, topRightWorld.x);
                 float candMax = Mathf.Max(topLeftWorld.x, topRightWorld.x);
 
+                // ★ 지금 딛고 선 자리보다 «위»에 있는 것만(사용자 지시 "높은창에서 낮은창으로는 안됨").
                 float height = topLeftWorld.y - info.GroundWorldY;
                 if (!(height > minHeight) || height > maxHeight) continue;
 
@@ -3585,21 +3639,38 @@ namespace StickMate.States
                     int dir = side == 0 ? 1 : -1;
                     if (hasWalkable && (ax < walkLeftX || ax > walkRightX)) continue;   // 걸어갈 수 없는 자리
 
-                    float distance = Mathf.Abs(ax - bodyX);
-                    bool better = !found || distance < bestDistance
-                        || (Mathf.Approximately(distance, bestDistance) && fh.Handle < wallHandle);
-                    if (!better) continue;
-
-                    bestDistance = distance;
-                    wallHandle = fh.Handle;
-                    wallTopWorldY = topLeftWorld.y;
-                    approachWorldX = ax;
-                    approachDirection = dir;
-                    found = true;
+                    _climbCandidateBuffer.Add(new ClimbCandidate(fh.Handle, topLeftWorld.y, ax, dir));
                 }
             }
 
-            return found;
+            if (_climbCandidateBuffer.Count == 0) return false;
+
+            // 직전 목표는 다른 후보가 있을 때만 뺀다 — 그래야 두 창 사이 왕복 대신 세 번째로 번진다.
+            int poolCount = _climbCandidateBuffer.Count;
+            bool canExclude = excludeHandle != 0L;
+            if (canExclude)
+            {
+                int withoutPrev = 0;
+                for (int i = 0; i < _climbCandidateBuffer.Count; i++)
+                {
+                    if (_climbCandidateBuffer[i].Handle != excludeHandle) withoutPrev++;
+                }
+                canExclude = withoutPrev > 0;
+            }
+
+            int pickIndex;
+            do
+            {
+                pickIndex = rng.Next(_climbCandidateBuffer.Count);
+            }
+            while (canExclude && _climbCandidateBuffer[pickIndex].Handle == excludeHandle);
+
+            ClimbCandidate picked = _climbCandidateBuffer[pickIndex];
+            wallHandle = picked.Handle;
+            wallTopWorldY = picked.TopWorldY;
+            approachWorldX = picked.ApproachWorldX;
+            approachDirection = picked.Direction;
+            return true;
         }
 
         /// <summary>

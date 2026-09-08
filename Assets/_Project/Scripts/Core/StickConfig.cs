@@ -1114,6 +1114,36 @@ namespace StickMate.Core
         [Tooltip("Walk(Moving) 지속 시간 최대(초). 26-1.")]
         public float wanderWalkDurationMax = 4.0f;
 
+        [Tooltip("★★ 2026-09-08 신설 — 한 걷기 구간이 최소한 걸어야 하는 <b>화면 비례</b> 거리(걸어갈 수 " +
+                 "있는 화면 폭의 비율).\n" +
+                 "사용자 지시: '일단 한번 추첨해서 걸으면 좀 많이 이동해야하는데 너무 짧게 이동함'.\n" +
+                 "★ 왜 필요한가 — wanderWalkDurationMin/Max(1.5~4.0초)는 <b>고정 초</b>다. 속도는 " +
+                 "ResolveWalkSpeed()가 캐릭터 배율에 비례해 정하므로(배율이 작을수록 느리다), 큰 화면 " +
+                 "+ 작은 배율이 겹치면 한 구간에 걷는 <b>물리 거리</b>가 화면의 몇 %밖에 안 된다 — 실측: " +
+                 "사용자 환경(배율 0.35x, 보행속도 0.875유닛/s)에서 1.5~4.0초 구간은 1.3~3.5유닛뿐이고, " +
+                 "화면(4K, 약 30H)의 3~8%에 그친다. 오늘 밧줄 상한(ropeClimbMaxScreenFraction)이 겪은 " +
+                 "것과 같은 병이다 — 고정 배수/고정 초는 화면이 커질수록 화면의 더 작은 조각이 된다.\n" +
+                 "★ wanderWalkDurationMin/Max의 <b>뜻은 그대로 둔다</b>(초 단위 추첨) — 이 값은 그 결과가 " +
+                 "너무 짧을 때만 끌어올리는 <b>바닥값</b>이다: 목표거리 = 걸을 수 있는 화면 폭 × 이 비율, " +
+                 "바닥 지속시간 = 목표거리 / 속도, 최종 지속시간 = max(추첨값, min(바닥, " +
+                 "wanderWalkDurationScreenRelativeCapSeconds)). 그래서 이미 작은 화면(배치모드 테스트 " +
+                 "640×480 등)에서는 바닥값이 추첨값보다 작아 <b>한 글자도 안 바뀐다</b> — 큰 화면에서만 " +
+                 "끌어올린다.\n" +
+                 "★ 0.22f 근거: 화면의 22%를 한 구간에 걸으면 반전 확률(8%/0.5초)이 있어도 몇 구간 안에 " +
+                 "화면 대부분을 오가는 것이 눈에 보인다. 0.5(절반)는 한 번에 화면을 가로지르는 느낌이라 " +
+                 "'걷는다'보다 '순간이동'에 가까워지고, 0.1 이하는 지금 신고와 같은 병이 재발한다. " +
+                 "0이면 이 보정이 통째로 꺼진다(네거티브 컨트롤).")]
+        [Range(0f, 1f)]
+        public float wanderWalkTargetScreenFraction = 0.22f;
+
+        [Tooltip("★★ 위 wanderWalkTargetScreenFraction이 만드는 바닥 지속시간의 상한(초) — 초광폭/멀티" +
+                 "모니터에서 한 구간이 몇 분씩 걸리는 것을 막는 안전핀이다.\n" +
+                 "★ 12f 근거: 이 저장소의 PlayMode 테스트(TightenWanderForDeterminism)가 결정론을 위해 " +
+                 "걷기 지속시간을 정확히 12초로 고정해 왔다 — '경계까지 안정적으로 도달하는 데 충분한 " +
+                 "길이'로 이미 검증된 값이라 같은 수를 안전핀으로도 재사용한다(새 기준을 만들지 않는다).")]
+        [Min(1f)]
+        public float wanderWalkDurationScreenRelativeCapSeconds = 12f;
+
         [Tooltip("Walk 중 즉흥 방향전환 판정 주기(초). 26-1.")]
         public float wanderTurnCheckInterval = 0.5f;
 

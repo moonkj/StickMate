@@ -134,6 +134,7 @@ namespace StickMate.States
         private int _climbTargetDirection;
         private bool _climbTargetIsRope;        // false면 손 등반(파쿠르) 대역이다
         private float _climbTargetGiveUpTimer;  // 못 가고 있는 시간 — 오래 끌면 포기한다
+        private long _lastClimbTargetHandle;    // 직전에 골랐던 벽 — 후보가 여럿이면 이번엔 뺀다(왕복 방지)
         // 진단 카운터 — [밧줄진단] 한 줄에 함께 접어 남긴다(그 함수 문단 참고).
         private int _climbSeekWon;          // 목표까지 걸어가 실제로 던진 횟수
         private int _climbSeekMissNoWall;   // 훑었는데 대역에 드는 벽이 없던 횟수
@@ -544,6 +545,43 @@ namespace StickMate.States
 
         private void EnterMoving() => EnterMoving(0);
 
+        /// <summary>
+        /// ★★★ 2026-09-08 신설 — 한 걷기 구간의 지속시간을 <b>추첨값과 화면 비례 바닥값 중 큰 쪽</b>으로
+        /// 정한다(사용자 지시: "일단 한번 추첨해서 걸으면 좀 많이 이동해야하는데 너무 짧게 이동함").
+        ///
+        /// <para>추첨값(wanderWalkDurationMin/Max, 1.5~4.0초)은 <b>고정 초</b>인데, 실제로 걷는
+        /// <b>물리 거리</b> = 그 초 × ResolveWalkSpeed()이고 속도는 캐릭터 배율에 비례한다. 화면이
+        /// 크거나 배율이 작으면 같은 초 동안 화면의 훨씬 작은 조각만 걷는다 — 오늘 밧줄 상한
+        /// (ropeClimbMaxScreenFraction)이 겪은 것과 <b>같은 병</b>이다: 고정 배수/고정 초는 화면이
+        /// 커질수록 화면의 더 작은 조각이 된다.</para>
+        ///
+        /// <para>그래서 목표 거리(걸을 수 있는 화면 폭 × wanderWalkTargetScreenFraction)를 지금
+        /// 속도로 나눠 <b>바닥 지속시간</b>을 구하고, 추첨값이 그보다 짧을 때만 끌어올린다
+        /// (<c>Mathf.Max</c>) — 추첨값의 <b>뜻</b>(26-1이 설계한 임의성)은 한 글자도 안 바꾼다.
+        /// 이미 작은 화면(배치모드 테스트 640×480 등)에서는 바닥값이 추첨값보다 작아 <b>결과가
+        /// 비트 단위로 그대로다</b> — 회귀 위험이 없다.</para>
+        /// </summary>
+        private float ResolveWalkPhaseDurationSeconds()
+        {
+            float drawn = Jitter(RandomRange(Cfg(c => c.wanderWalkDurationMin, 1.5f), Cfg(c => c.wanderWalkDurationMax, 4f)));
+
+            float fraction = Cfg(c => c.wanderWalkTargetScreenFraction, 0.22f);
+            if (!(fraction > 0f) || _blackboard == null) return drawn;
+
+            float speed = _blackboard.Config != null ? _blackboard.Config.ResolveWalkSpeed() : 0f;
+            if (!(speed > 0.0001f)) return drawn;
+
+            if (!_blackboard.TryGetWalkableScreenBoundsWorld(out float leftX, out float rightX)) return drawn;
+            float span = Mathf.Abs(rightX - leftX);
+            if (!(span > 0.0001f)) return drawn;
+
+            float targetDistance = span * Mathf.Clamp01(fraction);
+            float floorSeconds = targetDistance / speed;
+            float cap = Mathf.Max(1f, Cfg(c => c.wanderWalkDurationScreenRelativeCapSeconds, 12f));
+
+            return Mathf.Max(drawn, Mathf.Min(floorSeconds, cap));
+        }
+
         /// <param name="forcedDirection">0이면 26-1대로 좌우 랜덤(경계 회피 포함). +1/-1이면 그 방향으로
         /// 강제한다 — 맨틀 직후 "올라선 턱 안쪽으로 걸어 들어가기"에만 쓴다.</param>
         private void EnterMoving(int forcedDirection)
@@ -556,7 +594,7 @@ namespace StickMate.States
 
             _phase = Phase.Moving;
             _moveTimer = 0f;
-            _moveDuration = Jitter(RandomRange(Cfg(c => c.wanderWalkDurationMin, 1.5f), Cfg(c => c.wanderWalkDurationMax, 4f)));
+            _moveDuration = ResolveWalkPhaseDurationSeconds();
             _turnCheckTimer = 0f;
             _spontaneousTurnUsedThisPhase = false;
             _isEdgePaused = false;
@@ -918,6 +956,7 @@ namespace StickMate.States
                     if (_climbTargetIsRope) _ropeClimbRequestedThisTick = true;
                     else _stepUpRequestedThisTick = true;
                     _climbSeekWon++;
+                    _lastClimbTargetHandle = _climbTargetHandle;   // 다음 선택에서 왕복 후보로 배제
 
                     Debug.Log($"[등반목표] 도착 — {(_climbTargetIsRope ? "밧줄" : "손 등반")}, 벽핸들={_climbTargetHandle}, " +
                         $"높이={(verifiedTopY - info.GroundWorldY):F3}유닛, 방향={(_climbTargetDirection > 0 ? "오른쪽" : "왼쪽")}. " +
@@ -956,7 +995,7 @@ namespace StickMate.States
 
             // 손 등반 대역과 밧줄 대역을 <b>한 번에</b> 훑는다 — 사용자 신고가 둘 다였고
             // (밧줄 x2 · 파쿠르 x1), 원인이 하나라 처방도 하나여야 한다.
-            if (!_blackboard.TryPickClimbTarget(info, minClimb, ropeMax,
+            if (!_blackboard.TryPickClimbTarget(info, minClimb, ropeMax, _rng, _lastClimbTargetHandle,
                     out long handle, out float topY, out float approachX, out int approachDir))
             {
                 _climbSeekMissNoWall++;

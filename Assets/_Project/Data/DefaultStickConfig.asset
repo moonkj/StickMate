@@ -121,6 +121,8 @@ MonoBehaviour:
   wanderIdleDurationMax: 6
   wanderWalkDurationMin: 1.5
   wanderWalkDurationMax: 4
+  wanderWalkTargetScreenFraction: 0.22
+  wanderWalkDurationScreenRelativeCapSeconds: 12
   wanderTurnCheckInterval: 0.5
   wanderSpontaneousTurnChance: 0.08
   wanderPostIdleWalkChance: 0.75
