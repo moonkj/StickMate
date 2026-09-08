@@ -3835,6 +3835,22 @@ namespace StickMate.States
         }
 
         /// <summary>
+        /// ★ 2026-09-08 — 위 <see cref="TryGetFootholdTopWorldY"/>와 같은 재확인을 하되, 그 창이
+        /// <b><paramref name="worldX"/>를 여전히 덮고 있는지</b>까지 함께 묻는다. 왜 핸들 존재만으로는
+        /// 부족한지(창을 옮겨도 핸들은 그대로다 — macOS·Windows 양쪽 실측)와 조각(fragment) 처리
+        /// 규칙은 전부 <see cref="GroundSensor.TryGetFootholdTopWorldYCoveringX"/> 문서에 있다.
+        /// 지금 소비자는 밧줄 등반 하나뿐이다(밧줄은 «걸린 지점»이 고정이라 그 지점이 창 밖으로
+        /// 나가면 물리적으로 매달릴 곳이 없다). 손 등반(ParkourClimb)은 <b>일부러</b> 이걸 쓰지 않는다 —
+        /// 그쪽은 맨틀 목표를 매 프레임 다시 구해 <b>움직이는 창을 따라가도록</b> 설계돼 있다.
+        /// </summary>
+        public bool TryGetFootholdTopWorldYCoveringX(long handle, float worldX, out float topWorldY)
+        {
+            var footholds = FootholdPoller != null ? FootholdPoller.CachedFootholds : System.Array.Empty<PlatformFoothold>();
+            Vector2 refPos = Body != null ? Body.position : Vector2.zero;
+            return GroundSensor.TryGetFootholdTopWorldYCoveringX(MainCamera, refPos, handle, worldX, footholds, Config, out topWorldY);
+        }
+
+        /// <summary>
         /// 매달려 내려가기(LedgeHang) 진입 판정 — TryFindClimbableWall의 반대 방향. 진행방향 경계 바깥으로
         /// 내려섰을 때 실제로 내려앉을 더 낮은 발판이 있는지 확인한다(없으면 매달리지 않고 기존 배회
         /// 거동대로 돌아선다). 좌표 변환/발판 순회는 전부 GroundSensor에 위임(BUG-M5 컨벤션).

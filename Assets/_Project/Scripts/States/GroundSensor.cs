@@ -743,6 +743,53 @@ namespace StickMate.States
         }
 
         /// <summary>
+        /// ★★★ 2026-09-08 (debugger — 사용자 신고 <i>"줄타고 올라가다가 창을 치워도 계속 줄타고
+        /// 올라감 -&gt; 떨어져야함"</i>) — 핸들 존재 확인에 <b>가로 위치 확인</b>을 더한 판정.
+        /// <paramref name="worldX"/>(밧줄이 걸린 앵커의 월드 x)를 <b>실제로 덮고 있는</b> 조각이
+        /// 남아 있을 때만 참이고, 그때 그 조각의 최신 상단 월드 Y를 돌려준다.
+        ///
+        /// <para><b>왜 <see cref="TryGetFootholdTopWorldY"/>로는 부족한가</b>: 그 함수는 "이 핸들이
+        /// 목록에 아직 있는가"만 묻는데, <b>창 핸들은 창을 옮겨도 바뀌지 않는다</b>.
+        /// 실측(2026-09-08, 자체 프로브 창): macOS <c>kCGWindowNumber</c>는 가로로 700pt 옮겨도
+        /// <c>2459</c> 그대로였고 <b>닫았을 때만</b> 목록에서 사라졌다. Windows도 같은 성질이다 —
+        /// 발판 핸들이 <c>HWND</c>(<c>Platform/Windows/Win32WindowService</c>의 <c>hWnd.ToInt64()</c>)이고
+        /// 이동은 HWND를 바꾸지 않는다. 그래서 "창을 <b>닫으면</b> 등반이 취소되는데 <b>옆으로 치우면</b>
+        /// 취소되지 않는" 비대칭이 생겼다.</para>
+        ///
+        /// <para><b>조각을 전부 훑는 것이 계약이다</b> — 한 창이 다른 창에 부분적으로 가려지면
+        /// macOS 쪽 열거가 <b>같은 핸들로 여러 조각</b>을 낸다(<c>MacWindowService.BuildVisibleTopEdgeFootholds</c>:
+        /// "남은 조각이 여러 개면 조각마다 발판을 하나씩 낸다 — 핸들은 원본 창 그대로"). 위 두 함수처럼
+        /// 첫 매치에서 멈추면 멀쩡히 보이는 창을 "사라졌다"고 오판한다.</para>
+        ///
+        /// <para>부수 효과로 <b>가려짐</b>도 같은 규칙으로 잡힌다: 앵커 지점이 다른 창에 덮여 그 조각이
+        /// 사라지면 여기서 거짓이 된다. 이것은 2026-08-28 신고("창 위에서 걸어다닐 때 다른 창을
+        /// 최대화하면 중간에 그대로 거기서 걸어다님")를 고칠 때 세운 규칙 — <b>보이지 않는 창은 발판이
+        /// 아니다</b> — 을 밧줄에도 그대로 적용한 것이다.</para>
+        /// </summary>
+        public static bool TryGetFootholdTopWorldYCoveringX(Camera cam, Vector2 refWorldPos, long handle,
+            float worldX, IReadOnlyList<PlatformFoothold> footholds, StickConfig config, out float topWorldY)
+        {
+            topWorldY = 0f;
+            if (cam == null || footholds == null) return false;
+
+            for (int i = 0; i < footholds.Count; i++)
+            {
+                if (footholds[i].Handle != handle) continue;
+                Rect r = footholds[i].ScreenRect;
+                _ = ScreenCoordinateConverter.WorldToOsScreen(cam, refWorldPos, config, out float depth);
+                Vector3 topLeft = ScreenCoordinateConverter.OsScreenToWorld(cam, new Vector2(r.x, r.y), depth, config);
+                Vector3 topRight = ScreenCoordinateConverter.OsScreenToWorld(cam, new Vector2(r.x + r.width, r.y), depth, config);
+                float minX = Mathf.Min(topLeft.x, topRight.x);
+                float maxX = Mathf.Max(topLeft.x, topRight.x);
+                // 이 조각은 앵커를 덮지 않는다 -> 같은 핸들의 다음 조각을 계속 본다(위 문단 참고).
+                if (worldX < minX || worldX > maxX) continue;
+                topWorldY = topLeft.y;
+                return true;
+            }
+            return false;
+        }
+
+        /// <summary>
         /// ★ 2026-09-01 — <b>"이 프레임 하나만으로 접지가 풀리는" 임계 프레임 시간</b>(초)을 지금의
         /// 카메라/설정에서 직접 계산한다. 상수를 베껴 적지 않기 위한 유일한 계산 지점이다.
         ///

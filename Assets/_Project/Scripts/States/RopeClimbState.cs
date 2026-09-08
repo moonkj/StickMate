@@ -12,8 +12,20 @@ namespace StickMate.States
     /// <para><b>2페이즈</b>: <c>Throw</c>(밧줄을 던진다 — 아직 원래 발판 위, 접지 중) →
     /// <c>Ascend</c>(밧줄을 타고 오른다 — 공중, 발판에서 완전히 이탈). 두 페이즈의 물리적 처지가
     /// 다르므로 목표(벽) 소실 시 취소 규칙도 페이즈별로 갈린다(§3-B): <c>Throw</c> 중 소실 →
-    /// Idle/Walk(발판은 그대로 있으므로 낙하할 이유가 없다), <c>Ascend</c> 중 소실 → 즉시 Fall
-    /// (<see cref="ParkourClimbState"/>와 100% 동일 규칙 — 이미 검증된 규칙을 그대로 재사용한다).</para>
+    /// Idle/Walk(발판은 그대로 있으므로 낙하할 이유가 없다), <c>Ascend</c> 중 소실 → 즉시 Fall.</para>
+    ///
+    /// <para>★★ <b>2026-09-08 정정 — 여기 있던 "<see cref="ParkourClimbState"/>와 100% 동일 규칙"은
+    /// 틀린 서술이었고, 그 문장이 사용자 신고(«줄타고 올라가다가 창을 치워도 계속 줄타고 올라감»)의
+    /// 직접 원인이었다.</b> 두 상태의 «소실» 정의는 물리적으로 다르다:
+    /// <list type="bullet">
+    ///   <item><b>손 등반</b>은 손이 창틀을 잡고 있어 <b>움직이는 창을 따라간다</b>(맨틀 목표를 매 프레임
+    ///     다시 구하는 것이 그 설계다). 그래서 «핸들이 목록에 있는가»만 물어도 충분하다.</item>
+    ///   <item><b>밧줄</b>은 §8-3-B대로 <b>걸린 지점이 고정</b>이라 따라갈 수 없다. 창이 그 지점 밖으로
+    ///     치워지면 매달릴 곳 자체가 없어진다 — 그래서 이쪽만
+    ///     <see cref="StickmanBlackboard.TryGetFootholdTopWorldYCoveringX"/>(핸들 + <b>앵커 x를 아직
+    ///     덮는가</b>)를 쓴다. 옛 판정은 창을 «닫을» 때만 참이 되고 «옆으로 치울» 때는 영원히 거짓이
+    ///     되지 않았다 — 창 핸들은 이동으로 바뀌지 않기 때문이다(실측 근거는 그 함수 문서).</item>
+    /// </list></para>
     ///
     /// <para><b>Ascend는 사실 [반복 구간] + [마감 구간]이다</b>(§8-0 핵심 통찰). 마감 구간은
     /// <see cref="StickmanPoseAnimator.ApplyParkourClimbPose"/>를 <b>무변경으로 재호출</b>한다 —
@@ -264,7 +276,9 @@ namespace StickMate.States
 
             // §3-B — Throw 중 목표(벽) 소실 → Idle/Walk로 취소(발판은 그대로 있으므로 낙하할
             // 이유가 없다. Ascend의 즉시 Fall과 정확히 대칭인 반대쪽 규칙).
-            if (!_hasWall || !_blackboard.TryGetFootholdTopWorldY(_wallHandle, out _wallTopWorldY))
+            // ★ 2026-09-08 — "소실"의 정의가 넓어졌다. 아래 TickAscend의 같은 자리 주석 참고
+            //   (핸들 존재만 보면 «창을 옆으로 치운 경우»가 통째로 빠진다).
+            if (!_hasWall || !_blackboard.TryGetFootholdTopWorldYCoveringX(_wallHandle, _anchorWorldX, out _wallTopWorldY))
             {
                 CancelOverlay();
                 float move = _blackboard.MoveInputX;
@@ -403,12 +417,31 @@ namespace StickMate.States
 
         private void TickAscend(float deltaTime)
         {
-            // §3-B — Ascend 중 목표(벽) 소실 → 즉시 Fall(ParkourClimbState.Tick()과 100% 동일 규칙,
-            // 공중에서 손을 잡고 있던 것과 물리적으로 같은 처지이므로 이미 검증된 규칙을 재사용한다).
-            if (!_hasWall || !_blackboard.TryGetFootholdTopWorldY(_wallHandle, out _wallTopWorldY))
+            // §3-B — Ascend 중 목표(벽) 소실 → 즉시 Fall.
+            //
+            // ★★★ 2026-09-08 (debugger) — <b>"소실"의 판정이 틀려 있었다.</b> 사용자 신고 원문:
+            //   «줄타고 올라가다가 창을 치워도 계속 줄타고 올라감 -> 떨어져야함».
+            //
+            //   예전 코드는 TryGetFootholdTopWorldY(_wallHandle) 하나였고 그것은 «이 핸들이 발판
+            //   목록에 아직 있는가»만 묻는다. 그런데 창 핸들은 창을 옮겨도 바뀌지 않는다 —
+            //   실측(2026-09-08, 자체 프로브 창): macOS kCGWindowNumber는 가로로 700pt 옮겨도
+            //   2459 그대로였고 «닫았을 때만» 목록에서 사라졌다(Windows는 HWND라 성질이 같다).
+            //   그래서 결함이 비대칭이었다:
+            //     · 창을 «닫으면»       → 목록에서 사라짐 → 취소됨(정상 — 그래서 이 코드가 옳아 보였다)
+            //     · 창을 «옆으로 치우면» → 핸들 그대로  → 취소되지 않음(신고된 그 장면 — 허공에 걸린
+            //       밧줄을 계속 타고 올라간다)
+            //
+            //   ⇒ 밧줄은 §8-3-B대로 «걸린 지점»(_anchorWorldX)이 고정이다. 그러니 물어야 할 것은
+            //     "핸들이 있는가"가 아니라 "그 걸린 지점을 아직 그 창이 덮고 있는가"다.
+            //     (손 등반 ParkourClimbState는 일부러 이 판정을 쓰지 않는다 — 그쪽은 맨틀 목표를 매
+            //     프레임 다시 구해 «움직이는 창을 손으로 따라잡는» 설계라 규칙이 다르다. 클래스 문서의
+            //     "ParkourClimbState와 100% 동일 규칙"도 이 라운드에서 함께 정정했다.)
+            if (!_hasWall || !_blackboard.TryGetFootholdTopWorldYCoveringX(_wallHandle, _anchorWorldX, out _wallTopWorldY))
             {
                 CancelOverlay();
-                Debug.Log("[밧줄등반] Ascend 취소 — 목표 벽 소실, Fall로 전이합니다.");
+                Debug.Log($"[밧줄등반] Ascend 취소 — 밧줄이 걸린 지점(월드x={_anchorWorldX:F3})을 목표 벽" +
+                    $"(핸들={_wallHandle})이 더는 덮고 있지 않습니다(창이 닫혔거나 옆으로 치워졌거나 가려짐). " +
+                    "Fall로 전이합니다.");
                 _blackboard.Machine.ChangeState(StickmanStateId.Fall);
                 return;
             }

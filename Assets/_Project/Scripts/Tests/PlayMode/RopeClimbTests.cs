@@ -25,7 +25,10 @@ namespace StickMate.Tests.PlayMode
     ///     <see cref="OffscreenAboveNeighborDoesNotMoveScreenTop"/>(기존 수평 판정이 겪은 버그와 같은
     ///     패턴 — 발판 통합 경계를 화면 경계로 오인하는 함정).</item>
     ///   <item>취소 전환 — <see cref="ThrowCancelWhenWallDisappears_GoesToIdleOrWalk"/> /
-    ///     <see cref="AscendCancelWhenWallDisappears_GoesToFall"/>.</item>
+    ///     <see cref="AscendCancelWhenWallDisappears_GoesToFall"/> /
+    ///     ★ 2026-09-08 신설 <see cref="AscendCancelWhenWallSlidesAway_GoesToFall"/>(창을 «닫는» 것이
+    ///     아니라 «옆으로 치우는» 갈래 — 위 두 테스트가 초록인 채로 사용자 신고가 살아 있었던 구멍) +
+    ///     <see cref="AscendSurvivesSmallWallJitter_KeepsClimbing"/>(그 수정이 과잉이 아님을 잠그는 대조).</item>
     ///   <item>대사트리거 — <see cref="DialogueFires_WithCombinedThrowPlusAscendDwell"/>(계획 잔여
     ///     체류가 Throw만이 아니라 Throw+Ascend 전체 추정치인지, ParkourClimbState가 2026-09-02에
     ///     겪은 "낡은 폴백이 대사를 전부 침묵시키는" 사고의 재발 여부를 값으로 대조한다).</item>
@@ -198,6 +201,40 @@ namespace StickMate.Tests.PlayMode
         {
             _service.Footholds.RemoveAll(f => f.Handle == WallHandle);
             _poller.PollImmediately();
+        }
+
+        /// <summary>
+        /// ★ 2026-09-08 — 벽 발판을 <b>같은 핸들 그대로</b> 가로로 옮긴다 = 사용자가 «창을 치우는»
+        /// 조작의 재현. <see cref="RemoveWall"/>(창을 닫는 조작)과 이 함수가 갈리는 지점이 이 라운드
+        /// 결함의 전부다 — 실측(자체 프로브 창, macOS): 창을 700pt 옮겨도 <c>kCGWindowNumber</c>는
+        /// 2459 그대로였고 닫았을 때만 목록에서 사라졌다. Windows도 발판 핸들이 <c>HWND</c>라 같다.
+        /// 그러므로 «옮기기»를 «지우기»로 흉내내면 이 결함을 <b>구조적으로 못 본다</b>.
+        /// </summary>
+        private void MoveWall(float deltaOsX)
+        {
+            for (int i = 0; i < _service.Footholds.Count; i++)
+            {
+                PlatformFoothold f = _service.Footholds[i];
+                if (f.Handle != WallHandle) continue;
+                Rect r = f.ScreenRect;
+                r.x += deltaOsX;
+                _service.Footholds[i] = new PlatformFoothold(f.Handle, r, f.IsTopmost);
+            }
+            _poller.PollImmediately();
+        }
+
+        /// <summary>Ascend가 실제로 시작될 때까지(=몸의 y가 움직이기 시작할 때까지) 기다린다.
+        /// 두 신규 테스트가 같은 전제를 쓰므로 한 곳에 둔다.</summary>
+        private IEnumerator WaitUntilAscending(StickmanBlackboard bb, float startY)
+        {
+            float waited = 0f;
+            const float ThrowTimeoutSeconds = 3f;
+            while (bb.Machine.CurrentStateId == StickmanStateId.RopeClimb && waited < ThrowTimeoutSeconds)
+            {
+                if (Mathf.Abs(bb.Body.position.y - startY) > 0.01f) yield break;
+                yield return null;
+                waited += Time.deltaTime;
+            }
         }
 
         // ============================================================================
@@ -459,7 +496,115 @@ namespace StickMate.Tests.PlayMode
 
             Assert.AreEqual(StickmanStateId.Fall, bb.Machine.CurrentStateId,
                 $"{LogPrefix} Ascend 도중 목표 소실 시 즉시 Fall로 가야 하는데 {bb.Machine.CurrentStateId}입니다 — " +
-                "공중에서 손을 잡고 있던 것과 물리적으로 같은 처지입니다(ParkourClimbState와 100% 동일 규칙).");
+                "공중에서 손을 잡고 있던 것과 물리적으로 같은 처지입니다.");
+        }
+
+        /// <summary>
+        /// ★★★ 2026-09-08 회귀 잠금 — 사용자 신고 원문:
+        /// «줄타고 올라가다가 <b>창을 치워도</b> 계속 줄타고 올라감 -&gt; 떨어져야함».
+        ///
+        /// <para>바로 위 <see cref="AscendCancelWhenWallDisappears_GoesToFall"/>가 <b>초록인데도</b>
+        /// 이 결함이 살아 있었던 이유가 이 테스트의 존재 이유다: 그 테스트는 벽을 목록에서 <b>지운다</b>
+        /// (= 창을 «닫는» 조작). 그런데 창을 <b>옆으로 옮기면 핸들은 그대로 남는다</b>
+        /// (실측 근거는 <see cref="MoveWall"/> 문서). 옛 판정은 핸들 존재만 봤으므로 «옮기기»에서만
+        /// 조용히 통과했고, 그 갈래를 재는 테스트가 하나도 없었다.</para>
+        ///
+        /// <para>안에 <b>양성 대조</b>를 함께 넣는다 — 벽을 건드리지 않은 짧은 구간에서는 여전히
+        /// RopeClimb여야 한다. 그게 없으면 "어차피 그 무렵에 떨어졌을 뿐"인 초록과 구분되지 않는다.</para>
+        /// </summary>
+        [UnityTest]
+        public IEnumerator AscendCancelWhenWallSlidesAway_GoesToFall()
+        {
+            yield return SetUpRig((parkourMax, ropeMax) => Mathf.Lerp(parkourMax, ropeMax, 0.5f));
+            StickmanBlackboard bb = _agent.Blackboard;
+
+            bb.Machine.ChangeState(StickmanStateId.RopeClimb, isForcedInterrupt: true);
+            yield return null;
+            Assert.AreEqual(StickmanStateId.RopeClimb, bb.Machine.CurrentStateId,
+                $"{LogPrefix} 전제 실패 — RopeClimb에 진입하지 못했습니다.");
+
+            float startY = bb.Body.position.y;
+            yield return WaitUntilAscending(bb, startY);
+            Assert.AreEqual(StickmanStateId.RopeClimb, bb.Machine.CurrentStateId,
+                $"{LogPrefix} 준비 실패 — Ascend 도달 전에 이미 다른 상태로 전이했습니다.");
+            Assert.Greater(Mathf.Abs(bb.Body.position.y - startY), 0.01f,
+                $"{LogPrefix} 준비 실패 — Throw가 3초 안에 끝나지 않아 Ascend 취소를 재현할 수 없습니다.");
+
+            // ---- 양성 대조: 벽을 그대로 두면 이 구간에서는 떨어지지 않는다 ----
+            const float ControlSeconds = 0.2f;
+            float control = 0f;
+            while (control < ControlSeconds)
+            {
+                yield return null;
+                control += Time.deltaTime;
+            }
+            Assert.AreEqual(StickmanStateId.RopeClimb, bb.Machine.CurrentStateId,
+                $"{LogPrefix} 양성 대조 실패 — 벽을 아직 건드리지도 않았는데 {ControlSeconds:F2}초 만에 " +
+                $"{bb.Machine.CurrentStateId}로 갔습니다. 아래 결과가 «창을 치웠기 때문»이라고 말할 수 없습니다.");
+
+            // ---- 사용자가 창을 옆으로 «치운다» — 핸들은 그대로, 가로 위치만 바뀐다 ----
+            // 벽 폭(화면의 40%)보다 크게 옮겨 밧줄이 걸린 지점이 확실히 벽 밖에 남게 한다.
+            float slideOsX = Screen.width * 0.42f;
+            MoveWall(slideOsX);
+            Assert.IsTrue(bb.TryGetFootholdTopWorldY(WallHandle, out _),
+                $"{LogPrefix} 전제 실패 — 창을 «옮기기»로 재현하려 했는데 핸들이 목록에서 사라졌습니다. " +
+                "그러면 이 테스트가 재는 것이 «옮기기»가 아니라 «닫기»가 되어 결함을 못 봅니다.");
+
+            float elapsed = 0f;
+            while (bb.Machine.CurrentStateId == StickmanStateId.RopeClimb && elapsed < StateTransitionTimeoutSeconds)
+            {
+                yield return null;
+                elapsed += Time.deltaTime;
+            }
+
+            Debug.Log($"{LogPrefix} 창 치우기 결과 — {slideOsX:F0}pt 이동 후 {elapsed:F2}초 만에 " +
+                $"상태={bb.Machine.CurrentStateId}.");
+
+            Assert.AreEqual(StickmanStateId.Fall, bb.Machine.CurrentStateId,
+                $"{LogPrefix} 밧줄이 걸린 지점 밖으로 창을 치웠는데 {bb.Machine.CurrentStateId}입니다 — " +
+                "허공에 걸린 밧줄을 계속 타고 오르고 있습니다(사용자 신고 그 장면). 밧줄은 «걸린 지점»이 " +
+                "고정이라 손 등반처럼 움직이는 창을 따라갈 수 없고, 그래서 떨어져야 합니다.");
+        }
+
+        /// <summary>
+        /// ★ 위 수정이 <b>과잉</b>이 아님을 잠근다 — 창이 조금 흔들려도(밧줄이 걸린 지점을 여전히
+        /// 덮고 있으면) 등반은 계속돼야 한다. 이게 없으면 "의심스러우면 떨어뜨린다"로 고쳐도 위
+        /// 테스트가 초록이 되어, 창을 1픽셀만 움직여도 캐릭터가 떨어지는 새 결함을 못 본다.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator AscendSurvivesSmallWallJitter_KeepsClimbing()
+        {
+            yield return SetUpRig((parkourMax, ropeMax) => Mathf.Lerp(parkourMax, ropeMax, 0.5f));
+            StickmanBlackboard bb = _agent.Blackboard;
+
+            bb.Machine.ChangeState(StickmanStateId.RopeClimb, isForcedInterrupt: true);
+            yield return null;
+            Assert.AreEqual(StickmanStateId.RopeClimb, bb.Machine.CurrentStateId,
+                $"{LogPrefix} 전제 실패 — RopeClimb에 진입하지 못했습니다.");
+
+            float startY = bb.Body.position.y;
+            yield return WaitUntilAscending(bb, startY);
+            Assert.AreEqual(StickmanStateId.RopeClimb, bb.Machine.CurrentStateId,
+                $"{LogPrefix} 준비 실패 — Ascend 도달 전에 이미 다른 상태로 전이했습니다.");
+
+            // 벽은 캐릭터 진행 방향 «반대쪽»(왼쪽)으로 조금 움직인다 — 밧줄이 걸린 지점은
+            // 벽 왼쪽 모서리에서 곡률 인셋만큼 안쪽이므로, 벽이 왼쪽으로 조금 가도 여전히 덮인다.
+            MoveWall(-30f);
+
+            float elapsed = 0f;
+            const float ObserveSeconds = 0.3f;
+            while (elapsed < ObserveSeconds)
+            {
+                yield return null;
+                elapsed += Time.deltaTime;
+            }
+
+            Debug.Log($"{LogPrefix} 작은 흔들림 결과 — 30pt 이동 후 {elapsed:F2}초 동안 " +
+                $"상태={bb.Machine.CurrentStateId}, y이동={(bb.Body.position.y - startY):F3}유닛.");
+
+            Assert.AreEqual(StickmanStateId.RopeClimb, bb.Machine.CurrentStateId,
+                $"{LogPrefix} 창이 30pt 움직였을 뿐 밧줄이 걸린 지점은 여전히 그 창 위인데 " +
+                $"{bb.Machine.CurrentStateId}로 갔습니다 — 취소 판정이 과잉입니다.");
         }
 
         // ============================================================================
