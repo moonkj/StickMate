@@ -364,7 +364,16 @@ namespace StickMate.Interaction
             ItemCatalogEntry entry)
         {
             ClearSlotIcon(row);
-            if (!AccessoryCardIcon.TryBuild(row.IconRoot, slot, itemIndex, SlotIconSize,
+            // ★ 2026-09-08 — 카드(BuildCardArt)와 같은 갈래를 여기서도 먼저 묻는다. 안 물으면
+            //   같은 창 안에서 [장비] 탭 카드는 비트맵인데 바로 위 착용 슬롯 요약 줄은 옛 벡터로
+            //   남아, 사용자가 지적한 "장비창과 실제 이미지가 다르다"가 이 자리에도 그대로 걸린다
+            //   (design-equipment R3 인계 F-1). 선언이 없으면(출하 42종 전부) 아래 옛 경로 그대로.
+            Sprite bitmap = ItemCatalog.CardSprite(slot, itemIndex);
+            if (bitmap != null)
+            {
+                BuildBitmapCardArt(row.IconRoot, bitmap, SlotIconSize);
+            }
+            else if (!AccessoryCardIcon.TryBuild(row.IconRoot, slot, itemIndex, SlotIconSize,
                     IconStroke * (SlotIconSize / IconSize), entry.PrimaryColor, entry.SecondaryColor))
             {
                 BuildIcon(row.IconRoot, entry.Icon, SlotIconSize);
