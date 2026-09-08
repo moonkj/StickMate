@@ -258,15 +258,17 @@ namespace StickMate.Tests.EditMode
         /// 조형이 고쳐져 문턱을 넘으면 그 줄이 <see cref="빚이_아직_실재한다"/>에서 빨개져
         /// «지우라»고 말한다. 그래서 «고쳤는데 대장에 남아 다음 위반을 조용히 덮는» 길이 없다.</para>
         ///
-        /// <para><b>2026-09-08 실측</b>: HEAD <c>Patched Hood</c>(pack.cyber) ↔ <c>베레모</c> = <b>0.100</b>
-        /// (문턱 <see cref="MinCardDifference"/> = 0.150). 둘 다 «둥근 관 + 작은 돌기»라 정규화 뒤
-        /// 형태로 안 갈린다. <b>이건 진짜 제품 결함이다</b> — 보관함에서 유료 모자와 무료 베레모가
-        /// 같은 그림으로 보인다. 고치는 것은 <b>조형 재설계</b>라 이 라운드(테스트 정리)의 범위 밖이고,
-        /// <b>design-equipment 배정 대상</b>이다(리더 판정 2026-09-08).</para>
+        /// <para><b>대장은 지금 비어 있다.</b> 유일했던 줄 — HEAD <c>Patched Hood</c>(pack.cyber) ↔
+        /// <c>베레모</c> = 0.100 (문턱 <see cref="MinCardDifference"/> = 0.150) — 은 <b>2026-09-08 팩 12종
+        /// 디테일 고도화 R2</b>(<c>docs/EQUIPMENT_SHAPE_SPEC_PACK_DETAIL_R2.md</c>)에서 조형이 실제로
+        /// 재설계되며 해소됐다: 3조각 16점 «둥근 관 + 돌기»가 6조각 54점(돔·안감 그늘·6각 패드·
+        /// 잉크 솔기·하이라이트 + 뒤로 기운 꼭대기)이 되면서 <b>이 러너의 실측이 0.424</b>로 올라갔다.
+        /// 대장을 지운 근거는 오프라인 계산이 아니라 <see cref="빚이_아직_실재한다"/>가 그 줄에 대해
+        /// 실제로 낸 빨간불이다(«이제 42.4 % 다릅니다 — 이 줄을 지우십시오»).</para>
+        /// <para>새 줄을 적을 때는 <b>실측값과 함께</b> 적고 리더에게 배정을 요청한다.</para>
         /// </summary>
         private static readonly (EquipmentSlot Slot, string PackId, string BaseId, float Measured)[] CardDebt =
         {
-            (EquipmentSlot.Head, "equip.head.patchedhood", "equip.head.beret", 0.100f),
         };
 
         /// <summary>

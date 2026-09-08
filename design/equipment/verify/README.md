@@ -369,3 +369,36 @@ python3 r17_dump.py
 - `r21_sheet.py` → `r21_sheet.png`(10행 + H-1 자홍 띠: (a) 0/3071·0/3929 (c) 착용선 위 머리 노출 0 px) · `r21_card_sheet.png`(FX/PET 12 + 현행 몸 대조). 커버선 절단(Sutherland–Hodgman)을 시트에 복제해 「머리카락 + 야구모자」 칸을 만들었다.
 - `r21_dump.py` → `r20_coords.txt` **재생성**(R20 절 그대로 + R21 절: 몸 R / 카드 64u + `theme=`). R20 임시 밀짚모자 절은 「전사 금지」 표시.
 - `r21_theme.py` → `r21_theme.out.txt` — 인계본 16종 theme 을 HTML 에서 파싱, 6×4 표, 안 0(16 무변경: 위반 4) / 안 A(3건 변경) / 안 B(4건 변경, 권고) E1~E3 검산. ★ 16종 무변경으로는 E1·E2·E3 동시 만족 해가 없다. 스펙 §14-12.
+
+---
+
+## R2 — 팩 장비 12종 디테일 고도화 (2026-09-08, design-equipment)
+
+사용자 지시 *"각 장비들의 디자인 고도화가 필요함"* — 사이버(2)·광부(7)·대마법사(8) HEAD/EYES/NECK/BACK 12종이
+기본 42종(특히 인계본 계열)보다 단순해 보인다는 신고. 스펙 본문: **`docs/EQUIPMENT_SHAPE_SPEC_PACK_DETAIL_R2.md`**.
+
+- `pack_assets.py` — ★ **프로덕션을 있는 그대로 읽는다.** `Resources/Items/pack_*.asset` 의 `wornShapes` 항 스트림을
+  `AccessoryWornShapeReader.TryBuild` 와 같은 문법으로 풀고(기저 4 = HeadCenterLine, 0 = HeadRadius), 기본 24종은
+  `Tools/ShapeDump/build.sh` 가 뽑은 프로덕션 좌표를 쓴다(캐시 `pack_detail_r2.prod.tsv`, `--refresh-prod` 로 재생성).
+  손으로 베낀 좌표는 0개다.
+- `legibility.py` — `AccessoryNameLegibilityTests.NormalizedCells/Difference` 의 파이썬 거울(64×64 정규화 격자 · 획 반폭 0.0494).
+  **교정: 출하 Patched Hood ↔ 베레모 = 0.100(테스트 CardDebt 실측과 일치).** 깨지면 하니스가 멈춘다.
+- `pack_detail_r2.py` — 12종 R2 좌표 + 게이트 12축(규칙 1-A/1-C · 자기교차 · **규칙 4 금지대(획 조각 쌍은 닿거나 1.5획 이상)** ·
+  슬롯 경계 · H-2/H-2b(뒤층 제외) · E-대역 · 같은 팩 모자×안경 가림 · 카드 판별성(기본 6 + 다른 팩 2, 문턱 0.15) ·
+  쌍별 실루엣 래칫 · 카드 58pt/24pt 최단변·보조색 두께 · 모티프 결정나무(보조색 조각 전부)).
+  `--control` 나쁜 값 5종 → 위반 25건 검출 · `--dump` 좌표 전문 → `pack_detail_r2_coords.txt` ·
+  `--emit` → `design/equipment/pack_detail_r2/*.wornShapes.yaml`(coder 가 .asset 의 `wornShapes:` 블록을 통째로 바꿔 끼운다) ·
+  `--verify-emit` 방출본을 에셋 파서로 되읽어 설계 좌표와 대조(양성 대조 내장).
+- `pack_detail_r2_sheet.py` → `design/equipment/pack_detail_r2_sheet.png` — 출하 vs R2 나란히 12행. **오프라인 래스터 — 최종 판정 아님.**
+
+```bash
+cd design/equipment/verify
+python3 pack_detail_r2.py                # 위반 0건 (pack_detail_r2.out.txt)
+python3 pack_detail_r2.py --control      # 위반 25건이어야 한다 (pack_detail_r2.control.out.txt)
+python3 pack_detail_r2.py --emit && python3 pack_detail_r2.py --verify-emit
+python3 pack_detail_r2_sheet.py
+```
+
+★ 이 라운드가 새로 못박은 자 3개: (가) **채움 조각의 짧은 변도 ≥ 1.5획(0.516 R)** — 규칙 1-C(ρ≥0.218)만으로는 0.44 R 띠가 통과하는데
+그 띠는 카드에서 선으로 뭉갠다. (나) **둥근 모서리 표본은 모서리당 3점(n=2)** — 4점 이상이면 변이 카드 24pt 획(0.825pt) 아래로 내려간다.
+(다) **접합은 「닿음」이 아니라 「가로지름」으로 설계한다** — 곡선 표본점이 윤곽 위에 정확히 놓이지 않아 0.001 R 틈이 금지대로 잡힌다.

@@ -1,75 +1,5 @@
-%YAML 1.1
-%TAG !u! tag:unity3d.com,2011:
---- !u!114 &11400000
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 78e6f691c35d849a3aaae03fcb063cd4, type: 3}
-  m_Name: pack_cyber_eyes_slit_visor
-  m_EditorClassIdentifier: 
-  itemId: equip.eyes.slitvisor
-  slot: 1
-  itemIndex: 6
-  displayName: Slit Visor
-  description: One narrow band of light. The corner terminals are where it was spliced back on.
-  requiredLevel: 1
-  hidesHair: 0
-  cohortId: 2
-  declaredRarity: 2
-  themeKey: packcyber
-  declaredSubStat: 4
-  icon:
-  - kind: 4
-    values:
-    - 9.3
-    - 17.83
-    - 34.31
-    - 17.83
-    - 37.2
-    - 20.72
-    - 34.31
-    - 23.61
-    - 9.3
-    - 23.61
-    - 7.37
-    - 20.72
-    - 9.3
-    - 17.83
-    color: {r: 0, g: 0.588235, b: 0.509804, a: 1}
-    tone: 0
-  - kind: 4
-    values:
-    - 31.43
-    - 19.76
-    - 33.11
-    - 18.8
-    - 35.52
-    - 19.76
-    - 35.76
-    - 21.68
-    - 33.59
-    - 22.65
-    - 31.43
-    - 21.68
-    - 31.43
-    - 19.76
-    color: {r: 0.317647, g: 0.552941, b: 0.521569, a: 1}
-    tone: 1
-  - kind: 0
-    values:
-    - 7.61
-    - 20
-    - 2.8
-    - 16.39
-    color: {r: 0, g: 0.588235, b: 0.509804, a: 1}
-    tone: 0
   wornShapes:
-  - name: VisorBar
+  - name: PickHaft
     loop: 1
     filled: 1
     tone: 0
@@ -78,7 +8,7 @@ MonoBehaviour:
     swingDegrees: 0
     surfaces: 0
     strokeMult: 1
-    strokeInR: 0.1153
+    strokeInR: 0.1243
     noStroke: 0
     alpha: 1
     lineAlpha: 1
@@ -86,13 +16,13 @@ MonoBehaviour:
     layer: 0
     bodyFixed: 0
     terms:
-    - 18
+    - 4
     - 1
     - 0
     - 0
     - 0
     - 1
-    - 1.56
+    - 0.91321
     - 2
     - 4
     - 0
@@ -102,13 +32,13 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - 0.32
+    - -1.50237
     - 1
     - 0
     - 0
     - 0
     - 1
-    - 1.38
+    - -1.32679
     - 2
     - 4
     - 0
@@ -118,13 +48,13 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - 0.42
+    - -4.54237
     - 1
     - 0
     - 0
     - 0
     - 1
-    - 0.91944
+    - -1.71321
     - 2
     - 4
     - 0
@@ -134,13 +64,13 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - 0.44222
+    - -4.25763
     - 1
     - 0
     - 0
     - 0
     - 1
-    - 0.45778
+    - 0.52679
     - 2
     - 4
     - 0
@@ -150,232 +80,8 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - 0.45556
-    - 1
-    - 0
-    - 0
-    - 0
-    - 1
-    - -0.005
-    - 2
-    - 4
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 1
-    - 0.46
-    - 1
-    - 0
-    - 0
-    - 0
-    - 1
-    - -0.46889
-    - 2
-    - 4
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 1
-    - 0.45556
-    - 1
-    - 0
-    - 0
-    - 0
-    - 1
-    - -0.93389
-    - 2
-    - 4
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 1
-    - 0.44222
-    - 1
-    - 0
-    - 0
-    - 0
-    - 1
-    - -1.4
-    - 2
-    - 4
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 1
-    - 0.42
-    - 1
-    - 0
-    - 0
-    - 0
-    - 1
-    - -1.58
-    - 2
-    - 4
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 1
-    - 0.32
-    - 1
-    - 0
-    - 0
-    - 0
-    - 1
-    - -1.58
-    - 2
-    - 4
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 1
-    - -0.26
-    - 1
-    - 0
-    - 0
-    - 0
-    - 1
-    - -1.4
-    - 2
-    - 4
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 1
-    - -0.36
-    - 1
-    - 0
-    - 0
-    - 0
-    - 1
-    - -0.93389
-    - 2
-    - 4
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 1
-    - -0.37667
-    - 1
-    - 0
-    - 0
-    - 0
-    - 1
-    - -0.46889
-    - 2
-    - 4
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 1
-    - -0.38667
-    - 1
-    - 0
-    - 0
-    - 0
-    - 1
-    - -0.005
-    - 2
-    - 4
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 1
-    - -0.39
-    - 1
-    - 0
-    - 0
-    - 0
-    - 1
-    - 0.45778
-    - 2
-    - 4
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 1
-    - -0.38667
-    - 1
-    - 0
-    - 0
-    - 0
-    - 1
-    - 0.91944
-    - 2
-    - 4
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 1
-    - -0.37667
-    - 1
-    - 0
-    - 0
-    - 0
-    - 1
-    - 1.38
-    - 2
-    - 4
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 1
-    - -0.36
-    - 1
-    - 0
-    - 0
-    - 0
-    - 1
-    - 1.56
-    - 2
-    - 4
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 1
-    - -0.26
-  - name: VisorGlow
+    - -1.21763
+  - name: PickHead
     loop: 1
     filled: 1
     tone: 1
@@ -384,21 +90,21 @@ MonoBehaviour:
     swingDegrees: 0
     surfaces: 0
     strokeMult: 1
-    strokeInR: 0.1153
-    noStroke: 1
+    strokeInR: 0.1243
+    noStroke: 0
     alpha: 1
-    lineAlpha: 0
+    lineAlpha: 1
     underBack: 0
     layer: 0
     bodyFixed: 0
     terms:
-    - 6
+    - 4
     - 1
     - 0
     - 0
     - 0
     - 1
-    - -1.16
+    - -0.83534
     - 2
     - 4
     - 0
@@ -408,13 +114,13 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - 0.02
+    - -3.47082
     - 1
     - 0
     - 0
     - 0
     - 1
-    - -0.86
+    - 0.01548
     - 2
     - 4
     - 0
@@ -424,13 +130,13 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - -0.24
+    - -4.50765
     - 1
     - 0
     - 0
     - 0
     - 1
-    - 0.84
+    - -0.24553
     - 2
     - 4
     - 0
@@ -440,13 +146,13 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - -0.24
+    - -4.86187
     - 1
     - 0
     - 0
     - 0
     - 1
-    - 1.14
+    - -1.48786
     - 2
     - 4
     - 0
@@ -456,163 +162,31 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - 0.02
-    - 1
-    - 0
-    - 0
-    - 0
-    - 1
-    - 0.84
-    - 2
-    - 4
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 1
-    - 0.28
-    - 1
-    - 0
-    - 0
-    - 0
-    - 1
-    - -0.86
-    - 2
-    - 4
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 1
-    - 0.28
-  - name: VisorSeamFront
-    loop: 0
-    filled: 0
-    tone: 4
-    swayStart: -1
-    swayCount: 0
-    swingDegrees: 0
-    surfaces: 0
-    strokeMult: 0.8
-    strokeInR: 0.09224
-    noStroke: 0
-    alpha: 0
-    lineAlpha: 0.55
-    underBack: 0
-    layer: 0
-    bodyFixed: 0
-    terms:
-    - 2
-    - 1
-    - 0
-    - 0
-    - 0
-    - 1
-    - 1.2
-    - 2
-    - 4
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 1
-    - 0.46
-    - 1
-    - 0
-    - 0
-    - 0
-    - 1
-    - 1.2
-    - 2
-    - 4
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 1
-    - -0.4
-  - name: VisorSeamBack
-    loop: 0
-    filled: 0
-    tone: 4
-    swayStart: -1
-    swayCount: 0
-    swingDegrees: 0
-    surfaces: 0
-    strokeMult: 0.8
-    strokeInR: 0.09224
-    noStroke: 0
-    alpha: 0
-    lineAlpha: 0.55
-    underBack: 0
-    layer: 0
-    bodyFixed: 0
-    terms:
-    - 2
-    - 1
-    - 0
-    - 0
-    - 0
-    - 1
-    - -1.22
-    - 2
-    - 4
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 1
-    - 0.46
-    - 1
-    - 0
-    - 0
-    - 0
-    - 1
-    - -1.22
-    - 2
-    - 4
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 1
-    - -0.4
-  - name: VisorStrap
-    loop: 0
-    filled: 0
+    - -4.35638
+  - name: PickPoll
+    loop: 1
+    filled: 1
     tone: 0
     swayStart: -1
     swayCount: 0
     swingDegrees: 0
     surfaces: 0
     strokeMult: 1
-    strokeInR: 0.1153
+    strokeInR: 0.1243
     noStroke: 0
     alpha: 1
     lineAlpha: 1
     underBack: 0
-    layer: 1
+    layer: 0
     bodyFixed: 0
     terms:
-    - 5
+    - 4
     - 1
     - 0
     - 0
     - 0
     - 1
-    - -1.22
+    - -1.48786
     - 2
     - 4
     - 0
@@ -622,13 +196,13 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - 0.36
+    - -4.35638
     - 1
     - 0
     - 0
     - 0
     - 1
-    - -1.22625
+    - -1.90649
     - 2
     - 4
     - 0
@@ -638,13 +212,13 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - 0.48125
+    - -4.04792
     - 1
     - 0
     - 0
     - 0
     - 1
-    - -1.125
+    - -1.25397
     - 2
     - 4
     - 0
@@ -654,13 +228,13 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - 0.585
+    - -3.16236
     - 1
     - 0
     - 0
     - 0
     - 1
-    - -0.91625
+    - -0.83534
     - 2
     - 4
     - 0
@@ -670,47 +244,31 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - 0.67125
+    - -3.47082
+  - name: HarnessPad
+    loop: 1
+    filled: 1
+    tone: 0
+    swayStart: -1
+    swayCount: 0
+    swingDegrees: 0
+    surfaces: 0
+    strokeMult: 1
+    strokeInR: 0.1243
+    noStroke: 0
+    alpha: 1
+    lineAlpha: 1
+    underBack: 0
+    layer: 0
+    bodyFixed: 0
+    terms:
+    - 12
     - 1
-    - 0
-    - 0
-    - 0
-    - 1
-    - -0.6
-    - 2
-    - 4
-    - 0
-    - 0
-    - 0
     - 0
     - 0
     - 0
     - 1
     - 0.74
-  - name: VisorHighlight
-    loop: 0
-    filled: 0
-    tone: 3
-    swayStart: -1
-    swayCount: 0
-    swingDegrees: 0
-    surfaces: 0
-    strokeMult: 0.75
-    strokeInR: 0.08647
-    noStroke: 0
-    alpha: 0
-    lineAlpha: 0.42
-    underBack: 0
-    layer: 0
-    bodyFixed: 0
-    terms:
-    - 4
-    - 1
-    - 0
-    - 0
-    - 0
-    - 1
-    - 1.2
     - 2
     - 4
     - 0
@@ -720,13 +278,13 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - 0.44
+    - -2.1
     - 1
     - 0
     - 0
     - 0
     - 1
-    - 0.8
+    - 0.89556
     - 2
     - 4
     - 0
@@ -736,13 +294,13 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - 0.3
+    - -2.03556
     - 1
     - 0
     - 0
     - 0
     - 1
-    - 0.4
+    - 0.96
     - 2
     - 4
     - 0
@@ -752,7 +310,87 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - 0.27
+    - -1.88
+    - 1
+    - 0
+    - 0
+    - 0
+    - 1
+    - 0.96
+    - 2
+    - 4
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 1
+    - -1.4
+    - 1
+    - 0
+    - 0
+    - 0
+    - 1
+    - 0.89556
+    - 2
+    - 4
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 1
+    - -1.24444
+    - 1
+    - 0
+    - 0
+    - 0
+    - 1
+    - 0.74
+    - 2
+    - 4
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 1
+    - -1.18
+    - 1
+    - 0
+    - 0
+    - 0
+    - 1
+    - 0.32
+    - 2
+    - 4
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 1
+    - -1.18
+    - 1
+    - 0
+    - 0
+    - 0
+    - 1
+    - 0.16444
+    - 2
+    - 4
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 1
+    - -1.24444
     - 1
     - 0
     - 0
@@ -768,9 +406,300 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - 0.26
-  wornGroupAlpha: 0
-  wornScale: 0
-  wornScaleY: 0
-  wornOffsetYInR: 0
-  wornMirrorX: 0
+    - -1.4
+    - 1
+    - 0
+    - 0
+    - 0
+    - 1
+    - 0.1
+    - 2
+    - 4
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 1
+    - -1.88
+    - 1
+    - 0
+    - 0
+    - 0
+    - 1
+    - 0.16444
+    - 2
+    - 4
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 1
+    - -2.03556
+    - 1
+    - 0
+    - 0
+    - 0
+    - 1
+    - 0.32
+    - 2
+    - 4
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 1
+    - -2.1
+  - name: HarnessStrap
+    loop: 0
+    filled: 0
+    tone: 0
+    swayStart: -1
+    swayCount: 0
+    swingDegrees: 0
+    surfaces: 0
+    strokeMult: 1
+    strokeInR: 0.1243
+    noStroke: 0
+    alpha: 1
+    lineAlpha: 1
+    underBack: 0
+    layer: 0
+    bodyFixed: 0
+    terms:
+    - 4
+    - 1
+    - 0
+    - 0
+    - 0
+    - 1
+    - 0.4
+    - 2
+    - 4
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 1
+    - -2.1
+    - 1
+    - 0
+    - 0
+    - 0
+    - 1
+    - 0.22911
+    - 2
+    - 4
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 1
+    - -2.29529
+    - 1
+    - 0
+    - 0
+    - 0
+    - 1
+    - 0.11645
+    - 2
+    - 4
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 1
+    - -2.48114
+    - 1
+    - 0
+    - 0
+    - 0
+    - 1
+    - 0.06201
+    - 2
+    - 4
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 1
+    - -2.65757
+  - name: HaftGrip1
+    loop: 0
+    filled: 0
+    tone: 4
+    swayStart: -1
+    swayCount: 0
+    swingDegrees: 0
+    surfaces: 0
+    strokeMult: 0.8
+    strokeInR: 0.09944
+    noStroke: 0
+    alpha: 0
+    lineAlpha: 0.55
+    underBack: 0
+    layer: 0
+    bodyFixed: 0
+    terms:
+    - 2
+    - 1
+    - 0
+    - 0
+    - 0
+    - 1
+    - 0.13447
+    - 2
+    - 4
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 1
+    - -2.71096
+    - 1
+    - 0
+    - 0
+    - 0
+    - 1
+    - -0.39687
+    - 2
+    - 4
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 1
+    - -2.31944
+  - name: HaftGrip2
+    loop: 0
+    filled: 0
+    tone: 4
+    swayStart: -1
+    swayCount: 0
+    swingDegrees: 0
+    surfaces: 0
+    strokeMult: 0.8
+    strokeInR: 0.09944
+    noStroke: 0
+    alpha: 0
+    lineAlpha: 0.55
+    underBack: 0
+    layer: 0
+    bodyFixed: 0
+    terms:
+    - 2
+    - 1
+    - 0
+    - 0
+    - 0
+    - 1
+    - -0.17913
+    - 2
+    - 4
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 1
+    - -3.13656
+    - 1
+    - 0
+    - 0
+    - 0
+    - 1
+    - -0.71047
+    - 2
+    - 4
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 1
+    - -2.74504
+  - name: PickHighlight
+    loop: 0
+    filled: 0
+    tone: 3
+    swayStart: -1
+    swayCount: 0
+    swingDegrees: 0
+    surfaces: 0
+    strokeMult: 0.75
+    strokeInR: 0.09323
+    noStroke: 0
+    alpha: 0
+    lineAlpha: 0.42
+    underBack: 0
+    layer: 0
+    bodyFixed: 0
+    terms:
+    - 3
+    - 1
+    - 0
+    - 0
+    - 0
+    - 1
+    - -0.24553
+    - 2
+    - 4
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 1
+    - -4.86187
+    - 1
+    - 0
+    - 0
+    - 0
+    - 1
+    - -0.82517
+    - 2
+    - 4
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 1
+    - -4.55277
+    - 1
+    - 0
+    - 0
+    - 0
+    - 1
+    - -1.48786
+    - 2
+    - 4
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 1
+    - -4.35638
