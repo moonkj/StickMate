@@ -455,8 +455,15 @@ namespace StickMate.Tests.EditMode
         /// <para>★ 같은 테스트에 <b>양성 대조 2건</b>을 붙인다:
         /// (가) <c>mil</c>이 실재하는 테마인지(<see cref="ItemCatalog.AllThemes"/>에 있는지) —
         /// 없는 테마라면 이 거부는 「mil 정책」이 아니라 「모르는 테마」를 잰 것이다.
-        /// (나) <b>다른 기본 코호트 테마는 통과하는지</b> — 안 통과하면 이 빨강은 «mil이라서»가 아니라
-        /// «기본 코호트 갈래가 통째로 막혀서»다.</para>
+        /// (나) <b>허용 목록에 있는 기본 코호트 테마는 통과하는지</b> — 안 통과하면 이 빨강은
+        /// «mil이라서»가 아니라 «기본 코호트 갈래가 통째로 막혀서»다.</para>
+        ///
+        /// <para>★★ <b>2026-09-08 정정 — 이 테스트만으로는 유료 경계를 못 지킨다.</b>
+        /// 여기서 재는 것은 <b><c>mil</c> 한 칸</b>뿐이고, 프로덕션이 <c>mil</c>만 막던 시절에는
+        /// <c>cyber</c>·<c>neon</c>·<c>sport</c>·<c>ink</c>가 <b>전부 통과</b>했는데도 이 파일은 초록이었다.
+        /// 그 구멍을 <see cref="기본코호트_코스튬은_허용목록_밖_테마를_전부_거부한다"/>가 막는다 —
+        /// 이 테스트는 이제 <b>그 허용 목록의 한 사례</b>이고, «어느 테마 때문인지 사유가 문장에 남는가»를
+        /// 잰다(허용 목록이 이유를 뭉뚱그리면 만든 사람이 못 고친다).</para>
         /// </summary>
         [Test]
         public void 기본코호트_mil_테마_코스튬은_결함으로_거부된다()
@@ -466,11 +473,16 @@ namespace StickMate.Tests.EditMode
                 $"{LogPrefix} '{ItemCatalog.ThemeMil}'가 테마 표에 없습니다 — " +
                 "그러면 아래 거부는 «mil 정책»이 아니라 «모르는 테마»를 잰 것입니다.");
 
-            // (나) 양성 대조: 다른 기본 코호트 테마는 통과한다.
+            // (나) 양성 대조: 허용 목록에 있는 기본 코호트 테마는 통과한다.
+            //     ★ 테마 이름을 베끼지 않고 <b>허용 목록의 첫 항목</b>을 쓴다 — 목록이 바뀌면 따라간다.
+            string[] allowed = CostumeCatalog.AllowedBaseThemes();
+            Assert.IsNotEmpty(allowed,
+                $"{LogPrefix} BaseTheme 허용 목록이 비었습니다 — 그러면 아래 «다른 테마는 통과» 대조를 " +
+                "세울 수 없고, mil 빨강이 정책인지 갈래 고장인지 구별되지 않습니다.");
             using (var ok = new Fixture())
             {
-                ok.Add(SyntheticPrefix + "cok", CostumeSourceKind.BaseTheme, ItemCatalog.ThemeOffice);
-                CostumeDescriptor[] loaded = BuildOrFail(ok, $"기본 코호트 '{ItemCatalog.ThemeOffice}' 코스튬");
+                ok.Add(SyntheticPrefix + "cok", CostumeSourceKind.BaseTheme, allowed[0]);
+                CostumeDescriptor[] loaded = BuildOrFail(ok, $"기본 코호트 '{allowed[0]}' 코스튬");
                 Assert.AreEqual(1, loaded.Length,
                     $"{LogPrefix} 기본 코호트 갈래가 통째로 막혀 있습니다 — " +
                     "그러면 아래 mil 빨강은 정책이 아니라 갈래 고장입니다.");
@@ -500,6 +512,145 @@ namespace StickMate.Tests.EditMode
         }
 
         /// <summary>
+        /// ============================================================================
+        /// ★★★ <b>P0 유료 경계 회귀 — 허용 목록 밖의 기본 코호트 테마는 「전부」 거부된다</b>
+        /// ============================================================================
+        /// <b>막은 구멍</b>(2026-09-08, <c>product-strategy</c> 실측 · <c>docs/strategy/CHANNEL_PRICING_DECISIONS.md</c> 54-1절):
+        /// <see cref="CostumeCatalog"/>의 소속 감사는 원래 <c>mil</c> <b>하나만</b> 거부했고
+        /// <c>ink</c>·<c>sport</c>·<c>cyber</c>·<c>neon</c>은 <b>통과</b>시켰다.
+        /// 그런데 기본 42종의 6테마는 <b>전부 4/4가 인게임 재화로 살 수 있는 아이템</b>이라,
+        /// 누군가 <c>costume.cyber</c>를 <see cref="CostumeSourceKind.BaseTheme"/>/<c>cyber</c>로 저작하면
+        /// <b>$4.99 팩의 간판 연출이 동전 6,600(원형 B 1.7일)에 열린다</b> — 그리고 그 사고는
+        /// <b>감사도 초록 · 테스트도 초록</b>인 채로 난다. 그것이 이 테스트가 존재하는 이유다.
+        ///
+        /// <para><b>피해자가 누구인지 적어 둔다</b>(그것을 못 적으면 위협이 아니라 불안이다):
+        /// <b>개발자(매출)</b>다. 세이브를 고쳐 자기 동전을 올리는 일과 성질이 다르다 —
+        /// 그쪽은 피해자가 자기 자신뿐이지만, 이쪽은 <b>유료 경계</b>가 무너진다.</para>
+        ///
+        /// ============================================================================
+        /// 이 테스트가 <b>죽은 프로브</b>가 되지 않도록 세운 대조 5개
+        /// ============================================================================
+        /// <list type="number">
+        ///  <item><b>허용 목록의 항목이 실재하는 테마인가</b> — 오타면 아래 «통과» 대조가 통째로 공허하다.</item>
+        ///  <item><b>상품 골든</b> — 오늘 허용된 것은 <c>office</c> 하나다. 목록이 조용히 자라면 여기서 빨개진다
+        ///        (허용 목록만 참조하는 테스트는 <b>프로덕션을 따라다니며 언제나 초록</b>이 된다).</item>
+        ///  <item><b>거부 대상이 0개가 아닌가</b> — 0이면 아래 루프가 한 바퀴도 안 돌고 초록이 난다.</item>
+        ///  <item><b>양성 대조</b> — 허용된 테마는 <b>실제로 실린다</b>. 안 실리면 아래 빨강은
+        ///        «경계»가 아니라 «갈래가 통째로 고장»이다.</item>
+        ///  <item><b>위협 실재 대조</b> — 거부하는 테마들이 정말로 «기본 42종만으로 4/4가 되는» 테마인가.
+        ///        아니라면 이 거부는 경제 방어가 아니라 취향이다.</item>
+        /// </list>
+        /// </summary>
+        [Test]
+        public void 기본코호트_코스튬은_허용목록_밖_테마를_전부_거부한다()
+        {
+            string[] all = ItemCatalog.AllThemes();
+            string[] allowed = CostumeCatalog.AllowedBaseThemes();
+
+            Assert.IsNotEmpty(all, $"{LogPrefix} 테마 표가 비었습니다 — 아래 비교가 전부 공허합니다.");
+            Assert.IsNotEmpty(allowed,
+                $"{LogPrefix} BaseTheme 허용 목록이 비었습니다. 그러면 무료 코스튬 갈래가 " +
+                "통째로 막힌 것이고, 출하된 costume.office가 실리지 않습니다.");
+
+            // ---- 대조 ① 허용 목록의 항목이 실재하는 테마인가(오타 방지) ----
+            for (int i = 0; i < allowed.Length; i++)
+            {
+                Assert.Contains(allowed[i], all,
+                    $"{LogPrefix} 허용 목록의 '{allowed[i]}'가 ItemCatalog의 테마 표에 없습니다 — " +
+                    "오타면 그 항목은 <b>영원히 아무것도 열지 않고</b>, 아래 «허용된 테마는 통과» 대조가 " +
+                    "그 자리에서 거짓이 됩니다.");
+            }
+
+            // ---- 대조 ② 상품 골든: 오늘 허용된 것은 office 하나다 ----
+            //   ★ 이 한 줄이 없으면 이 테스트는 프로덕션 목록을 그대로 따라다니며 <b>언제나 초록</b>이다.
+            CollectionAssert.AreEquivalent(new[] { ItemCatalog.ThemeOffice }, allowed,
+                $"{LogPrefix} ★★★ <b>BaseTheme 허용 목록이 바뀌었습니다</b>" +
+                $"(지금: [{string.Join(", ", allowed)}]).\n" +
+                "이 목록은 <b>무료/유료 경계</b>입니다 — 항목을 하나 더하면 그 테마의 코스튬이 " +
+                "<b>인게임 재화만으로</b> 열립니다(기본 42종의 6테마는 전부 4/4가 동전으로 살 수 있습니다).\n" +
+                "  · 늘리려면 product-strategy 판정을 먼저 받고 " +
+                "docs/strategy/CHANNEL_PRICING_DECISIONS.md의 SKU 표를 <b>같은 라운드에</b> 고치십시오.\n" +
+                "  · 그리고 이 골든을 <b>그 판정과 함께</b> 고치십시오(그냥 맞추지 말 것).");
+
+            // ---- 대조 ③ 거부 대상이 0개가 아닌가 ----
+            var denied = new List<string>();
+            for (int i = 0; i < all.Length; i++)
+            {
+                if (!CostumeCatalog.IsAllowedBaseTheme(all[i])) denied.Add(all[i]);
+            }
+            Assert.IsNotEmpty(denied,
+                $"{LogPrefix} 거부 대상 테마가 0개입니다 — 허용 목록이 테마 표 전체를 덮었다는 뜻이고, " +
+                "그러면 아래 루프가 <b>한 바퀴도 안 돌고</b> 초록이 납니다(그것이 이 저장소의 거짓 통과 형태).");
+
+            // ---- 대조 ⑤ 위협 실재: 거부하는 테마가 정말 «동전만으로 4/4»인가 ----
+            var perTheme = new Dictionary<string, int>();
+            foreach (ItemCatalogEntry e in ItemCatalog.Entries)
+            {
+                if (e.CohortId != ItemCatalog.BaseCohortId) continue;
+                if (string.IsNullOrEmpty(e.Theme)) continue;
+                perTheme.TryGetValue(e.Theme, out int n);
+                perTheme[e.Theme] = n + 1;
+            }
+            Assert.IsNotEmpty(perTheme,
+                $"{LogPrefix} 기본 코호트 아이템에서 테마가 하나도 안 세어졌습니다 — " +
+                "아래 «4/4가 성립한다»는 판정이 공허합니다(카탈로그가 안 실렸을 수 있습니다).");
+            for (int i = 0; i < denied.Count; i++)
+            {
+                perTheme.TryGetValue(denied[i], out int n);
+                Assert.AreEqual(EquipmentStatRules.StatCount, n,
+                    $"{LogPrefix} 테마 '{denied[i]}'의 기본 코호트 아이템이 {n}종입니다" +
+                    $"(스탯 슬롯 {EquipmentStatRules.StatCount}개와 다름) — " +
+                    "그러면 이 테마를 거부하는 근거(«동전만으로 4/4가 완성된다»)가 성립하지 않습니다. " +
+                    "테마 배정이 바뀌었다면 <b>거부 정책의 근거부터</b> 다시 세우십시오.");
+            }
+
+            // ---- 대조 ④ 양성 대조: 허용된 테마는 실제로 실린다 ----
+            for (int i = 0; i < allowed.Length; i++)
+            {
+                using (var ok = new Fixture())
+                {
+                    ok.Add(SyntheticPrefix + "callow" + i, CostumeSourceKind.BaseTheme, allowed[i]);
+                    var faults = new List<string>();
+                    CostumeDescriptor[] loaded = CostumeCatalog.Build(ok.Manifests, faults);
+                    Assert.IsEmpty(faults,
+                        $"{LogPrefix} 허용 목록의 '{allowed[i]}' 코스튬이 거부됐습니다({faults.Count}건):\n  · " +
+                        string.Join("\n  · ", faults) + "\n" +
+                        "허용 목록과 실제 검사가 갈라졌습니다 — 그러면 출하된 무료 코스튬이 " +
+                        "<b>조용히 안 실리고</b>, 그 화면은 «기능 미구현»과 구별되지 않습니다.");
+                    Assert.AreEqual(1, loaded.Length,
+                        $"{LogPrefix} 허용 목록의 '{allowed[i]}' 코스튬이 결함 0건인데 실리지도 않았습니다 — 적재기 이상.");
+                }
+            }
+
+            // ---- 본론: 허용 목록 밖 테마는 전부 거부되고 + 신고되고 + 사유가 테마 이름을 말한다 ----
+            for (int i = 0; i < denied.Count; i++)
+            {
+                using (var bad = new Fixture())
+                {
+                    bad.Add(SyntheticPrefix + "cdeny" + i, CostumeSourceKind.BaseTheme, denied[i]);
+                    var faults = new List<string>();
+                    CostumeDescriptor[] loaded = CostumeCatalog.Build(bad.Manifests, faults);
+
+                    Assert.IsEmpty(loaded,
+                        $"{LogPrefix} ★★★ <b>허용 목록 밖의 테마 '{denied[i]}' 코스튬이 실렸습니다.</b>\n" +
+                        $"'{denied[i]}' 4/4는 전부 기본 42종이라 이 코스튬은 <b>인게임 재화만으로</b> 열립니다 — " +
+                        "$4.99 팩의 간판 연출이 그 자리에서 샙니다" +
+                        "(CHANNEL_PRICING_DECISIONS 54-1: cyber 4/4 = 동전 6,600 · 원형 B 1.7일).\n" +
+                        "유료로 팔 코스튬이면 sourceKind를 Pack으로, sourceId를 packId로 적으십시오.");
+                    Assert.IsNotEmpty(faults,
+                        $"{LogPrefix} '{denied[i]}' 코스튬이 <b>조용히</b> 빠졌습니다 — 결함 신고가 0건입니다. " +
+                        "조용한 미적재는 «만든 사람이 영원히 못 찾는» 형태입니다.");
+                    StringAssert.Contains(denied[i], string.Join("\n", faults),
+                        $"{LogPrefix} '{denied[i]}'의 결함 문장이 <b>어느 테마 때문인지</b> 말하지 않습니다.");
+                }
+            }
+
+            Debug.Log($"{LogPrefix} 허용 목록 [{string.Join(", ", allowed)}] 통과 / " +
+                      $"목록 밖 [{string.Join(", ", denied)}] {denied.Count}개 전부 거부 · 신고 확인. " +
+                      $"(거부 테마는 각각 기본 코호트 {EquipmentStatRules.StatCount}종 = 4/4 성립)");
+        }
+
+        /// <summary>
         /// 문이 무는 다른 형태들. <b>전부 「거부되고 + 신고된다」 두 가지를 함께</b> 본다 —
         /// 조용한 미적재는 만든 사람이 영원히 못 찾는 형태다.
         /// <para>★ 단계 범위는 <see cref="CostumeEvolutionRules.StageCount"/>를 <b>참조</b>해서 만든다.
@@ -515,6 +666,11 @@ namespace StickMate.Tests.EditMode
 
             AssertRejected("sourceId에 원문(키 모양 위반)",
                 f => f.Add(SyntheticPrefix + "craw2", CostumeSourceKind.BaseTheme, "사무직테마"));
+
+            // ★ 실재하는 테마인데 <b>허용 목록 밖</b>. 「모르는 테마」와 갈래가 다르다 —
+            //   이 줄이 없으면 위 「모르는 테마」 초록이 «유료 경계도 막힌다»로 오독된다.
+            AssertRejected($"허용 목록 밖의 실재 테마('{ItemCatalog.ThemeCyber}' — 유료 팩과 같은 축)",
+                f => f.Add(SyntheticPrefix + "ccyber", CostumeSourceKind.BaseTheme, ItemCatalog.ThemeCyber));
 
             AssertRejected("앱보다 새 스키마를 요구",
                 f =>

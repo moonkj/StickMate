@@ -106,7 +106,8 @@ namespace StickMate.Core
 
         private static CostumeDescriptor[] _costumes;
 
-        /// <summary>지금 실린 코스튬. <b>오늘은 0개이고 그건 정상이다</b> — 매니페스트 에셋이 아직 없다.</summary>
+        /// <summary>지금 실린 코스튬. ★ 2026-09-08 R30부터 4개(office/cyber/mine/arcane) —
+        /// 매니페스트 에셋이 그날 처음 저작됐다(이전에는 0개였고 그것도 정상이었다).</summary>
         public static IReadOnlyList<CostumeDescriptor> Costumes
         {
             get { EnsureLoaded(); return _costumes; }
@@ -131,9 +132,9 @@ namespace StickMate.Core
         }
 
         /// <summary>기본 코호트 <b>테마</b>에서 나오는 코스튬. 없으면 <c>null</c>.
-        /// <para>★ 오늘 이 갈래에 <c>mil</c>이 없는 것은 <b>의도</b>다 — 1일차 무상 4종이 그대로
-        /// <c>mil</c> 4/4라, <c>costume.mil</c>을 만들면 <b>동전 0원·0일</b>에 코스튬이 열린다
-        /// (아래 <see cref="Accepts"/>가 그 조합을 결함으로 신고한다).</para></summary>
+        /// <para>★ 오늘 이 갈래에 <c>office</c> 하나뿐인 것은 <b>의도</b>다 — 나머지 5테마는
+        /// <see cref="AllowedBaseThemes"/> 허용 목록 밖이라 <see cref="AuditSource"/>가 결함으로
+        /// 신고하고 <b>싣지 않는다</b>. 근거(어느 테마든 4/4가 인게임 재화로 열린다)는 그 문단에 있다.</para></summary>
         public static CostumeDescriptor FindByBaseTheme(string themeKey)
         {
             if (string.IsNullOrEmpty(themeKey)) return null;
@@ -310,14 +311,70 @@ namespace StickMate.Core
         }
 
         /// <summary>
-        /// 소속이 <b>실재하는 것</b>을 가리키는가.
+        /// ★★★ <b><see cref="CostumeSourceKind.BaseTheme"/> 코스튬이 존재해도 되는 테마의 전량 목록</b>
+        /// — 허용 목록(default-deny)이다. <b>여기 없는 테마는 전부 거부된다.</b>
         ///
-        /// <para>★ <b>기본 코호트 <c>mil</c>은 거부한다</b>(설계 결정을 코드에 못박는 자리).
-        /// 1일차 무상 4종(스탯 4슬롯 idx0)이 <b>전부 <c>mil</c></b>이라, <c>mil</c> 테마 코스튬을 만들면
-        /// <b>동전 0원 · 0일</b>에 코스튬이 열린다 — 유료 코스튬의 간판 연출이 그 자리에서 샌다.
-        /// 값이 없어서 막히는 것이 아니라 <b>여기서 사유와 함께 막힌다</b>:
-        /// 정책이 바뀌면 <b>바꿀 곳이 한 군데</b>이고, 그때 이 문단이 무엇을 여는지 말해 준다
-        /// (<c>ItemCatalog.MaxDeclaredRarityForPack</c>이 같은 방식으로 페이투윈 차단선을 들고 있다).</para>
+        /// ============================================================================
+        /// 왜 「위험한 하나를 막는」 방식에서 뒤집었는가 (2026-09-08 P0)
+        /// ============================================================================
+        /// 이 검사는 원래 <c>mil</c> <b>하나만</b> 거부하고 나머지 5개(<c>ink</c>·<c>sport</c>·
+        /// <c>office</c>·<c>cyber</c>·<c>neon</c>)를 통과시켰다. 그런데 <see cref="ItemCatalog"/>의
+        /// 테마 표는 <b>6테마 × 스탯 4슬롯 = 24종이 전부 기본 42종</b>이라, <b>어느 테마든</b>
+        /// BaseTheme으로 저작하면 그 코스튬은 <b>인게임 재화만으로</b> 열린다.
+        /// 즉 위험한 것은 «한 테마»가 아니라 «허용되지 않은 모든 테마»였다 —
+        /// 블랙리스트는 <b>기본값이 통과</b>라서 그 사고가 <b>감사도 초록 · 테스트도 초록</b>인 채로 난다.
+        ///
+        /// <para><b>실물 위험</b>(<c>docs/strategy/CHANNEL_PRICING_DECISIONS.md</c> 54-1절, product-strategy 실측):
+        /// <c>cyber</c> 4/4(왕관 · 외알안경 · 펜던트 · 긴망토)가 전부 기본 42종이므로,
+        /// <c>costume.cyber</c>를 BaseTheme/<c>cyber</c>로 저작하면 <b>$4.99 팩의 간판 연출이
+        /// 동전 6,600(원형 B 1.7일)에 열린다.</b> 그리고 오늘 실린 유일한 BaseTheme 코스튬이
+        /// <c>costume.office</c>라 <b>다음 저작자가 베낄 형태가 정확히 그것</b>이다.</para>
+        ///
+        /// ============================================================================
+        /// 불변 원칙 4(플러그인 구조)와 충돌하지 않는다
+        /// ============================================================================
+        /// 원칙 4가 여는 통로는 <b>DLC = <see cref="CostumeSourceKind.Pack"/> 갈래</b>이고,
+        /// 그쪽은 여전히 <b>프로덕션 <c>.cs</c> 0줄</b>이다 — <see cref="AuditSource"/>가 Pack을
+        /// <b>테마 검사에 걸지 않고</b> 통과시킨다(아래 조기 반환). 이 목록이 무는 것은
+        /// <b>무료 갈래 하나</b>뿐이고, 무료 코스튬을 하나 더 만드는 일은 조형 작업이 아니라
+        /// <b>무료/유료 경계를 옮기는 상품 판정</b>이다. 그 판정에 <b>코드 한 줄의 마찰</b>을 두는 것이
+        /// 이 목록의 목적이다(<c>ItemCatalog.MaxDeclaredRarityForPack</c>이 페이투윈 차단선을
+        /// 같은 방식으로 들고 있다).
+        ///
+        /// <para><b>늘리기 전에</b>: <c>product-strategy</c> 판정을 먼저 받고
+        /// <c>docs/strategy/CHANNEL_PRICING_DECISIONS.md</c>의 SKU 표를 <b>같은 라운드에</b> 고쳐라.
+        /// 여기만 늘리면 «누가 왜 열었는지»가 어디에도 남지 않는다.</para>
+        ///
+        /// <para>★ <b>배열이 아니라 메서드</b>인 이유는 <see cref="ItemCatalog.AllThemes"/>와 같다 —
+        /// <c>static readonly</c> 배열은 부르는 쪽이 칸을 <b>덮어쓸 수 있고</b>, 그 배열이 곧
+        /// 유료 경계라서 «한 칸 쓰기»가 경계를 옮기는 경로가 된다.</para>
+        /// </summary>
+        internal static string[] AllowedBaseThemes() => new[] { ItemCatalog.ThemeOffice };
+
+        /// <summary>이 테마로 <b>무료(BaseTheme) 코스튬</b>을 저작해도 되는가.
+        /// 목록은 <see cref="AllowedBaseThemes"/> 한 곳이다.</summary>
+        internal static bool IsAllowedBaseTheme(string themeKey)
+        {
+            if (string.IsNullOrEmpty(themeKey)) return false;
+            string[] allowed = AllowedBaseThemes();
+            for (int i = 0; i < allowed.Length; i++)
+            {
+                if (string.Equals(allowed[i], themeKey, System.StringComparison.Ordinal)) return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// 소속이 <b>실재하는 것</b>을 가리키는가, 그리고 <b>그 갈래로 존재해도 되는가</b>.
+        ///
+        /// <para>★ <b><see cref="CostumeSourceKind.Pack"/>은 이 검사를 통과한다</b>(조기 반환).
+        /// 팩 실재 여부는 해석 시점의 사실이고, 개방은 <see cref="CostumeEntitlement"/> 한 곳이 판정한다 —
+        /// 유료 갈래는 <b>여기서 막을 것이 없다</b>. 통로(원칙 4)가 살아 있는 것도 그 조기 반환 덕이다.</para>
+        ///
+        /// <para>★ <b><see cref="CostumeSourceKind.BaseTheme"/>은 허용 목록으로 막는다</b> —
+        /// 근거는 <see cref="AllowedBaseThemes"/> 문단에 전부 있다. 값이 없어서 막히는 것이 아니라
+        /// <b>사유와 함께</b> 막힌다: 정책이 바뀌면 <b>바꿀 곳이 한 군데</b>이고,
+        /// 그때 그 문단이 무엇을 여는지 말해 준다.</para>
         /// </summary>
         private static void AuditSource(CostumeManifestSO m, string who, List<string> faults)
         {
@@ -346,13 +403,24 @@ namespace StickMate.Core
                 return;
             }
 
-            if (m.sourceId == ItemCatalog.ThemeMil)
-            {
-                faults.Add($"{who}가 기본 코호트 테마 '{ItemCatalog.ThemeMil}'를 가리킵니다. " +
-                    "1일차 무상 4종(스탯 4슬롯의 첫 아이템)이 전부 이 테마라, 이 코스튬은 " +
-                    "<b>동전 0원 · 0일</b>에 전원에게 열립니다 — 유료 코스튬의 간판 연출이 그 자리에서 샙니다. " +
-                    "정책을 바꾸려면 이 검사를 지우고 <b>왜 열기로 했는지</b>를 같은 자리에 적으십시오.");
-            }
+            if (IsAllowedBaseTheme(m.sourceId)) return;
+
+            // ★ 여기부터가 유료 경계다. 실재하는 테마인데 «무료로 열어도 되는 테마»가 아니다.
+            string milNote = m.sourceId == ItemCatalog.ThemeMil
+                ? $"특히 '{ItemCatalog.ThemeMil}'은 1일차 무상 4종(스탯 4슬롯의 첫 아이템)이 전부 이 테마라 " +
+                  "<b>동전 0원 · 0일차</b>에 전원에게 열립니다. "
+                : string.Empty;
+
+            faults.Add($"{who}가 기본 코호트 테마 '{m.sourceId}'를 가리키는데, " +
+                $"BaseTheme 코스튬이 허용된 테마는 [{string.Join(", ", AllowedBaseThemes())}]뿐입니다. " +
+                milNote +
+                "기본 42종의 6테마는 <b>4/4가 전부 인게임 재화로 살 수 있는 아이템</b>이라, " +
+                "허용 목록 밖의 테마로 코스튬을 저작하면 그 코스튬은 <b>동전만으로</b> 열립니다 — " +
+                "유료 팩의 간판 연출이면 매출이 그 자리에서 샙니다" +
+                $"(CHANNEL_PRICING_DECISIONS 54-1: '{ItemCatalog.ThemeCyber}' 4/4 = 동전 6,600 · 원형 B 1.7일).\n" +
+                "  · 유료로 팔 코스튬이면 sourceKind를 Pack으로, sourceId를 <b>packId</b>로 적으십시오.\n" +
+                "  · 정말 무료로 열 것이면 product-strategy 판정을 먼저 받고 " +
+                "CostumeCatalog.AllowedBaseThemes와 CHANNEL_PRICING_DECISIONS의 SKU 표를 <b>함께</b> 고치십시오.");
         }
 
         private static void RequireKey(string value, string what, List<string> faults)

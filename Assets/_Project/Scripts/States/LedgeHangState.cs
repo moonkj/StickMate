@@ -115,6 +115,22 @@ namespace StickMate.States
             public float DropHeightUnits;
             /// <summary>이 전이 프레임의 캐릭터 실측 신장(월드 유닛).</summary>
             public float CharacterHeightWorld;
+
+            /// <summary>
+            /// ★ 2026-09-08 — 내려갈 발판을 <b>실제로 찾았는가</b>(<c>TryFindDescendTarget</c>의 결과 그대로).
+            ///
+            /// <para><b>절대 <see cref="DropHeightUnits"/>가 0인지로 대신 판정하지 마라.</b> 발판을 못 찾으면
+            /// 낙차가 0으로 떨어지는데, 0은 <b>「가장 얕은 낙차」와 비트 단위로 같은 값</b>이다. 이 필드가
+            /// 없던 동안 매핑 함수는 <b>실패한 측정을 「가장 얕은 낙차」로 읽어</b> «여기로 내려가자»를
+            /// 말했고, 정작 그 경로의 실제 행동은 <b>아무 데도 안 내려가고 그냥 Fall</b>이었다
+            /// (절대 불변 원칙 1 — 행동-텍스트 싱크 위반. design-narrative 전체 대사 검수에서 발견).</para>
+            ///
+            /// <para>같은 병을 이 저장소가 이미 한 번 앓았고 처방도 같다 —
+            /// <see cref="StickMate.Dialogue.GrabReactionLines.GrabParams.HasGrabPoint"/>
+            /// (<c>오프셋 0</c> = 「발끝을 정확히 잡았다」 = 「커서를 못 읽었다」). <b>실패한 측정과
+            /// 성공한 측정이 똑같이 생겼다</b>는 그 형태다.</para>
+            /// </summary>
+            public bool HasDescendTarget;
         }
 
         private readonly LedgeHangDialogueParams _dialogueParams = new LedgeHangDialogueParams();
@@ -130,8 +146,60 @@ namespace StickMate.States
 
         /// <summary>"어우... 아찔하네"가 나오는 낙차(신장 배수 H). 그 아래는 "여기로 내려가자".
         /// ★ 판단값이지 실측이 아니다 — UX_FLOW.md 31-2 #6 / MOTION_SPEC 2-7. 거리이므로 반드시
-        /// H 배수다(31-4 C1 축 ①).</summary>
-        private const float DeepDescentHeights = 1.6f;
+        /// H 배수다(31-4 C1 축 ①).
+        /// <para>★ 2026-09-01 개정(UX_FLOW.md 31-2 #6 신규 등재 / MOTION_SPEC 1절 표 #3) — 임계값을
+        /// <b>절대 월드 유닛에서 신장 배수(H)로</b> 옮겼다. 구 임계값 3.0유닛은 배율 1.0에서 1.32H이고,
+        /// 이 상태가 성립하는 최소 낙차 자체가 1.10H라 "어우... 아찔하네"가 나오려면 낙차가 최소치의
+        /// 1.2배를 넘어야 했다. 신장 배수로 적어 배율 슬라이더와 플랫폼(작업표시줄 높이)에 불변이 되게 한다.
+        /// <b>1.6이라는 계수는 design-motion의 판단값이지 실측이 아니다</b> — 실기에서 창-창 사이 낙차
+        /// 분포를 본 뒤 조정될 수 있다.</para>
+        /// <para><c>internal</c>인 이유: 회귀 테스트가 이 임계값을 <b>숫자로 베끼지 않고 참조</b>해야
+        /// 한다(CLAUDE.md — 하드코딩 잔존으로 4건이 깨진 2026-09-01 사고 이후 확정).
+        /// <c>AssemblyInfo.cs</c>의 <c>InternalsVisibleTo</c>가 EditMode 어셈블리에만 열려 있다.</para></summary>
+        internal const float DeepDescentHeights = 1.6f;
+
+        /// <summary>
+        /// 텍스트 매핑 함수(<b>순수</b>) — 이 상태의 대사는 전부 여기서만 나온다.
+        /// <c>Enter()</c> 안의 익명 람다였던 것을 <b>static으로 끌어낸 이유</b>: 아래 게이트를 회귀
+        /// 테스트가 직접 잴 수 있어야 하기 때문이다(<c>Dialogue/GrabReactionLines.Resolve</c>와 같은 자리).
+        /// 순수 함수라 시간·난수·전역 상태를 읽지 않는다 — "이 텍스트가 어느 <c>Enter()</c>의 어느
+        /// 스냅샷에서 나왔는지"가 그대로 역추적된다(UX_FLOW.md 31-3).
+        ///
+        /// <para><b>★ 게이트 순서가 이 함수의 전부다.</b> 낙차를 비교하기 <b>전에</b> 「애초에 내려갈
+        /// 곳이 있는가」를 먼저 묻는다. 발판을 못 찾은 경로는
+        /// <see cref="LedgeHangDialogueParams.DropHeightUnits"/>가 0이고 0은 가장 얕은 낙차와 같은 값이라,
+        /// 낙차만 보면 «여기로 내려가자»가 나온다 — 그런데 그 경로의 실제 행동은 <b>어디로도 안 내려가고
+        /// 그냥 Fall</b>이다. 낙차 비교 자체는 한 글자도 바뀌지 않았다. 그 앞에 게이트 하나가 붙었을 뿐이다.</para>
+        ///
+        /// <para><b>왜 새 문안이 아니라 침묵인가</b>: 발판이 없다는 사실에 맞는 새 대사를 코더가 이 자리에서
+        /// 지어내면 그건 <c>design-narrative</c> 소관을 대신 정하는 것이다. 그리고 이 저장소에서
+        /// <b>안전한 실패는 침묵</b>이다(<c>Dialogue/DialogueKind.cs</c> — "침묵은 거짓말이 아니다").
+        /// 빈 텍스트 = 말하지 않는다이고, 호출부가 그 경우 <see cref="DialogueIntent"/>를 아예 만들지 않는다
+        /// (<c>States/TimedSpectacleState.cs</c>가 쓰는 것과 같은 관례).</para>
+        ///
+        /// <para><paramref name="stateId"/>는 계약상 항상 <see cref="StickmanStateId.LedgeHang"/>다
+        /// (이 함수를 쓰는 상태가 하나뿐이다) — 분기하지 않는다.</para>
+        /// </summary>
+        public static DialogueLine ResolveDialogue(StickmanStateId stateId, object dialogueParams)
+        {
+            var p = dialogueParams as LedgeHangDialogueParams;
+
+            // ★ 게이트 — 내려갈 발판이 없으면(또는 파라미터 자체가 없어 아무것도 모르면) 침묵한다.
+            //   여기를 지우면 실패 경로가 다시 "가장 얕은 낙차"로 위장한다.
+            if (p == null || !p.HasDescendTarget) return DialogueLine.Say(string.Empty);
+
+            float h = p.CharacterHeightWorld > 0.0001f
+                ? p.CharacterHeightWorld
+                : StickConfig.BaselineCharacterTotalHeight;
+            return p.DropHeightUnits < DeepDescentHeights * h
+                ? DialogueLine.Say("여기로 내려가자")
+                : DialogueLine.Say("어우... 아찔하네");
+        }
+
+        /// <summary>매핑 함수의 <b>캐시된</b> 델리게이트. 메서드 그룹을 호출부에서 그때그때 변환하면
+        /// 전이마다 델리게이트가 새로 할당된다(하루 종일 켜져 있는 앱 — 무할당 경로를 유지한다.
+        /// 종전 비캡처 람다도 Roslyn이 같은 방식으로 한 번만 만들어 캐시하고 있었다).</summary>
+        private static readonly System.Func<StickmanStateId, object, DialogueLine> DialogueMapper = ResolveDialogue;
 
         public void Enter(StateTransitionContext context)
         {
@@ -186,30 +254,30 @@ namespace StickMate.States
                 ? Mathf.Max(0f, (_ledgeTopWorldY - _dropDepth) - _descendTargetTopWorldY)
                 : 0f;
             _dialogueParams.CharacterHeightWorld = _blackboard.CharacterHeightWorld;
+            // ★ 위 0유닛은 "가장 얕은 낙차"와 구분되지 않는다 — 실패 사실을 별도 축으로 함께 싣는다.
+            _dialogueParams.HasDescendTarget = _hasDescendTarget;
 
-            // ★ 2026-09-01 개정(UX_FLOW.md 31-2 #6 신규 등재 / MOTION_SPEC 1절 표 #3) — 임계값을
-            //   **절대 월드 유닛에서 신장 배수(H)로** 옮긴다. 구 임계값 3.0유닛은 배율 1.0에서
-            //   1.32H이고, 이 상태가 성립하는 최소 낙차 자체가 1.10H(아래 진입 임계값 주석 참고)라
-            //   "어우... 아찔하네"가 나오려면 낙차가 최소치의 1.2배를 넘어야 했다. 신장 배수로 적어
-            //   배율 슬라이더와 플랫폼(작업표시줄 높이)에 불변이 되게 한다.
-            //
-            //   ★ 1.6이라는 계수는 design-motion의 **판단값이지 실측이 아니다**. 실기에서 창-창
-            //     사이 낙차 분포를 본 뒤 조정될 수 있다.
-            //
-            //   종류 = Narrative(진행 서술: "여기로 내려가자" = 지금 내려가는 중이라는 서술).
-            //   계획 잔여 체류 = 잡기 보간 + 매달림 유지시간(둘 다 Enter에서 확정).
+            // 종류 = Narrative(진행 서술: "여기로 내려가자" = 지금 내려가는 중이라는 서술).
+            // 계획 잔여 체류 = 잡기 보간 + 매달림 유지시간(둘 다 Enter에서 확정).
+            // 문장 자체를 고르는 규칙은 ResolveDialogue 하나뿐이다 — 여기서는 "언제/얼마나"만 정한다.
             float grabDuration = _blackboard.Config != null ? _blackboard.Config.ledgeHangGrabDuration : 0.28f;
-            _ = DialogueIntent.TryCreate(context, (id, dialogueParams) =>
+
+            // ★ 2026-09-08 — 침묵 판정은 ResolveDialogue **한 곳**에만 둔다. 여기에 조건을 다시 적으면
+            //   두 벌이 되고, 두 벌은 반드시 갈라진다(그때 조용히 틀린 대사가 나간다). 순수 함수라
+            //   미리 한 번 물어도 부작용이 없고, 토큰을 소비하는 실제 발급은 아래 TryCreate 한 번뿐이다.
+            if (!string.IsNullOrEmpty(ResolveDialogue(StateId, _dialogueParams).Text))
             {
-                var p = dialogueParams as LedgeHangDialogueParams;
-                float drop = p != null ? p.DropHeightUnits : 0f;
-                float h = p != null && p.CharacterHeightWorld > 0.0001f
-                    ? p.CharacterHeightWorld
-                    : StickConfig.BaselineCharacterTotalHeight;
-                return drop < DeepDescentHeights * h
-                    ? DialogueLine.Say("여기로 내려가자")
-                    : DialogueLine.Say("어우... 아찔하네");
-            }, grabDuration + _holdDuration);
+                _ = DialogueIntent.TryCreate(context, DialogueMapper, grabDuration + _holdDuration);
+            }
+            else
+            {
+                // 화면을 볼 수 없는 검증 환경에서 "왜 이 매달림은 말이 없었나"가 로그만으로 재구성돼야
+                // 한다 — 침묵이 계약의 결과인지 버그인지 구분되지 않으면 이 게이트는 검증 불가능한
+                // 규칙이 된다(DialogueIntent.TryCreate의 "발화 보류" 로그와 정확히 같은 이유).
+                Debug.Log($"[말풍선] 발화 보류 ({StateId}) — 내려갈 발판을 찾지 못했습니다(낙차 0유닛). " +
+                    "0은 「가장 얕은 낙차」와 같은 값이라 그대로 대사를 고르면 \"여기로 내려가자\"가 나오는데, " +
+                    "이 경로는 실제로는 아무 데도 안 내려가고 그냥 Fall합니다 — 침묵은 거짓말이 아니다(원칙 1).");
+            }
 
             Debug.Log($"[매달리기] 진입 — 방향={(_direction > 0 ? "오른쪽" : "왼쪽")}, " +
                 $"모서리핸들={_ledgeHandle}, 모서리(X={_ledgeEdgeWorldX:F3}, Y={_ledgeTopWorldY:F3}), " +

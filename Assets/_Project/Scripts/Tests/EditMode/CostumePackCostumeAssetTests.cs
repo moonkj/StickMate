@@ -12,21 +12,21 @@ namespace StickMate.Tests.EditMode
     /// ============================================================================
     /// ★★★ 이 파일의 존재 이유는 조형이 아니라 <b>$4.99</b>다
     /// ============================================================================
-    /// <c>docs/strategy/CHANNEL_PRICING_DECISIONS.md</c> 54-1절(<c>product-strategy</c> 실측):
-    /// <c>CostumeCatalog.AuditSource</c>는 기본 코호트 <b><c>mil</c>만</b> 거부하고
-    /// <c>ink</c>·<c>sport</c>·<c>office</c>·<c>cyber</c>·<c>neon</c>은 <b>통과시킨다</b>.
-    /// 그리고 <c>CostumeManifestCorridorTests</c>가 그 통과를 <b>양성 대조로 명시 단언</b>한다.
+    /// <c>docs/strategy/CHANNEL_PRICING_DECISIONS.md</c> 54-1절(<c>product-strategy</c> 실측)이
+    /// 신고한 구멍: 예전 <c>CostumeCatalog.AuditSource</c>는 기본 코호트 <b><c>mil</c>만</b>
+    /// 거부하고 <c>ink</c>·<c>sport</c>·<c>office</c>·<c>cyber</c>·<c>neon</c>은 통과시켰다.
     ///
     /// <para>⇒ 누군가 <c>costume.cyber</c>를 <see cref="CostumeSourceKind.BaseTheme"/>/<c>cyber</c>로
-    /// 저작하면 <b>감사도 초록 · 테스트도 초록</b>이고, $4.99 팩의 간판 연출이
-    /// <b>동전 6,600(원형 B 1.7일)</b>에 열린다 — <c>cyber</c> 4/4(왕관·외알안경·펜던트·긴망토)가
+    /// 저작했다면 <b>감사도 초록 · 테스트도 초록</b>이었을 것이고, $4.99 팩의 간판 연출이
+    /// <b>동전 6,600(원형 B 1.7일)</b>에 열렸을 것이다 — <c>cyber</c> 4/4(왕관·외알안경·펜던트·긴망토)가
     /// <b>전부 기본 42종</b>이기 때문이다.</para>
     ///
-    /// <para><b>그 구멍은 아직 열려 있다.</b> 아래 <see cref="구멍_실증_BaseTheme_사이버는_프로덕션_감사를_통과한다"/>가
-    /// 그것을 <b>매 실행 증명</b>한다 — 구멍이 없는데 이 골든만 있으면 그건 중복이고,
-    /// 구멍이 있는데 골든이 없으면 그게 사고다. <c>product-strategy</c>가 리더에게 올린 문장 그대로:
-    /// <i>「$4.99 상품 다섯 개의 간판이, 코드가 아니라 저작 규율 하나에 매달려 있다.」</i>
-    /// 이 파일이 그 저작 규율을 <b>계기로</b> 바꾼다.</para>
+    /// <para>★ 2026-09-08 — security 라운드가 <see cref="CostumeCatalog.AllowedBaseThemes"/>
+    /// 화이트리스트로 <b>이 구멍을 막았다</b>(지금 허용은 <c>office</c> 하나뿐). 아래
+    /// <see cref="구멍_닫힘_BaseTheme_사이버는_프로덕션_감사를_거부한다"/>가 그것을 <b>매 실행
+    /// 증명</b>한다 — 화이트리스트가 다시 느슨해지면 이 테스트가 빨개진다. <c>product-strategy</c>가
+    /// 리더에게 올린 문장 그대로: <i>「$4.99 상품 다섯 개의 간판이, 코드가 아니라 저작 규율
+    /// 하나에 매달려 있다.」</i> 이제 그 저작 규율은 코드(화이트리스트)로 강제된다.</para>
     ///
     /// ============================================================================
     /// 골든의 출처
@@ -153,12 +153,14 @@ namespace StickMate.Tests.EditMode
         }
 
         /// <summary>
-        /// ★ <b>구멍이 실재함을 매 실행 증명한다</b>(부재 단언의 대조).
-        /// 위 골든이 «이미 프로덕션이 막고 있는 것»을 다시 재는 중복이면 지워야 하고,
-        /// 아직 안 막고 있으면 위 골든이 <b>유일한 방어선</b>이다. 둘은 눈으로 구별되지 않는다.
+        /// ★ 2026-09-08 — security 라운드가 <c>CostumeCatalog.AllowedBaseThemes()</c> 화이트리스트로
+        /// 구멍을 막았다. 이 테스트는 이제 <b>구멍이 실재하지 않음을 매 실행 증명</b>한다(부재 단언의
+        /// 대조는 여전히 유효하다 — 화이트리스트가 다시 느슨해지면 이 테스트가 빨개져야 한다).
+        /// 원래 이름(<c>구멍_실증_...</c>)과 반대 방향 단언이므로 이름도 뒤집었다 —
+        /// <see cref="CostumeCatalog.AllowedBaseThemes"/>를 참고하라.
         /// </summary>
         [Test]
-        public void 구멍_실증_BaseTheme_사이버는_프로덕션_감사를_통과한다()
+        public void 구멍_닫힘_BaseTheme_사이버는_프로덕션_감사를_거부한다()
         {
             var m = ScriptableObject.CreateInstance<CostumeManifestSO>();
             try
@@ -192,18 +194,16 @@ namespace StickMate.Tests.EditMode
                     $"{LogPrefix} 감사가 '{ItemCatalog.ThemeMil}'조차 안 막는다 — " +
                     "그러면 아래 «cyber는 통과한다»는 「구멍」이 아니라 「감사가 통째로 죽었다」는 뜻이다.");
 
-                Assert.IsEmpty(faults,
-                    $"{LogPrefix} ★ 좋은 소식일 수 있다 — 프로덕션 감사가 이제 " +
-                    $"BaseTheme/'{ItemCatalog.ThemeCyber}'를 거부한다({faults.Count}건). " +
-                    "CHANNEL_PRICING_DECISIONS 54-1이 신고한 구멍이 닫혔다는 뜻이므로, " +
-                    "위 골든 라인업이 여전히 필요한지 product-strategy와 함께 재검토하고 " +
-                    "이 테스트를 <b>그 판정과 함께</b> 고쳐라(그냥 지우지 말 것).");
-                Assert.AreEqual(1, built.Length,
-                    $"{LogPrefix} BaseTheme/cyber 매니페스트가 결함 0건인데 실리지도 않았다 — 적재기 이상.");
+                Assert.IsNotEmpty(faults,
+                    $"{LogPrefix} BaseTheme/'{ItemCatalog.ThemeCyber}'가 다시 결함 0건으로 통과한다 — " +
+                    "CostumeCatalog.AllowedBaseThemes()에서 cyber가 빠졌는지, 혹은 화이트리스트 자체가 " +
+                    "무너졌는지 확인하라. $4.99 팩 간판이 동전 6,600에 새는 구멍이 재발한 것이다.");
+                Assert.IsEmpty(built,
+                    $"{LogPrefix} 결함을 신고하고도 매니페스트를 실었다 — 신고와 적재가 갈렸다.");
 
-                Debug.Log($"{LogPrefix} ② 구멍 실증 — BaseTheme/'{ItemCatalog.ThemeCyber}'는 결함 0건으로 " +
-                          $"통과하고 '{ItemCatalog.ThemeMil}'만 {milFaults.Count}건으로 막힌다. " +
-                          "⇒ 위 ①이 $4.99 경계의 유일한 계기다.");
+                Debug.Log($"{LogPrefix} ② 구멍 닫힘 확인 — BaseTheme/'{ItemCatalog.ThemeCyber}'는 " +
+                          $"{faults.Count}건으로 거부되고 '{ItemCatalog.ThemeMil}'도 {milFaults.Count}건으로 " +
+                          "거부된다. ⇒ 화이트리스트가 $4.99 경계를 지키고 있다.");
             }
             finally { Object.DestroyImmediate(m); CostumeCatalog.ResetForTesting(); }
         }
