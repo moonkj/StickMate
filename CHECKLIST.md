@@ -375,3 +375,8 @@
         코스튬 팩 3종 콘텐츠 저작까지 반영. `windows-preview-20260908j` 태그(코드기준 `cac40b3`)
         → zip(32,365,763 bytes) 첨부해 게시:
         https://github.com/moonkj/StickMate/releases/tag/windows-preview-20260908j
+  - [x] 재게시(3차) 완료 — "병렬로 전부 진행" 웨이브 전체 반영: 밧줄등반 창소실 수정,
+        오늘 할일 위젯 2단계(500×512+달력+클릭충돌 P0), 코스튬 채움 결함 수정, 사이버펑크
+        팩 최초 착지. `windows-preview-20260908k` 태그(코드기준 `42f3b64`) → zip
+        (32,376,698 bytes) 첨부해 게시:
+        https://github.com/moonkj/StickMate/releases/tag/windows-preview-20260908k
