@@ -165,14 +165,19 @@
         이미 프로덕션 코드(`CostumeEvolutionRules` C-7 / `CostumeEntitlement` C-3)에 못박혀 있어
         판매 자체가 구조적으로 막혀 있음. 출시 순서: 4종 동시 출시 기각, 무료 독서실(1.0) →
         사이버펑크 → 광부/대마법사 순.
-    - [ ] ★★ **신규 발견(P0급, 별도 배정 필요)** — `CostumeCatalog.AuditSource`가 BaseTheme
-          코스튬 감사에서 `mil` 하나만 막고 `cyber`/`neon`/`sport`/`ink`는 통과시키며, 회귀
-          테스트(`CostumeManifestCorridorTests.cs:458`)가 그걸 **양성 대조로 명시 단언**하고
-          있음. 즉 나중에 `costume.cyber`를 (Pack이 아니라) BaseTheme으로 저작하면 $4.99짜리
-          팩 간판이 동전 6,600(1.7일)에 새어나가는데 감사도 테스트도 초록으로 통과함. **지금
-          design-equipment/coder-systems가 만들 신규 코스튬 매니페스트(사이버펑크/대마법사)는
-          반드시 `sourceKind: Pack`으로 저작해야 한다** — coder-systems 착수 시 이 제약을 전달할
-          것. 감사 로직 자체 강화는 test-engineer/security 별도 배정 필요.
+    - [x] ★★ **P0급 발견 → security가 막음(Track 2, 2026-09-08)** — `CostumeCatalog`에
+          `AllowedBaseThemes()`/`IsAllowedBaseTheme()` 화이트리스트 신설(블랙리스트 `mil`
+          단독 방식 폐기). 지금 허용은 `office` **하나뿐**(유일한 실제 BaseTheme 코스튬) —
+          `cyber`/`mine`/`arcane`/`ink`/`sport`/`neon`은 전부 거부(신규 팩 3종은 이미
+          `sourceKind: Pack`으로 저작돼 있어 이 감사와 무관, Pack 소스는 이 화이트리스트를
+          안 거침). 뮤테이션 대조로 구버전 로직이 실제로 `ink` 코스튬을 새게 놔뒀음을 확인한
+          뒤 고침(RED→GREEN). `CostumeManifestCorridorTests.cs`에 신규 회귀 1건(대조 5개
+          내장) 추가. 브리핑 오류 정정: 구멍을 양성 대조로 단언하던 테스트는
+          `CostumeManifestCorridorTests.cs`가 아니라 `CostumePackCostumeAssetTests.cs`(오늘
+          신설된 파일)였음 — 그 파일 소유자(coder-systems R30)가 아니라 나(리더)가 직접
+          안내받은 패치를 적용해 방향을 뒤집음(`구멍_실증_...` → `구멍_닫힘_...`, 클래스 문서
+          갱신). `CostumeCatalog.cs:109`의 낡은 "코스튬 0개" 주석도 함께 정정. Track 4(대사
+          5번째 건)와 파일이 겹쳐 EditMode 재검증은 두 트랙 모두 끝난 뒤 한 번에 진행.
 
 - [x] **말풍선 대사(멘트) 전체 검수** (2026-09-08) — "체크시트에 멘트 정리도 추가해줘... 멘트들
       전체 검수가 필요함". design-narrative가 대사 리터럴 63줄(13개 소스 파일) 전수 스캔 — 골든
@@ -215,8 +220,11 @@
         **완료로 판정**.
   - [ ] **Track 1(coder-ui)**: 오늘 할일 위젯 2단계 전체(레이아웃 재구축+달력+포스트잇 필터+
         클릭충돌 P0+알파흐림 수정+탭칩 앵커) — 착수함(아래 진행 로그)
-  - [ ] **Track 2(security)**: `CostumeCatalog.AuditSource` BaseTheme 감사 구멍 강화(P0급,
-        `mil` 하나만 막던 것을 전체 승인 테마 화이트리스트로) — 착수함
+  - [x] **Track 2(security) 완료** — `CostumeCatalog.AllowedBaseThemes()` 화이트리스트 신설,
+        허용은 `office` 하나뿐. 뮤테이션 대조로 구버전이 `ink`를 새게 놔뒀음을 실증 후 수정
+        (RED→GREEN). 신규 회귀 1건(대조 5개 내장). 브리핑 오류 정정: 구멍을 양성 단언하던
+        테스트는 `CostumePackCostumeAssetTests.cs`였음(내가 직접 패치 적용, 방향 반전).
+        커밋 `060e6a5`.
   - [x] ★ Track 3 재판정 — 착수 직전 조사에서 **"기존 DLC 팩(ink/mil)과 같은 패턴"이라는
         전제가 틀렸음을 확인**: `ink`/`mil`/`cyber`/`neon`/`sport`/`office`는 전부 **기본
         아이템 42종의 테마 색상 분류**일 뿐 유료 DLC가 아니고, `StickPackManifestSO`(v2
@@ -224,13 +232,39 @@
         프로젝트에 0개** — 이 저장소에 "실제로 팔린 팩"의 선례 자체가 없다. 즉 이건 "기존
         패턴을 따라 배선"이 아니라 **이 게임 최초의 실제 팩을 만드는 되돌릴 수 없는 결정**이라
         `game-architect` 판단이 먼저 필요함 → **Track 5로 흡수**.
-  - [ ] **Track 4(coder)**: 대사 5번째 건 — `LedgeHangState.cs` `HasDescendTarget` 플래그 추가
-        (내려갈 발판 없을 때 낙차 0이 "가장 얕은 낙차"로 위장되는 문제) — 착수함
-  - [ ] **Track 5(game-architect, 범위 확대)**: (1) propFrame 스키마 v2→v3 승격 여부 (2)
-        `filled` 비트 렌더러 2곳 의미 불일치 통합 여부 (3) ★신규 — 코스튬 팩 3종을 **최초의
-        실제 `StickPackManifestSO` 팩**으로 만들 때 `PackStoreChannel`을 무엇으로 잡을지
-        (출시 전 QA 언락용 채널 vs 실제 스토어 채널 자리만 예약), 최소 안전한 첫걸음이
-        있다면 제안 — 착수함
+  - [x] **Track 4(coder) 완료** — `LedgeHangDialogueParams.HasDescendTarget` 플래그 추가.
+        발판 없으면 침묵(새 문안 안 지어냄, `GrabReactionLines.HasGrabPoint`와 같은 패턴).
+        낙차 비교 로직 자체는 무변경. 네거티브 컨트롤로 게이트 제거 시 결함 원문이 그대로
+        재현됨을 실측. 커밋 `060e6a5`.
+  - [x] **Track 5(game-architect) 완료** — `docs/GAME_ARCHITECTURE_REVIEW.md` §18, 커밋
+        `aa9c0d7`. ★ 먼저 — mtime 대조로 **R29-1/R29-2는 이미 해소됨을 확인**(coder-systems
+        R30 저작이 R29 문서보다 41분 늦어 그 지적을 이미 반영했음) — 리더가 미결로 안 들고
+        가도 됨.
+    - **판정 1(propFrame v2→v3)**: **미룬다**(출시 이후 폴리싱 라운드). 타격감은 이미
+      포즈 낙차+기울임 반전으로 전달되고, 섬광 3획은 이 배율에서 잉크 한 덩어리로 뭉쳐
+      안 읽힘(계산 근거 포함). 되살릴 조건: 프레임 축 쓰는 코스튬 2종 이상 + 그중 하나
+      프레임 수 2 초과. → 문서 정정 완료(커밋 `e00e60b`).
+    - **판정 2(filled 렌더러 불일치)**: **통합 안 함**(되돌릴 수 없는 결정이 아니고, 원칙
+      2가 반대로 밈 — 프롭은 바탕화면 바로 위 층이라 메시 채움이 불투명 면적을 키움).
+      ★★ **다만 실제 출하 데이터에 시각 결함을 새로 발견** — `costume.cyber`의
+      `BasePad`·`costume.mine`의 `Vein1`이 채움 안쪽 여백 미달로 "가운데 뚫린 테두리"로
+      보임(ρ_in 0.0600H/0.0494H vs 하한 0.0373H). → **Track 6(design-equipment)로
+      좌표 수정 착수**(아래). 공유 문서(`AccessoryDefSO.cs`)에 "소비자마다 뜻이 다르다"
+      경고 추가 완료(커밋 `e00e60b`).
+    - **판정 3(DLC 팩 아키텍처, 최초 판정)**: 스토어 채널 **지금 확정 안 함** —
+      `entitlements: []`(빈 배열)가 이미 테스트로 잠긴 "무료는 안 묻는다" 경로를 그대로
+      타서 안전한 첫걸음. 사이버펑크 팩부터, **4개 스탯슬롯 아이템만**(FX/PET 2종은
+      렌더러가 하드코딩 스위치라 데이터만으론 안 열림 — 별도 코드 작업, 이번엔 보류).
+      다음 라운드가 바로 실행 가능한 구체 절차(아이템 코호트/인덱스, 회귀 게이트 3개
+      좁히기)까지 명시. → **Track 7(coder-systems)로 즉시 착수**(아래).
+      부수 발견 3건(리더 인지 필요, 지금 안 고쳐도 됨): ① `IsOwned`가 엔타이틀먼트를
+      아직 안 봐서 팩 아이템이 폴더에 놓이는 순간 Lv.1 전원에게 열림(출시 전 무해, 다음
+      라운드가 `Assert.Ignore`로 등재) ② FX/PET 슬롯 하드코딩 확인됨(위 언급) ③
+      `sourceKind: Pack`은 옳은 선택이었음(되돌리지 말 것, 이미 확정).
+  - [ ] **Track 6(design-equipment)**: `costume.cyber`/`costume.mine`의 채움 조각 좌표
+        수정(판정 2가 찾은 시각 결함, ρ_in 하한 미달) — 착수함
+  - [ ] **Track 7(coder-systems)**: 사이버펑크 팩 최초 실구매 배선(판정 3의 실행 절차
+        그대로 — 4개 스탯슬롯 아이템, `entitlements: []`, 회귀 게이트 3개 확장) — 착수함
 
 - [ ] **이 체크시트 자체를 계속 쓸 것** — "내가 지시하면 채크시트 문서신규로 만들어서 거기에
       입력하고 완료시 체크하는 형태로 진행해줘" (2026-09-08). 이 문서 신설로 최초 지시는 이행.
