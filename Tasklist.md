@@ -26465,3 +26465,33 @@ byte-identical 대조로 잡았다. 배치 실행 전 `editmode-results.xml`을 
 (종전에는 틀린 대사가 떴다). 입력/네이티브/AI/세이브 영향 없음, 스키마 변경 없음, 골든 무손상
 (새 문안 0줄). **Windows 영향: 없음** — 이 파일에 `#if`·플랫폼 API가 하나도 없고 문자열/실수 연산뿐,
 win 크로스 컴파일 errors=0으로 확인.
+
+---
+
+## 2026-09-08 (coder-systems) — 첫 유료 DLC 팩(pack.cyber) 최초 배선, 실측으로 범위 정정
+
+`coder-systems`가 팩 아이템 4종 + `PackManifest_cyber`를 저작해 EditMode 러너로 검증한
+결과, `CostumeResolver.Resolve()`가 **`costume.cyber`를 실제로 돌려주는 것을 확인**했다
+(`PackRegistry` declared 4/resolved 4, `entitlements: []` → `IsOpen=True`, 스토어 조회 0회).
+
+그러나 `game-architect` §18-3-3이 예측한 「회귀 관문 3개」는 **실측 33건 / 18개 클래스**였다.
+26건은 「카탈로그 = 기본 42종」 전제를 코호트 한정으로 좁히면 풀리고, 5건은 진짜 결함이다 —
+특히 `PackPaletteGateTests`는 팩 아이템이 카탈로그에 실리는 순간 자기 색과 ΔE 0.00이 되어
+**어떤 팩도 통과할 수 없는 구조적 자기모순**이고, `PACK_THEME_SPEC` 동결 보조색 `#518C84`는
+`WornColor` 명도 하한(0.55) 밖이며, 번역 부채 래칫(≤42)이 팩 아이템의 한글 이름을 막는다.
+
+에셋은 트리를 빨갛게 두지 않기 위해 `docs/handoff/packcyber-firstpack/`에 파킹했고,
+착지한 것은 `ItemCatalogAssetParityTests` 코호트 한정 재정의 1건뿐이다(뮤테이션으로 물림
+확인). 최종 트리 EditMode 2900건 실패 0 · `xcheck` win/osx 5/5 errors=0.
+
+**리더 판정 3건**:
+1. `PackPaletteGateTests` 비교 모집단을 「기본 코호트 색」으로 좁힌다(채택 — 구조적으로
+   달리 성립할 방법이 없음, 첫 팩이든 몇 번째 팩이든 자기 자신과 비교하면 항상 ΔE 0).
+2. `PACK_THEME_SPEC` 동결 보조색을 `#518C84` → `#518D85`로 최소 이동한다(채택 — 러너에서
+   실측 통과 확인됨, `design-art`가 스펙 문서에 역반영할 것).
+3. 번역 부채 래칫(`<= 42`)을 46으로 올려 팩 아이템 영문 이름을 우선 착지시킨다(채택,
+   임시). **단 이건 빚이다** — 실제 출시 전에 한글 이름 백필이 필요하고, `localization`
+   담당 배정 대상으로 남긴다.
+
+**후속 착지 라운드 지시함**(다음 진행 로그 참조): 파킹된 에셋을 실제로 트리에 넣고 위 3개
+판정을 반영해 15개 테스트 파일(26건 코호트 한정 재정의 + 5건 실제 수정)을 고친다.
