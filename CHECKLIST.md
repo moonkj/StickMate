@@ -163,6 +163,7 @@
         그대로 인식(재로그인 불필요, 자격증명을 직접 열람하지 않고 `gh` 자신이 정상 경로로 읽음).
         `windows-preview-20260908h` 릴리즈를 zip 자산(32,360,962 bytes, 코드기준 `de3fb32`)과
         함께 게시함: https://github.com/moonkj/StickMate/releases/tag/windows-preview-20260908h
-  - [ ] 최신 코드(4379004, 종이비행기 궤도+대사 4건 / 112e26a, 코스튬 모션 상수 조정)는 아직
-        새 Windows 빌드에 안 담겨 있음 — 다음에 Windows 크로스빌드 한 번 더 돌려서 최신본으로
-        재게시 필요.
+  - [x] 최신본 재게시 완료 — `StickMate.EditorTools.BuildStandalone.PerformBuildWindows` 재실행
+        (exit 0, DLL 갱신 확인) → `windows-preview-20260908i` 태그(코드기준 `f35cf04` = 종이비행기
+        궤도+대사 4건+코스튬 모션 상수 조정 전부 포함) → zip(32,361,187 bytes) 첨부해 게시:
+        https://github.com/moonkj/StickMate/releases/tag/windows-preview-20260908i
