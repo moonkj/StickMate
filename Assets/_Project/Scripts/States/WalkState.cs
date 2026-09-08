@@ -188,7 +188,21 @@ namespace StickMate.States
             if (_blackboard.StepUpPressed && info.Grounded)
             {
                 int stepUpDirection = _blackboard.MoveInputX >= 0f ? 1 : -1;
-                if (_blackboard.TryFindClimbableWall(info, stepUpDirection, out _, out float stepUpWallTopY))
+                // ★★ 2026-09-08 — 경계 기준 탐색이 실패하면 <b>위치 기준</b>으로 한 번 더 본다.
+                //   목표 지향 등반(AutoWanderController.TickClimbSeek)이 만든 펄스는 «발판 경계»가
+                //   아니라 «목표 창의 세로 모서리 앞»에서 나오므로, 경계 기준 계산으로는 답이 없다.
+                //   그러면 펄스가 <b>조용히 버려지고</b>, 그것이 이 저장소가 반복해서 당한
+                //   «생성 프레임과 소비 프레임이 서로 다른 계산을 한다» 사고다.
+                //   ★ 생산자와 <b>같은 메서드</b>를 부른다(TryVerifyClimbTargetAtBody) — 두 벌로
+                //     만들면 갈라진다.
+                if (!_blackboard.TryFindClimbableWall(info, stepUpDirection, out _, out float stepUpWallTopY))
+                {
+                    float seekStepUpMax = AutoWanderController.ResolveStepUpMaxHeightStatic(_blackboard);
+                    float seekMin = _blackboard.Config != null ? _blackboard.Config.parkourDetectionRadius : 0.5f;
+                    _blackboard.TryVerifyClimbTargetNearBody(info, stepUpDirection, seekMin, seekStepUpMax,
+                        out stepUpWallTopY);
+                }
+                if (stepUpWallTopY > info.GroundWorldY)
                 {
                     StickmanStateId? band = ResolveClimbBandTarget(info, stepUpWallTopY);
                     if (band.HasValue)
@@ -214,7 +228,15 @@ namespace StickMate.States
                 int ropeDirection = _blackboard.MoveInputX >= 0f ? 1 : -1;
                 float ropeStepUpMax = AutoWanderController.ResolveStepUpMaxHeightStatic(_blackboard);
                 float ropeMax = AutoWanderController.ResolveRopeClimbMaxHeight(_blackboard, info.GroundWorldY);
-                if (_blackboard.TryFindRopeClimbWallWide(info, ropeDirection, out _, out float ropeWallTopY, ropeStepUpMax, ropeMax))
+                // ★★ 2026-09-08 — StepUpPressed와 같은 이유로 위치 기준 재확인을 뒤에 단다
+                //   (바로 위 문단 참고). 목표 지향이 만든 펄스가 여기서 버려지면 사용자가 세 번
+                //   신고한 «윈도우에서 안 됨»이 그대로 재발한다.
+                if (!_blackboard.TryFindRopeClimbWallWide(info, ropeDirection, out _, out float ropeWallTopY, ropeStepUpMax, ropeMax))
+                {
+                    _blackboard.TryVerifyClimbTargetNearBody(info, ropeDirection, ropeStepUpMax, ropeMax,
+                        out ropeWallTopY);
+                }
+                if (ropeWallTopY > info.GroundWorldY)
                 {
                     StickmanStateId? band = ResolveClimbBandTarget(info, ropeWallTopY);
                     if (band.HasValue)

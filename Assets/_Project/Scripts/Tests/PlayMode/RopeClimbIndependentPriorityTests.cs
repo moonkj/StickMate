@@ -1021,5 +1021,174 @@ namespace StickMate.Tests.PlayMode
                     $"{LogPrefix} [{label}] ④ 목록 순서만 바꿨는데 답이 달라졌습니다({twinAHandle} → {twinBHandle}).");
             }
         }
+
+        // ════════════════════════════════════════════════════════════════════════════
+        // ★★★ 2026-09-08 — 화면 전폭 발판(= Windows 작업표시줄)에서도 밧줄만 통과한다
+        // ════════════════════════════════════════════════════════════════════════════
+        //
+        // 무엇이 터졌었나 — 사용자가 "윈도우에서는 밧줄 동작안함"을 <b>두 번</b> 신고했고, 리더는
+        // 두 번 다 확률(0.20→0.85)과 높이 상한(6.6H→화면비례)만 고쳐 내보냈다. 둘 다 효과가 없었다.
+        // 진짜 원인은 수치가 아니라 <b>구조</b>였다:
+        //
+        //   AutoWanderController: if (!_edgeActionRolledThisLeg && !isTrueScreenEdge) → 추첨
+        //
+        // macOS Dock은 화면 <b>가운데</b> 띠라 좌우에 안전망 조각이 남고 내부 경계가 2개 생긴다.
+        // Windows 작업표시줄은 <b>화면 전폭</b>이라 그 조각이 폭 0으로 죽고, 발판의 좌우 끝이
+        // 곧 화면 끝이다 → isTrueScreenEdge가 <b>항상 true</b> → 추첨이 한 번도 돌지 않았다.
+        //
+        // 이 테스트가 잠그는 계약 두 개(같은 지형에서 동시에 잰다):
+        //   (1) <b>양성</b> — 전폭 발판의 화면 끝에서도 <b>밧줄은</b> 평가되고 발동한다.
+        //   (2) <b>음성</b> — 같은 자리에서 <b>뛰어내리기는 여전히 막힌다</b>. 화면 끝에서 내려가면
+        //       몸이 화면 밖으로 나가기 때문이고, 그 근거는 밧줄에는 성립하지 않는다(위로 오른다).
+        //
+        // ★ (2)가 없으면 이 수정은 "게이트를 통째로 열어 버린 것"과 초록이 구분되지 않는다 —
+        //   이 저장소가 반복해서 당한 «성공한 측정과 똑같이 생긴 실패한 측정»이다.
+        [UnityTest]
+        public IEnumerator 화면_전폭_발판에서도_밧줄은_평가되고_뛰어내리기는_여전히_막힌다()
+        {
+            yield return SetUpAgent();
+
+            StickmanBlackboard bb = _agent.Blackboard;
+            Camera cam = bb.MainCamera;
+            float w = Screen.width;
+            float h = Screen.height;
+            float groundTopOs = h * 0.5f;
+
+            Vector3 y0 = ScreenCoordinateConverter.OsScreenToWorld(cam, new Vector2(w * 0.5f, groundTopOs), 10f, _clonedConfig);
+            Vector3 y1 = ScreenCoordinateConverter.OsScreenToWorld(cam, new Vector2(w * 0.5f, groundTopOs - 100f), 10f, _clonedConfig);
+            float unitsPerPixelY = Mathf.Abs(y1.y - y0.y) / 100f;
+
+            float stepUpMax = AutoWanderController.ResolveStepUpMaxHeightStatic(bb);
+            float riseUnits = stepUpMax + 2f;
+            float tallWallTopOs = groundTopOs - riseUnits / unitsPerPixelY;
+            Assert.Greater(tallWallTopOs, 0f, $"{LogPrefix} 준비 실패 — 로프벽이 화면 위로 벗어났습니다.");
+
+            // ★ 지면은 <b>화면 전폭</b>이다 — 이것이 이 테스트의 전부다(Windows 작업표시줄 재현).
+            //   벽은 그 위에 겹쳐 세운다(전폭 지면에는 «옆칸»이 없으므로 겹침 탐색이 유일한 경로다).
+            _service = new TestFootholdService();
+            _service.Footholds.Add(new PlatformFoothold(GroundHandle,
+                new Rect(0f, groundTopOs, w, h - groundTopOs), true));
+            _service.Footholds.Add(new PlatformFoothold(TallWallLeftHandle,
+                new Rect(0f, tallWallTopOs, w * 0.25f, h * 0.5f), false));
+            _service.Footholds.Add(new PlatformFoothold(TallWallRightHandle,
+                new Rect(w * 0.75f, tallWallTopOs, w * 0.25f, h * 0.5f), false));
+
+            _poller = new FootholdPoller(_service, _clonedConfig);
+            bb.FootholdPoller = _poller;
+
+            float groundCenterWorldX = y0.x;
+            float groundTopWorldY = y0.y;
+
+            // ---- 전제 검증 — 이 지형이 정말 «화면 끝»으로 판정되는가 ----
+            //   이것이 거짓이면 아래 초록은 이 결함과 아무 상관이 없다(다른 것을 재고 있다는 뜻).
+            //   ★ SenseAtEdge는 «접지 중»을 전제로 하므로 몸을 <b>먼저</b> 지면에 놓는다
+            //     (이 파일의 다른 테스트들과 같은 순서 — 빠뜨리면 접지 전제에서 걸린다).
+            PlaceBody(bb, groundCenterWorldX, groundTopWorldY, GroundHandle);
+            bb.Machine.ChangeState(StickmanStateId.Walk, isForcedInterrupt: true);
+
+            for (int i = 0; i < 2; i++)
+            {
+                int direction = i == 0 ? -1 : 1;
+                string label = direction > 0 ? "오른쪽" : "왼쪽";
+                GroundSensor.GroundInfo info = SenseAtEdge(bb, direction, groundTopWorldY, label);
+                bool hasWalkable = bb.TryGetWalkableScreenBoundsWorld(out float wl, out float wr);
+                AutoWanderController.ResolveEffectiveEdgeBoundary(
+                    direction > 0 ? info.CurrentFootholdRightWorldX : info.CurrentFootholdLeftWorldX,
+                    direction > 0 ? info.ScreenRightWorldX : info.ScreenLeftWorldX,
+                    hasWalkable, direction > 0 ? wr : wl, direction, out bool isTrueScreenEdge);
+                float ropeMaxHere = AutoWanderController.ResolveRopeClimbMaxHeight(bb, info.GroundWorldY);
+                bool wallHere = bb.TryFindRopeClimbWallWide(info, direction, out long wallHandleHere,
+                    out float wallTopHere, stepUpMax, ropeMaxHere);
+                float wallHeightHere = wallTopHere - info.GroundWorldY;
+                Debug.Log($"{LogPrefix} [{label}] 전폭 지면 경계 판정 — isTrueScreenEdge={isTrueScreenEdge}, " +
+                    $"딛은발판={info.GroundedFootholdHandle}, 지면Y={info.GroundWorldY:F3}, " +
+                    $"경계X(좌{info.CurrentFootholdLeftWorldX:F3}/우{info.CurrentFootholdRightWorldX:F3}), " +
+                    $"화면X(좌{info.ScreenLeftWorldX:F3}/우{info.ScreenRightWorldX:F3}) | " +
+                    $"로프벽 탐색={wallHere}(핸들 {wallHandleHere}, 높이 {wallHeightHere:F3}), " +
+                    $"대역=({stepUpMax:F3}, {ropeMaxHere:F3}].");
+                Assert.IsTrue(isTrueScreenEdge,
+                    $"{LogPrefix} [{label}] 전제 실패 — 전폭 지면인데 «화면 끝»으로 판정되지 않았습니다. " +
+                    "이 테스트는 그 판정 위에서만 뜻이 있으므로, 여기서 멈추는 것이 초록으로 넘어가는 것보다 낫습니다.");
+                Assert.IsTrue(wallHere,
+                    $"{LogPrefix} [{label}] 전제 실패 — 화면 끝에서 로프 대역 벽을 찾지 못했습니다. " +
+                    "게이트를 풀어도 찾을 벽이 없으면 발동할 수 없으므로, 이 배치부터 틀린 것입니다.");
+            }
+
+            // ---- (1) 양성 — 화면 끝에서도 밧줄은 발동한다 ----
+            // ★ 이 테스트만 예산이 다르다 — 지면이 <b>화면 전폭</b>(32유닛)이라 다른 테스트의 좁은
+            //   지면(0.2w)과 달리 경계까지 걸어가는 데만 오래 걸린다. 보행 1.5유닛/초 기준 중앙에서
+            //   끝까지 약 10.7초이고, 방향은 50:50이라 반대로 출발하면 그 두 배다.
+            //   그래서 ① 몸을 오른쪽 끝에서 4유닛 안쪽에 놓아 «가까운 쪽으로 출발하면 2.7초»가 되게 하고,
+            //   ② 예산도 벽시계 기준으로 넉넉히 잡는다(프레임 수 기반 대기는 금지 — CLAUDE.md).
+            const float WideGroundObserveSeconds = 45f;
+            float startNearRightEdge = groundCenterWorldX + (bb.TryGetWalkableScreenBoundsWorld(out _, out float wrx)
+                ? Mathf.Max(0f, wrx - groundCenterWorldX - 4f) : 0f);
+            PlaceBody(bb, startNearRightEdge, groundTopWorldY, GroundHandle);
+            bb.Machine.ChangeState(StickmanStateId.Walk, isForcedInterrupt: true);
+
+            TightenWanderForDeterminism();
+            _clonedConfig.hopDownChance = 0f;
+            _clonedConfig.ledgeHangChance = 0f;
+            _clonedConfig.stepUpChance = 0f;
+            _clonedConfig.ropeClimbChance = 1f;
+            // ★ 목표 지향 주기를 조인다 — 배포 기본 100초는 테스트 예산 안에 한 번도 안 돈다.
+            //   (값 자체를 재는 테스트가 아니다. 여기서 재는 것은 «전폭 지면에서도 도는가»뿐이다.)
+            _clonedConfig.climbSeekIntervalSeconds = 1f;
+            RopeClimbQaOverride.SetChanceTestOverride(1f);
+
+            var wander = new AutoWanderController(bb, _clonedConfig, new System.Random(20260908));
+            bb.IntentSource = wander;
+
+            var obs = new Observation();
+            yield return ObserveRope(wander, bb, WideGroundObserveSeconds, obs);
+
+            Debug.Log($"{LogPrefix} 전폭 지면 실측 — 요청={obs.SawRequest}(t={obs.RequestSeconds:F2}s), " +
+                $"진입={obs.SawState}, 총 {obs.ElapsedSeconds:F2}초.");
+            Assert.IsTrue(obs.SawRequest || obs.SawState,
+                $"{LogPrefix} 화면 전폭 발판(= Windows 작업표시줄)에서 {WideGroundObserveSeconds:F0}초 안에 밧줄등반이 " +
+                "발동하지 않았습니다 — isTrueScreenEdge 게이트가 밧줄까지 다시 막고 있다는 뜻이고, 그것이 " +
+                "사용자가 두 번 신고한 «윈도우에서는 밧줄 동작안함» 그 상태입니다.");
+
+            // ---- (2) 음성 — 같은 자리에서 뛰어내리기는 여전히 막힌다 ----
+            //   밧줄만 죽이고 하강 갈래를 최대로 열어 둔다. 그런데도 뛰어내리기가 나오면
+            //   이 라운드가 게이트를 «통째로» 연 것이고, 캐릭터가 화면 밖으로 걸어 나갈 수 있다.
+            RopeClimbQaOverride.SetChanceTestOverride(0f);
+            _clonedConfig.ropeClimbChance = 0f;
+            _clonedConfig.hopDownChance = 1f;
+            _clonedConfig.ledgeHangChance = 1f;
+            _clonedConfig.stepUpChance = 1f;
+
+            // 화면 끝 <b>아래</b>에 내려앉을 발판을 실제로 놓아 준다 — 없으면 «갈 곳이 없어서»
+            // 안 나온 것과 «화면 끝이라 막혀서» 안 나온 것이 구분되지 않는다.
+            float lowerTopOs = groundTopOs + 40f;
+            _service.Footholds.Add(new PlatformFoothold(LowDropLeftHandle,
+                new Rect(0f, lowerTopOs, w * 0.1f, h - lowerTopOs), false));
+            _service.Footholds.Add(new PlatformFoothold(LowDropRightHandle,
+                new Rect(w * 0.9f, lowerTopOs, w * 0.1f, h - lowerTopOs), false));
+            _poller = new FootholdPoller(_service, _clonedConfig);
+            bb.FootholdPoller = _poller;
+
+            PlaceBody(bb, startNearRightEdge, groundTopWorldY, GroundHandle);
+            bb.Machine.ChangeState(StickmanStateId.Walk, isForcedInterrupt: true);
+
+            float negativeBudget = Mathf.Max(3f, (obs.RequestSeconds > 0f ? obs.RequestSeconds : obs.ElapsedSeconds) * 3f);
+            var descendWander = new AutoWanderController(bb, _clonedConfig, new System.Random(20260909));
+            bb.IntentSource = descendWander;
+
+            bool sawDescend = false;
+            float t = 0f;
+            while (t < negativeBudget)
+            {
+                descendWander.Tick(Time.deltaTime);
+                if (descendWander.HopDownRequested || descendWander.LedgeHangRequested) { sawDescend = true; break; }
+                t += Time.deltaTime;
+                yield return null;
+            }
+
+            Debug.Log($"{LogPrefix} 네거티브(하강 확률 전부 1) — 하강 요청 관측={sawDescend}, 예산 {negativeBudget:F2}초.");
+            Assert.IsFalse(sawDescend,
+                $"{LogPrefix} 화면 끝에서 하강(뛰어내리기/매달리기)이 발동했습니다 — 이 라운드가 게이트를 " +
+                "밧줄만이 아니라 «통째로» 열었다는 뜻이고, 그러면 캐릭터가 화면 밖으로 나갈 수 있습니다.");
+        }
     }
 }

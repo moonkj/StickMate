@@ -3487,6 +3487,229 @@ namespace StickMate.States
         /// 않는 이유는 "판정을 쓰는 쪽이 같은 계산원을 봐야 한다"는 이 프로젝트의 반복 교훈
         /// (ResolveEffectiveEdgeBoundary 사고와 같은 계열) 때문이다.</para>
         /// </summary>
+        // ════════════════════════════════════════════════════════════════════════════
+        // ★★★ 목표 지향 등반 — 2026-09-08 사용자 지시로 신설
+        // ════════════════════════════════════════════════════════════════════════════
+        //
+        // 사용자 원문: "그냥 바닥에 캐릭터가 위치할때 전체 화면을 한번 스캔한후 창들의 위치 및
+        // 창 상단의 좌표만 인식하면 확률로 밧줄 던지면 되는거 아니야?" / "목표창 아래로 가서 던짐".
+        //
+        // ■ 왜 필요했나 — 기존 «기회주의적·경계 도달형» 모델이 한 플랫폼에서만 성립했다
+        // 기존 등반(밧줄·파쿠르)은 <b>발판의 경계에 도달했을 때만</b> 평가된다. 그리고 그 평가는
+        // 화면 자체의 끝에서는 제외된다(몸이 화면 밖으로 나가는 갈래를 막기 위한 게이트).
+        //   · macOS Dock  — 화면 <b>가운데</b> 띠라 좌우에 내부 경계가 2개 생긴다 → 평가된다.
+        //   · Windows 작업표시줄 — <b>화면 전폭</b>이라 내부 경계가 <b>0개</b>이고, 유일한 경계인
+        //     좌우 끝은 «화면 끝»이라 제외된다 → <b>체인 전체가 한 번도 돌지 않는다</b>.
+        // 사용자가 "윈도우에서는 밧줄 동작안함"을 두 번, "윈도우에서는 파쿠르도 동작안하는데"를
+        // 한 번 신고했고, 세 신고가 <b>같은 뿌리 하나</b>였다. 확률·높이 상한을 두 라운드에 걸쳐
+        // 고쳤지만 아무 효과가 없었던 이유가 이것이다 — 잠긴 문 앞에서 열쇠만 바꾸고 있었다.
+        //
+        // ■ 왜 «위치 기준» 탐색이 따로 필요한가 (기존 것을 재사용하지 못하는 구조적 이유)
+        // 기존 <see cref="TryFindClimbableWall"/>/<see cref="TryFindRopeClimbWallWide"/>는 전부
+        // <b>내가 선 발판의 경계</b>를 원점으로 삼는다(GroundSensor의 edgeX / distanceToEdge).
+        // 목표 지향은 «경계»가 아니라 «내 몸»이 원점이므로 그 계산으로는 답이 나오지 않는다.
+        // 그래서 새로 만들되, <b>생산자(AutoWanderController)와 소비자(WalkState)가 같은 메서드를
+        // 부른다</b> — 이 저장소가 반복해서 당한 «의도를 만든 프레임과 소비하는 프레임이 서로 다른
+        // 계산을 해서 펄스가 조용히 버려지는» 사고(ResolveEffectiveEdgeBoundary 계열)를 구조적으로
+        // 막는 유일한 방법이다.
+        //
+        // ■ 기존 경계 기반 경로는 <b>한 줄도 건드리지 않는다</b> — macOS의 실측 거동(120초/회)이
+        //   그 경로에서 나왔고, 이 신설분은 그 위에 «또 하나의 기회»를 더하는 것이다.
+
+        /// <summary>목표 지향 등반에서 «벽 앞에 선다»의 허용 오차(월드 유닛). 몸 반폭보다 넉넉히 두어
+        /// 보행 한 프레임(1.5유닛/초 x 프레임)이 지나쳐도 도착으로 인정되게 한다 — 좁으면 목표를
+        /// 지나쳐 왕복하는 «진자» 거동이 된다.</summary>
+        public float ClimbApproachToleranceWorld => Mathf.Max(0.25f, EdgeStopDistanceWorld);
+
+        /// <summary>
+        /// ★ 화면 전체에서 <b>오를 수 있는 벽</b>을 하나 고른다(목표 지향 1단계 — 위 문단 참고).
+        ///
+        /// <para>고르는 규칙: 높이가 <paramref name="minHeight"/> 초과 <paramref name="maxHeight"/>
+        /// 이하인 발판 중 <b>내 몸에서 가장 가까운 접근점</b>을 가진 것. 동률이면 더 작은 핸들
+        /// (OS가 준 식별자라 창 열거 순서 = z-order와 독립 — 사용자가 창을 클릭해 앞으로 가져오는
+        /// 것만으로 목표가 바뀌지 않는다. TryFindClimbableWallOverlapping의 동률 파훼와 같은 논지).</para>
+        ///
+        /// <para><paramref name="approachWorldX"/>는 «그 벽의 <b>내 쪽 세로 모서리</b> 바로 앞»이다.
+        /// 캐릭터는 거기까지 걸어가 벽을 마주보고 밧줄을 던진다(사용자 지시 "목표창 아래로 가서 던짐").
+        /// <paramref name="approachDirection"/>은 그때 바라볼 방향(+1 오른쪽 / -1 왼쪽)이다.</para>
+        ///
+        /// <para>내가 지금 선 발판 자신은 높이 필터에서 자연히 빠진다(높이 0). 화면 밖으로 나가는
+        /// 목표도 생기지 않는다 — 발판 목록은 전부 화면 안의 창이고, 상한은 호출부가
+        /// <see cref="AutoWanderController.ResolveRopeClimbMaxHeight"/>로 화면 클램프까지 잘라 넘긴다.</para>
+        /// </summary>
+        public bool TryPickClimbTarget(GroundSensor.GroundInfo info, float minHeight, float maxHeight,
+            out long wallHandle, out float wallTopWorldY, out float approachWorldX, out int approachDirection)
+        {
+            wallHandle = 0L;
+            wallTopWorldY = 0f;
+            approachWorldX = 0f;
+            approachDirection = 0;
+
+            if (MainCamera == null || Body == null || !info.Grounded) return false;
+            var footholds = FootholdPoller != null ? FootholdPoller.CachedFootholds : null;
+            if (footholds == null || footholds.Count == 0) return false;
+            if (!(maxHeight > minHeight)) return false;
+
+            float bodyX = Body.position.x;
+            _ = ScreenCoordinateConverter.WorldToOsScreen(MainCamera, Body.position, Config, out float depth);
+            float standoff = ClimbApproachToleranceWorld;
+
+            // 화면 안에서만 목표를 고른다 — 걸어갈 수 없는 자리를 고르면 영원히 도착하지 못한다.
+            bool hasWalkable = TryGetWalkableScreenBoundsWorld(out float walkLeftX, out float walkRightX);
+
+            float bestDistance = float.PositiveInfinity;
+            bool found = false;
+
+            for (int i = 0; i < footholds.Count; i++)
+            {
+                PlatformFoothold fh = footholds[i];
+                if (fh.Handle == info.GroundedFootholdHandle) continue;   // 지금 딛고 선 발판 자신
+
+                Rect r = fh.ScreenRect;
+                Vector3 topLeftWorld = ScreenCoordinateConverter.OsScreenToWorld(MainCamera, new Vector2(r.x, r.y), depth, Config);
+                Vector3 topRightWorld = ScreenCoordinateConverter.OsScreenToWorld(MainCamera, new Vector2(r.x + r.width, r.y), depth, Config);
+                float candMin = Mathf.Min(topLeftWorld.x, topRightWorld.x);
+                float candMax = Mathf.Max(topLeftWorld.x, topRightWorld.x);
+
+                float height = topLeftWorld.y - info.GroundWorldY;
+                if (!(height > minHeight) || height > maxHeight) continue;
+
+                // 두 세로 모서리 중 «내 쪽»을 고른다. 왼쪽 모서리 앞에 서면 오른쪽을 보고 던지고,
+                // 오른쪽 모서리 앞에 서면 왼쪽을 본다.
+                float leftApproach = candMin - standoff;   // 여기 서서 오른쪽(+1)을 본다
+                float rightApproach = candMax + standoff;  // 여기 서서 왼쪽(-1)을 본다
+
+                for (int side = 0; side < 2; side++)
+                {
+                    float ax = side == 0 ? leftApproach : rightApproach;
+                    int dir = side == 0 ? 1 : -1;
+                    if (hasWalkable && (ax < walkLeftX || ax > walkRightX)) continue;   // 걸어갈 수 없는 자리
+
+                    float distance = Mathf.Abs(ax - bodyX);
+                    bool better = !found || distance < bestDistance
+                        || (Mathf.Approximately(distance, bestDistance) && fh.Handle < wallHandle);
+                    if (!better) continue;
+
+                    bestDistance = distance;
+                    wallHandle = fh.Handle;
+                    wallTopWorldY = topLeftWorld.y;
+                    approachWorldX = ax;
+                    approachDirection = dir;
+                    found = true;
+                }
+            }
+
+            return found;
+        }
+
+        /// <summary>
+        /// ★ 목표 지향 등반 2단계 — <b>지금 이 자리에서</b> 그 벽을 오를 수 있는가(도착 확인 + 재확인).
+        ///
+        /// <para><b>생산자와 소비자가 이 메서드 하나를 공유한다</b>:
+        /// <see cref="AutoWanderController"/>가 «도착했는가»를 물을 때, 그리고 <c>WalkState</c>가
+        /// 펄스를 받아 «지금도 유효한가»를 되물을 때 <b>같은 계산</b>을 한다. 두 벌로 만들면 그 사이에
+        /// 답이 갈려 펄스가 조용히 버려진다(클래스 상단 문단).</para>
+        ///
+        /// <para>판정: 진행 방향 쪽 <paramref name="wallHandle"/> 발판의 «내 쪽 세로 모서리»가 내 몸에서
+        /// <see cref="ClimbApproachToleranceWorld"/> 안에 있고, 그 발판의 상단이 대역 안인가.
+        /// 핸들을 함께 받는 이유는 «걸어가는 동안 그 창이 닫히거나 움직였을 때» 다른 창으로 조용히
+        /// 갈아타지 않기 위해서다 — 그러면 캐릭터가 엉뚱한 곳에 밧줄을 던진다.</para>
+        /// </summary>
+        /// <summary>
+        /// ★ <see cref="TryVerifyClimbTargetAtBody"/>의 <b>핸들 없는</b> 변형 — <b>소비자 전용</b>.
+        ///
+        /// <para>왜 핸들이 없나: 소비자(<c>WalkState</c>)는 «어느 창이 목표였는지» 모른다. 의도 채널은
+        /// 불리언 펄스 하나이고(<see cref="IMovementIntentSource.RopeClimbRequested"/>), 거기에 핸들을
+        /// 실어 나르면 채널 계약이 바뀌어 기존 소비자 전부가 영향을 받는다. 대신 <b>같은 기하 판정</b>
+        /// (내 쪽 세로 모서리가 몸에서 허용오차 안 + 상단이 대역 안)을 핸들 필터 없이 돌려, 지금 이
+        /// 자리에서 오를 수 있는 벽이 <b>하나라도</b> 있으면 그것을 채택한다.</para>
+        ///
+        /// <para>«엉뚱한 창을 잡을 위험»은 실질적으로 없다 — 이 판정은 몸에서 허용오차 안의 세로
+        /// 모서리만 인정하므로, 그 자리에 다른 벽이 함께 있다면 그것도 «지금 오를 수 있는 벽»이다.
+        /// 생산자가 고른 벽이 그 사이 사라졌다면 대신 오르는 쪽이 «아무 일도 안 일어남»보다 낫다
+        /// (사용자에게는 후자가 곧 «또 안 된다»로 보인다).</para>
+        /// </summary>
+        public bool TryVerifyClimbTargetNearBody(GroundSensor.GroundInfo info, int direction,
+            float minHeight, float maxHeight, out float wallTopWorldY)
+        {
+            wallTopWorldY = 0f;
+            if (MainCamera == null || Body == null || !info.Grounded) return false;
+            var footholds = FootholdPoller != null ? FootholdPoller.CachedFootholds : null;
+            if (footholds == null || footholds.Count == 0) return false;
+
+            float bodyX = Body.position.x;
+            _ = ScreenCoordinateConverter.WorldToOsScreen(MainCamera, Body.position, Config, out float depth);
+            float tolerance = ClimbApproachToleranceWorld * 2f;
+
+            float bestTopY = float.NegativeInfinity;
+            bool found = false;
+
+            for (int i = 0; i < footholds.Count; i++)
+            {
+                PlatformFoothold fh = footholds[i];
+                if (fh.Handle == info.GroundedFootholdHandle) continue;
+
+                Rect r = fh.ScreenRect;
+                Vector3 topLeftWorld = ScreenCoordinateConverter.OsScreenToWorld(MainCamera, new Vector2(r.x, r.y), depth, Config);
+                Vector3 topRightWorld = ScreenCoordinateConverter.OsScreenToWorld(MainCamera, new Vector2(r.x + r.width, r.y), depth, Config);
+                float candMin = Mathf.Min(topLeftWorld.x, topRightWorld.x);
+                float candMax = Mathf.Max(topLeftWorld.x, topRightWorld.x);
+
+                float height = topLeftWorld.y - info.GroundWorldY;
+                if (!(height > minHeight) || height > maxHeight) continue;
+
+                float nearEdgeX = direction > 0 ? candMin : candMax;
+                if (Mathf.Abs(nearEdgeX - bodyX) > tolerance) continue;
+
+                if (!found || topLeftWorld.y > bestTopY)
+                {
+                    bestTopY = topLeftWorld.y;
+                    found = true;
+                }
+            }
+
+            if (found) wallTopWorldY = bestTopY;
+            return found;
+        }
+
+        public bool TryVerifyClimbTargetAtBody(GroundSensor.GroundInfo info, int direction, long wallHandle,
+            float minHeight, float maxHeight, out float wallTopWorldY)
+        {
+            wallTopWorldY = 0f;
+            if (MainCamera == null || Body == null || !info.Grounded || wallHandle == 0L) return false;
+            var footholds = FootholdPoller != null ? FootholdPoller.CachedFootholds : null;
+            if (footholds == null || footholds.Count == 0) return false;
+
+            float bodyX = Body.position.x;
+            _ = ScreenCoordinateConverter.WorldToOsScreen(MainCamera, Body.position, Config, out float depth);
+            float tolerance = ClimbApproachToleranceWorld * 2f;   // 도착 판정은 접근 허용오차보다 넉넉히
+
+            for (int i = 0; i < footholds.Count; i++)
+            {
+                PlatformFoothold fh = footholds[i];
+                if (fh.Handle != wallHandle) continue;
+
+                Rect r = fh.ScreenRect;
+                Vector3 topLeftWorld = ScreenCoordinateConverter.OsScreenToWorld(MainCamera, new Vector2(r.x, r.y), depth, Config);
+                Vector3 topRightWorld = ScreenCoordinateConverter.OsScreenToWorld(MainCamera, new Vector2(r.x + r.width, r.y), depth, Config);
+                float candMin = Mathf.Min(topLeftWorld.x, topRightWorld.x);
+                float candMax = Mathf.Max(topLeftWorld.x, topRightWorld.x);
+
+                float height = topLeftWorld.y - info.GroundWorldY;
+                if (!(height > minHeight) || height > maxHeight) return false;
+
+                // 진행 방향 쪽 모서리가 내 앞에 있어야 한다 — 등 뒤의 벽에 밧줄을 던지면
+                // RopeClimbState.Enter()가 앞으로 던지는데 목표는 뒤인 그림이 된다.
+                float nearEdgeX = direction > 0 ? candMin : candMax;
+                if (Mathf.Abs(nearEdgeX - bodyX) > tolerance) return false;
+
+                wallTopWorldY = topLeftWorld.y;
+                return true;
+            }
+
+            return false;   // 걸어가는 동안 그 창이 사라졌다
+        }
+
         public bool TryFindRopeClimbWallWide(GroundSensor.GroundInfo info, int direction, out long wallHandle,
             out float wallTopWorldY, float maxHeight, float ropeMaxHeight)
         {

@@ -58,6 +58,7 @@ MonoBehaviour:
   parkourClimbPoseSmoothingRate: 44
   ropeClimbMaxHeights: 13.6
   ropeClimbMaxScreenFraction: 0.9
+  climbSeekIntervalSeconds: 100
   ropeClimbSpeedHeightsPerSecond: 1.36
   ropeClimbChance: 0.85
   ropeClimbAdjacentSearchRadiusMultiplier: 16

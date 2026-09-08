@@ -93,6 +93,52 @@ namespace StickMate.States
         // 안 할 확률"이 설정값의 곱으로 떨어져 캐릭터가 경계마다 뭔가를 하게 된다.
         private bool _edgeActionRolledThisLeg;
 
+        // ==================== 밧줄 경계 진단 (2026-09-08 신설) ====================
+        //
+        // ★★ 왜 여기에 두는가 — <b>계기가 한쪽 플랫폼에만 있었다.</b>
+        // 사용자가 "윈도우에서는 밧줄 동작안함"을 두 번 신고했는데, 리더는 두 번 다 소스 추론으로만
+        // 답했다. 원격으로 볼 수 있는 유일한 발판 계기 <c>[발판리포트]</c>가
+        // <c>Platform/MacOS/MacOverlayStateEnforcer.cs</c>에만 있어 <b>Windows 로그에는 아무것도
+        // 남지 않았기 때문</b>이다. 그리고 정작 답이 필요했던 질문은 발판 목록이 아니라 이 두 개였다:
+        //   (1) 그 경계가 <b>화면 자체의 끝</b>이었는가(그러면 예전 게이트가 추첨을 통째로 막았다),
+        //   (2) 밧줄 <b>대역에 드는 벽</b>이 하나라도 있었는가.
+        // 그래서 계기를 플랫폼 전용 파일이 아니라 <b>판정이 실제로 일어나는 이 자리</b>에 둔다 —
+        // 여기는 플랫폼 분기가 0건이라 macOS/Windows가 자동으로 같은 로그를 남긴다
+        // (CLAUDE.md "정책 판정은 플랫폼 중립 위치에, 플랫폼 전용 코드는 사실 조회만"과 같은 논지).
+        //
+        // ★ 상주 앱이므로 <b>요약해서</b> 남긴다 — 매 경계마다 찍으면 로그가 잠긴다(PlayerLogPolicy).
+        //   주기마다 «몇 번 만났고 그중 몇 번이 화면 끝이었고 벽은 몇 번 찾았나»를 한 줄로 접는다.
+        private const float RopeEdgeDiagnosticIntervalSeconds = 60f;
+        private float _ropeEdgeDiagTimer;
+        private int _ropeEdgeEncounters;        // 경계 근처에서 추첨 자격을 얻은 횟수
+        private int _ropeEdgeTrueScreenEdges;   // 그중 화면 자체의 끝이었던 횟수
+        private int _ropeEdgeWallFound;         // 밧줄 대역 벽을 실제로 찾은 횟수
+        private int _ropeEdgeRollWon;           // 찾은 뒤 확률까지 통과한 횟수
+        private float _ropeEdgeLastBandLow;     // 마지막으로 쓴 대역 하한(파쿠르 상한)
+        private float _ropeEdgeLastBandHigh;    // 마지막으로 쓴 대역 상한(밧줄 상한)
+
+        // ==================== 목표 지향 등반 (2026-09-08 사용자 지시로 신설) ====================
+        //
+        // 사용자 원문: "그냥 바닥에 캐릭터가 위치할때 전체 화면을 한번 스캔한후 창들의 위치 및 창 상단의
+        // 좌표만 인식하면 확률로 밧줄 던지면 되는거 아니야?" / "목표창 아래로 가서 던짐".
+        //
+        // 왜 필요했는지(= 기존 경계 도달형이 Windows에서 구조적으로 죽어 있던 이유)는
+        // StickmanBlackboard.TryPickClimbTarget 위 문단에 한 곳으로 모아 뒀다.
+        //
+        // ★ 기존 경계 기반 경로는 <b>한 줄도 건드리지 않는다</b> — 이 신설분은 그 위에 «또 하나의
+        //   기회»를 더한다. macOS 실측 거동(120초/회)은 경계 경로에서 나온 값이라 그대로 살아 있다.
+        private float _climbSeekTimer;
+        private bool _climbTargetActive;
+        private long _climbTargetHandle;
+        private float _climbTargetApproachX;
+        private int _climbTargetDirection;
+        private bool _climbTargetIsRope;        // false면 손 등반(파쿠르) 대역이다
+        private float _climbTargetGiveUpTimer;  // 못 가고 있는 시간 — 오래 끌면 포기한다
+        // 진단 카운터 — [밧줄진단] 한 줄에 함께 접어 남긴다(그 함수 문단 참고).
+        private int _climbSeekWon;          // 목표까지 걸어가 실제로 던진 횟수
+        private int _climbSeekMissNoWall;   // 훑었는데 대역에 드는 벽이 없던 횟수
+        private int _climbSeekLostRoll;     // 벽은 있었는데 추첨에서 진 횟수
+
         // ★ 뛰어내리기 "확약" 서브 상태(2026-08-29). 추첨에 당첨된 순간 바로 발을 떼지 않고, 모서리
         // 코앞(hopDownEdgeCommitDistance)까지 계속 걸어간 뒤에 펄스를 낸다. 경계 판정 거리(0.3유닛)에서
         // 곧장 Fall로 보내면 아직 발판 한복판인데 낙하가 시작돼 "바닥을 뚫고 내려가는" 것처럼 보인다
@@ -572,6 +618,13 @@ namespace StickMate.States
                 // 발판에서는 추첨 자체를 못 해, 되올라가려면 반대편 경계까지 한 번 왕복해야 한다.
                 _edgeActionRolledThisLeg = false;
             }
+            TickRopeEdgeDiagnostic();
+
+            // ★★★ 목표 지향 등반 — 경계 판정보다 <b>먼저</b> 본다(필드 문단 참고).
+            //   이겼으면 이번 틱의 이동을 이 목표가 가져간다(경계 행동과 섞이면 두 의도가 같은
+            //   프레임에 나가 «어디로 가는지 모르는» 그림이 된다).
+            if (TickClimbSeek(info)) return;
+
             if (info.Grounded && IsNearFootholdEdge(info, _direction, out bool isTrueScreenEdge, out float remainingToEdge))
             {
                 // ★ 경계 행동 추첨 — 한 걷기 구간당 1회(위 _edgeActionRolledThisLeg 주석 참고). 아래 세
@@ -580,10 +633,37 @@ namespace StickMate.States
                 //   (2) 실제로 갈 곳이 있다(내려앉을 발판 / 올라설 턱이 실존할 때만 추첨한다).
                 // 추첨에 떨어지거나 조건이 안 맞으면 아래 기존 분기(점프 시도 / 정지 후 반대 방향)로
                 // 그대로 흘러간다 — 즉 세 확률을 전부 0으로 두면 예전 거동과 100% 동일하다.
-                if (!_edgeActionRolledThisLeg && !isTrueScreenEdge)
+                // ★★★ 2026-09-08 — 전제 (1)이 <b>밧줄 등반에는 적용되지 않는다.</b>
+                //   사용자 신고 2회: "윈도우에서는 밧줄 동작안함"(2회 연속, 상한을 화면 비례로
+                //   바꾼 뒤에도 그대로였다).
+                //
+                //   ■ 원인 — Windows에는 <b>바닥에 내부 경계가 하나도 없다</b>
+                //   macOS Dock은 화면 <b>가운데</b> 띠다(실측 x 254~1259 / 1512pt). 그래서 좌우로
+                //   안전망 조각이 남고 <b>내부 경계가 2개</b> 생긴다 — 배회 AI가 그 자리에서 경계
+                //   행동을 추첨한다. Windows 작업표시줄은 <b>화면 전폭</b>이라(GetMonitorInfo의
+                //   rcMonitor/rcWork 차, Win32WindowService가 IReservedBottomBarService로 정확히
+                //   준다) 안전망 조각이 폭 0으로 죽고, 그 발판의 좌우 끝이 <b>곧 화면 끝</b>이다.
+                //   ⇒ isTrueScreenEdge가 항상 true → 이 게이트에서 <b>추첨 자체가 한 번도 안 돌았다</b>.
+                //   FallbackPlatformWindowService.AppendBottomSafetyNet의 QA 시험벽 블록이 "Dock이
+                //   없으면 가짜 경계를 직접 만들어야 한다 — 내부 경계가 없으면 배회 AI가 그 자리에
+                //   도달하는 판정을 아예 하지 않으므로"라고 적어 둔 것이 정확히 이 사실이다.
+                //
+                //   ■ 왜 밧줄만 푸는가 — 전제 (1)의 근거가 밧줄에는 성립하지 않는다
+                //   "끝에서 바깥으로 나가면 몸이 화면 밖으로 나간다"는 <b>내려가거나 뛰는</b> 갈래의
+                //   이야기다. 밧줄은 <b>위로</b> 오르고, 목표 벽은 정의상 화면 안에 있으며
+                //   (TryFindRopeClimbWallWide가 발판 목록에서만 고르고, 상한은
+                //   ResolveRopeClimbMaxHeight가 화면 클램프 상단으로 자른다), 오른 뒤 올라서는
+                //   자리도 그 벽의 상단이다. 즉 이 갈래로는 몸이 화면 밖으로 나갈 수 없다.
+                //   하강 3갈래(뛰어내리기/매달리기/되올라가기)는 <b>그대로 막는다</b> —
+                //   TryRollEdgeAction이 atTrueScreenEdge를 받아 자기 안에서 가른다.
+                //
+                //   ■ macOS 무회귀: macOS는 Dock 덕에 isTrueScreenEdge=false인 자리에서 이미
+                //   추첨하고 있었고, 그 경로는 한 줄도 바뀌지 않는다. 늘어난 것은 "화면 끝에서도
+                //   밧줄만 한 번 더 본다"뿐이다(실측 120초/회는 전부 내부 경계에서 나온 값이다).
+                if (!_edgeActionRolledThisLeg)
                 {
                     _edgeActionRolledThisLeg = true;
-                    if (TryRollEdgeAction(info)) return;
+                    if (TryRollEdgeAction(info, isTrueScreenEdge)) return;
                 }
 
                 // ★ 뛰어내리기 확약 중이면 정지/반전하지 않고 모서리 코앞까지 계속 걸어간 뒤 발을 뗀다
@@ -759,7 +839,13 @@ namespace StickMate.States
         /// <param name="direction">+1 오른쪽 / -1 왼쪽.</param>
         /// <param name="isTrueScreenEdge">이 경계가 "더 갈 곳이 없는 화면의 끝"인가.</param>
         /// <returns>경계 판정에 실제로 써야 할 월드 X.</returns>
-        internal static float ResolveEffectiveEdgeBoundary(float footholdBoundaryX, float unionBoundaryX,
+        /// <remarks>★ 2026-09-08 — <c>internal</c>에서 <c>public</c>으로. 이유는
+        /// <see cref="ResolveStepUpMaxHeightStatic"/>·<see cref="ResolveRopeClimbMaxHeight"/>와 같다:
+        /// <b>PlayMode 테스트 어셈블리는 InternalsVisibleTo 대상이 아니다.</b>
+        /// 「화면 전폭 발판에서도 밧줄은 평가되고 뛰어내리기는 여전히 막힌다」가 이 함수의
+        /// <c>isTrueScreenEdge</c>를 <b>전제 검증</b>으로 직접 읽는다 — 그 전제가 거짓이면 그 테스트의
+        /// 초록은 이 결함과 무관한 다른 것을 재고 있다는 뜻이라, 읽을 수 있어야 한다.</remarks>
+        public static float ResolveEffectiveEdgeBoundary(float footholdBoundaryX, float unionBoundaryX,
             bool hasWalkable, float walkableBoundaryX, int direction, out bool isTrueScreenEdge)
         {
             bool unionEdge = Mathf.Abs(footholdBoundaryX - unionBoundaryX) <= ScreenEdgeEpsilon;
@@ -787,7 +873,158 @@ namespace StickMate.States
         /// (뛰어내리기는 "확약"만 하고 아직 펄스를 내지 않는다 — 모서리 코앞까지 더 걸어가야 하므로
         ///  false를 돌려주고 바로 아래의 확약 블록이 그 걷기를 이어받는다.)
         /// </summary>
-        private bool TryRollEdgeAction(GroundSensor.GroundInfo info)
+        /// <summary>
+        /// ★★★ 목표 지향 등반 — «주기마다 화면을 훑어 벽을 고르고, 그 앞까지 걸어가 던진다».
+        /// <para>반환 true = 이번 틱의 이동 의도를 이 함수가 확정했으니 호출부는 즉시 return한다.</para>
+        ///
+        /// <para>3단계다:
+        /// <list type="number">
+        ///   <item><b>고르기</b> — 주기가 차면 화면 전체 발판에서 대역에 드는 벽을 하나 고르고
+        ///     <c>ropeClimbChance</c>로 추첨한다. 지면 아무 일도 없고 다음 주기를 기다린다.</item>
+        ///   <item><b>걸어가기</b> — 그 벽의 «내 쪽 세로 모서리» 앞까지 이동한다. 이 동안 경계 행동은
+        ///     평가하지 않는다(호출부가 즉시 return하므로). 오래 못 가면 포기한다 — 창이 화면 밖으로
+        ///     밀려났거나 사이에 다른 발판이 생겨 길이 막혔을 수 있고, 그때 영원히 매달리면
+        ///     배회 자체가 멈춘다.</item>
+        ///   <item><b>던지기</b> — 도착하면 대역에 따라 밧줄/손 등반 펄스를 낸다. 도착 판정과
+        ///     소비자(WalkState)의 재확인은 <b>같은 메서드</b>를 쓴다
+        ///     (<see cref="StickmanBlackboard.TryVerifyClimbTargetAtBody"/>).</item>
+        /// </list></para>
+        /// </summary>
+        private bool TickClimbSeek(GroundSensor.GroundInfo info)
+        {
+            if (_blackboard == null || !info.Grounded)
+            {
+                // 공중에 있는 동안은 목표를 유지할 이유가 없다(등반 중이거나 떨어지는 중이다).
+                _climbTargetActive = false;
+                return false;
+            }
+
+            float stepUpMax = ResolveStepUpMaxHeight();
+            float ropeMax = ResolveRopeClimbMaxHeight(_blackboard, info.GroundWorldY);
+            float minClimb = Cfg(c => c.parkourDetectionRadius, 0.5f);
+
+            // ---- (2)(3) 진행 중인 목표가 있으면 그쪽이 우선이다 ----
+            if (_climbTargetActive)
+            {
+                float bandLow = _climbTargetIsRope ? stepUpMax : minClimb;
+                float bandHigh = _climbTargetIsRope ? ropeMax : stepUpMax;
+
+                if (_blackboard.TryVerifyClimbTargetAtBody(info, _climbTargetDirection, _climbTargetHandle,
+                        bandLow, bandHigh, out float verifiedTopY))
+                {
+                    // 도착 — 펄스를 낸다. 방향은 목표를 바라보는 쪽으로 확정한다.
+                    _direction = _climbTargetDirection;
+                    _moveInputX = _climbTargetDirection;
+                    if (_climbTargetIsRope) _ropeClimbRequestedThisTick = true;
+                    else _stepUpRequestedThisTick = true;
+                    _climbSeekWon++;
+
+                    Debug.Log($"[등반목표] 도착 — {(_climbTargetIsRope ? "밧줄" : "손 등반")}, 벽핸들={_climbTargetHandle}, " +
+                        $"높이={(verifiedTopY - info.GroundWorldY):F3}유닛, 방향={(_climbTargetDirection > 0 ? "오른쪽" : "왼쪽")}. " +
+                        "목표창 아래까지 걸어와 지금 던집니다(2026-09-08 사용자 지시 '목표창 아래로 가서 던짐').");
+
+                    _climbTargetActive = false;
+                    return true;
+                }
+
+                // 아직 도착 전 — 목표 쪽으로 걷는다.
+                float bodyX = _blackboard.Body != null ? _blackboard.Body.position.x : 0f;
+                int toward = _climbTargetApproachX >= bodyX ? 1 : -1;
+                _direction = toward;
+                _moveInputX = toward;
+
+                _climbTargetGiveUpTimer += Time.deltaTime;
+                float giveUp = Mathf.Max(5f, Cfg(c => c.climbSeekIntervalSeconds, 100f) * 0.5f);
+                if (_climbTargetGiveUpTimer > giveUp)
+                {
+                    Debug.Log($"[등반목표] 포기 — 벽핸들={_climbTargetHandle}까지 {giveUp:F0}초 안에 도달하지 못했습니다. " +
+                        "창이 화면 밖으로 밀렸거나 길이 막혔을 수 있습니다. 배회를 계속하고 다음 주기에 다시 고릅니다.");
+                    _climbTargetActive = false;
+                    return false;
+                }
+                return true;
+            }
+
+            // ---- (1) 주기가 차면 고른다 ----
+            _climbSeekTimer += Time.deltaTime;
+            float interval = Mathf.Max(1f, Cfg(c => c.climbSeekIntervalSeconds, 100f));
+            if (_climbSeekTimer < interval) return false;
+            _climbSeekTimer = 0f;
+
+            float chance = RopeClimbQaOverride.ChanceOverride ?? Cfg(c => c.ropeClimbChance, 0.85f);
+            if (!(chance > 0f)) return false;
+
+            // 손 등반 대역과 밧줄 대역을 <b>한 번에</b> 훑는다 — 사용자 신고가 둘 다였고
+            // (밧줄 x2 · 파쿠르 x1), 원인이 하나라 처방도 하나여야 한다.
+            if (!_blackboard.TryPickClimbTarget(info, minClimb, ropeMax,
+                    out long handle, out float topY, out float approachX, out int approachDir))
+            {
+                _climbSeekMissNoWall++;
+                return false;
+            }
+
+            if (!(_rng.NextDouble() < chance)) { _climbSeekLostRoll++; return false; }
+
+            float height = topY - info.GroundWorldY;
+            _climbTargetActive = true;
+            _climbTargetHandle = handle;
+            _climbTargetApproachX = approachX;
+            _climbTargetDirection = approachDir;
+            _climbTargetIsRope = height > stepUpMax;
+            _climbTargetGiveUpTimer = 0f;
+
+            Debug.Log($"[등반목표] 선정 — {(_climbTargetIsRope ? "밧줄" : "손 등반")} 대역, 벽핸들={handle}, " +
+                $"높이={height:F3}유닛(손 등반 상한 {stepUpMax:F2} / 밧줄 상한 {ropeMax:F2}), " +
+                $"접근점 x={approachX:F3}, 바라볼 방향={(approachDir > 0 ? "오른쪽" : "왼쪽")}. " +
+                "화면 전체를 훑어 골랐습니다 — 발판 경계에 도달할 필요가 없으므로 작업표시줄처럼 " +
+                "화면 전폭인 바닥에서도 동작합니다.");
+            return true;
+        }
+
+        /// <summary>
+        /// ★ 밧줄 경계 진단 한 줄 — <b>양쪽 플랫폼에서 같은 코드로 남는다</b>(필드 문단 참고).
+        /// <para>읽는 법 — 이 줄 하나로 "왜 밧줄이 안 나오는가"의 갈래가 전부 갈린다:</para>
+        /// <list type="bullet">
+        ///   <item><c>경계=0</c> — 애초에 경계 근처에 <b>도달하지 못했다</b>. 발판 구성 문제다.</item>
+        ///   <item><c>경계&gt;0 인데 화면끝=경계</c> — 만난 경계가 <b>전부 화면 자체의 끝</b>이다.
+        ///     Windows 작업표시줄처럼 <b>전폭 발판</b>이면 이렇게 된다(내부 경계가 0개).
+        ///     2026-09-08 이전에는 이 상태에서 추첨이 <b>한 번도 돌지 않았다</b>.</item>
+        ///   <item><c>벽발견=0</c> — 경계엔 갔는데 <b>대역에 드는 벽이 없다</b>. 함께 찍는 대역
+        ///     [하한~상한]과 화면의 창 높이를 비교하면 바로 판정된다(지형 문제).</item>
+        ///   <item><c>벽발견&gt;0, 성공=0</c> — 벽은 있는데 <b>확률에서 계속 졌다</b>(빈도 문제).</item>
+        /// </list>
+        /// </summary>
+        private void TickRopeEdgeDiagnostic()
+        {
+            _ropeEdgeDiagTimer += Time.deltaTime;
+            if (_ropeEdgeDiagTimer < RopeEdgeDiagnosticIntervalSeconds) return;
+            _ropeEdgeDiagTimer = 0f;
+
+            // 아무 일도 없었으면 조용히 있는다 — 상주 앱에서 «변화 없음»을 매 분 찍지 않는다.
+            if (_ropeEdgeEncounters == 0 && _climbSeekWon == 0 && _climbSeekMissNoWall == 0 && _climbSeekLostRoll == 0) return;
+
+            Debug.Log($"[밧줄진단] 최근 {RopeEdgeDiagnosticIntervalSeconds:F0}초 — 경계 도달 {_ropeEdgeEncounters}회 " +
+                $"(그중 화면끝 {_ropeEdgeTrueScreenEdges}회) / 대역 벽 발견 {_ropeEdgeWallFound}회 / 추첨 성공 {_ropeEdgeRollWon}회. " +
+                $"대역=[{_ropeEdgeLastBandLow:F2} ~ {_ropeEdgeLastBandHigh:F2}]유닛(파쿠르 상한 초과 ~ 밧줄 상한) " +
+                $"| 목표지향: 던짐 {_climbSeekWon}회 / 벽없음 {_climbSeekMissNoWall}회 / 추첨패 {_climbSeekLostRoll}회. " +
+                "★ 화면끝이 경계 도달과 같으면 이 화면에는 «내부 경계»가 없다는 뜻입니다(예: Windows 작업표시줄처럼 " +
+                "발판이 화면 전폭). 벽 발견이 0이면 확률이 아니라 지형 문제입니다 — 대역에 드는 높이의 창이 " +
+                "화면에 하나도 없습니다.");
+
+            _ropeEdgeEncounters = 0;
+            _ropeEdgeTrueScreenEdges = 0;
+            _ropeEdgeWallFound = 0;
+            _ropeEdgeRollWon = 0;
+            _climbSeekWon = 0;
+            _climbSeekMissNoWall = 0;
+            _climbSeekLostRoll = 0;
+        }
+
+        /// <param name="atTrueScreenEdge">지금 경계가 <b>화면 자체의 끝</b>인가. true면 하강 3갈래
+        /// (뛰어내리기·매달리기·되올라가기)는 <b>전부 건너뛴다</b> — 그쪽으로 가면 몸이 화면 밖으로
+        /// 나간다. <b>밧줄 등반만</b> 그대로 평가한다(위로 오르고 목표 벽은 정의상 화면 안이라
+        /// 그 근거가 성립하지 않는다. 호출부의 2026-09-08 문단 참고).</param>
+        private bool TryRollEdgeAction(GroundSensor.GroundInfo info, bool atTrueScreenEdge)
         {
             // ★ 되올라간 직후 유예 구간(2026-08-29) — 내려가는 두 갈래(1·2)만 건너뛰고 되올라가기(3)와
             // 기존 배회 거동(정지 후 반대 방향)은 그대로 둔다. 이 구간에서도 경계에서 "돌아서기"는
@@ -852,11 +1089,23 @@ namespace StickMate.States
             // hop-down 차례다). 죽은 이중 탐색(TryFindClimbableWall 프레임당 최대 2회 호출) 비용도
             // 함께 없어졌다.
             // ============================================================================
+            // ★ 진단 계기(2026-09-08) — 판정 «전에» 표본을 센다. 필드 문단 참고.
+            _ropeEdgeEncounters++;
+            if (atTrueScreenEdge) _ropeEdgeTrueScreenEdges++;
+            _ropeEdgeLastBandLow = maxHeight;
+            _ropeEdgeLastBandHigh = ropeMaxHeight;
+
             float ropeClimbChance = RopeClimbQaOverride.ChanceOverride ?? Cfg(c => c.ropeClimbChance, 0.85f);
-            if (ropeClimbChance > 0f
-                && _blackboard.TryFindRopeClimbWallWide(info, _direction, out long ropeWallHandle, out float ropeWallTopY, maxHeight, ropeMaxHeight)
-                && _rng.NextDouble() < ropeClimbChance)
+            // out 변수를 <b>먼저</b> 선언한다 — `A && TryFind(out x)` 형태로 쓰면 A가 단락될 때
+            // x가 확정 할당되지 않아 뒤에서 못 읽는다(C# 확정 할당 규칙).
+            long ropeWallHandle = 0L;
+            float ropeWallTopY = 0f;
+            bool ropeWallFound = ropeClimbChance > 0f
+                && _blackboard.TryFindRopeClimbWallWide(info, _direction, out ropeWallHandle, out ropeWallTopY, maxHeight, ropeMaxHeight);
+            if (ropeWallFound) _ropeEdgeWallFound++;
+            if (ropeWallFound && _rng.NextDouble() < ropeClimbChance)
             {
+                _ropeEdgeRollWon++;
                 _ropeClimbRequestedThisTick = true;
                 _moveInputX = _direction;
                 Debug.Log($"[밧줄등반] 결정(독립 우선순위, 근본재설계 §10) — 방향={(_direction > 0 ? "오른쪽" : "왼쪽")}, " +
@@ -866,6 +1115,13 @@ namespace StickMate.States
             }
 
             // ---- 이하 하강/되올라가기 체인 — 로프가 후보 없음 또는 이번엔 추첨에서 졌을 때만 도달한다 ----
+
+            // ★★ 2026-09-08 — 화면 자체의 끝이면 여기서 끝낸다. 이 세 갈래는 전부 «경계 바깥/아래로
+            //   몸을 옮기는» 행동이라, 화면 끝에서 하면 몸이 화면 밖으로 나간다(호출부가 예전에
+            //   isTrueScreenEdge로 통째로 막던 그 근거 그대로다 — 없어진 것이 아니라 <b>여기로
+            //   내려왔다</b>. 위 밧줄 블록만 그 근거가 성립하지 않아 앞에 두었다).
+            //   ⇒ 반환 false: 호출부의 기존 분기(정지 후 반대 방향)로 그대로 흘러간다.
+            if (atTrueScreenEdge) return false;
 
             // 1) 뛰어내리기 — 낙차가 작아 매달릴 이유가 없는 턱.
             float hopChance = Cfg(c => c.hopDownChance, 0.5f);
