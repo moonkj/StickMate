@@ -446,3 +446,6 @@
         가능). `windows-preview-20260908l` 태그(코드기준 `621a177`) → zip
         (32,381,605 bytes) 첨부해 게시:
         https://github.com/moonkj/StickMate/releases/tag/windows-preview-20260908l
+  - [x] 재게시(6차) 완료 — DLC 상점 노출 + 장비 12종 디자인 고도화까지 반영.
+        `windows-preview-20260908m` 태그(코드기준 `204d4a8`) → zip(32,388,728 bytes)
+        첨부해 게시: https://github.com/moonkj/StickMate/releases/tag/windows-preview-20260908m
