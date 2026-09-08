@@ -491,3 +491,8 @@
   - [x] 재게시(6차) 완료 — DLC 상점 노출 + 장비 12종 디자인 고도화까지 반영.
         `windows-preview-20260908m` 태그(코드기준 `204d4a8`) → zip(32,388,728 bytes)
         첨부해 게시: https://github.com/moonkj/StickMate/releases/tag/windows-preview-20260908m
+  - [x] 재게시(7차) 완료 — DLC 12종 카드/상점 비트맵 아이콘 게임 통합까지 반영(첫
+        래스터 자산, verify-change 독립 검증 완료). `windows-preview-20260908n`
+        태그(코드기준 `1dd245a`) → xcheck osx/win 둘 다 0에러 확인 후 zip
+        (33,730,223 bytes) 첨부해 게시:
+        https://github.com/moonkj/StickMate/releases/tag/windows-preview-20260908n
