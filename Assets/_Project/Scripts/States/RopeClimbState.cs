@@ -603,8 +603,47 @@ namespace StickMate.States
 
             spanMinX = Mathf.Min(leftEdgeX, rightEdgeX);
             spanMaxX = Mathf.Max(leftEdgeX, rightEdgeX);
-            gripX = Mathf.Clamp(_startWorldX, spanMinX, spanMaxX);
+
+            // ★★★ 2026-09-08 — 앵커를 <b>모서리에서 안쪽으로</b> 넣는다(사용자 신고: "맥에서는 창 끝
+            //   이라서 창끝은 타원이라 제대로 줄이 안붙어 있는 것처럼 보여 좀 안쪽으로 앵커를 박아야함").
+            //
+            //   왜 생기나: 우리는 창을 <b>완전한 직사각형</b>으로 열거한다(kCGWindowBounds / Win32 rect).
+            //   그런데 실제로 그려지는 창은 모서리가 둥글다. 캐릭터가 벽 바깥에서 던지면 위 Clamp가
+            //   앵커를 <b>정확히 모서리 좌표</b>에 놓는데, 그 좌표는 «그려진 픽셀이 없는 곡률 바깥»이라
+            //   갈고리가 허공에 걸린 그림이 된다.
+            //
+            //   ★ 이 프로젝트는 <b>같은 문제를 이미 풀었다</b> — LedgeHangState가 매달린 손을 모서리
+            //     안쪽으로 넣을 때 쓰는 <see cref="StickConfig.ledgeHangCornerClearancePoints"/>(12pt)가
+            //     그것이고, 그 값의 근거(macOS Big Sur+ 반경 10pt + 20% 여유, Windows 11은 8px)가
+            //     그 필드 툴팁에 이미 유도돼 있다. <b>새 필드를 만들지 않고 그 상수를 그대로 쓴다</b> —
+            //     같은 사실(창 모서리 곡률)에 다이얼이 둘이면 반드시 갈라진다(CLAUDE.md).
+            //   ★ 환산도 같은 창구다: OS 포인트 고정량이므로 런타임 실측
+            //     (GroundSensor.ComputeOsPointsPerWorldUnit)으로 월드 유닛으로 바꾼다. 상수 환산
+            //     (ReferenceWorldUnitsPerPoint)을 쓰면 디스플레이가 바뀔 때 조용히 틀린다.
+            float inset = ResolveAnchorCornerInsetWorld();
+            float usableMin = spanMinX + inset;
+            float usableMax = spanMaxX - inset;
+            if (usableMin > usableMax)
+            {
+                // 창이 곡률 두 개보다 좁다 — 가운데를 잡는 것이 «모서리에 박는 것»보다 언제나 낫다.
+                float mid = (spanMinX + spanMaxX) * 0.5f;
+                usableMin = mid;
+                usableMax = mid;
+            }
+            gripX = Mathf.Clamp(_startWorldX, usableMin, usableMax);
             return true;
+        }
+
+        /// <summary>창 모서리 곡률만큼의 앵커 인셋(월드 유닛). 값·근거·환산 창구 모두
+        /// <see cref="LedgeHangState"/>와 <b>같은 것</b>을 쓴다(위 문단 참고).</summary>
+        private float ResolveAnchorCornerInsetWorld()
+        {
+            float points = _blackboard.Config != null ? _blackboard.Config.ledgeHangCornerClearancePoints : 12f;
+            if (points <= 0f) return 0f;   // 0이면 곡률 몫이 통째로 꺼진다(네거티브 컨트롤)
+            float pointsPerUnit = GroundSensor.ComputeOsPointsPerWorldUnit(_blackboard.MainCamera, _blackboard.Config);
+            if (float.IsNaN(pointsPerUnit) || pointsPerUnit <= 0f)
+                pointsPerUnit = StickConfig.ReferencePointsPerWorldUnitApprox;
+            return points / pointsPerUnit;
         }
 
         // ============================================================================
