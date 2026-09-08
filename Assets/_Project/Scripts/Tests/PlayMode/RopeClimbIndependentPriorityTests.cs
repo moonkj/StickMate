@@ -1205,5 +1205,150 @@ namespace StickMate.Tests.PlayMode
                 $"{LogPrefix} 화면 끝에서 하강(뛰어내리기/매달리기)이 발동했습니다 — 이 라운드가 게이트를 " +
                 "밧줄만이 아니라 «통째로» 열었다는 뜻이고, 그러면 캐릭터가 화면 밖으로 나갈 수 있습니다.");
         }
+
+        // ════════════════════════════════════════════════════════════════════════════
+        // ★★★ 2026-09-08 — 가로로 떨어진 창으로 갈 때 <b>몸이 밧줄을 따라</b> 오르는가
+        // ════════════════════════════════════════════════════════════════════════════
+        //
+        // 사용자 신고: "높이가 다르고 좀 떨어져있는 창에서 창으로 이동할때 포즈가 이상함"
+        //            → "창에서 창으로 이동하는것도 체크해야함"(테스트로 잠그라는 지시)
+        //
+        // 무엇이 이상했나: RopeClimbState의 Ascend가 반복 구간에서 <c>pos.x = _startWorldX</c>로
+        // <b>제자리에서 수직으로만</b> 올랐다. 목표가 바로 위면 맞다(밧줄도 수직이다). 그런데
+        // 가로로 떨어진 창이 목표면 앵커가 옆으로 멀어져 <b>밧줄은 대각선인데 몸은 수직</b>이 되어
+        // 둘이 따로 놀고, 마지막 구간에서 가로 거리를 한꺼번에 메우느라 옆으로 미끄러졌다.
+        //
+        // 이 테스트가 잠그는 것 — <b>한 실행에서 셋 다</b>:
+        //   (1) 전제 : 이 배치가 정말로 «가로로 떨어진» 목표를 만든다(가로 이동량이 유의미하다).
+        //              이것이 없으면 아래 단언은 offset 0인 수직 등반에서도 조용히 통과한다.
+        //   (2) 양성 : 오르는 동안 몸이 «시작점→앵커» 직선 위에 머문다(가로 진행 ≈ 세로 진행).
+        //   (3) 음성 : 옛 거동(x를 시작점에 고정)이라면 (2)가 실제로 실패한다 — 같은 표본으로
+        //              «고정했을 때의 이탈»을 함께 계산해 그것이 허용치를 넘는지 확인한다.
+        //              (3)이 없으면 «허용치가 헐거워서» 통과한 것과 구분되지 않는다.
+        [UnityTest]
+        public IEnumerator 가로로_떨어진_창으로_오를_때_몸이_밧줄을_따라_간다()
+        {
+            yield return SetUpAgent();
+            StickmanBlackboard bb = _agent.Blackboard;
+            Camera cam = bb.MainCamera;
+            float w = Screen.width;
+            float h = Screen.height;
+            float groundTopOs = h * 0.5f;
+
+            Vector3 xProbe0 = ScreenCoordinateConverter.OsScreenToWorld(cam, new Vector2(0f, groundTopOs), 10f, _clonedConfig);
+            Vector3 xProbe1 = ScreenCoordinateConverter.OsScreenToWorld(cam, new Vector2(100f, groundTopOs), 10f, _clonedConfig);
+            float unitsPerPixelX = Mathf.Abs(xProbe1.x - xProbe0.x) / 100f;
+            Vector3 y0 = ScreenCoordinateConverter.OsScreenToWorld(cam, new Vector2(w * 0.5f, groundTopOs), 10f, _clonedConfig);
+            Vector3 y1 = ScreenCoordinateConverter.OsScreenToWorld(cam, new Vector2(w * 0.5f, groundTopOs - 100f), 10f, _clonedConfig);
+            float unitsPerPixelY = Mathf.Abs(y1.y - y0.y) / 100f;
+
+            float stepUpMax = AutoWanderController.ResolveStepUpMaxHeightStatic(bb);
+            float riseUnits = stepUpMax + 2f;
+            float bandToleranceWorld = _clonedConfig.parkourDetectionRadius
+                * Mathf.Max(1f, _clonedConfig.ropeClimbAdjacentSearchRadiusMultiplier);
+            float farDistanceWorld = bandToleranceWorld * 0.6f;      // «좀 떨어져있는» 창
+            float farDistanceOsPixels = farDistanceWorld / unitsPerPixelX;
+            float riseOsOffset = riseUnits / unitsPerPixelY;
+            float tallWallTopOs = groundTopOs - riseOsOffset;        // «높이가 다른» 창
+            Assert.Greater(tallWallTopOs, 0f, $"{LogPrefix} 준비 실패 — 로프벽이 화면 위로 벗어났습니다.");
+
+            float groundLeftOs = w * 0.35f;
+            float groundRightOs = w * 0.5f;
+            float tallWallRightLeftEdgeOs = groundRightOs + farDistanceOsPixels;
+            Assert.Less(tallWallRightLeftEdgeOs + 120f, w,
+                $"{LogPrefix} 준비 실패 — 오른쪽 로프벽이 화면 밖으로 나갔습니다(화면 {w:F0}px가 밴드 폭을 담기엔 좁습니다).");
+
+            _service = new TestFootholdService();
+            _service.Footholds.Add(new PlatformFoothold(GroundHandle,
+                new Rect(groundLeftOs, groundTopOs, groundRightOs - groundLeftOs, h - groundTopOs), true));
+            _service.Footholds.Add(new PlatformFoothold(TallWallRightHandle,
+                new Rect(tallWallRightLeftEdgeOs, tallWallTopOs, 120f, h * 0.5f), false));
+            _poller = new FootholdPoller(_service, _clonedConfig);
+            bb.FootholdPoller = _poller;
+
+            float groundCenterWorldX = ScreenCoordinateConverter.OsScreenToWorld(
+                cam, new Vector2((groundLeftOs + groundRightOs) * 0.5f, groundTopOs), 10f, _clonedConfig).x;
+            float groundTopWorldY = y0.y;
+
+            PlaceBody(bb, groundCenterWorldX, groundTopWorldY, GroundHandle);
+            bb.Machine.ChangeState(StickmanStateId.Walk, isForcedInterrupt: true);
+
+            TightenWanderForDeterminism();
+            _clonedConfig.hopDownChance = 0f;
+            _clonedConfig.ledgeHangChance = 0f;
+            _clonedConfig.stepUpChance = 0f;
+            _clonedConfig.ropeClimbChance = 1f;
+            _clonedConfig.climbSeekIntervalSeconds = 1f;
+            RopeClimbQaOverride.SetChanceTestOverride(1f);
+
+            var wander = new AutoWanderController(bb, _clonedConfig, new System.Random(20260908));
+            bb.IntentSource = wander;
+
+            var obs = new Observation();
+            yield return ObserveRope(wander, bb, MaxObserveSeconds, obs);
+            Assert.IsTrue(obs.SawRequest || obs.SawState,
+                $"{LogPrefix} 가로로 떨어진 벽에 대해 {MaxObserveSeconds:F0}초 안에 밧줄등반이 발동하지 않았습니다 — " +
+                "이 배치부터 성립하지 않으면 아래 궤적 검사는 아무것도 재지 못합니다.");
+            yield return AssertRopeClimbEntersAndHolds(bb, obs);
+
+            // ---- 상승 궤적 표본 수집 ----
+            float startX = bb.Body.position.x;
+            float startY = bb.Body.position.y;
+            float maxX = startX, minX = startX, topY = startY;
+            var samples = new System.Collections.Generic.List<Vector2>();
+            float elapsed = 0f;
+            while (elapsed < AscendSampleBudgetSeconds
+                   && bb.Machine.CurrentStateId == StickmanStateId.RopeClimb)
+            {
+                yield return null;
+                elapsed += Time.deltaTime;
+                Vector2 p = bb.Body.position;
+                samples.Add(p);
+                maxX = Mathf.Max(maxX, p.x); minX = Mathf.Min(minX, p.x);
+                topY = Mathf.Max(topY, p.y);
+            }
+
+            Assert.Greater(samples.Count, 8,
+                $"{LogPrefix} 상승 표본이 {samples.Count}개뿐입니다 — 궤적을 판정할 수 없습니다.");
+
+            float totalRise = topY - startY;
+            float totalRun = Mathf.Max(maxX - startX, startX - minX);
+            Assert.Greater(totalRise, 0.05f, $"{LogPrefix} 상승이 관측되지 않았습니다({totalRise:F3}유닛).");
+
+            // ---- (1) 전제 — 정말 «가로로 떨어진» 목표였는가 ----
+            //   가로 이동이 세로 상승의 10%도 안 되면 사실상 수직 등반이고, 그러면 아래 (2)(3)은
+            //   무엇도 증명하지 못한다(offset 0에서는 옛 코드도 통과한다).
+            Debug.Log($"{LogPrefix} 대각선 등반 표본 — 상승 {totalRise:F3}유닛 / 가로 {totalRun:F3}유닛, 표본 {samples.Count}개.");
+            Assert.Greater(totalRun, totalRise * 0.10f,
+                $"{LogPrefix} 전제 실패 — 가로 이동({totalRun:F3})이 상승({totalRise:F3})의 10%에 못 미칩니다. " +
+                "이 배치는 «가로로 떨어진 창»을 만들지 못했으므로 이 테스트는 겨냥을 잃었습니다.");
+
+            // ---- (2)(3) 궤적 이탈 — 지금 코드 vs 옛 코드(x 고정) ----
+            float worstNow = 0f, worstPinned = 0f;
+            foreach (Vector2 p in samples)
+            {
+                float t = totalRise > 0.0001f ? Mathf.Clamp01((p.y - startY) / totalRise) : 1f;
+                float expectedX = Mathf.Lerp(startX, startX + (maxX - startX != 0f ? (maxX - startX) : (minX - startX)), t);
+                worstNow = Mathf.Max(worstNow, Mathf.Abs(p.x - expectedX));
+                worstPinned = Mathf.Max(worstPinned, Mathf.Abs(startX - expectedX));   // 옛 거동이었다면
+            }
+            float tolerance = Mathf.Max(0.15f, totalRun * 0.35f);
+            Debug.Log($"{LogPrefix} 궤적 이탈 — 지금 {worstNow:F3}유닛 / 옛 거동(x고정) {worstPinned:F3}유닛, 허용 {tolerance:F3}유닛.");
+
+            Assert.Less(worstNow, tolerance,
+                $"{LogPrefix} 오르는 동안 몸이 밧줄 선에서 최대 {worstNow:F3}유닛 벗어났습니다(허용 {tolerance:F3}). " +
+                "밧줄은 대각선인데 몸이 수직으로만 오르고 있다는 뜻입니다 — 사용자 신고 «높이가 다르고 좀 " +
+                "떨어져있는 창으로 이동할때 포즈가 이상함»이 정확히 이 상태입니다.");
+
+            // ★ 음성 대조 — 허용치가 헐거워서 통과한 것이 아님을 같은 표본으로 증명한다.
+            Assert.Greater(worstPinned, tolerance,
+                $"{LogPrefix} 음성 대조 실패 — 옛 거동(x를 시작점에 고정)이었어도 이탈 {worstPinned:F3}가 " +
+                $"허용치 {tolerance:F3} 안에 듭니다. 그러면 위 통과는 «고쳐서»가 아니라 «허용치가 헐거워서»일 " +
+                "수 있고, 이 테스트는 회귀를 잡지 못합니다.");
+        }
+
+        /// <summary>대각선 등반 궤적을 표집할 벽시계 예산(초) — 프레임 수 기반 대기는 금지다
+        /// (CLAUDE.md: 배치모드 PlayMode는 2,000fps 이상으로 돌아 프레임 예산이 무의미하다).</summary>
+        private const float AscendSampleBudgetSeconds = 8f;
     }
 }
