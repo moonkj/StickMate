@@ -401,3 +401,7 @@
         팩 최초 착지. `windows-preview-20260908k` 태그(코드기준 `42f3b64`) → zip
         (32,376,698 bytes) 첨부해 게시:
         https://github.com/moonkj/StickMate/releases/tag/windows-preview-20260908k
+  - [x] 재게시(4차) 완료 — 광부·대마법사 팩 배선까지 반영(3종 DLC 팩 전부 엔진상 구매
+        가능). `windows-preview-20260908l` 태그(코드기준 `621a177`) → zip
+        (32,381,605 bytes) 첨부해 게시:
+        https://github.com/moonkj/StickMate/releases/tag/windows-preview-20260908l
