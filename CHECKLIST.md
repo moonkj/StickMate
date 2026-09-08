@@ -29,25 +29,29 @@
         같은 계약으로 이식).
   - [x] 구현 계획 수립 완료 — 착수 순서를 의존관계로 못박음: ⑤클램프 기구 → ③스키마v13 →
         레이아웃 → 포스트잇 필터 → 말줄임/취소선(독립, 아무때나 가능). 두 갈래로 병렬 착수:
-    - [ ] **1단계(진행 중)**: coder-systems(PopoverPanel 클램프+v13 스키마+FramePacing hold+
-          저장 절제, 아직 진행 중) ∥ coder-ui **완료**(말줄임+취소선 통일) — 라벨 상자 폭을
-          `RowLabelWidth` 한 벌로 통합(`RowWidth`에서 파생, 배치·자르기 기준 일치),
-          `UiChrome.Ellipsize` 재사용(신규 함수 없음), 취소선을 `TodoPostItWidget`과 같은
-          1pt Image 선 방식으로 통일(U+0336 결합문자 제거). 실기 캡처로 검증(19자/60자 항목이
-          [✕] 안 덮고 패널 밖으로 안 흘러나감, 취소선 두부 없음). 신규 EditMode 3건 전부 통과,
-          PlayMode 4건은 컴파일만 확인(배치 실행은 다른 에이전트와 겹쳐 리더 순서 대기).
-          크로스컴파일 win 0에러 확인. Windows 영향: 없음(오히려 U+0336 Windows 폰트 폴백
-          미확인 위험 1건을 제거함).
-      - [ ] **리더 판단 대기 2건(coder-ui 보고)**: (a) 완료 항목 라벨이 알파 0.5로 흐려지는데
-            `TodoPostItWidget`이 이미 "알파로 흐리지 않는다 — 그 아래 데스크톱이 비친다"고
-            명시적으로 금지해 둔 패턴과 불일치. R6에서 완료 행이 영구 표시가 되면 이 구멍도
-            영구화됨 — ux-designer/design-art 판단 필요. (b) `run-stickmate` 스킬 문서의 `[J]`
-            설명이 틀림(실제는 TodoReminder 데모지 팝오버를 안 엶, 팝오버를 여는 단축키 자체가
-            없어 부채꼴 클릭으로만 진입 가능) — 스킬 문서 정정 + 클릭 주입 스크립트
-            (`scratchpad/mousehold.swift`) 편입 여부 결정 필요.
-    - [ ] **2단계(1단계 완료 후)**: 500×512 레이아웃 재구축(일별/달력 2페이지) + 달력 클릭 라우팅
-          (R-5) + 포스트잇 오늘자 필터(R-7) + 포스트잇↔팝오버 `TryClaimAction` 교차 클릭 충돌
-          버그(P0, 아래 별도 항목과 통합)
+    - [x] **1단계 완료** (커밋 `512de5f`) — coder-systems: `PopoverPanel`에 화면 클램프 기구
+          신설(`ResolvePanelSizePoints`/`ResolvePanelCenterPoints`, `CharacterInfoWindow.Layout`과
+          같은 계약, `UiWindowDrag.ClampCenterPoints` 재사용). 크기를 한 번 풀어
+          `sizeDelta`·`PanelScreenRect`·`SyncClickBlocker`에 전부 쓰는 구조라 persona-stress
+          R-4(차단막≠표시)가 구조적으로 사라짐. `[✕]`가 항상 남는 최소 크기를 파생값으로 강제.
+          `TodoItem.PlannedDayIndex`(0=미상) 1필드 + 세이브 v13, 하위호환 단언 2줄 동반.
+          `FramePacing.HoldActiveForInteraction` 배선(R-9). 탐색은 저장 안 함(R-10) — 모델이
+          "선택된 날짜"를 아예 안 들고 있어 그 불변식을 리플렉션 테스트가 잠금.
+          coder-ui: 말줄임(`UiChrome.Ellipsize` 재사용)·취소선 통일(`TodoPostItWidget`과 같은
+          1pt Image 선) 완료, 실기 캡처로 검증. 뮤테이션 주입 RED→GREEN 절차 양쪽 다 준수.
+          **EditMode 전량 재검증(2866건, 신규 41건 포함) 실패 0, exit 0.**
+      - [ ] **리더 판단 대기 3건**: (a) 완료 항목 라벨 알파 0.5 흐림이 `TodoPostItWidget`의
+            "알파로 흐리지 않는다" 원칙과 불일치(R6에서 완료 행이 영구 표시되면 구멍도 영구화됨)
+            — ux-designer/design-art 판단 필요. (b) `TodoBoardPopover`의 탭 칩이 아직
+            `CloseChipLeft` 역산 앵커라, 500×512가 클램프에 걸리는 화면에서 칩이 창 밖에 남을 수
+            있음 — coder-systems가 만든 `PlaceTopRight` 앵커 헬퍼로 옮겨야 함(2단계에서 처리).
+            (c) `run-stickmate` 스킬 문서의 `[J]` 설명 오류는 이미 정정함(커밋 `af8b2b0`).
+    - [ ] **2단계 착수 대기**: 500×512 레이아웃 재구축(일별/달력 2페이지, coder-systems가 이미
+          만든 조회 API 5종 — `TallyForDay`/`AppendItemsForDay`/`AppendUnknownPlannedDayItems`/
+          `AppendOverdueItems`/`TryGetEarliestPlannedDay` — 그대로 소비) + 달력 클릭 라우팅(R-5)
+          + 포스트잇 오늘자 필터(R-7) + 위 (b) 탭 칩 앵커 이전 + 포스트잇↔팝오버
+          `TryClaimAction` 교차 클릭 충돌 버그(P0, 아래 별도 항목과 통합) + UW-6-5 소프트캡
+          정의 이전(`design-systems` 값, 이쪽 API는 이미 준비됨).
 
 - [ ] **포스트잇↔팝오버 클릭 충돌 버그** (persona-immersion이 실기 검증 중 발견, 오늘할일 고도화와
       별개의 현재 결함) — [추가] 버튼 클릭이 동시에 자란 포스트잇 체크박스에도 먹혀 항목이 자동
