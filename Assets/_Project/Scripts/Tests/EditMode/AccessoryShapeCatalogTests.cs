@@ -92,10 +92,14 @@ namespace StickMate.Tests.EditMode
 
             for (int s = 0; s < drawable.Length; s++)
             {
+                // ★ 2026-09-08 — 「카테고리당 6종」은 <b>기본 코호트</b>의 성질이다(첫 유료 팩이 4자리에 얹혔다).
+                //   ★ 다만 아래 «도형이 하나라도 나오는가»는 <b>팩 자리에도 그대로</b> 건다 —
+                //     그게 불변 원칙 4(«.cs 무수정으로 에셋만으로 그려진다»)의 합격 기준 자체이고,
+                //     팩을 순회에서 빼면 「카드는 있는데 착용하면 아무것도 안 나오는」 반쪽 상품을 못 잡는다.
+                Assert.AreEqual(ItemsPerSlot, BaseCohortScope.CountIn(drawable[s]),
+                    $"{drawable[s]} 카테고리의 <b>기본 코호트</b> 아이템 수가 {ItemsPerSlot}이 아닙니다 — " +
+                    "표(에셋)와 도형 switch 중 한쪽만 늘어나면 늘어난 쪽이 예외 없이 빈 카드/빈 몸으로 나옵니다.");
                 int count = ItemCatalog.ItemCountIn(drawable[s]);
-                Assert.AreEqual(ItemsPerSlot, count,
-                    $"{drawable[s]} 카테고리의 아이템 수가 {ItemsPerSlot}이 아닙니다 — 표(에셋)와 도형 switch 중 " +
-                    "한쪽만 늘어나면 늘어난 쪽이 예외 없이 빈 카드/빈 몸으로 나옵니다.");
                 for (int i = 0; i < count; i++)
                 {
                     sink.Clear();

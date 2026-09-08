@@ -275,8 +275,9 @@ namespace StickMate.Tests.EditMode
             });
 
             Assert.AreEqual(30, items,
-                $"몸 도형이 있는 아이템이 {items}종입니다(2026-09-01 기준 30종 = 5카테고리 × 6). " +
-                "카테고리나 종수가 바뀌었다면 아래 래칫 값도 함께 다시 잡아야 합니다.");
+                $"몸 도형이 있는 <b>기본 코호트</b> 아이템이 {items}종입니다(2026-09-01 기준 30종 = 5카테고리 × 6). " +
+                "카테고리나 종수가 바뀌었다면 아래 래칫 값도 함께 다시 잡아야 합니다. " +
+                $"(팩 코호트는 이 래칫에 들어오지 않는다 — {BaseCohortScope.Describe()})");
 
             Assert.GreaterOrEqual(clean, itemsAtRatchet,
                 $"획 예산을 완전히 통과하는 아이템이 {clean}종으로 줄었습니다(래칫 {itemsAtRatchet}종). " +
@@ -288,16 +289,114 @@ namespace StickMate.Tests.EditMode
         }
 
         // ============================================================================
+        // 4. ★ 뺀 쪽을 다시 잰다 — 팩은 「검사 밖」이 아니라 「다른 자」다
+        // ============================================================================
+
+        /// <summary>
+        /// ★★ <b>좁히기의 짝</b>(2026-09-08). 이 파일의 클래스 문서가 세운 세 번째 목표는
+        /// *"새 DLC 아이템은 아무 목록에도 안 적으면 <b>영원히 검사되지 않는다</b>"*를 막는 것이었다.
+        /// <see cref="ForEachItem"/>이 팩을 뺐으므로, 그 목표가 <b>말만 남지 않도록</b> 여기서 못박는다.
+        ///
+        /// <para>팩 아이템은 <c>wornShapes</c>(에셋 조형)로 오고 <c>strokeInR &gt; 0</c>인 <b>계약 v2 조각</b>이다.
+        /// 계약 v2 조각은 이 파일의 v1 자(규칙 1-A 잉크 사각형 1.5획 · 1-B 꺾임 사이 1획)를 <b>타지 않고</b>
+        /// 1pt 실폭으로 오프라인에서 잰다(§14-6 #14) — 그건 <see cref="면제되지_않은_모든_도형이_획_예산을_지킨다"/>가
+        /// 인계본 16종에 대해 이미 하고 있는 처리와 <b>같다</b>.</para>
+        ///
+        /// <para>★ <b>자동 만료</b>: 팩이 v1 형식 조각(<c>strokeInR = 0</c>)을 들고 오는 날 여기가 빨개지고,
+        /// 그때는 그 아이템을 <c>AccessoryStrokeBudgetTests.BudgetedItems</c>에 넣어야 한다.
+        /// 즉 「팩이 조용히 검사 밖에 남는」 경로는 여전히 없다.</para>
+        ///
+        /// <para>팩이 0종이면 공허하게 참이고, 그 사실을 로그가 말한다.</para>
+        /// </summary>
+        [Test]
+        public void 팩_코호트_아이템은_전부_계약_v2_조각이라_이_린트의_자를_안_탄다()
+        {
+            AccessoryShapeBuilder.Rig rig = AccessoryStrokeBudgetTests.Rig();
+            var v1Shapes = new List<string>();
+            int packItems = 0, packShapes = 0;
+
+            var sink = new List<AccessoryShapeBuilder.Shape>();
+            ForEachPackItem((slot, item) =>
+            {
+                packItems++;
+                sink.Clear();
+                AccessoryShapeBuilder.Append(sink, slot, item, rig);
+                Assert.Greater(sink.Count, 0,
+                    $"{Label(slot, item)}: 팩 아이템이 도형을 하나도 만들지 않습니다 — " +
+                    "카드는 있는데 착용하면 아무것도 안 나오는 반쪽 상품입니다.");
+                for (int k = 0; k < sink.Count; k++)
+                {
+                    packShapes++;
+                    if (!sink[k].IsHandoff) v1Shapes.Add($"{Label(slot, item)} '{sink[k].Name}'");
+                }
+            });
+
+            Assert.IsEmpty(v1Shapes,
+                $"팩 아이템이 v1 형식 조각을 들고 왔습니다({v1Shapes.Count}개):\n  - " +
+                string.Join("\n  - ", v1Shapes) + "\n" +
+                "v1 조각은 이 파일의 자(37-6 규칙 1)를 <b>타야</b> 합니다 — " +
+                "AccessoryStrokeBudgetTests.BudgetedItems 에 그 아이템을 넣고 ForEachItem 의 좁히기를 " +
+                "다시 판단하십시오. 그러지 않으면 그 조각은 아무 자도 안 탑니다.");
+
+            Assert.AreEqual(BaseCohortScope.PackEquipmentCount
+                            - PackItemsOutsideBodySlots(), packItems,
+                $"팩 아이템을 {packItems}종만 돌았습니다 — 열거가 샙니다.");
+
+            Debug.Log(packItems == 0
+                ? "[규칙1커버리지] 팩 코호트 0종 — 이 단언은 오늘 공허하게 참이다."
+                : $"[규칙1커버리지] 팩 {packItems}종 · 조각 {packShapes}개가 전부 계약 v2(strokeInR > 0) — " +
+                  "1pt 실폭 자로 오프라인에서 잰다(§14-6 #14).");
+        }
+
+        /// <summary>팩 아이템 중 <b>몸 도형 자리가 아닌</b> 것(FX·PET)의 수. 위 열거가 그 둘을 안 돌기 때문에
+        /// 대조식에서 빼 준다 — 숫자를 적지 않고 카탈로그에서 센다.</summary>
+        private static int PackItemsOutsideBodySlots()
+        {
+            int n = 0;
+            for (int s = 0; s < ItemCatalog.SlotCount; s++)
+            {
+                var slot = (EquipmentSlot)s;
+                bool isBody = false;
+                for (int b = 0; b < BodySlots.Length; b++)
+                {
+                    if (BodySlots[b] == slot) isBody = true;
+                }
+                if (!isBody) n += BaseCohortScope.PackCountIn(slot);
+            }
+            return n;
+        }
+
+        // ============================================================================
         // 보조
         // ============================================================================
 
+        /// <summary>린트가 도는 모집단 — <b>기본 코호트</b>의 몸 자리 아이템(5카테고리 × 6 = 30종).
+        /// <para>★ 2026-09-08 — 종전에는 카탈로그 전량을 돌았다. 첫 유료 팩이 4자리에 실리자
+        /// 30 -> 34가 되어 래칫이 빨개졌고, <c>BudgetedItems</c>(자리 상수로 적힌 목록)에는 팩 자리를
+        /// 적을 이름이 없었다. 팩 아이템의 획 규칙은 <b>다른 자</b>가 잰다 — 계약 v2(인계본) 조각이라
+        /// 이 파일의 v1 자(낱선 1.5획/1획)의 대상이 아니고, 1pt 실폭으로 오프라인에서 잰다(§14-6 #14).
+        /// <b>그 사실 자체를</b> <see cref="팩_코호트_아이템은_전부_계약_v2_조각이라_이_린트의_자를_안_탄다"/>가
+        /// 매 실행 확인한다 — 그래서 이 좁히기는 「팩을 검사에서 뺐다」가 아니라 「어느 자로 재는지 갈랐다」이다.</para></summary>
         private static void ForEachItem(System.Action<EquipmentSlot, int> visit)
         {
             for (int s = 0; s < BodySlots.Length; s++)
             {
                 EquipmentSlot slot = BodySlots[s];
+                foreach (int i in BaseCohortScope.ItemsIn(slot)) visit(slot, i);
+            }
+        }
+
+        /// <summary>팩 코호트의 몸 자리 아이템 — 위 <see cref="ForEachItem"/>이 <b>빼는</b> 쪽.</summary>
+        private static void ForEachPackItem(System.Action<EquipmentSlot, int> visit)
+        {
+            for (int s = 0; s < BodySlots.Length; s++)
+            {
+                EquipmentSlot slot = BodySlots[s];
                 int count = ItemCatalog.ItemCountIn(slot);
-                for (int i = 0; i < count; i++) visit(slot, i);
+                for (int i = 0; i < count; i++)
+                {
+                    if (!BaseCohortScope.IsBase(slot, i)) visit(slot, i);
+                }
             }
         }
 

@@ -184,10 +184,27 @@ namespace StickMate.Tests.EditMode
             Assert.AreEqual(expected, shop.Count,
                 $"{LogPrefix} 상점 목록이 {shop.Count}종인데 독립 계수는 {expected}종입니다 — 열거가 샙니다.");
 
-            // 오늘의 사실 하나 더: 팩이 0개이므로 상점 모집단은 화면 분모와 같아야 한다.
-            Assert.AreEqual(ItemCatalog.ListedEquipmentCount, shop.Count,
-                $"{LogPrefix} 상점({shop.Count})과 화면 분모({ItemCatalog.ListedEquipmentCount})가 다른 " +
-                "모집단을 셉니다 — 팩이 실렸거나 한쪽만 은퇴를 반영했습니다.");
+            // ★★ 2026-09-08 — 옛 단언은 «팩이 0개이므로 상점 = 화면 분모»였고, 첫 유료 팩이 실리자
+            //   그 전제가 사라졌다(실측: 상점 35 vs 화면 분모 39). 등식을 <b>버리지 않고 항을 늘린다</b> —
+            //   화면 분모는 팩까지 세고(보관함에서 팩 아이템도 고를 수 있다) 상점은 기본 코호트만 판다.
+            //   그러니 <b>둘의 차가 정확히 «보여주는 팩 아이템 수»</b>여야 한다. 이 형태는 팩이 0개일 때도
+            //   참이고(차 = 0) 팩이 늘어도 참이라, 다음 팩에서 이 줄을 또 고칠 일이 없다.
+            int listedPackItems = 0;
+            for (int i = 0; i < ItemCatalog.Count; i++)
+            {
+                ItemCatalogEntry e = ItemCatalog.At(i);
+                if (e == null || e.Category != ItemCategory.Equipment || !e.Slot.HasValue) continue;
+                if (EquipmentModel.IsRetiredItem(e.Slot.Value, e.ItemIndex)) continue;
+                if (e.CohortId == ItemCatalog.BaseCohortId) continue;
+                listedPackItems++;
+            }
+
+            Assert.AreEqual(ItemCatalog.ListedEquipmentCount, shop.Count + listedPackItems,
+                $"{LogPrefix} 화면 분모({ItemCatalog.ListedEquipmentCount})가 상점({shop.Count}) + " +
+                $"보여주는 팩({listedPackItems})과 다릅니다 — 두 모집단의 차가 «팩»으로 설명되지 않습니다. " +
+                "한쪽만 은퇴를 반영했거나, 팩이 아닌 무언가가 분모에 끼었습니다.");
+            Debug.Log($"{LogPrefix} 상점 {shop.Count}종 + 보여주는 팩 {listedPackItems}종 = " +
+                      $"화면 분모 {ItemCatalog.ListedEquipmentCount}종.");
         }
 
         // ================================================================================

@@ -78,10 +78,25 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 목록이_카탈로그와_같은_수다()
         {
+            // ★ 2026-09-08 — 대조 대상은 <b>기본 코호트</b>다. 첫 유료 팩이 EYES 6번에 실렸고,
+            //   그 조각은 코드 표가 아니라 <c>wornShapes</c>(계약 v2, strokeInR > 0)로 오므로
+            //   이 파일의 v1 자(채움 실루엣 · 삼각형 덮임 · 불투명도)를 그대로 대지 못한다.
+            //   ★ 팩이 이 게이트 밖에 있다는 사실은
+            //     AccessoryAssetShapeReachTests.팩_코호트_조형_게이트_셋이_아직_팩을_안_본다 가
+            //     러너에 「건너뜀」으로 계속 띄운다(CLAUDE.md — 갭은 Ignore 로 남긴다).
             var listed = new HashSet<int>(AllEyes());
-            Assert.AreEqual(ItemCatalog.ItemCountIn(EquipmentSlot.Eyes), listed.Count,
-                "EYES 카테고리의 아이템 수와 이 파일의 검사 목록이 어긋납니다 — " +
-                $"AllEyes()에 새 자리를 추가하세요(지금 목록: {listed.Count}개).");
+            int baseCount = BaseCohortScope.CountIn(EquipmentSlot.Eyes);
+            Assert.AreEqual(baseCount, listed.Count,
+                "EYES <b>기본 코호트</b>의 아이템 수와 이 파일의 검사 목록이 어긋납니다 — " +
+                $"AllEyes()에 새 자리를 추가하세요(지금 목록: {listed.Count}개, 기본 코호트 {baseCount}종).");
+
+            foreach (int item in listed)
+            {
+                Assert.IsTrue(BaseCohortScope.IsBase(EquipmentSlot.Eyes, item),
+                    $"검사 목록의 EYES {item}번이 기본 코호트가 아닙니다 — 목록과 모집단이 갈라졌습니다.");
+            }
+            Debug.Log($"[눈가리개] 검사 목록 {listed.Count}종 = EYES 기본 코호트 전부 " +
+                      $"(게이트 밖 팩 {BaseCohortScope.PackCountIn(EquipmentSlot.Eyes)}종).");
         }
 
         /// <summary><b>앞쪽 눈에만</b> 있다고 스스로 선언한 아이템(33-2-2 #4의 규약). 나머지는 두 눈 다 가린다.</summary>

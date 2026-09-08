@@ -229,7 +229,11 @@ namespace StickMate.Tests.EditMode
         [TestCase(EquipmentSlot.Head, TestName = "HEAD 6종")]
         public void 카드에서_같은_그림인_쌍이_없다(EquipmentSlot slot)
         {
-            int count = ItemCatalog.ItemCountIn(slot);
+            // ★ 2026-09-08 — 모집단은 <b>기본 코호트</b>다. 팩이 걸린 쌍은 아래
+            //   팩_카드가_기본_카드와_같은_그림이_아니다 가 <b>따로</b> 잰다(빚 대장 포함).
+            //   같은 테스트에 섞으면 «출하 42종끼리의 회귀»와 «새 팩의 조형 미달»이 한 빨간불에 뭉쳐
+            //   무엇이 깨졌는지 못 가린다.
+            int count = BaseCohortScope.CountIn(slot);
             var cells = new List<HashSet<long>>(count);
             for (int i = 0; i < count; i++) cells.Add(NormalizedCells(Build(slot, i)));
 
@@ -245,6 +249,119 @@ namespace StickMate.Tests.EditMode
                         "형태로 갈리지 않으면 두 카드는 같은 그림입니다(리더 육안 검증 V9).");
                 }
             }
+        }
+
+        /// <summary>
+        /// ★★ <b>조형 빚 대장</b> — 팩 아이템이 <b>같은 자리의 기본 아이템</b>과 카드에서 얼마나 갈리는가.
+        ///
+        /// <para>한 줄이 곧 «아직 못 고친 조형» 하나다. 대장은 <b>스스로 만료</b>한다:
+        /// 조형이 고쳐져 문턱을 넘으면 그 줄이 <see cref="빚이_아직_실재한다"/>에서 빨개져
+        /// «지우라»고 말한다. 그래서 «고쳤는데 대장에 남아 다음 위반을 조용히 덮는» 길이 없다.</para>
+        ///
+        /// <para><b>2026-09-08 실측</b>: HEAD <c>Patched Hood</c>(pack.cyber) ↔ <c>베레모</c> = <b>0.100</b>
+        /// (문턱 <see cref="MinCardDifference"/> = 0.150). 둘 다 «둥근 관 + 작은 돌기»라 정규화 뒤
+        /// 형태로 안 갈린다. <b>이건 진짜 제품 결함이다</b> — 보관함에서 유료 모자와 무료 베레모가
+        /// 같은 그림으로 보인다. 고치는 것은 <b>조형 재설계</b>라 이 라운드(테스트 정리)의 범위 밖이고,
+        /// <b>design-equipment 배정 대상</b>이다(리더 판정 2026-09-08).</para>
+        /// </summary>
+        private static readonly (EquipmentSlot Slot, string PackId, string BaseId, float Measured)[] CardDebt =
+        {
+            (EquipmentSlot.Head, "equip.head.patchedhood", "equip.head.beret", 0.100f),
+        };
+
+        /// <summary>
+        /// 팩 아이템이 같은 자리의 기본 아이템과 <b>다른 그림</b>인가. 미달 쌍이 <see cref="CardDebt"/>에
+        /// 적힌 것뿐이면 러너에 <b>「건너뜀」</b>으로 남기고(CLAUDE.md — 갭은 Ignore 로 남긴다),
+        /// 대장에 없는 미달이 하나라도 나오면 <b>빨간불</b>이다.
+        /// <para>대장이 비고 미달도 없으면 그냥 초록이다 — 조형이 고쳐지는 날 이 검사는 스스로 정상이 된다.</para>
+        /// </summary>
+        [Test]
+        public void 팩_카드가_기본_카드와_같은_그림이_아니다()
+        {
+            var undocumented = new List<string>();
+            var documented = new List<string>();
+            int pairs = 0, packItems = 0;
+
+            foreach (EquipmentSlot slot in new[]
+                     {
+                         EquipmentSlot.Head, EquipmentSlot.Eyes,
+                         EquipmentSlot.Neck, EquipmentSlot.Shoulders,
+                     })
+            {
+                int baseCount = BaseCohortScope.CountIn(slot);
+                for (int p = baseCount; p < ItemCatalog.ItemCountIn(slot); p++)
+                {
+                    packItems++;
+                    HashSet<long> packCells = NormalizedCells(Build(slot, p));
+                    Assert.Greater(packCells.Count, 0, $"{Name(slot, p)}의 잉크가 격자를 하나도 덮지 않습니다.");
+
+                    for (int b = 0; b < baseCount; b++)
+                    {
+                        pairs++;
+                        float d = Difference(packCells, NormalizedCells(Build(slot, b)));
+                        if (d >= MinCardDifference) continue;
+
+                        string packId = ItemCatalog.Item(slot, p).Id;
+                        string baseId = ItemCatalog.Item(slot, b).Id;
+                        string line = $"{Name(slot, p)} ↔ {Name(slot, b)} = {d:P1} (문턱 {MinCardDifference:P0})";
+                        if (IsDocumentedDebt(slot, packId, baseId)) documented.Add(line);
+                        else undocumented.Add(line);
+                    }
+                }
+            }
+
+            Assert.IsEmpty(undocumented,
+                $"팩 카드가 기본 카드와 <b>같은 그림</b>인 쌍이 대장 밖에서 {undocumented.Count}건 나왔습니다:\n  - " +
+                string.Join("\n  - ", undocumented) + "\n" +
+                "유료 아이템이 무료 아이템과 같은 그림으로 보이면 그건 상품이 아닙니다. " +
+                "조형을 고치거나, 못 고칠 이유를 CardDebt 에 실측값과 함께 적고 리더에게 배정을 요청하십시오.");
+
+            if (documented.Count == 0)
+            {
+                Debug.Log($"[이름가독] 팩 {packItems}종 × 기본 {pairs}쌍 — 같은 그림 0건.");
+                return;
+            }
+
+            Assert.Ignore("★ 등재된 조형 빚 — 팩 카드가 기본 카드와 사실상 같은 그림인 쌍 " +
+                documented.Count + "건:\n  - " + string.Join("\n  - ", documented) + "\n" +
+                "조형 재설계가 필요하므로 <b>design-equipment 배정 대상</b>이다(리더 판정 2026-09-08). " +
+                "고쳐지면 이 등재는 스스로 만료된다(빚이_아직_실재한다 가 그 순간을 빨갛게 만든다).");
+        }
+
+        /// <summary>★ 대장이 <b>낡지 않게</b> — 적힌 쌍이 <b>지금도</b> 실제로 문턱 아래인가.
+        /// 고쳐졌는데 줄이 남으면 그 쌍은 앞으로 어떤 회귀도 조용히 통과시킨다.</summary>
+        [Test]
+        public void 빚이_아직_실재한다()
+        {
+            for (int k = 0; k < CardDebt.Length; k++)
+            {
+                (EquipmentSlot slot, string packId, string baseId, float measured) = CardDebt[k];
+                int p = ItemCatalog.IndexOfItemId(slot, packId);
+                int b = ItemCatalog.IndexOfItemId(slot, baseId);
+                Assert.GreaterOrEqual(p, 0, $"대장의 '{packId}'가 카탈로그에 없습니다 — 낡은 줄은 지우십시오.");
+                Assert.GreaterOrEqual(b, 0, $"대장의 '{baseId}'가 카탈로그에 없습니다 — 낡은 줄은 지우십시오.");
+
+                float d = Difference(NormalizedCells(Build(slot, p)), NormalizedCells(Build(slot, b)));
+                Assert.Less(d, MinCardDifference,
+                    $"{Name(slot, p)} ↔ {Name(slot, b)}가 이제 {d:P1} 다릅니다(문턱 {MinCardDifference:P0}) — " +
+                    "축하합니다. CardDebt 에서 이 줄을 지우십시오. 대장을 남겨 두면 그 쌍은 앞으로 " +
+                    "어떤 회귀도 조용히 통과합니다.");
+                Assert.AreEqual(measured, d, 0.02f,
+                    $"{Name(slot, p)} ↔ {Name(slot, b)}의 실측이 {d:F3}인데 대장에는 {measured:F3}으로 적혀 있습니다 — " +
+                    "조형이 움직였습니다. 대장의 숫자를 갱신하십시오(빚의 크기가 달라진 것도 정보입니다).");
+            }
+        }
+
+        private static bool IsDocumentedDebt(EquipmentSlot slot, string packId, string baseId)
+        {
+            for (int k = 0; k < CardDebt.Length; k++)
+            {
+                if (CardDebt[k].Slot == slot && CardDebt[k].PackId == packId && CardDebt[k].BaseId == baseId)
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         /// <summary>★ 네거티브 컨트롤 — 옛 두 망토는 <b>월드</b> 실루엣 지표를 통과하면서

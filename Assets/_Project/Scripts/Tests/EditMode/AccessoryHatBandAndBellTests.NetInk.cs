@@ -425,9 +425,13 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 보조색_색면_게이트가_HEAD_전_종을_덮는다()
         {
-            int count = ItemCatalog.ItemCountIn(EquipmentSlot.Head);
+            // ★ 2026-09-08 — 대조 대상은 <b>기본 코호트</b>다. 팩 모자의 조각은 계약 v2(strokeInR > 0)라
+            //   이 파일의 자(보조색 순 색면 = 채움에서 경계 획이 먹는 반폭을 뺀 값)가 전제하는 v1 표면이 아니다.
+            //   ★ 팩이 이 게이트 밖이라는 사실은 AccessoryAssetShapeReachTests 의 등재 검사가
+            //     러너에 「건너뜀」으로 계속 띄운다(CLAUDE.md — 갭은 Ignore 로 남긴다).
+            int count = BaseCohortScope.CountIn(EquipmentSlot.Head);
             Assert.AreEqual(count, GatedHats.Length,
-                $"{NetPrefix} 모자가 {count}종인데 색면 게이트는 {GatedHats.Length}종만 돕니다 — " +
+                $"{NetPrefix} 기본 코호트 모자가 {count}종인데 색면 게이트는 {GatedHats.Length}종만 돕니다 — " +
                 "새 모자가 들어왔다면 GatedHats에 번호를 더하십시오.");
 
             for (int i = 0; i < count; i++)
@@ -444,7 +448,13 @@ namespace StickMate.Tests.EditMode
                     $"{NetPrefix} 색면 게이트가 없는 모자 {GatedHats[i]}번을 돌고 있습니다.");
                 Assert.IsNotNull(ItemCatalog.Item(EquipmentSlot.Head, GatedHats[i]),
                     $"{NetPrefix} 모자 {GatedHats[i]}번이 카탈로그에서 사라졌습니다.");
+                Assert.IsTrue(BaseCohortScope.IsBase(EquipmentSlot.Head, GatedHats[i]),
+                    $"{NetPrefix} 게이트 표의 모자 {GatedHats[i]}번이 기본 코호트가 아닙니다 — " +
+                    "표와 모집단이 갈라졌습니다.");
             }
+
+            Debug.Log($"{NetPrefix} 색면 게이트 {GatedHats.Length}종 = HEAD 기본 코호트 전부 " +
+                      $"(게이트 밖 팩 {BaseCohortScope.PackCountIn(EquipmentSlot.Head)}종).");
         }
 
         // ============================================================================

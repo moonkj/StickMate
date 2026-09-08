@@ -1,9 +1,9 @@
 # StickMate ItemCatalog golden digest
 # 형식: F5 고정소수 / InvariantCulture / 표 순서 고정. 손으로 고치지 말 것.
 slots=7
-equipment=42
+equipment=46
 actions=12
-[slot 0 Head count=6]
+[slot 0 Head count=7]
   item id=equip.head.cap cat=Equipment slot=Head idx=0 lv=1 invocable=1 cohort=0 rarity=Derived
     name=천모자
     desc=장식 없는 천 모자. 챙은 항상 가는 쪽을 향한다.
@@ -58,7 +58,16 @@ actions=12
       p3 kind=Polyline tone=0 color=(0.67059,0.47451,0.25882,1.00000) n=14 v=37.20000,22.06000,30.75000,23.81000,26.45000,24.53000,20.00000,24.93000,13.55000,24.53000,9.25000,23.81000,2.80000,22.06000
       p4 kind=Polygon tone=0 color=(0.67059,0.47451,0.25882,1.00000) n=20 v=10.83000,22.06000,11.40000,19.16000,13.12000,17.02000,15.99000,15.66000,20.00000,15.07000,24.01000,15.66000,26.88000,17.02000,28.60000,19.16000,29.17000,22.06000,10.83000,22.06000
       p5 kind=Polyline tone=1 color=(0.80000,0.33333,0.07059,1.00000) n=4 v=10.83000,22.06000,29.17000,22.06000
-[slot 1 Eyes count=6]
+  item id=equip.head.patchedhood cat=Equipment slot=Head idx=6 lv=1 invocable=1 cohort=2 rarity=Rare
+    name=Patched Hood
+    desc=A salvaged hood, held together with tape and a spare connector pad.
+    status=-
+    primary=(0.00000,0.58824,0.50980,1.00000) secondary=(0.31765,0.55294,0.52157,1.00000)
+    icon=3
+      p0 kind=Polygon tone=0 color=(0.00000,0.58824,0.50980,1.00000) n=16 v=4.55000,29.14000,2.80000,20.40000,10.33000,12.74000,20.00000,10.86000,29.68000,12.74000,37.20000,20.40000,35.45000,29.14000,4.55000,29.14000
+      p1 kind=Polygon tone=1 color=(0.31765,0.55294,0.52157,1.00000) n=14 v=23.23000,24.03000,26.45000,26.45000,30.75000,24.84000,31.56000,20.27000,28.33000,17.85000,24.03000,19.46000,23.23000,24.03000
+      p2 kind=Polyline tone=0 color=(0.00000,0.58824,0.50980,1.00000) n=6 v=3.88000,25.64000,11.94000,20.54000,20.00000,18.66000
+[slot 1 Eyes count=7]
   item id=equip.eyes.sunglasses cat=Equipment slot=Eyes idx=0 lv=1 invocable=1 cohort=0 rarity=Derived
     name=선글라스
     desc=실내에서도 벗지 않는다. 표정이 잘 안 보인다.
@@ -112,7 +121,16 @@ actions=12
       p0 kind=Polygon tone=0 color=(0.33333,0.46667,0.68235,1.00000) n=10 v=24.56000,13.68000,37.20000,14.73000,36.50000,26.32000,24.91000,25.27000,24.56000,13.68000
       p1 kind=Polyline tone=0 color=(0.33333,0.46667,0.68235,1.00000) n=8 v=13.23000,3.29000,24.56000,13.68000,24.91000,25.27000,13.23000,36.71000
       p2 kind=Polygon tone=1 color=(0.12549,0.52941,0.54902,1.00000) n=26 v=14.56000,20.00000,13.78000,17.10000,11.66000,14.98000,8.77000,14.21000,5.87000,14.98000,3.75000,17.10000,2.98000,20.00000,3.75000,22.90000,5.87000,25.02000,8.77000,25.79000,11.66000,25.02000,13.78000,22.90000,14.56000,20.00000
-[slot 2 Neck count=6]
+  item id=equip.eyes.slitvisor cat=Equipment slot=Eyes idx=6 lv=1 invocable=1 cohort=2 rarity=Rare
+    name=Slit Visor
+    desc=One narrow band of light. The corner terminals are where it was spliced back on.
+    status=-
+    primary=(0.00000,0.58824,0.50980,1.00000) secondary=(0.31765,0.55294,0.52157,1.00000)
+    icon=3
+      p0 kind=Polygon tone=0 color=(0.00000,0.58824,0.50980,1.00000) n=14 v=9.30000,17.83000,34.31000,17.83000,37.20000,20.72000,34.31000,23.61000,9.30000,23.61000,7.37000,20.72000,9.30000,17.83000
+      p1 kind=Polygon tone=1 color=(0.31765,0.55294,0.52157,1.00000) n=14 v=31.43000,19.76000,33.11000,18.80000,35.52000,19.76000,35.76000,21.68000,33.59000,22.65000,31.43000,21.68000,31.43000,19.76000
+      p2 kind=Polyline tone=0 color=(0.00000,0.58824,0.50980,1.00000) n=4 v=7.61000,20.00000,2.80000,16.39000
+[slot 2 Neck count=7]
   item id=equip.neck.bowtie cat=Equipment slot=Neck idx=0 lv=1 invocable=1 cohort=0 rarity=Derived
     name=나비넥타이
     desc=목에 걸친 단 하나의 격식.
@@ -164,7 +182,16 @@ actions=12
     icon=2
       p0 kind=Polygon tone=0 color=(0.35294,0.54902,0.23529,1.00000) n=14 v=2.80000,3.09000,20.00000,5.55000,37.20000,3.09000,37.20000,12.10000,20.00000,16.19000,2.80000,12.10000,2.80000,3.09000
       p1 kind=Polygon tone=1 color=(0.25882,0.54902,0.14118,1.00000) n=8 v=20.82000,13.74000,30.65000,13.74000,24.50000,36.91000,20.82000,13.74000
-[slot 3 Shoulders count=6]
+  item id=equip.neck.cablecollar cat=Equipment slot=Neck idx=6 lv=1 invocable=1 cohort=2 rarity=Rare
+    name=Cable Collar
+    desc=A collar of bundled cable. The pad at the throat is the only clean part left.
+    status=-
+    primary=(0.00000,0.58824,0.50980,1.00000) secondary=(0.31765,0.55294,0.52157,1.00000)
+    icon=3
+      p0 kind=Polygon tone=0 color=(0.00000,0.58824,0.50980,1.00000) n=14 v=4.26000,6.09000,35.74000,6.09000,37.20000,12.68000,31.34000,16.34000,8.66000,16.34000,2.80000,12.68000,4.26000,6.09000
+      p1 kind=Polygon tone=1 color=(0.31765,0.55294,0.52157,1.00000) n=14 v=16.71000,17.80000,22.56000,19.63000,27.32000,16.71000,27.69000,22.56000,22.56000,25.49000,17.07000,23.29000,16.71000,17.80000
+      p2 kind=Polyline tone=0 color=(0.00000,0.58824,0.50980,1.00000) n=6 v=27.69000,21.83000,34.27000,25.86000,35.74000,33.91000
+[slot 3 Shoulders count=7]
   item id=equip.shoulders.cape cat=Equipment slot=Shoulders idx=0 lv=1 invocable=1 cohort=0 rarity=Derived
     name=짧은망토
     desc=늘 가는 방향의 반대쪽으로 날린다.
@@ -217,6 +244,15 @@ actions=12
       p0 kind=Polyline tone=1 color=(0.58431,0.36078,0.80000,1.00000) n=4 v=20.00000,15.39000,20.00000,32.68000
       p1 kind=Polygon tone=0 color=(0.40392,0.52941,0.72549,1.00000) n=14 v=15.33000,20.91000,9.17000,22.18000,5.24000,15.39000,2.80000,7.32000,11.08000,9.02000,20.00000,15.39000,15.33000,20.91000
       p2 kind=Polygon tone=0 color=(0.40392,0.52941,0.72549,1.00000) n=14 v=20.00000,15.39000,28.92000,9.02000,37.20000,7.32000,34.76000,15.39000,30.83000,22.18000,24.67000,20.91000,20.00000,15.39000
+  item id=equip.shoulders.tarpcape cat=Equipment slot=Shoulders idx=6 lv=1 invocable=1 cohort=2 rarity=Rare
+    name=Tarp Cape
+    desc=Cut from a roof tarp. The shoulder pad is what keeps it from tearing off.
+    status=-
+    primary=(0.00000,0.58824,0.50980,1.00000) secondary=(0.31765,0.55294,0.52157,1.00000)
+    icon=3
+      p0 kind=Polygon tone=0 color=(0.00000,0.58824,0.50980,1.00000) n=14 v=9.10000,2.80000,30.90000,2.80000,35.26000,21.45000,28.96000,37.20000,11.04000,37.20000,4.74000,21.45000,9.10000,2.80000
+      p1 kind=Polygon tone=1 color=(0.31765,0.55294,0.52157,1.00000) n=14 v=8.13000,3.77000,12.49000,5.22000,15.88000,8.13000,13.94000,12.01000,9.34000,12.49000,6.19000,8.61000,8.13000,3.77000
+      p2 kind=Polyline tone=0 color=(0.00000,0.58824,0.50980,1.00000) n=6 v=30.90000,22.42000,26.54000,28.24000,27.99000,34.54000
 [slot 4 Hair count=6]
   item id=look.hair.cowlick cat=Equipment slot=Hair idx=0 lv=1 invocable=1 cohort=0 rarity=Derived
     name=삐친머리

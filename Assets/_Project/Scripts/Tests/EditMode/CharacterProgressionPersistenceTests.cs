@@ -244,11 +244,16 @@ namespace StickMate.Tests.EditMode
             var opened = new System.Collections.Generic.Dictionary<int, int>();
             int maxRequired = 0;
 
+            // ★ 2026-09-08 — 「며칠에 걸쳐 하나씩 열린다」는 리듬은 <b>기본 42종</b>의 성질이다.
+            //   팩 아이템은 요구 레벨이 언제나 ItemCatalog.PackRequiredLevel(=1)이라
+            //   (「현금으로 사고 나서 레벨을 갈게 하지 않는다」) 뒷자리에서 반드시 1로 떨어지고,
+            //   전량을 한 줄로 재면 그 설계가 «자리 순서대로 안 오른다»로 잡힌다(실측 2026-09-08).
+            //   해금 리듬(opened/maxRequired)도 같은 이유로 기본 코호트에서만 뜻이 있다.
             for (int s = 0; s < EquipmentModel.SlotCount; s++)
             {
                 var slot = (EquipmentSlot)s;
                 int prev = 0;
-                for (int i = 0; i < EquipmentModel.ItemCount(slot); i++)
+                foreach (int i in BaseCohortScope.ItemsIn(slot))
                 {
                     int need = EquipmentModel.RequiredLevel(slot, i);
                     Assert.GreaterOrEqual(need, prev,

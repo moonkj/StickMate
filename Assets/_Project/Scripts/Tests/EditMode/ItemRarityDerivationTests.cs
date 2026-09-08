@@ -122,7 +122,11 @@ namespace StickMate.Tests.EditMode
 
             foreach (EquipmentSlot slot in System.Enum.GetValues(typeof(EquipmentSlot)))
             {
-                int count = ItemCatalog.ItemCountIn(slot);
+                // ★ 2026-09-08 — 모집단은 <b>기본 코호트</b>다(BaseCohortScope). 종전에는 카탈로그 전량을
+                //   세어 «6종 슬롯»을 판정했고, 첫 유료 팩이 4자리에 실리자 그 넷이 7종이 되어
+                //   <b>사다리 슬롯이 7 -> 3으로 떨어졌다</b>(실측 2026-09-08). 사다리는 «한 코호트 안의 순위»를
+                //   재는 자이므로(ItemCatalogEntry.CohortId 문단) 여기서 세야 하는 것도 코호트다.
+                int count = BaseCohortScope.CountIn(slot);
                 if (count != EconomySpecLadder.Length) continue;
                 ladderSlots++;
 
@@ -143,8 +147,9 @@ namespace StickMate.Tests.EditMode
             Assert.AreEqual(ItemCatalog.SlotCount, ladderSlots,
                 $"{LogPrefix} 6종 슬롯이 {ladderSlots}개뿐입니다(전체 {ItemCatalog.SlotCount}). " +
                 "슬롯 크기가 달라졌다면 ECONOMY_SPEC §3-2의 2/2/1/1 분포부터 다시 정해야 합니다.");
-            Assert.AreEqual(ItemCatalog.EquipmentCount, judged,
-                $"{LogPrefix} 잰 아이템이 {judged}종인데 장비는 {ItemCatalog.EquipmentCount}종입니다 — 열거가 샙니다.");
+            Assert.AreEqual(BaseCohortScope.EquipmentCount, judged,
+                $"{LogPrefix} 잰 아이템이 {judged}종인데 기본 코호트 장비는 " +
+                $"{BaseCohortScope.EquipmentCount}종입니다 — 열거가 샙니다. ({BaseCohortScope.Describe()})");
             Assert.IsEmpty(failures,
                 $"{LogPrefix} 순위에서 나오지 않는 등급이 {failures.Count}건입니다.\n" + string.Join("\n", failures));
 
@@ -218,6 +223,13 @@ namespace StickMate.Tests.EditMode
                     {
                         ItemCatalogEntry eb = ItemCatalog.Item(slot, b);
                         if (b == a || eb == null) continue;
+                        // ★ 2026-09-08 — 단조성은 <b>한 코호트 안</b>의 성질이다. 코호트가 다르면
+                        //   등급의 출처 자체가 다르고(기본 = requiredLevel 파생 / 팩 = declaredRarity 선언),
+                        //   requiredLevel 은 팩에서 <b>언제나 1</b>이라(ItemCatalog.PackRequiredLevel)
+                        //   섞어 재면 «Lv.1 희귀 팩 아이템이 Lv.13 일반 망토보다 세다»가 위반으로 잡힌다.
+                        //   그건 결함이 아니라 <b>설계</b>다 — 팩은 «사고 나서 레벨을 갈지 않는다»가 규약이다.
+                        //   코호트를 넘는 균형은 MaxDeclaredRarityForPack(희귀 상한 = 페이투윈 차단선)이 지킨다.
+                        if (ea.CohortId != eb.CohortId) continue;
                         int la = ea.RequiredLevel ?? 0, lb = eb.RequiredLevel ?? 0;
                         if (la >= lb) continue;
 
@@ -319,30 +331,72 @@ namespace StickMate.Tests.EditMode
         // 무너진다. 그리고 "캡 20은 기본 42종만으로 도달"이라는 <b>사용자 확정 차단선</b>이 깨진다.
 
         /// <summary>
-        /// ★ <b>회귀 잠금</b> — 지금 트리는 코호트가 <b>하나</b>이고, 그래서 코호트 == 슬롯이다.
-        /// 이 단언이 서 있는 동안 코호트 도입은 값을 한 개도 바꾸지 않는다(회귀 위험 0의 근거).
-        /// <para>팩이 실제로 들어오면 이 검사는 <b>바뀌어야 한다</b> — 그때 바꾸라고 여기 있다.</para>
+        /// ★ <b>코호트 축이 실제로 갈린다</b> — 자리 0..5는 기본 코호트, 그 뒤는 팩 코호트다.
+        ///
+        /// <para>★★ <b>2026-09-08 갱신 — 이 검사는 자기가 예고한 대로 바뀌었다.</b> 옛 이름은
+        /// 「지금은 코호트가 하나다 그래서 코호트가 곧 슬롯이다」였고, 본문이 스스로
+        /// *"팩이 실제로 들어오면 이 검사는 바뀌어야 한다 — 그때 바꾸라고 여기 있다"*라고 적어 두었다.
+        /// 첫 유료 팩(<c>pack.cyber</c>, 코호트 2)이 그날이다.</para>
+        ///
+        /// <para>지금 잠그는 것은 <b>두 방향</b>이다 — 한쪽만 재면 둘 다 뜻을 잃는다:
+        /// <list type="number">
+        ///   <item><b>존재</b>: 자리 0..5는 반드시 기본 코호트다. 팩이 앞자리를 침범하면
+        ///     <b>아무도 안 산 사람의 등급이 미끄러진다</b>(그 사고가 이 축이 생긴 이유다).</item>
+        ///   <item><b>부재</b>: 기본 코호트 아이템은 <b>단 하나도</b> 다른 코호트를 쓰지 않는다.
+        ///     그리고 팩 코호트 아이템은 반드시 <see cref="ItemCatalog.BaseCohortId"/>가 아니다.</item>
+        /// </list></para>
+        ///
+        /// <para>팩이 0종인 트리에서도 이 검사는 그대로 성립한다(두 번째 순회가 공허해질 뿐이고,
+        /// 그 사실을 로그가 말한다) — 팩을 빼는 날 빨개지지 않는다.</para>
         /// </summary>
         [Test]
-        public void 지금은_코호트가_하나다_그래서_코호트가_곧_슬롯이다()
+        public void 자리_앞쪽은_기본_코호트고_뒤쪽만_팩_코호트다()
         {
-            int checkedItems = 0;
+            int baseItems = 0, packItems = 0;
             foreach (EquipmentSlot slot in System.Enum.GetValues(typeof(EquipmentSlot)))
             {
                 int count = ItemCatalog.ItemCountIn(slot);
+                int baseInSlot = BaseCohortScope.CountIn(slot);
                 for (int i = 0; i < count; i++)
                 {
                     ItemCatalogEntry e = ItemCatalog.Item(slot, i);
                     if (e == null) continue;
-                    checkedItems++;
-                    Assert.AreEqual(ItemCatalog.BaseCohortId, e.CohortId,
-                        $"{LogPrefix} '{e.Id}'의 코호트가 {e.CohortId}입니다(기본 {ItemCatalog.BaseCohortId}). " +
-                        "팩이 실제로 들어왔다면 이 테스트와 아래 42종 값 잠금을 함께 갱신해야 합니다.");
+
+                    if (i < baseInSlot)
+                    {
+                        baseItems++;
+                        Assert.AreEqual(ItemCatalog.BaseCohortId, e.CohortId,
+                            $"{LogPrefix} '{e.Id}'(자리 {i})의 코호트가 {e.CohortId}입니다(기본 {ItemCatalog.BaseCohortId}). " +
+                            "앞자리는 출하 42종의 자리입니다 — 팩이 여기 들어오면 팩을 안 산 사람의 등급이 " +
+                            "조용히 미끄러집니다.");
+                    }
+                    else
+                    {
+                        packItems++;
+                        Assert.AreNotEqual(ItemCatalog.BaseCohortId, e.CohortId,
+                            $"{LogPrefix} '{e.Id}'(자리 {i})가 뒷자리인데 기본 코호트입니다 — " +
+                            "출하 42종의 모집단이 조용히 커졌고, 그 순간 42종의 등급이 통째로 재계산됩니다.");
+                        Assert.AreEqual(ItemCatalog.PackRequiredLevel, e.RequiredLevel ?? 0,
+                            $"{LogPrefix} 팩 아이템 '{e.Id}'의 요구 레벨이 {e.RequiredLevel}입니다 " +
+                            $"(팩은 {ItemCatalog.PackRequiredLevel} — 사고 나서 레벨을 갈게 하지 않는다).");
+                        Assert.LessOrEqual((int)e.Declared, (int)ItemCatalog.MaxDeclaredRarityForPack,
+                            $"{LogPrefix} 팩 아이템 '{e.Id}'가 등급을 '{e.Declared}'로 선언했습니다 — " +
+                            $"상한은 {ItemCatalog.MaxDeclaredRarityForPack}입니다(페이투윈 차단선).");
+                    }
                 }
             }
-            Assert.AreEqual(ItemCatalog.EquipmentCount, checkedItems,
-                $"{LogPrefix} 확인한 아이템이 {checkedItems}종인데 장비는 {ItemCatalog.EquipmentCount}종입니다.");
-            Debug.Log($"{LogPrefix} 장비 {checkedItems}종 전부 기본 코호트 — 코호트 == 슬롯.");
+
+            Assert.AreEqual(BaseCohortScope.EquipmentCount, baseItems,
+                $"{LogPrefix} 앞자리로 센 {baseItems}종과 코호트로 센 {BaseCohortScope.EquipmentCount}종이 " +
+                "다릅니다 — 자리 축과 코호트 축이 갈라졌습니다.");
+            Assert.AreEqual(BaseCohortScope.PackEquipmentCount, packItems,
+                $"{LogPrefix} 뒷자리로 센 {packItems}종과 코호트로 센 " +
+                $"{BaseCohortScope.PackEquipmentCount}종이 다릅니다.");
+            Assert.AreEqual(ItemCatalog.EquipmentCount, baseItems + packItems,
+                $"{LogPrefix} 센 합이 장비 전량과 다릅니다.");
+
+            Debug.Log($"{LogPrefix} {BaseCohortScope.Describe()} — 앞자리는 전부 기본, 뒷자리는 전부 팩." +
+                      (packItems == 0 ? " (오늘 팩 0종 — 뒷자리 순회는 공허하게 참이다.)" : string.Empty));
         }
 
         // ----------------------------------------------------------------------------
@@ -480,7 +534,10 @@ namespace StickMate.Tests.EditMode
             // 양성 대조 — 스캐너가 실제로 파일을 읽고 키를 찾을 수 있는가.
             //   (읽지 못하면 아래 '0건'은 '깨끗함'이 아니라 '못 봄'이다 — docs/TEAM.md 4절 사고 #4)
             //   ★ 목록은 폴더가 아니라 <b>타입</b>에서 온다 — 왜 그런지는 ItemAssetFiles() 주석.
-            string[] files = ItemAssetFiles();
+            //   ★ 2026-09-08 — 판정 대상은 <b>기본 코호트 파일</b>이다. 종전에는 폴더의 모든
+            //     AccessoryDefSO 를 「기본 42종」이라고 불렀고, 첫 유료 팩 4개가 같은 폴더에 놓이자
+            //     이 단언이 «기본이 남의 코호트를 적었다»로 오독했다 — 팩은 <b>자기 코호트를 적는 것이 정상</b>이다.
+            string[] files = BaseCohortAssetFiles(out string[] packFiles);
 
             int sawRequiredLevel = 0;
             var declared = new List<string>();
@@ -508,8 +565,8 @@ namespace StickMate.Tests.EditMode
                 $"{LogPrefix} Resources/Items 의 기본 아이템이 기본 코호트가 아닌 값을 적었습니다. " +
                 "이 폴더는 기본 42종의 자리이고, 팩은 자기 코호트를 써야 합니다.\n" + string.Join("\n", declared));
 
-            Debug.Log($"{LogPrefix} 아이템 에셋 {files.Length}개 스캔 — cohortId 명시 위반 0건 " +
-                      $"(양성 대조: requiredLevel {sawRequiredLevel}건 검출). " +
+            Debug.Log($"{LogPrefix} 기본 코호트 에셋 {files.Length}개 스캔 — cohortId 명시 위반 0건 " +
+                      $"(양성 대조: requiredLevel {sawRequiredLevel}건 검출 · 팩 에셋 {packFiles.Length}개 제외). " +
                       $"직렬화 기본값 {default(int)} == BaseCohortId {ItemCatalog.BaseCohortId}.");
         }
 
@@ -665,12 +722,16 @@ namespace StickMate.Tests.EditMode
             Debug.Log($"{LogPrefix} 확인 — '사이사이' 팩은 합쳐도 등급이 안 움직인다(대조로 쓸 수 없다).");
         }
 
-        /// <summary>표본 슬롯의 요구 레벨을 자리 번호 순으로. 실제 카탈로그에서 읽는다.</summary>
+        /// <summary>표본 슬롯의 요구 레벨을 자리 번호 순으로. 실제 카탈로그에서 읽는다.
+        /// <para>★ 2026-09-08 — <b>기본 코호트</b>로 센다. 종전에는 전량으로 «6종 슬롯»을 골랐고,
+        /// 첫 유료 팩이 HEAD/EYES/NECK/BACK 을 7종으로 만들자 표본이 조용히 <b>HAIR</b>로 옮겨 갔다.
+        /// 그러면 이 표본을 쓰는 「사이사이」 대조가 <b>다른 레벨 분포</b> 위에서 돌아 거짓 빨강을 낸다
+        /// (실측 2026-09-08: 「사이사이 모양에서 등급이 움직였습니다(5번)」 — 표본이 바뀐 것이 원인이었다).</para></summary>
         private static int[] BaseSlotLevels(out EquipmentSlot sampled)
         {
             foreach (EquipmentSlot slot in System.Enum.GetValues(typeof(EquipmentSlot)))
             {
-                int count = ItemCatalog.ItemCountIn(slot);
+                int count = BaseCohortScope.CountIn(slot);
                 if (count != EconomySpecLadder.Length) continue;
 
                 var levels = new int[count];
@@ -961,7 +1022,8 @@ namespace StickMate.Tests.EditMode
         public void 기본_42종은_선언_키를_아예_적지_않는다()
         {
             // ★ 목록은 폴더가 아니라 <b>타입</b>에서 온다 — 왜 그런지는 ItemAssetFiles() 주석.
-            string[] files = ItemAssetFiles();
+            //   그리고 2026-09-08부터 <b>기본 코호트만</b> 본다(아래 BaseCohortAssetFiles 주석).
+            string[] files = BaseCohortAssetFiles(out string[] packFiles);
 
             int sawRequiredLevel = 0;
             var declared = new List<string>();
@@ -976,6 +1038,31 @@ namespace StickMate.Tests.EditMode
                 }
             }
 
+            // ★★ 좁히기의 짝 — <b>팩 에셋은 반대로 반드시 선언한다</b>. 이게 없으면 위 「0건」은
+            //   «기본이 선언 안 했다»와 «스캐너가 팩을 못 봤다»를 구분하지 못한다(부재 단언의 그 병).
+            //   팩은 등급이 파생될 모집단이 애초에 없다 — 코호트 크기가 4라 비율 환산이 뭉갠다.
+            var packWithoutDeclaration = new List<string>();
+            foreach (string f in packFiles)
+            {
+                bool sawDecl = false;
+                foreach (string line in File.ReadAllLines(f))
+                {
+                    string t = line.Trim();
+                    if (!t.StartsWith("declaredRarity:", System.StringComparison.Ordinal)) continue;
+                    string v = t.Substring("declaredRarity:".Length).Trim();
+                    sawDecl = int.TryParse(v, out int parsed)
+                              && parsed != (int)DeclaredRarity.Derived
+                              && parsed <= (int)ItemCatalog.MaxDeclaredRarityForPack;
+                    break;
+                }
+                if (!sawDecl) packWithoutDeclaration.Add($"  {Path.GetFileName(f)}");
+            }
+            Assert.IsEmpty(packWithoutDeclaration,
+                $"{LogPrefix} 팩 에셋이 등급을 선언하지 않았거나 상한" +
+                $"({ItemCatalog.MaxDeclaredRarityForPack})을 넘겼습니다({packWithoutDeclaration.Count}건).\n" +
+                string.Join("\n", packWithoutDeclaration) + "\n" +
+                "팩은 코호트가 작아 비율 환산이 등급을 뭉갭니다 — 선언이 없으면 «현금 아이템이 전부 일반»이 됩니다.");
+
             // 양성 대조 — 같은 스캐너가 실제로 키를 찾아낼 수 있음을 먼저 보인다.
             Assert.AreEqual(files.Length, sawRequiredLevel,
                 $"{LogPrefix} ★대조 실패 — 아이템 에셋 {files.Length}개 중 requiredLevel 을 " +
@@ -986,8 +1073,9 @@ namespace StickMate.Tests.EditMode
                 $"{LogPrefix} 기본 아이템이 등급을 선언했습니다({declared.Count}건). 기본 42종의 등급은 " +
                 "requiredLevel 파생이 유일한 출처입니다.\n" + string.Join("\n", declared));
 
-            Debug.Log($"{LogPrefix} 아이템 에셋 {files.Length}개 스캔 — declaredRarity 키 0건 " +
-                      $"(양성 대조: requiredLevel {sawRequiredLevel}건 검출).");
+            Debug.Log($"{LogPrefix} 기본 코호트 에셋 {files.Length}개 스캔 — declaredRarity 키 0건 " +
+                      $"(양성 대조: requiredLevel {sawRequiredLevel}건 검출 · " +
+                      $"팩 에셋 {packFiles.Length}개는 반대로 전부 선언함).");
         }
 
         /// <summary>
@@ -1497,6 +1585,52 @@ namespace StickMate.Tests.EditMode
         ///         아이템을 떨어뜨렸다는 뜻이다. 이 단언이 그 순간을 <b>시끄럽게</b> 빨갛게 만든다.</item>
         /// </list></para>
         /// </summary>
+        /// <summary>
+        /// ★ <see cref="ItemAssetFiles"/>를 <b>코호트 축으로 가른다</b>(2026-09-08, 첫 유료 팩 착지).
+        ///
+        /// <para><c>Resources/Items</c>는 이제 «기본 42종의 자리»가 아니라 «기본 42종 + 팩 코호트»의 자리다.
+        /// 그런데 이 파일의 파일 스캔 두 건은 폴더에 있는 것을 전부 <b>「출하 42종」이라고 불렀다</b> —
+        /// 그래서 팩 4개가 놓이는 순간 «기본이 등급을 선언했다»·«기본이 남의 코호트를 적었다»라는
+        /// <b>사실이 아닌 빨강</b> 두 건이 났다. 팩은 둘 다 <b>적는 것이 정상</b>이다.</para>
+        ///
+        /// <para>가르는 자는 파일 본문의 <c>cohortId:</c> 한 줄이다 — 이 파일의 다른 스캔과 <b>같은 자</b>다.
+        /// (<c>ItemCatalog</c>를 쓰지 않는 이유: 그 두 검사가 잠그는 것이 「런타임이 무엇을 실었는가」가 아니라
+        /// 「디스크에 무엇이 적혀 있는가」라서, 자를 섞으면 카탈로그가 안 실린 상태에서 조용히 초록이 된다.)</para>
+        ///
+        /// <para>★ <b>좁히기가 아무것도 안 남기는 상태</b>를 막는 대조 둘을 여기서 함께 건다:
+        /// (가) 기본 파일 수가 카탈로그가 아는 기본 코호트 장비 수와 같다(<b>다른 자</b>로 재는 교차 확인),
+        /// (나) 팩 파일 수가 카탈로그가 아는 팩 코호트 수와 같다. 둘 중 하나라도 갈라지면
+        /// 이 함수가 «잘못된 축»으로 갈랐다는 뜻이고, 그러면 호출부의 「0건」은 전부 무효다.</para>
+        /// </summary>
+        private static string[] BaseCohortAssetFiles(out string[] packFiles)
+        {
+            var baseList = new List<string>();
+            var packList = new List<string>();
+            foreach (string f in ItemAssetFiles())
+            {
+                int cohort = ItemCatalog.BaseCohortId;
+                foreach (string line in File.ReadAllLines(f))
+                {
+                    string t = line.Trim();
+                    if (!t.StartsWith("cohortId:", System.StringComparison.Ordinal)) continue;
+                    if (int.TryParse(t.Substring("cohortId:".Length).Trim(), out int parsed)) cohort = parsed;
+                    break;
+                }
+                (cohort == ItemCatalog.BaseCohortId ? baseList : packList).Add(f);
+            }
+
+            Assert.AreEqual(BaseCohortScope.EquipmentCount, baseList.Count,
+                $"{LogPrefix} 파일에서 센 기본 코호트 에셋 {baseList.Count}개와 카탈로그가 아는 " +
+                $"{BaseCohortScope.EquipmentCount}종이 다릅니다 — 두 자 중 하나가 코호트를 못 읽고 있으므로 " +
+                "이 함수를 쓰는 모든 「0건」이 무효입니다.");
+            Assert.AreEqual(BaseCohortScope.PackEquipmentCount, packList.Count,
+                $"{LogPrefix} 파일에서 센 팩 코호트 에셋 {packList.Count}개와 카탈로그가 아는 " +
+                $"{BaseCohortScope.PackEquipmentCount}종이 다릅니다.");
+
+            packFiles = packList.ToArray();
+            return baseList.ToArray();
+        }
+
         private static string[] ItemAssetFiles()
         {
             string dir = Path.Combine(Application.dataPath, "_Project", "Resources",

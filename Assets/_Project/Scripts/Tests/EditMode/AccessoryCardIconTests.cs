@@ -487,13 +487,38 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 인계본_열여섯_종은_넘침_보정이_항등이다()
         {
+            // ★★ 2026-09-08 — 「인계본 16종」의 판정을 <b>기본 코호트 안</b>으로 좁혔다.
+            //   니들은 원래도 자리 번호가 아니라 성질(<c>HasDesignedCard</c> = 계약 v2 조각이 하나라도 있는가)이었는데,
+            //   첫 유료 팩의 조각도 계약 v2라 <b>같은 성질을 만족한다</b> — 그래서 팩 EYES 6번이
+            //   「인계본」으로 세어지고 「인계본이 움직였다」는 거짓 빨강이 났다(실측 2026-09-08: 축소 0.7587).
+            //   인계본 16종은 <b>출하 42종을 교체한 것</b>이라 정의상 전부 기본 코호트다.
+            //   ★ 팩의 넘침 보정은 <b>결함이 아니라 허용된 장치</b>다 — 바로 위
+            //     카드_배율은_슬롯마다_하나이고_넘치는_아이템만_줄어든다 가 밀짚모자·판초에 대해
+            //     이미 그렇게 잠그고 있다(줄이는 쪽으로만, 절대 키우지 않는다). 다만 «얼마나 줄었는가»는
+            //     조형 품질 정보라 로그로 남긴다 — design-equipment 가 볼 수 있게.
             int handoffItems = 0;
+            var packFits = new List<string>();
             for (int s = 0; s < BodySlots.Length; s++)
             {
                 EquipmentSlot slot = BodySlots[s];
                 for (int i = 0; i < ItemCatalog.ItemCountIn(slot); i++)
                 {
                     if (!AccessoryCardIcon.HasDesignedCard(CardShapes(slot, i))) continue;
+
+                    if (!BaseCohortScope.IsBase(slot, i))
+                    {
+                        Assert.IsTrue(AccessoryCardIcon.TryGetBoxFit(slot, i, out AccessoryCardIcon.BoxFit packFit),
+                            $"{slot} {i}번(팩)의 프레이밍을 잴 수 없습니다.");
+                        Assert.LessOrEqual(packFit.Shrink, 1f + 1e-5f,
+                            $"{slot} {i}번(팩)의 넘침 보정이 <b>키우고</b> 있습니다({packFit.Shrink:F4}).");
+                        if (!packFit.IsIdentity)
+                        {
+                            packFits.Add($"{slot} {i}번({ItemCatalog.Item(slot, i).DisplayName}) " +
+                                         $"축소 {packFit.Shrink:F4} 이동 ({packFit.OffsetXInUnits:F2}, {packFit.OffsetYInUnits:F2})u");
+                        }
+                        continue;
+                    }
+
                     handoffItems++;
                     Assert.IsTrue(AccessoryCardIcon.TryGetBoxFit(slot, i, out AccessoryCardIcon.BoxFit fit));
                     Assert.IsTrue(fit.IsIdentity,
@@ -504,6 +529,13 @@ namespace StickMate.Tests.EditMode
             }
             Assert.AreEqual(16, handoffItems,
                 "인계본 아이템이 16종이 아닙니다 — 위 항등 단언이 무엇을 봤는지 알 수 없습니다.");
+            if (packFits.Count > 0)
+            {
+                Debug.Log("[카드프레이밍] ★ 팩 아이템이 슬롯 상자를 넘어 축소 보정을 받는다 — " +
+                          string.Join(" · ", packFits) +
+                          ". 규칙 위반은 아니지만(줄이는 쪽), 같은 카테고리 안에서 그 카드만 작게 뜬다 — " +
+                          "조형 조정은 design-equipment 판정.");
+            }
         }
 
         /// <summary>

@@ -114,17 +114,28 @@ namespace StickMate.Tests.EditMode
 
         // ==================== (2) 표 모양 ====================
 
+        /// <summary>
+        /// ★ 2026-09-08 — <b>기본 코호트만</b> 센다. 그 전에는 폴더에 놓인 <c>AccessoryDefSO</c> 전부를
+        /// 42종으로 단언했고, 그래서 <b>첫 유료 팩 에셋이 폴더에 놓이는 순간</b> 이 테스트가 팩 탓으로
+        /// 빨개졌다(측정: <c>docs/verify/runs/packcyber-red_edit.xml</c>).
+        ///
+        /// <para><b>팩 축의 개수·자리는 여기서 다시 세지 않는다.</b> <c>PackRegistry.Build</c>가
+        /// <c>declaredItemCount</c>(마지막 번호가 통째로 빠진 결손)와 <c>itemIndexBase</c>(0번대 침범)로
+        /// <b>더 정확하게</b> 잡고 있고, 여기서 또 세면 같은 사실이 두 곳에 앉는다 — 그때 한쪽만
+        /// 고쳐지는 날 «검사는 통과했는데 팩이 반쯤 실린» 상태가 만들어진다.</para>
+        ///
+        /// <para>★ 다만 <b>(카테고리, 자리) 충돌</b>만은 코호트를 가리지 않고 본다. 그건 팩 축의 사실이
+        /// 아니라 <b>그림을 고르는 번호</b>의 사실이라, 팩과 기본이 같은 자리를 다투면
+        /// <c>ItemCatalog.EnsureLoaded</c>가 둘 중 하나를 통째로 버린다.</para>
+        /// </summary>
         [Test]
-        public void 아이템_에셋은_카테고리당_같은_개수이고_자리가_겹치지도_비지도_않는다()
+        public void 기본_코호트_아이템은_카테고리당_같은_개수이고_자리가_겹치지도_비지도_않는다()
         {
             AccessoryDefSO[] defs = LoadDefs();
-            Assert.AreEqual(ExpectedEquipmentCount, defs.Length,
-                $"{ItemFolder} 아래 아이템 에셋이 {defs.Length}개입니다({ExpectedEquipmentCount}종이어야 합니다). " +
-                "하나라도 빠지면 그 자리가 보관함에서 빈 칸이 되고, 저장 파일이 그 아이디를 가리키면 " +
-                "복원이 실패합니다.");
 
             var seenIds = new HashSet<string>();
             var occupied = new Dictionary<(EquipmentSlot, int), string>();
+            int baseCount = 0, packCount = 0;
 
             foreach (AccessoryDefSO def in defs)
             {
@@ -134,8 +145,19 @@ namespace StickMate.Tests.EditMode
 
                 Assert.That((int)def.slot, Is.InRange(0, EquipmentModel.SlotCount - 1),
                     $"'{def.itemId}'의 카테고리가 범위를 벗어납니다.");
-                Assert.That(def.itemIndex, Is.InRange(0, ExpectedItemsPerSlot - 1),
-                    $"'{def.itemId}'의 자리 번호가 0~{ExpectedItemsPerSlot - 1}이 아닙니다.");
+
+                bool isBase = def.cohortId == ItemCatalog.BaseCohortId;
+                if (isBase)
+                {
+                    baseCount++;
+                    Assert.That(def.itemIndex, Is.InRange(0, ExpectedItemsPerSlot - 1),
+                        $"'{def.itemId}'는 기본 코호트({ItemCatalog.BaseCohortId})인데 자리 번호가 " +
+                        $"0~{ExpectedItemsPerSlot - 1}이 아닙니다.");
+                }
+                else
+                {
+                    packCount++;
+                }
 
                 var key = (def.slot, def.itemIndex);
                 Assert.IsFalse(occupied.ContainsKey(key),
@@ -143,6 +165,13 @@ namespace StickMate.Tests.EditMode
                     $"'{def.itemId}'가 함께 차지합니다 — 자리 번호는 AccessoryShapeBuilder가 그림을 고르는 값입니다.");
                 occupied[key] = def.itemId;
             }
+
+            Assert.AreEqual(ExpectedEquipmentCount, baseCount,
+                $"{ItemFolder} 아래 <b>기본 코호트</b> 아이템 에셋이 {baseCount}개입니다" +
+                $"({ExpectedEquipmentCount}종이어야 합니다). 하나라도 빠지면 그 자리가 보관함에서 빈 칸이 " +
+                $"되고, 저장 파일이 그 아이디를 가리키면 복원이 실패합니다. " +
+                $"(같은 폴더의 팩 코호트 아이템 {packCount}개는 이 수에 넣지 않는다 — " +
+                "그쪽 개수는 PackRegistry.Build의 declaredItemCount가 잰다.)");
 
             for (int s = 0; s < EquipmentModel.SlotCount; s++)
             {
@@ -152,6 +181,9 @@ namespace StickMate.Tests.EditMode
                         $"{(EquipmentSlot)s} {i}번 자리의 에셋이 없습니다(표에 구멍).");
                 }
             }
+
+            Debug.Log($"[아이템에셋] 기본 코호트 {baseCount}종 / 팩 코호트 {packCount}종 " +
+                      $"— 자리 점유 {occupied.Count}칸.");
         }
 
         // ==================== (3) 에셋 ↔ 런타임 1:1 ====================

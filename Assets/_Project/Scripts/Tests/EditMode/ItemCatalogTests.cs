@@ -78,13 +78,20 @@ namespace StickMate.Tests.EditMode
         public void 장비_항목은_7카테고리_고정개수이고_EquipmentModel과_같은_사실을_말한다()
         {
             StickConfig config = LoadDefaultConfig();
-            int found = 0;
+            int found = 0, packFound = 0;
 
             for (int s = 0; s < EquipmentModel.SlotCount; s++)
             {
                 var slot = (EquipmentSlot)s;
-                Assert.AreEqual(ItemsPerSlot, EquipmentModel.ItemCount(slot),
-                    $"[{EquipmentModel.SlotName(slot)}] 카테고리의 아이템이 {ItemsPerSlot}개가 아닙니다 " +
+                // ★ 2026-09-08 — 「카테고리당 6종」은 <b>출하 42종</b>의 성질이다. 첫 유료 팩이
+                //   HEAD/EYES/NECK/BACK 에 한 자리씩 얹으면서 EquipmentModel.ItemCount 는 7이 됐다.
+                //   팩 자리의 개수·번호는 여기서 다시 세지 않는다 — PackRegistry.Build 의
+                //   declaredItemCount/itemIndexBase 가 더 정확하게 잰다(같은 사실을 두 곳에 두지 않는다).
+                //   ★ 다만 아래 «두 곳이 같은 말을 하는가» 대조는 <b>팩 아이템에도</b> 그대로 건다 —
+                //     이름/레벨/역방향 조회가 갈라지는 사고는 코호트를 가리지 않는다.
+                Assert.AreEqual(ItemsPerSlot, BaseCohortScope.CountIn(slot),
+                    $"[{EquipmentModel.SlotName(slot)}] 카테고리의 <b>기본 코호트</b> 아이템이 " +
+                    $"{ItemsPerSlot}개가 아닙니다 " +
                     "(2026-08-30 표정 삭제로 7×4 -> 2026-09-01 카테고리당 +2종으로 7×6=42).");
 
                 for (int i = 0; i < EquipmentModel.ItemCount(slot); i++)
@@ -103,12 +110,16 @@ namespace StickMate.Tests.EditMode
                         "요구 레벨이 두 곳에 따로 적혀 있습니다.");
                     Assert.AreEqual(i, ItemCatalog.IndexOfItemId(slot, entry.Id),
                         "아이디 -> 자리 역방향 조회가 어긋납니다 — 저장 파일 복원이 엉뚱한 아이템을 걸치게 됩니다.");
-                    found++;
+                    if (BaseCohortScope.IsBase(entry)) found++; else packFound++;
                 }
             }
 
-            Assert.AreEqual(EquipmentTotal, found, $"장비 아이템이 {EquipmentTotal}종이 아닙니다.");
-            Assert.AreEqual(EquipmentTotal, ItemCatalog.EquipmentCount);
+            Assert.AreEqual(EquipmentTotal, found, $"기본 코호트 장비가 {EquipmentTotal}종이 아닙니다.");
+            Assert.AreEqual(EquipmentTotal, BaseCohortScope.EquipmentCount);
+            Assert.AreEqual(ItemCatalog.EquipmentCount, found + packFound,
+                "센 합이 카탈로그 장비 전량과 다릅니다 — 순회가 샙니다.");
+            UnityEngine.Debug.Log($"[아이템표] {BaseCohortScope.Describe()} — " +
+                                  "두 모델(ItemCatalog / EquipmentModel)이 팩 자리에서도 같은 말을 한다.");
         }
 
         [Test]
@@ -122,14 +133,28 @@ namespace StickMate.Tests.EditMode
                 Assert.AreEqual(1, EquipmentModel.RequiredLevel(slot, 0),
                     $"[{EquipmentModel.SlotName(slot)}]의 첫 아이템이 Lv.1 보유가 아닙니다 — Lv.1 사용자에게 빈 카테고리가 됩니다.");
 
+                // ★ 2026-09-08 — 「자리 순서대로 오른다」는 <b>한 코호트 안</b>의 약속이다.
+                //   팩 아이템의 요구 레벨은 언제나 ItemCatalog.PackRequiredLevel(=1)이고
+                //   (「현금으로 사고 나서 레벨을 갈게 하지 않는다」), 그래서 뒷자리에서 반드시 1로 떨어진다.
+                //   전량을 한 줄로 재면 그 <b>설계</b>가 오름차순 위반으로 잡힌다(실측 2026-09-08).
                 int prev = 0;
-                for (int i = 0; i < EquipmentModel.ItemCount(slot); i++)
+                foreach (int i in BaseCohortScope.ItemsIn(slot))
                 {
                     int need = EquipmentModel.RequiredLevel(slot, i);
                     Assert.GreaterOrEqual(need, prev,
                         $"[{EquipmentModel.SlotName(slot)}]의 {i}번({EquipmentModel.ItemName(slot, i)}) 요구 레벨 {need}이 " +
                         $"앞 아이템({prev})보다 낮습니다 — 목록이 열리는 순서와 보이는 순서가 어긋납니다.");
                     prev = need;
+                }
+
+                // 그리고 팩 자리는 <b>전부</b> 팩 요구 레벨이다 — 위 좁히기가 「아무것도 안 보는」 상태가
+                // 되지 않게 뺀 자리를 여기서 다시 잰다(부재 단언이 조용히 초록이 되지 않게).
+                for (int i = BaseCohortScope.CountIn(slot); i < EquipmentModel.ItemCount(slot); i++)
+                {
+                    Assert.AreEqual(ItemCatalog.PackRequiredLevel, EquipmentModel.RequiredLevel(slot, i),
+                        $"[{EquipmentModel.SlotName(slot)}]의 팩 자리 {i}번" +
+                        $"({EquipmentModel.ItemName(slot, i)}) 요구 레벨이 {ItemCatalog.PackRequiredLevel}이 아닙니다 — " +
+                        "산 즉시 못 쓰는 현금 상품이 됩니다.");
                 }
             }
         }

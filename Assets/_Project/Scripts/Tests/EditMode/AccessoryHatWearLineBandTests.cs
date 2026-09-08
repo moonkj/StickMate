@@ -788,10 +788,17 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 게이트_표가_HEAD_카탈로그_전부를_덮는다()
         {
-            int catalogCount = ItemCatalog.ItemCountIn(EquipmentSlot.Head);
-            Assert.Greater(catalogCount, 0, "HEAD 카탈로그가 비었습니다 — 이 게이트가 아무것도 안 재고 있습니다.");
+            // ★ 2026-09-08 — 대조 대상은 <b>기본 코호트</b>다. H-2 착용선 대역 [+0.28, +0.45] R 은
+            //   R25 가 출하 6종을 그 대역으로 수렴시키며 정본화한 값이고(스펙 §14-15-2), 팩 모자는
+            //   그 재저작을 거치지 않은 <b>에셋 조형</b>이다. 팩까지 이 대역으로 강제하려면 먼저
+            //   «팩 조형이 어느 대역을 지켜야 하는가»를 design-equipment 가 정해야 한다 — 그 판정 전에
+            //   숫자를 들이대면 그건 검사가 아니라 추측이다.
+            //   ★ 팩이 이 게이트 밖이라는 사실은 AccessoryAssetShapeReachTests 의 등재 검사가
+            //     러너에 「건너뜀」으로 계속 띄운다(CLAUDE.md — 갭은 Ignore 로 남긴다).
+            int catalogCount = BaseCohortScope.CountIn(EquipmentSlot.Head);
+            Assert.Greater(catalogCount, 0, "HEAD 기본 코호트가 비었습니다 — 이 게이트가 아무것도 안 재고 있습니다.");
             Assert.AreEqual(catalogCount, GatedHeadItems.Length,
-                $"HEAD 카탈로그는 {catalogCount}종인데 이 게이트의 표는 {GatedHeadItems.Length}종입니다.\n" +
+                $"HEAD 기본 코호트는 {catalogCount}종인데 이 게이트의 표는 {GatedHeadItems.Length}종입니다.\n" +
                 "새 모자를 추가했다면 GatedHeadItems와 위 [TestCase] 목록에 <b>둘 다</b> 넣으십시오 — " +
                 "빠진 모자는 착용선을 아무도 보지 않습니다.");
 
@@ -802,8 +809,13 @@ namespace StickMate.Tests.EditMode
                     $"게이트 표에 HEAD {GatedHeadItems[i]}번이 두 번 들어 있습니다 — " +
                     "개수는 맞는데 실제로는 한 종을 안 보고 있습니다.");
                 Assert.Less(GatedHeadItems[i], catalogCount,
-                    $"게이트 표의 HEAD {GatedHeadItems[i]}번이 카탈로그 범위 밖입니다.");
+                    $"게이트 표의 HEAD {GatedHeadItems[i]}번이 기본 코호트 범위 밖입니다.");
+                Assert.IsTrue(BaseCohortScope.IsBase(EquipmentSlot.Head, GatedHeadItems[i]),
+                    $"게이트 표의 HEAD {GatedHeadItems[i]}번이 기본 코호트가 아닙니다 — 표와 모집단이 갈라졌습니다.");
             }
+
+            Debug.Log($"[착용선] 게이트 표 {GatedHeadItems.Length}종 = HEAD 기본 코호트 전부 " +
+                      $"(게이트 밖 팩 {BaseCohortScope.PackCountIn(EquipmentSlot.Head)}종).");
         }
 
         // ====================================================================

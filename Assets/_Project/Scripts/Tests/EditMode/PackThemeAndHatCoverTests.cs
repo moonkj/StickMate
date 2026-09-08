@@ -128,7 +128,12 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 출하_42종은_애셋에_테마도_부스탯도_적지_않았다()
         {
-            int counted = 0;
+            // ★ 2026-09-08 — 「출하 42종」 = <b>기본 코호트</b>. 팩은 반대로 <b>반드시 적어야</b> 하고
+            //   (안 적으면 «현금 아이템이 무료 아이템보다 약하다»), 그 선언은 실제로 읽힌다
+            //   (ItemCatalog.ResolveTheme/ResolveSubStat 의 코호트 갈래). 그래서 두 방향을 함께 잰다 —
+            //   한쪽만 재면 「아무도 안 읽는다」와 「기본이 안 적었다」가 구분되지 않는다.
+            int counted = 0, packCounted = 0;
+            var packSilent = new List<string>();
             for (int s = 0; s < EquipmentModel.SlotCount; s++)
             {
                 var slot = (EquipmentSlot)s;
@@ -137,6 +142,20 @@ namespace StickMate.Tests.EditMode
                 {
                     ItemCatalogEntry e = ItemCatalog.Item(slot, i);
                     if (e == null) continue;
+
+                    if (!BaseCohortScope.IsBase(e))
+                    {
+                        packCounted++;
+                        // 스탯 4슬롯의 팩 아이템은 테마·부스탯을 <b>둘 다</b> 선언해야 한다.
+                        if (!EquipmentStatRules.IsStatSlot(slot)) continue;
+                        if (string.IsNullOrEmpty(e.DeclaredTheme)
+                            || !DeclaredSubStatRules.IsDeclared(e.DeclaredSubStat))
+                        {
+                            packSilent.Add($"{e.Id}(테마 '{e.DeclaredTheme}' · 부스탯 {e.DeclaredSubStat})");
+                        }
+                        continue;
+                    }
+
                     counted++;
 
                     Assert.IsEmpty(e.DeclaredTheme,
@@ -147,9 +166,16 @@ namespace StickMate.Tests.EditMode
                 }
             }
 
+            Assert.IsEmpty(packSilent,
+                "스탯 슬롯의 팩 아이템이 테마 또는 부스탯을 적지 않았습니다: " + string.Join(" · ", packSilent) +
+                ". 그러면 그 팩은 4부위를 다 걸쳐도 세트가 성립하지 않고 부스탯도 0입니다 — " +
+                "«현금으로 산 물건이 무료 물건보다 약하다»가 됩니다(ItemCatalog.AuditDeclarations ⑩⑪).");
+
             // 빈 목록을 돌고 초록이 뜨는 형태를 막는다(docs/TEAM.md 거짓 통과 #5).
-            Assert.AreEqual(ItemCatalog.EquipmentCount, counted,
-                "장비를 " + counted + "종밖에 돌지 않았습니다 — 순회가 비면 위 단언들이 공허해집니다.");
+            Assert.AreEqual(BaseCohortScope.EquipmentCount, counted,
+                "출하(기본 코호트) 장비를 " + counted + "종밖에 돌지 않았습니다 — 순회가 비면 위 단언들이 공허해집니다.");
+            Assert.AreEqual(BaseCohortScope.PackEquipmentCount, packCounted,
+                "팩 장비를 " + packCounted + "종밖에 돌지 않았습니다 — 열거가 샙니다.");
         }
 
         // ============================================================================
@@ -441,20 +467,32 @@ namespace StickMate.Tests.EditMode
             int n = ItemCatalog.ItemCountIn(EquipmentSlot.Head);
             Assert.Greater(n, 0, "모자 카테고리가 비었습니다 — 이 순회가 공허해집니다.");
 
-            int covering = 0;
+            // ★ 이 대조(에셋 ↔ 코드 표)는 <b>전 종</b>에 건다 — 팩 자리에서도 두 말이 갈리면 안 된다.
+            //   다만 «면제는 왕관 하나»라는 <b>개수</b>는 기본 코호트의 성질이다: 팩 모자의 +∞는
+            //   CoverOutsideCodeTable 이 정본화한 «가리지 않는다고 선언했다»이고 왕관과 <b>같은 사실</b>이다
+            //   (2026-09-07 확정). 전량으로 세면 팩이 실린 날 «전체 − 2»가 되어 거짓 빨강이 난다.
+            int covering = 0, baseCovering = 0;
+            int baseCount = BaseCohortScope.CountIn(EquipmentSlot.Head);
             for (int i = 0; i < n; i++)
             {
                 bool tableSaysHides =
                     !float.IsPositiveInfinity(AccessoryShapeBuilder.HatCoverLocalY(i, rig));
-                if (tableSaysHides) covering++;
+                if (tableSaysHides)
+                {
+                    covering++;
+                    if (i < baseCount) baseCovering++;
+                }
 
                 Assert.AreEqual(tableSaysHides, ItemCatalog.HidesHair(EquipmentSlot.Head, i),
                     $"모자 {i}번에서 에셋(hidesHair)과 코드 표(HatCoverLocalY)가 다른 말을 합니다. " +
                     "HAIR 카테고리가 되살아나는 날 이 어긋남이 곧 «원인 모를 그림 변화»가 됩니다.");
             }
 
-            Assert.AreEqual(n - 1, covering,
-                "덮는 모자가 «전체 − 1»이 아닙니다 — 승인된 면제는 왕관 하나뿐입니다.");
+            Assert.AreEqual(baseCount - 1, baseCovering,
+                $"덮는 <b>출하</b> 모자가 «{baseCount} − 1»이 아닙니다({baseCovering}종) — " +
+                "승인된 코드 표 면제는 왕관 하나뿐입니다.");
+            Debug.Log($"[팩테마] HEAD {n}종 중 덮는 모자 {covering}종 " +
+                      $"(출하 {baseCovering}/{baseCount} · 팩은 선언으로 면제).");
         }
 
         [Test]

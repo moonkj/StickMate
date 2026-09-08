@@ -604,6 +604,33 @@ namespace StickMate.Tests.EditMode
         {
             return new[]
             {
+                // ★ 2026-09-08 coder-systems 등록 — 첫 유료 팩(pack.cyber) 착지 라운드가 낸 갭 2건.
+                new IgnoreEntry
+                {
+                    File = "AccessoryAssetShapeReachTests.cs",
+                    Method = "팩_코호트_조형_게이트_셋이_아직_팩을_안_본다",
+                    Kind = RatchetKind.자동,
+                    Why = "갭: 조형 게이트 셋(보조색 순 색면 · H-2 착용선 대역 · EYES 불투명 바이저)의 " +
+                          "모집단을 기본 코호트로 좁혀 팩 4종이 그 밖에 남았다. 세 게이트의 숫자는 " +
+                          "출하 6종의 R25 재저작에서 나온 값이라 팩에 그대로 못 댄다 — " +
+                          "«팩 조형이 지킬 대역»은 design-equipment 판정 사항. " +
+                          "★ 장치: 팩 코호트가 0종이면 Ignore <b>앞에서</b> return 해 초록이 되고, " +
+                          "팩 조각이 v1(strokeInR = 0)로 돌아오면 그 앞의 단언이 <b>빨갛게</b> 멈춘다 " +
+                          "— 그때는 게이트의 좁히기를 걷을 수 있다는 뜻이다.",
+                },
+                new IgnoreEntry
+                {
+                    File = "AccessoryNameLegibilityTests.cs",
+                    Method = "팩_카드가_기본_카드와_같은_그림이_아니다",
+                    Kind = RatchetKind.동반,
+                    Companion = "빚이_아직_실재한다",
+                    Why = "갭: 팩 HEAD 'Patched Hood'의 카드 그림이 기본 '베레모'와 <b>0.100</b>만 다르다" +
+                          "(문턱 0.150). 유료 모자와 무료 모자가 보관함에서 같은 그림으로 읽힌다 — " +
+                          "조형 재설계가 필요해 이 라운드(테스트 정리) 범위 밖이고 design-equipment 배정 대상. " +
+                          "★ 장치: 대장(CardDebt)에 없는 미달이 나오면 Ignore <b>앞에서</b> 빨개지고, " +
+                          "대장이 비면 Ignore 없이 초록이 된다. 그리고 동반 테스트가 «적힌 쌍이 지금도 " +
+                          "문턱 아래인가»를 재서, 조형이 고쳐지면 «대장에서 지우라»고 빨갛게 말한다.",
+                },
                 // ★ 2026-09-06 — AppearanceShapeBudgetTests::PET은_정원과_보조색_규칙을_그대로_지킨다의
                 //   건너뜀을 <b>지웠다</b>. 사유(커서친구가 정원 1개 / 보조색 0개)는 그날 라운드가
                 //   CharacterPetRenderer.BuildCursorFriend를 머리(주색)+꼬리(보조색) 두 줄로 쪼개면서

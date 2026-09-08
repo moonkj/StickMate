@@ -148,13 +148,19 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 출하_아이템은_아직_아무도_에셋_조형으로_넘어가지_않았다()
         {
+            // ★★ 2026-09-08 — 「출하」의 뜻을 <b>기본 코호트</b>로 다시 썼다(리더 판정).
+            //   종전에는 자리 번호로 카탈로그 전량을 돌면서 그것을 「출하 아이템」이라고 불렀다.
+            //   첫 유료 팩이 HEAD/EYES/BACK 6번에 실리자 이 검사가 «출하 도형이 바뀌었을 수 있다»라고
+            //   신고했지만, 팩 아이템이 에셋 조형으로 흐르는 것은 <b>이 기능의 목적 그 자체</b>다
+            //   (§18-3 판정 3 · 불변 원칙 4). 즉 결함이 아니라 이름이 낡은 것이었다.
+            //   ★ 뺀 자리는 아래 «팩은 반대로 반드시 에셋 조형으로 흐른다»가 다시 잰다.
             var stillCode = new[] { EquipmentSlot.Head, EquipmentSlot.Eyes, EquipmentSlot.Shoulders };
             int codeSideItems = 0;
 
             foreach (EquipmentSlot slot in stillCode)
             {
-                int count = ItemCatalog.ItemCountIn(slot);
-                Assert.Greater(count, 0, $"{slot} 카테고리가 비었습니다 — 아래 순회가 공허합니다.");
+                int count = BaseCohortScope.CountIn(slot);
+                Assert.Greater(count, 0, $"{slot}의 기본 코호트가 비었습니다 — 아래 순회가 공허합니다.");
                 for (int item = 0; item < count; item++)
                 {
                     AccessoryWornShapeData[] data = ItemCatalog.WornShapes(slot, item);
@@ -177,7 +183,7 @@ namespace StickMate.Tests.EditMode
 
             // ★ 양성 대조 — 「데이터가 있는 자리」가 실재해야 위 0건이 뜻을 갖는다.
             int assetSideItems = 0, assetSideShapes = 0;
-            int neckCount = ItemCatalog.ItemCountIn(EquipmentSlot.Neck);
+            int neckCount = BaseCohortScope.CountIn(EquipmentSlot.Neck);
             for (int item = 0; item < neckCount; item++)
             {
                 AccessoryWornShapeData[] data = ItemCatalog.WornShapes(EquipmentSlot.Neck, item);
@@ -187,10 +193,33 @@ namespace StickMate.Tests.EditMode
                 assetSideShapes += data.Length;
             }
 
+            // ★★ 좁히기의 짝 — <b>팩 코호트는 반대로 반드시 에셋 조형을 갖는다</b>.
+            //   빼기만 하면 «팩이 조형을 잃어도 조용히 초록»이 된다(부재 단언이 썩는 그 형태).
+            int packItems = 0, packShapes = 0;
+            for (int s = 0; s < ItemCatalog.SlotCount; s++)
+            {
+                var slot = (EquipmentSlot)s;
+                if (!AccessoryShapeBuilder.TryWornAssetSlotOrder(slot, out _)) continue;
+                int count = ItemCatalog.ItemCountIn(slot);
+                for (int item = BaseCohortScope.CountIn(slot); item < count; item++)
+                {
+                    packItems++;
+                    AccessoryWornShapeData[] data = ItemCatalog.WornShapes(slot, item);
+                    int n = data == null ? 0 : data.Length;
+                    Assert.Greater(n, 0,
+                        $"{slot} {item}번(팩)의 에셋에 몸 도형이 0개입니다 — 프로덕션 .cs 를 고치지 않고는 " +
+                        "이 아이템이 몸에 아무것도 안 그립니다(반쪽 상품). 원칙 4가 약속한 통로가 그 자리에서 끊겼습니다.");
+                    packShapes += n;
+                }
+            }
+
             Assert.Greater(codeSideItems, 0, "코드 쪽 아이템을 하나도 안 셌습니다.");
             Assert.AreEqual(neckCount, assetSideItems);
             Assert.Greater(assetSideShapes, 0,
                 "에셋 쪽 도형이 0개입니다 — 위 '0개' 판정이 「아무것도 안 실렸다」와 구분되지 않습니다.");
+            Debug.Log($"[에셋조형] 출하(기본 코호트) {codeSideItems}종은 몸 도형 0개 · " +
+                      $"NECK {assetSideItems}종은 {assetSideShapes}개 · " +
+                      $"팩 {packItems}종은 {packShapes}개. {BaseCohortScope.Describe()}");
         }
 
         /// <summary>넓힌 자리에서 <see cref="AccessoryShapeBuilder.AppendWornAsset"/>가 지금은
@@ -201,16 +230,31 @@ namespace StickMate.Tests.EditMode
         {
             var sink = new List<AccessoryShapeBuilder.Shape>();
 
+            // ★ 2026-09-08 — 「출하」 = 기본 코호트(위 검사와 같은 정정). 팩 자리는 <b>true 여야</b> 하고,
+            //   그것을 같은 순회에서 함께 잰다 — 그래야 이 검사가 «분기가 살아 있는가»를 계속 본다.
+            int packDrew = 0, packItems = 0;
             foreach (EquipmentSlot slot in new[] { EquipmentSlot.Head, EquipmentSlot.Eyes, EquipmentSlot.Shoulders })
             {
-                int count = ItemCatalog.ItemCountIn(slot);
-                for (int item = 0; item < count; item++)
+                int baseCount = BaseCohortScope.CountIn(slot);
+                for (int item = 0; item < baseCount; item++)
                 {
                     sink.Clear();
                     Assert.IsFalse(
                         AccessoryShapeBuilder.AppendWornAsset(sink, slot, item, Rig(), false, AccessorySurface.Body),
-                        $"{slot} {item}번이 에셋 경로로 흘렀습니다 — 출하 도형이 바뀌었을 수 있습니다.");
+                        $"{slot} {item}번(출하)이 에셋 경로로 흘렀습니다 — 출하 도형이 바뀌었을 수 있습니다.");
                     Assert.AreEqual(0, sink.Count, $"{slot} {item}번: false 인데 조각을 넣었습니다.");
+                }
+
+                for (int item = baseCount; item < ItemCatalog.ItemCountIn(slot); item++)
+                {
+                    packItems++;
+                    sink.Clear();
+                    Assert.IsTrue(
+                        AccessoryShapeBuilder.AppendWornAsset(sink, slot, item, Rig(), false, AccessorySurface.Body),
+                        $"{slot} {item}번(팩)이 에셋 경로로 <b>안</b> 흘렀습니다 — .cs 0줄로 팩을 만든다는 " +
+                        "원칙 4의 약속이 이 자리에서 끊겼습니다.");
+                    Assert.Greater(sink.Count, 0, $"{slot} {item}번: true 인데 조각이 0개입니다.");
+                    packDrew += sink.Count;
                 }
             }
 
@@ -227,6 +271,87 @@ namespace StickMate.Tests.EditMode
                 drew += sink.Count;
             }
             Assert.Greater(drew, 0, "목 조각을 하나도 안 그렸습니다 — 이 대조가 공허합니다.");
+            Debug.Log($"[에셋조형] 출하 자리는 전부 옛 경로 · NECK {neck}종 {drew}조각 · " +
+                      $"팩 {packItems}종 {packDrew}조각이 에셋 경로로 흐른다.");
+        }
+
+        // ====================================================================
+        // 2-B. ★ 아직 못 메운 갭 — 러너에 「건너뜀」으로 계속 보이게 등재한다
+        // ====================================================================
+
+        /// <summary>
+        /// ★★ <b>등재된 갭</b>(2026-09-08, 첫 유료 팩 착지 라운드) — <b>조형 게이트 셋이 팩을 아직 안 본다.</b>
+        ///
+        /// <para>팩 4종이 실리면서 「HEAD 카탈로그 전부를 덮는가」 류의 커버리지 게이트가 빨개졌고,
+        /// 이 라운드는 그 게이트들의 <b>모집단을 기본 코호트로 좁혀</b> 초록으로 돌렸다. 좁히기는
+        /// 옳지만(그 게이트들이 잠그는 값은 R25 재저작이 <b>출하 6종</b>에 대해 수렴시킨 값이다)
+        /// <b>좁힌 사실을 조용히 두면</b> 팩 조형은 영영 아무 자도 안 탄다 — 그것이 정확히
+        /// <c>AccessoryRuleOneCoverageTests</c> 클래스 문서가 세 번째 실패로 적어 둔 형태다.</para>
+        ///
+        /// <para><b>지금 팩을 안 보는 게이트 셋</b>:
+        /// <list type="number">
+        ///   <item><c>AccessoryHatBandAndBellTests</c> — 보조색 <b>순 색면</b>(경계 획이 먹고 남는 색면 ≥ 1.5펜).</item>
+        ///   <item><c>AccessoryHatWearLineBandTests</c> — H-2 <b>착용선 대역</b> [+0.28, +0.45] R · H-2b 앞층 밑단.</item>
+        ///   <item><c>EyesVisorOpacityTests</c> — EYES <b>불투명 바이저</b> 규약(채움 실루엣 · 삼각형 덮임).</item>
+        /// </list>
+        /// 셋 다 <b>숫자가 출하 6종의 재저작에서 나왔다</b>. 팩에 그 숫자를 그대로 들이대는 것은
+        /// 검사가 아니라 추측이므로, <b>design-equipment 가 「팩 조형이 지킬 대역」을 먼저 정해야 한다</b>.</para>
+        ///
+        /// <para>★ <b>자동 만료</b>: 팩 코호트가 0종이 되면 이 등재는 스스로 사라진다(초록). 그리고
+        /// 등재 전에 <b>갭이 실재하는지</b>를 먼저 단언한다 — 팩 아이템이 실제로 있고, 그 조각이 실제로
+        /// 계약 v2(에셋 조형)라는 것. 그 전제가 무너지면 여기서 <b>빨갛게</b> 멈춘다.</para>
+        /// </summary>
+        [Test]
+        public void 팩_코호트_조형_게이트_셋이_아직_팩을_안_본다()
+        {
+            int packItems = BaseCohortScope.PackEquipmentCount;
+            if (packItems == 0)
+            {
+                Debug.Log("[에셋조형] 팩 코호트 0종 — 조형 게이트 갭이 오늘은 없다(등재 자동 만료).");
+                return;
+            }
+
+            // 전제 ① — 팩이 실제로 몸 자리에 있다(게이트가 볼 수 있는 자리인가).
+            var uncovered = new List<string>();
+            for (int s = 0; s < ItemCatalog.SlotCount; s++)
+            {
+                var slot = (EquipmentSlot)s;
+                if (slot != EquipmentSlot.Head && slot != EquipmentSlot.Eyes) continue;
+                for (int item = BaseCohortScope.CountIn(slot); item < ItemCatalog.ItemCountIn(slot); item++)
+                {
+                    uncovered.Add($"{slot} {item}번({ItemCatalog.Item(slot, item).DisplayName})");
+                }
+            }
+            Assert.IsNotEmpty(uncovered,
+                "HEAD/EYES 에 팩 아이템이 없는데 팩 코호트는 " + packItems + "종입니다 — " +
+                "이 등재가 가리키는 갭이 실재하지 않습니다. 사유를 다시 쓰거나 이 검사를 지우십시오.");
+
+            // 전제 ② — 그 조각이 실제로 계약 v2(에셋 조형)라 위 세 게이트의 v1 자를 못 댄다.
+            var rig = Rig();
+            var sink = new List<AccessoryShapeBuilder.Shape>();
+            foreach (EquipmentSlot slot in new[] { EquipmentSlot.Head, EquipmentSlot.Eyes })
+            {
+                for (int item = BaseCohortScope.CountIn(slot); item < ItemCatalog.ItemCountIn(slot); item++)
+                {
+                    sink.Clear();
+                    AccessoryShapeBuilder.Append(sink, slot, item, rig);
+                    Assert.Greater(sink.Count, 0, $"{slot} {item}번이 도형을 하나도 안 만듭니다.");
+                    for (int k = 0; k < sink.Count; k++)
+                    {
+                        Assert.IsTrue(sink[k].IsHandoff,
+                            $"{slot} {item}번 '{sink[k].Name}'이 v1 조각입니다 — 그렇다면 위 세 게이트의 자를 " +
+                            "<b>그대로 댈 수 있고</b>, 이 등재는 더 이상 유효하지 않습니다. " +
+                            "게이트 셋의 좁히기를 걷고 이 검사를 지우십시오.");
+                    }
+                }
+            }
+
+            Assert.Ignore("★ 등재된 갭 — 팩 코호트 " + packItems + "종(" + string.Join(" · ", uncovered) + " 등)이 " +
+                "조형 게이트 셋 밖에 있다: (1) 보조색 순 색면(AccessoryHatBandAndBellTests) · " +
+                "(2) H-2 착용선 대역(AccessoryHatWearLineBandTests) · (3) EYES 불투명 바이저(EyesVisorOpacityTests). " +
+                "세 게이트의 숫자는 출하 6종의 R25 재저작에서 나온 값이라 팩에 그대로 댈 수 없다 — " +
+                "«팩 조형이 지킬 대역»은 design-equipment 판정 사항이다. " +
+                "팩이 v1 조각으로 돌아오거나 팩 코호트가 비면 이 등재는 스스로 만료된다.");
         }
 
         // ====================================================================

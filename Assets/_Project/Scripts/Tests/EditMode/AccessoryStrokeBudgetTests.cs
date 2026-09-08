@@ -559,8 +559,8 @@ namespace StickMate.Tests.EditMode
         public void 커버선_면제는_왕관_하나뿐이고_그_개수가_고정돼_있다()
         {
             AccessoryShapeBuilder.Rig rig = Rig();
-            int count = ItemCatalog.ItemCountIn(EquipmentSlot.Head);
-            Assert.Greater(count, 1, "HEAD 카테고리가 비었거나 1종뿐이라 면제 개수 검사가 공허합니다.");
+            int count = BaseCohortScope.CountIn(EquipmentSlot.Head);
+            Assert.Greater(count, 1, "HEAD 기본 코호트가 비었거나 1종뿐이라 면제 개수 검사가 공허합니다.");
 
             var exempt = new List<int>();
             for (int i = 0; i < count; i++)
@@ -568,10 +568,34 @@ namespace StickMate.Tests.EditMode
                 if (float.IsPositiveInfinity(AccessoryShapeBuilder.HatCoverLocalY(i, rig))) exempt.Add(i);
             }
 
+            // ★★ 2026-09-08 — 모집단이 <b>기본 코호트</b>다. 팩 모자는 커버선이 코드 표에 없어
+            //   <c>CoverOutsideCodeTable</c>로 가고, 거기서 «가리지 않는다고 선언했으면 +∞이고 결함이 아니다»가
+            //   정본 판정이다(AccessoryShapeBuilder.CoverOutsideCodeTable 문단, 2026-09-07 확정).
+            //   즉 팩의 +∞는 <b>왕관과 같은 사실</b>이지 「승인 안 된 두 번째 면제」가 아니다.
+            //   전량으로 세면 첫 유료 팩이 실린 날 «면제 2개(번호 3, 6)»라는 거짓 빨강이 난다(실측 2026-09-08).
+            //   ★ 대신 팩 쪽은 <b>선언과 값이 같은가</b>로 아래에서 다시 잰다 — 빼기만 하지 않는다.
             Assert.AreEqual(1, exempt.Count,
-                $"커버선이 +∞인 HEAD 아이템이 {exempt.Count}개입니다(번호: " +
+                $"커버선이 +∞인 <b>기본 코호트</b> HEAD 아이템이 {exempt.Count}개입니다(번호: " +
                 $"{string.Join(", ", exempt)}). 정확히 1개(왕관)여야 합니다 — " +
                 "면제가 늘면 그만큼 감쌈 검사가 조용히 꺼지고, 그 자리는 러너에서 초록으로 보입니다.");
+
+            // 팩 모자: +∞라면 반드시 «가리지 않는다»고 <b>선언</b>한 것이어야 한다.
+            //   선언이 「가린다」인데 커버선이 없으면 그건 진짜 결함이고 ShapeCoverageGuard 가 신고한다.
+            int packHats = 0;
+            for (int i = count; i < ItemCatalog.ItemCountIn(EquipmentSlot.Head); i++)
+            {
+                packHats++;
+                bool declaresHides = ItemCatalog.HidesHair(EquipmentSlot.Head, i);
+                bool covers = !float.IsPositiveInfinity(AccessoryShapeBuilder.HatCoverLocalY(i, rig));
+                Assert.IsFalse(declaresHides && !covers,
+                    $"팩 모자 {i}번({ItemCatalog.Item(EquipmentSlot.Head, i).DisplayName})이 " +
+                    "「머리카락을 가린다」고 선언했는데 커버선이 없습니다 — 어디까지 가리는지 아무도 모릅니다. " +
+                    "hidesHair 를 0으로 내리거나(왕관과 같은 사실) 커버선을 실을 통로를 먼저 여십시오.");
+            }
+            if (packHats > 0)
+            {
+                Debug.Log($"[획예산] 팩 모자 {packHats}종 — 커버선 면제는 «선언»이라 왕관 개수 대장에 들어가지 않는다.");
+            }
             Assert.AreEqual(AccessoryShapeBuilder.HeadCrown, exempt[0],
                 $"면제받은 HEAD 아이템이 {exempt[0]}번인데 왕관은 " +
                 $"{AccessoryShapeBuilder.HeadCrown}번입니다 — 면제가 다른 아이템으로 옮겨갔습니다.");

@@ -124,11 +124,14 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 교정_부스탯_방향이_네_스탯에_고르게_배분됐다()
         {
+            // ★ 2026-09-08 — <c>SubStatTableCount</c>는 <b>기본 24종</b>의 표 크기다. 팩 아이템의 부스탯은
+            //   표가 아니라 <c>declaredSubStat</c>(에셋 선언)에서 오므로(ItemCatalog.ResolveSubStat),
+            //   전량을 세면 «표 크기 24 vs 읽힌 28»로 갈린다 — 표가 틀린 것이 아니라 모집단이 틀린 것이다.
             var count = new int[EquipmentStatRules.StatCount];
             int total = 0;
             foreach (EquipmentSlot slot in StatSlots)
             {
-                for (int i = 0; i < ItemCatalog.ItemCountIn(slot); i++)
+                foreach (int i in BaseCohortScope.ItemsIn(slot))
                 {
                     int sub = ItemCatalog.SubStat(slot, i);
                     if (sub == EquipmentStatRules.NoStat) continue;
@@ -506,7 +509,8 @@ namespace StickMate.Tests.EditMode
         public void 테마는_스탯_24종에_전부_배정됐고_외형_18종은_무소속이다()
         {
             var real = new HashSet<string>(ItemCatalog.AllThemes());
-            int statItems = 0, appearanceItems = 0;
+            int statItems = 0, appearanceItems = 0, packItems = 0;
+            var packThemesInsideBase = new List<string>();
 
             for (int s = 0; s < EquipmentModel.SlotCount; s++)
             {
@@ -515,6 +519,23 @@ namespace StickMate.Tests.EditMode
                 {
                     ItemCatalogEntry entry = ItemCatalog.Item(slot, i);
                     if (entry == null) continue;
+
+                    // ★★ 2026-09-08 — 팩 코호트는 <b>반대 방향</b>으로 잰다. 「실재 테마 6개」는
+                    //   기본 42종의 세트 축이고, X-3(신규 테마는 기본 코호트에 안 들어간다)이 그 6개를
+                    //   닫아 두었다. 팩이 <c>packcyber</c> 처럼 <b>새 키</b>를 선언하는 것이 정상이고,
+                    //   전량을 이 목록으로 재면 «실재 테마에 없다»는 거짓 빨강이 난다(실측 2026-09-08).
+                    //   그래서 팩에는 다른 두 가지를 요구한다: (가) 무소속이 아니다(스탯 슬롯이면),
+                    //   (나) <b>기본 6개 안으로 들어오지 않는다</b> — 그게 X-3 그 자체다.
+                    if (!BaseCohortScope.IsBase(entry))
+                    {
+                        packItems++;
+                        if (!EquipmentStatRules.IsStatSlot(slot)) continue;
+                        Assert.AreNotEqual(ItemCatalog.ThemeUnassigned, entry.Theme,
+                            $"{entry.Id}(팩 · 스탯 슬롯)의 테마가 무소속입니다 — 그 팩은 4부위를 다 걸쳐도 " +
+                            "세트가 영원히 성립하지 않습니다(현금 상품이 무료 상품보다 약해집니다).");
+                        if (real.Contains(entry.Theme)) packThemesInsideBase.Add($"{entry.Id} -> '{entry.Theme}'");
+                        continue;
+                    }
 
                     if (EquipmentStatRules.IsStatSlot(slot))
                     {
@@ -542,8 +563,16 @@ namespace StickMate.Tests.EditMode
             Assert.AreEqual(ItemCatalog.ThemeTableCount, statItems,
                 "스탯 슬롯 아이템 수가 테마 표 크기와 다릅니다 — 표에 남거나 빠진 행이 있습니다.");
             Assert.Greater(appearanceItems, 0, "외형 아이템을 하나도 못 셌습니다 — 위 부재 단언이 공허합니다.");
-            Assert.AreEqual(ItemCatalog.EquipmentCount, statItems + appearanceItems,
-                "센 개수가 카탈로그 장비 수와 다릅니다 — 자리에 구멍이 있습니다.");
+
+            Assert.IsEmpty(packThemesInsideBase,
+                "팩 아이템이 <b>기본 세트의 테마</b>를 선언했습니다: " + string.Join(" · ", packThemesInsideBase) +
+                ". X-3 위반입니다 — 무료 세트에 유료 아이템이 섞이면 「기본 42종만으로 완성」이 깨지고, " +
+                "산 사람과 안 산 사람이 같은 세트를 두고 다른 조합을 갖게 됩니다.");
+
+            Assert.AreEqual(BaseCohortScope.EquipmentCount, statItems + appearanceItems,
+                "센 기본 코호트 수가 헬퍼가 아는 수와 다릅니다 — 자리에 구멍이 있습니다.");
+            Assert.AreEqual(BaseCohortScope.PackEquipmentCount, packItems,
+                "센 팩 코호트 수가 헬퍼가 아는 수와 다릅니다.");
 
             // 무소속은 실재 테마가 아니다(DS-4′-b 「없음 ≠ 0」).
             Assert.IsFalse(real.Contains(ItemCatalog.ThemeUnassigned),
@@ -752,14 +781,18 @@ namespace StickMate.Tests.EditMode
             // 자리 번호마다 4슬롯의 테마가 갈리는가. ★ 균일한 자리가 <b>정확히 둘</b>이어야 하고,
             //   그 둘은 E2(1일차 무료)와 E3(전설)가 그렇게 요구한 자리다 — 그 밖에 균일한 자리가
             //   생기면 그것이 「idx 파생」의 얼굴이다.
+            // ★ 2026-09-08 — 자리 축도 <b>기본 코호트</b>로 좁힌다. 팩은 4슬롯에 <b>같은 테마 키</b>를
+            //   선언하는 것이 정상이라(세트가 성립해야 상품이 된다) 그 자리는 언제나 「균일」이다.
+            //   전량으로 세면 균일한 자리가 2 -> 3이 되어 «idx 파생 의심»이라는 거짓 빨강이 난다
+            //   (실측 2026-09-08). 팩의 균일함은 결함이 아니라 <b>팩의 정의</b>다.
             var uniformThemes = new HashSet<string>();
             int splitByIndex = 0, uniform = 0;
-            for (int i = 0; i < ItemCatalog.ItemCountIn(StatSlots[0]); i++)
+            for (int i = 0; i < BaseCohortScope.CountIn(StatSlots[0]); i++)
             {
                 var atIndex = new HashSet<string>();
                 foreach (EquipmentSlot slot in StatSlots)
                 {
-                    if (i >= ItemCatalog.ItemCountIn(slot)) continue;
+                    if (i >= BaseCohortScope.CountIn(slot)) continue;
                     ItemCatalogEntry entry = ItemCatalog.Item(slot, i);
                     if (entry != null) atIndex.Add(entry.Theme);
                 }
@@ -781,7 +814,7 @@ namespace StickMate.Tests.EditMode
             var expectedUniform = new HashSet<string> { ItemCatalog.Item(StatSlots[0], 0).Theme };
             foreach (EquipmentSlot slot in StatSlots)
             {
-                for (int i = 0; i < ItemCatalog.ItemCountIn(slot); i++)
+                foreach (int i in BaseCohortScope.ItemsIn(slot))
                 {
                     if (ItemCatalog.Rarity(slot, i) != MaxRarity()) continue;
                     expectedUniform.Add(ItemCatalog.Item(slot, i).Theme);
@@ -797,7 +830,7 @@ namespace StickMate.Tests.EditMode
             var byRarity = new Dictionary<ItemRarity, HashSet<string>>();
             foreach (EquipmentSlot slot in StatSlots)
             {
-                for (int i = 0; i < ItemCatalog.ItemCountIn(slot); i++)
+                foreach (int i in BaseCohortScope.ItemsIn(slot))
                 {
                     ItemCatalogEntry entry = ItemCatalog.Item(slot, i);
                     if (entry == null) continue;
@@ -1002,11 +1035,15 @@ namespace StickMate.Tests.EditMode
             foreach (EquipmentSlot slot in StatSlots)
             {
                 int main = EquipmentStatRules.MainStatOf(slot);
-                int n = ItemCatalog.ItemCountIn(slot);
-                Assert.Greater(n, 0, $"{slot}에 아이템이 없습니다 — 아래 단언이 공허합니다.");
+                // ★ 2026-09-08 — C1(「6종이 나머지 3스탯을 2번씩」)은 <b>기본 코호트의 표</b>가 지키는 성질이다.
+                //   팩 아이템의 부스탯은 팩이 스스로 선언하고(코호트 안에서만 뜻이 있다), 전량을 세면
+                //   HEAD 가 매력을 3번 가리키는 «C1 위반»으로 잡힌다 — 위반이 아니라 다른 모집단이다.
+                var slotItems = new List<int>(BaseCohortScope.ItemsIn(slot));
+                int n = slotItems.Count;
+                Assert.Greater(n, 0, $"{slot}에 기본 코호트 아이템이 없습니다 — 아래 단언이 공허합니다.");
 
                 var perStat = new int[EquipmentStatRules.StatCount];
-                for (int i = 0; i < n; i++)
+                foreach (int i in slotItems)
                 {
                     int sub = ItemCatalog.SubStat(slot, i);
                     Assert.AreNotEqual(EquipmentStatRules.NoStat, sub,
@@ -1276,13 +1313,20 @@ namespace StickMate.Tests.EditMode
         private static void ForEachBaseLoadout(
             Action<StatSlotLoadout, StatSlotLoadout, StatSlotLoadout, StatSlotLoadout> body)
         {
+            // ★ 2026-09-08 — 이름이 <c>Base</c>Loadout 인데 실제로는 카탈로그 <b>전량</b>을 돌고 있었다.
+            //   첫 유료 팩이 4슬롯에 실리자 조합이 6^4 -> 7^4 로 늘고 「기본 42종만으로 완성되는 세트」가
+            //   7개가 됐다(실측 2026-09-08: 기대 6 / 실제 7 — 늘어난 하나가 'packcyber'다).
+            //   여기서 팩을 넣으면 §21-2-e 검산표(35/33/32/34)·E1·I-1 이 전부 «현금으로 산 물건»을
+            //   기본 카탈로그의 성질로 세게 된다. 팩이 걸린 로드아웃의 성질은
+            //   PackThemeAndHatCoverTests(선언 통로)와 EquipmentStatRules 쪽이 따로 잰다.
             var candidates = new StatSlotLoadout[StatSlots.Length][];
             for (int s = 0; s < StatSlots.Length; s++)
             {
                 EquipmentSlot slot = StatSlots[s];
-                int n = ItemCatalog.ItemCountIn(slot);
-                candidates[s] = new StatSlotLoadout[n];
-                for (int i = 0; i < n; i++) candidates[s][i] = FromCatalog(slot, i);
+                var items = new List<int>(BaseCohortScope.ItemsIn(slot));
+                Assert.Greater(items.Count, 0, $"{slot}에 기본 코호트 아이템이 없습니다 — 조합이 0개가 됩니다.");
+                candidates[s] = new StatSlotLoadout[items.Count];
+                for (int i = 0; i < items.Count; i++) candidates[s][i] = FromCatalog(slot, items[i]);
             }
 
             foreach (StatSlotLoadout h in candidates[0])

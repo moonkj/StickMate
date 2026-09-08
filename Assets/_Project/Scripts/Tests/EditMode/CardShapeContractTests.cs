@@ -433,13 +433,20 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 인계본에_없는_열네_종은_v1_규칙_그대로다()
         {
+            // ★★ 2026-09-08 — 모집단은 <b>기본 코호트</b>다. 이 검사는 세 갈래 중 두 갈래만 안다:
+            //   «골든에 있는 인계본 16종»과 «나머지 v1 14종». 첫 유료 팩이 <b>세 번째 갈래</b>를 만들었다 —
+            //   골든에는 없지만 계약 v2 조각을 갖는 <b>에셋 조형</b>이다(그게 이 기능의 목적이다).
+            //   전량을 돌면 그 셋째가 「v1인데 인계본 조각이 섞였다」로 잡힌다(실측 2026-09-08: Head 6 'HoodShell').
+            //   ★ 셋째 갈래는 아래에서 <b>따로</b> 잰다 — 빼기만 하지 않는다.
             var handoff = new HashSet<(EquipmentSlot, int)>(ByItem(ReadGolden()).Keys);
             int v1Items = 0;
+            var packItems = new List<(EquipmentSlot Slot, int Item)>();
             foreach (EquipmentSlot slot in BodySlots)
             {
                 for (int item = 0; item < ItemCatalog.ItemCountIn(slot); item++)
                 {
                     if (handoff.Contains((slot, item))) continue;
+                    if (!BaseCohortScope.IsBase(slot, item)) { packItems.Add((slot, item)); continue; }
                     v1Items++;
                     Assert.IsFalse(AccessoryShapeBuilder.IsHandoffCode(slot, item), $"{slot} {item}: 골든에 없는데 IsHandoffCode 가 참입니다.");
                     List<AccessoryShapeBuilder.Shape> body = Build(slot, item, AccessorySurface.Body);
@@ -455,6 +462,44 @@ namespace StickMate.Tests.EditMode
             }
             // 30종(몸 자리 5 × 6) − 인계본 16종 = 인계본에 없는 장비 8종 + 머리 6종.
             Assert.AreEqual(14, v1Items, "v1 아이템 수가 14(인계본 없는 장비 8종 + 머리 6종)와 다릅니다.");
+
+            // ★ 셋째 갈래 — 팩 코호트는 «골든에 없고 계약 v2»다. 두 성질을 <b>둘 다</b> 요구한다:
+            //   골든에 있으면 그건 인계본 16종의 자리를 팩이 빼앗은 것이고,
+            //   v1 조각이면 코드 표가 그리고 있다는 뜻이라 «.cs 0줄» 약속이 그 자리에서 끊긴 것이다.
+            foreach ((EquipmentSlot slot, int item) in packItems)
+            {
+                Assert.IsFalse(AccessoryShapeBuilder.IsHandoffCode(slot, item),
+                    $"{slot} {item}(팩): 코드 표가 이 자리를 그립니다 — 팩은 에셋 조형이어야 합니다.");
+                List<AccessoryShapeBuilder.Shape> body = Build(slot, item, AccessorySurface.Body);
+                Assert.Greater(body.Count, 0, $"{slot} {item}(팩): 몸 조각이 0개입니다.");
+                for (int i = 0; i < body.Count; i++)
+                {
+                    Assert.IsTrue(body[i].IsHandoff,
+                        $"{slot} {item} '{body[i].Name}'(팩): 계약 v2 조각이 아닙니다 — " +
+                        "팩 조형은 strokeInR 을 실어야 하고, 그러지 않으면 v1 규칙(1.5획/1획)의 대상이 됩니다.");
+                }
+            }
+            Assert.AreEqual(BaseCohortScope.PackEquipmentCount - PackItemsOutsideBodySlots(), packItems.Count,
+                $"몸 자리 팩 아이템을 {packItems.Count}종만 봤습니다 — 열거가 샙니다.");
+            Debug.Log($"[카드계약] 인계본 {handoff.Count}종 · v1 {v1Items}종 · 팩(에셋 조형) {packItems.Count}종.");
+        }
+
+        /// <summary>몸 자리(<see cref="BodySlots"/>)가 아닌 곳의 팩 아이템 수. 위 대조식에서 빼 준다 —
+        /// 숫자를 적지 않고 카탈로그에서 센다.</summary>
+        private static int PackItemsOutsideBodySlots()
+        {
+            int n = 0;
+            for (int s = 0; s < ItemCatalog.SlotCount; s++)
+            {
+                var slot = (EquipmentSlot)s;
+                bool isBody = false;
+                foreach (EquipmentSlot b in BodySlots)
+                {
+                    if (b == slot) isBody = true;
+                }
+                if (!isBody) n += BaseCohortScope.PackCountIn(slot);
+            }
+            return n;
         }
 
         // ============================================================================

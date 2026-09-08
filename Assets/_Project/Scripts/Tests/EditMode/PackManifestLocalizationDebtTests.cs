@@ -44,6 +44,41 @@ namespace StickMate.Tests.EditMode
         /// </summary>
         private const int KoreanItemAssetBaseline = 42;
 
+        /// <summary>
+        /// ★★ <b>2026-09-08 리더 판정 3 — 팩 4종 몫의 백필 여유(임시 조치, 빚으로 기록).</b>
+        ///
+        /// <para><b>지금 무엇이 사실인가</b>: 첫 유료 팩 <c>pack.cyber</c>의 아이템 4종
+        /// (<c>Patched Hood</c> · <c>Slit Visor</c> · <c>Cable Collar</c> · <c>Tarp Cape</c>)이
+        /// <b>영문 이름·설명으로 저작돼 있다</b>. 그래서 위 래칫(한글 원문을 담은 에셋 수)은
+        /// <b>오늘도 42다</b> — 팩은 이 대장에 한 건도 보태지 않았다.</para>
+        ///
+        /// <para>★ <b>그것이 좋은 소식이 아니다.</b> 이 앱의 UI는 한국어이고, 보관함·상점 카드에
+        /// 「덧댄후드」가 아니라 <b>「Patched Hood」가 그대로 뜬다</b>. 즉 팩 4종은
+        /// <b>번역 부채를 안 진 것이 아니라, 부채 대장에 안 잡히는 형태로 결함을 갖고 있다</b> —
+        /// 이 파일이 재는 축(한글 원문 ≠ 로컬라이즈 키)과 <b>직교하는</b> 두 번째 결함이다.
+        /// <c>design/art/PACK_THEME_SPEC.md</c> §5-2는 이 4종의 한국어 이름을 이미 정해 두었다
+        /// (케이블목띠 · 한줄바이저 · 덧댄후드 · 방수포망토).</para>
+        ///
+        /// <para><b>그래서 무엇을 하는가</b>: 그 결함을 고치는 길은 둘이고 <b>둘 다 이 라운드 밖</b>이다.
+        /// (가) 한국어 원문을 그대로 넣는다 → 화면은 낫고 <b>이 래칫이 42 → 46으로 오른다</b>.
+        /// (나) 로컬라이즈 런타임을 먼저 만든다 → 대장은 그대로지만 그 런타임이 이 프로젝트에 <b>아직 없다</b>.
+        /// 리더가 (가)를 <b>막지 않기로</b> 판정했으므로 여유 4칸을 여기 <b>이름으로</b> 둔다.
+        /// 숫자 46을 위 상수에 합쳐 적지 <b>않는</b> 이유: 합치면 «출하 42종의 빚»과 «팩 4종의 임시 여유»가
+        /// 한 숫자에 뭉쳐 다음 사람이 무엇이 무엇인지 못 가린다.</para>
+        ///
+        /// <para>★ 여유가 <b>기본 42종 쪽으로 새지 않게</b>
+        /// <see cref="빚이_기본_코호트와_팩_코호트로_갈려서_보인다"/>가 축을 갈라 다시 잰다 —
+        /// 그게 없으면 이 +4는 «기본 아이템 4개를 더 한글로 적어도 되는 허가»가 된다.</para>
+        ///
+        /// <para><b>갚는 날 할 일</b>: 팩 4종을 한국어로 백필하면 이 값은 그대로 두고
+        /// <see cref="KoreanItemAssetBaseline"/>을 46으로 올린 뒤 이 상수를 0으로 내린다(또는 지운다).
+        /// 로컬라이즈 런타임이 생겨 키로 바뀌면 둘 다 내려간다.</para>
+        /// </summary>
+        private const int PackKoreanNameBackfillAllowance = 4;
+
+        /// <summary>래칫 상한 = 출하분 빚 + 팩 백필 여유. <b>파생</b>이라 두 항 중 하나만 움직여도 따라온다.</summary>
+        private const int KoreanItemAssetCeiling = KoreanItemAssetBaseline + PackKoreanNameBackfillAllowance;
+
         /// <summary>스캔이 공허해지는 것을 막는 바닥값. 아이템 에셋이 이보다 적게 잡히면
         /// 그건 "부채가 줄었다"가 아니라 <b>"스캐너가 눈이 멀었다"</b>이다.</summary>
         private const int ItemAssetFloor = 40;
@@ -121,15 +156,98 @@ namespace StickMate.Tests.EditMode
                 if (HasHangul(DecodeEscapes(File.ReadAllText(path)))) offenders.Add(Path.GetFileName(path));
             }
 
-            Assert.LessOrEqual(offenders.Count, KoreanItemAssetBaseline,
+            Assert.LessOrEqual(offenders.Count, KoreanItemAssetCeiling,
                 $"{LogPrefix} 한글 원문을 담은 아이템 에셋이 {offenders.Count}개입니다" +
-                $"(2026-09-03 실측 대장 {KoreanItemAssetBaseline}개).\n" +
+                $"(상한 {KoreanItemAssetCeiling} = 출하 대장 {KoreanItemAssetBaseline}" +
+                $" + 팩 백필 여유 {PackKoreanNameBackfillAllowance}).\n" +
                 "★ 팩 아이템도 AccessoryDefSO 입니다 — 팩 하나가 6종이면 " +
                 "(이름+설명) 12건이 <b>매 팩마다</b> 늘어납니다.\n" +
                 "새로 들어온 파일:\n  · " + string.Join("\n  · ", offenders));
 
-            Debug.Log($"{LogPrefix} 원문 담은 아이템 에셋 {offenders.Count}/{KoreanItemAssetBaseline} " +
-                      "(줄어드는 방향은 막지 않는다 — 갚으면 대장을 내린다).");
+            Debug.Log($"{LogPrefix} 원문 담은 아이템 에셋 {offenders.Count}/{KoreanItemAssetCeiling} " +
+                      $"(출하 {KoreanItemAssetBaseline} + 팩 여유 {PackKoreanNameBackfillAllowance}) " +
+                      "— 줄어드는 방향은 막지 않는다(갚으면 대장을 내린다).");
+        }
+
+        /// <summary>
+        /// ★★ <b>여유가 새지 않게 축을 가른다</b>(2026-09-08, 리더 판정 3의 짝).
+        ///
+        /// <para>위 래칫이 <see cref="KoreanItemAssetCeiling"/>(46)로 올라간 순간,
+        /// 그 4칸은 <b>누구의 것인지 적혀 있지 않은 여유</b>가 된다 — 그대로 두면
+        /// 「기본 42종에 한글 원문을 4개 더 넣어도 통과」가 되고, 그건 판정 3이 준 허가가 아니다.
+        /// 그래서 <b>기본 코호트만</b> 따로 세어 <see cref="KoreanItemAssetBaseline"/>에 <b>여전히 못 박는다</b>.</para>
+        ///
+        /// <para>★ 코호트는 <b>런타임 카탈로그</b>(<see cref="BaseCohortScope"/>)가 아니라 <b>파일 텍스트</b>에서
+        /// 읽는다. 이 파일의 다른 검사들이 전부 «디스크의 바이트»를 자로 쓰고 있고, 두 자를 섞으면
+        /// <b>카탈로그가 안 실린 상태</b>에서 파일은 46개인데 코호트는 0개로 읽히는 어긋남이 생긴다.</para>
+        ///
+        /// <para><b>오늘의 실측이 이 검사의 본문</b>: 팩 4종은 한글을 <b>한 글자도</b> 담고 있지 않다 —
+        /// 영문 이름(<c>Patched Hood</c> 등)이 그대로 저작돼 있기 때문이다. 그 수를 로그에 남긴다.
+        /// 백필이 끝나 4가 되면 이 검사는 그대로 초록이고(여유 안), 5가 되는 순간 빨개진다.</para>
+        /// </summary>
+        [Test]
+        public void 빚이_기본_코호트와_팩_코호트로_갈려서_보인다()
+        {
+            string[] items = AssetsReferencingScript(nameof(AccessoryDefSO));
+            Assert.GreaterOrEqual(items.Length, ItemAssetFloor,
+                $"{LogPrefix} 아이템 에셋을 {items.Length}개밖에 못 찾았습니다 — 아래 수는 전부 무효입니다.");
+
+            var baseOffenders = new List<string>();
+            var packOffenders = new List<string>();
+            int packFiles = 0;
+
+            foreach (string path in items)
+            {
+                string text = File.ReadAllText(path);
+                bool isPack = CohortIdOf(text) != ItemCatalog.BaseCohortId;
+                if (isPack) packFiles++;
+                if (!HasHangul(DecodeEscapes(text))) continue;
+                (isPack ? packOffenders : baseOffenders).Add(Path.GetFileName(path));
+            }
+
+            // (가) 출하분은 여유를 <b>한 칸도</b> 못 쓴다. 이 단언이 판정 3의 +4를 팩 축에 가둔다.
+            Assert.LessOrEqual(baseOffenders.Count, KoreanItemAssetBaseline,
+                $"{LogPrefix} <b>기본 코호트</b>에서 한글 원문을 담은 에셋이 {baseOffenders.Count}개입니다" +
+                $"(대장 {KoreanItemAssetBaseline}개). 팩 백필 여유 {PackKoreanNameBackfillAllowance}칸은 " +
+                "<b>팩 아이템 몫</b>이지 출하 42종이 빚을 더 질 허가가 아닙니다.\n  · " +
+                string.Join("\n  · ", baseOffenders));
+
+            // (나) 팩 쪽도 여유를 넘지 못한다 — 다음 팩이 들어오면 그때 리더가 다시 판정한다.
+            Assert.LessOrEqual(packOffenders.Count, PackKoreanNameBackfillAllowance,
+                $"{LogPrefix} <b>팩 코호트</b>에서 한글 원문을 담은 에셋이 {packOffenders.Count}개입니다" +
+                $"(여유 {PackKoreanNameBackfillAllowance}칸). 팩이 하나 더 들어왔다면 이 여유를 늘리는 것은 " +
+                "리더 판정 사항입니다 — 늘리기 전에 로컬라이즈 런타임 유무를 먼저 답하십시오.\n  · " +
+                string.Join("\n  · ", packOffenders));
+
+            // (다) ★ 분류기 자체를 <b>다른 자</b>로 다시 잰다 — 파일 텍스트에서 읽은 팩 수와
+            //     런타임 카탈로그가 아는 팩 수가 같은가. 갈라지면 위 두 단언이 «엉뚱한 축»을 센 것이다
+            //     (예: cohortId 필드 이름이 바뀌면 이 파서는 조용히 «전부 기본»이라고 답한다 —
+            //      그 상태에서 (가)는 46건을 42로 재게 되고 빨간불이 «출하분 폭증»으로 오독된다).
+            Assert.AreEqual(BaseCohortScope.PackEquipmentCount, packFiles,
+                $"{LogPrefix} 파일 텍스트로 센 팩 에셋 {packFiles}개와 카탈로그가 아는 팩 아이템 " +
+                $"{BaseCohortScope.PackEquipmentCount}종이 다릅니다 — 두 자 중 하나가 코호트를 못 읽고 있습니다.");
+            Assert.Greater(baseOffenders.Count, 0,
+                $"{LogPrefix} 기본 코호트에서 한글을 한 건도 못 찾았습니다 — 스캐너가 눈이 멀었습니다" +
+                "(출하 42종은 전부 한글 원문을 담고 있습니다).");
+
+            Debug.Log($"{LogPrefix} 파일 {items.Length}개 = 기본 {items.Length - packFiles} + 팩 {packFiles} · " +
+                      $"한글 원문 기본 {baseOffenders.Count}/{KoreanItemAssetBaseline} · " +
+                      $"팩 {packOffenders.Count}/{PackKoreanNameBackfillAllowance}. " +
+                      (packFiles > 0 && packOffenders.Count == 0
+                          ? "★ 팩 0건은 «깨끗»이 아니라 «영문 이름 그대로»다 — 한국어 UI에 영문이 뜬다(백필 대기)."
+                          : "팩 파일이 없거나 이미 백필됐다."));
+        }
+
+        /// <summary>애셋 YAML 텍스트에서 <c>cohortId</c> 를 읽는다. 없으면 기본 코호트로 본다
+        /// (필드가 추가되기 전 형식이거나 직렬화가 생략된 경우 — 그때는 실제로 기본값이다).</summary>
+        private static int CohortIdOf(string yaml)
+        {
+            const string key = "\n  cohortId: ";
+            int at = yaml.IndexOf(key, StringComparison.Ordinal);
+            if (at < 0) return ItemCatalog.BaseCohortId;
+            int from = at + key.Length, to = from;
+            while (to < yaml.Length && yaml[to] != '\n' && yaml[to] != '\r') to++;
+            return int.TryParse(yaml.Substring(from, to - from).Trim(), out int v) ? v : ItemCatalog.BaseCohortId;
         }
 
         /// <summary>

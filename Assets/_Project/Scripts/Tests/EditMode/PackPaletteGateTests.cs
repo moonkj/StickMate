@@ -78,7 +78,11 @@ namespace StickMate.Tests.EditMode
         private static readonly (string Name, float Hue, int Primary, int Secondary)[] FrozenPacks =
         {
             ("오피스 워커", 222f, 0x456ECC, 0x6080CC),
-            ("사이버 아포칼립스", 172f, 0x009682, 0x518C84),
+            // ★ 2026-09-08 보조색 정정 #518C84 -> #518D85 (리더 판정 2, design/art/PACK_THEME_SPEC.md §5-2 각주).
+            //   옛 값은 V = 140/255 = 0.5490 으로 WornColor 의 명도 하한(0.55) <b>아래</b>라 몸에서 끌어올려졌고,
+            //   그 어긋남이 SameByte 허용(0.004 = 1/255) 안에 숨어 아래 「WornColor 항등」 검사를 통과했다.
+            //   새 값은 V = 141/255 = 0.5529 로 손대지 않는다. 색상각은 172.00°로 동일하고 옛 값과 ΔE 0.44.
+            ("사이버 아포칼립스", 172f, 0x009682, 0x518D85),
             ("네온 낙서", 312f, 0xCC1BA9, 0x9C5A8E),
             ("스포츠", 8f, 0xCC3F29, 0x9E655C),   // 표시명 정본: PACK_THEME_SPEC.md §1-1(「스포츠 이펙트」 드리프트 정정, R-3′)
             ("컬러 잉크", 268f, 0x9768CC, 0x8563AB),
@@ -413,6 +417,62 @@ namespace StickMate.Tests.EditMode
                 string.Join("\n", failures));
         }
 
+        /// <summary>
+        /// ★★ <b>좁힌 자리를 메우는 존재 단언</b>(2026-09-08, 리더 판정 1의 짝) —
+        /// 트리에 실린 <b>팩 코호트 아이템의 조각 색</b>이 <see cref="FrozenPacks"/> 동결 대장의 색과
+        /// <b>바이트 단위로 같다</b>.
+        ///
+        /// <para>왜 필요한가: 위 <see cref="CatalogColors"/>가 팩 아이템을 모집단에서 뺐다. 빼기만 하면
+        /// <b>팩 에셋이 대장에 없는 색을 몰래 쓰기 시작해도 아무도 모른다</b> — 이 저장소가 반복해 겪은
+        /// «부재 단언이 조용히 초록이 되는» 형태다. 그래서 뺀 것을 <b>다른 방향</b>으로 다시 잠근다:
+        /// 게이트가 팩 «색»을 대장에서 읽는 것이 정당한 이유는 <b>에셋이 그 색을 쓰기 때문</b>이고,
+        /// 그 사실을 여기서 매 실행 확인한다.</para>
+        ///
+        /// <para>팩이 0종이면 <b>공허하게 참</b>이다 — 그 상태 자체를 로그에 남긴다(숨기지 않는다).</para>
+        /// </summary>
+        [Test]
+        public void 팩_코호트_에셋의_색이_동결_대장_안에_있다()
+        {
+            var ledger = new List<(string Name, Color Color)>(PackColors());
+            var failures = new List<string>();
+            int packEntries = 0, judgedPieces = 0;
+
+            for (int i = 0; i < ItemCatalog.Count; i++)
+            {
+                ItemCatalogEntry e = ItemCatalog.At(i);
+                if (e == null || BaseCohortScope.IsBase(e) || e.Icon == null) continue;
+                packEntries++;
+
+                for (int p = 0; p < e.Icon.Length; p++)
+                {
+                    judgedPieces++;
+                    Color c = e.Icon[p].Color;
+                    bool known = false;
+                    foreach ((string _, Color frozen) in ledger)
+                    {
+                        if (!SameByte(frozen, c)) continue;
+                        known = true;
+                        break;
+                    }
+                    if (known) continue;
+                    failures.Add($"  {e.Id} 조각 {p} {Show(c)}");
+                }
+            }
+
+            Assert.IsEmpty(failures,
+                $"{LogPrefix} 팩 코호트 에셋이 동결 대장에 없는 색을 씁니다({failures.Count}건).\n" +
+                string.Join("\n", failures) + "\n" +
+                "★ 팩 색은 <b>동결값</b>으로 출하됩니다(PALETTE_SPEC §14-3). 에셋이 대장 밖으로 나가면 " +
+                "이 파일이 재는 12색은 <b>실제로 화면에 뜨는 색이 아니게</b> 되고, 그러면 위 게이트 전부가 " +
+                "존재하지 않는 색을 지키게 됩니다.");
+
+            Assert.AreEqual(BaseCohortScope.PackEquipmentCount, packEntries,
+                $"{LogPrefix} 팩 코호트 아이템을 {packEntries}종만 돌았습니다 — 열거가 샙니다.");
+            Debug.Log(packEntries == 0
+                ? $"{LogPrefix} 팩 코호트 아이템 0종 — 이 단언은 오늘 공허하게 참이다(팩이 실리는 날 뜻을 갖는다)."
+                : $"{LogPrefix} 팩 코호트 {packEntries}종 · 조각색 {judgedPieces}개가 전부 동결 대장 안에 있다.");
+        }
+
         // ============================================================================
         // 4. ★ 양성 대조 — 처방 C 이전의 <b>실제</b> 충돌값으로 판정을 시험한다
         // ============================================================================
@@ -571,17 +631,34 @@ namespace StickMate.Tests.EditMode
 
         private static List<(string Name, Color Color)> _catalogColors;
 
-        /// <summary>카탈로그가 실제로 쓰는 <b>모든</b> 조각 색(중복 제거). 문서를 베끼지 않고
-        /// <see cref="ItemCatalog"/>를 순회한다 — 애셋이 바뀌면 이 목록이 따라 바뀌고, 그게 이 게이트의 요점이다.</summary>
+        /// <summary>카탈로그가 실제로 쓰는 조각 색(중복 제거). 문서를 베끼지 않고
+        /// <see cref="ItemCatalog"/>를 순회한다 — 애셋이 바뀌면 이 목록이 따라 바뀌고, 그게 이 게이트의 요점이다.
+        ///
+        /// <para>★★ <b>2026-09-08 — 모집단을 「기본 코호트」로 좁혔다(리더 판정 1).</b>
+        /// 종전에는 카탈로그 <b>전량</b>을 돌았고, 그래서 첫 유료 팩이 실린 순간 이 게이트가
+        /// <b>구조적으로 통과 불가능</b>해졌다: 팩 아이템의 조각 색은 곧 <see cref="FrozenPacks"/>의 팩 색이므로
+        /// 「팩 색 ↔ 카탈로그 색」 쌍 안에 <b>자기 자신과의 쌍</b>이 들어와 ΔE 0.00이 났다
+        /// (실측 2026-09-08: 주색 #009682 ↔ #009682 = 0.00 · 보조색 ↔ 0.44).
+        /// 그 형태는 <b>몇 번째 팩이 들어와도 반복</b>되므로 값으로는 절대 못 푼다 — 모집단 정의가 틀린 것이다.</para>
+        ///
+        /// <para>이 게이트가 지키려던 것은 원래 *"<b>카탈로그</b> 색이 움직이면 출하된 팩 색이 조용히 하한 아래로
+        /// 내려간다"*이고, 여기서 「카탈로그」는 <b>기본 42종</b>을 뜻했다(2026-09-02 그 문장을 쓸 때
+        /// 팩 코호트 아이템은 트리에 0개였다). 그러니 이것은 규칙 완화가 아니라 <b>원래 뜻의 복원</b>이다.</para>
+        ///
+        /// <para><b>팩끼리</b>의 거리는 여기가 아니라 <see cref="팩_12색이_서로_변별된다"/>가 잰다(동결 대장 내부,
+        /// 하한 <see cref="DiscriminationFloor"/>). 그래서 좁히면서 잃는 커버리지가 없다 —
+        /// 팩 N번째 색이 팩 M번째 색과 붙는 사고는 그쪽이 잡는다.</para></summary>
         private static List<(string Name, Color Color)> CatalogColors()
         {
             if (_catalogColors != null) return _catalogColors;
 
             var list = new List<(string, Color)>();
+            int skippedPackEntries = 0;
             for (int i = 0; i < ItemCatalog.Count; i++)
             {
                 ItemCatalogEntry e = ItemCatalog.At(i);
                 if (e?.Icon == null) continue;
+                if (!BaseCohortScope.IsBase(e)) { skippedPackEntries++; continue; }
                 for (int p = 0; p < e.Icon.Length; p++)
                 {
                     Color c = e.Icon[p].Color;
@@ -595,6 +672,8 @@ namespace StickMate.Tests.EditMode
                     if (!duplicate) list.Add((e.Id, c));
                 }
             }
+            Debug.Log($"{LogPrefix} 카탈로그 색 모집단 = 기본 코호트 고유색 {list.Count}종 " +
+                      $"(팩 코호트 항목 {skippedPackEntries}개 제외 — {BaseCohortScope.Describe()}).");
             _catalogColors = list;
             return _catalogColors;
         }
