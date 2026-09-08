@@ -115,11 +115,11 @@
       - R29-4(`filled`=메시로 통일하는 구조 수정 vs 좌표로 우회) — **당장은 좌표 우회**(design-
         equipment가 이미 수정 좌표를 냄, 채택). 렌더러 2곳의 `filled` 의미 불일치 자체는
         `game-architect` 별도 배정 대상으로 체크시트에만 남겨둠(이번 라운드 범위 밖).
-    - [ ] coder-systems 착수(진행 로그 참조) — 경로 B로 office 세트 진화 3단계 저작 + 광부/
-          사이버펑크/대마법사 3종 신규 매니페스트·키포즈 에셋 저작 + `ItemCatalog` DLC 코호트
-          등록(`pack.mine`/`pack.cyber`/`pack.arcane`, J-5 순서: 코호트→매니페스트→키포즈표).
+    - [ ] coder-systems 착수함(백그라운드, 2026-09-08) — 경로 B로 office 세트 진화 3단계 저작 +
+          광부/사이버펑크/대마법사 3종 신규 매니페스트·키포즈 에셋 저작 + `ItemCatalog` DLC
+          코호트 등록(`pack.mine`/`pack.cyber`/`pack.arcane`, J-5 순서 지시함).
           product-strategy 결정(가격 3종 각 $4.99, `sourceKind: Pack` 필수 — BaseTheme 감사
-          구멍 방지) 반영.
+          구멍 방지) 반영 지시함. 오늘 할일 위젯 작업과는 파일 완전 분리(동시 진행 안전).
   - [x] product-strategy 완료(10회차, `docs/strategy/CHANNEL_PRICING_DECISIONS.md`) — **가격은
         한 칸도 안 바뀜**: 독서실 $0(BaseTheme 4종, 이미 무료로 존재) / 사이버펑크·대마법사 각
         $4.99. ★ **광부는 스펙 문구("기본 or 인게임 골드")와 달리 사용자가 이미 "유료 DLC로,
