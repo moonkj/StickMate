@@ -426,13 +426,35 @@ namespace StickMate.States
                 ? Mathf.Clamp01((riseWorld - _repeatRiseWorld) / _finalApproachRiseWorld)
                 : 1f;
 
+            // ★★★ 2026-09-08 — <b>밧줄을 따라 오른다</b>(사용자 신고 "높이가 다르고 좀 떨어져있는
+            //   창에서 창으로 이동할때 포즈가 이상함").
+            //
+            //   무엇이 이상했나: 예전에는 반복 구간에서 <c>pos.x = _startWorldX</c>로 <b>제자리에서
+            //   수직으로만</b> 올랐다. 목표 창이 바로 위에 있을 때는 그것이 맞다 — 밧줄도 수직이니까.
+            //   그런데 <b>가로로 떨어진 창</b>이 목표면 앵커(_anchorWorldX)가 옆으로 멀어져 밧줄이
+            //   <b>대각선</b>이 되는데, 몸은 여전히 제자리에서 위로만 갔다. 그림이 이렇게 된다:
+            //     · 밧줄은 비스듬한데 몸은 수직으로 오른다(둘이 따로 논다)
+            //     · 팔은 먼 앵커를 향해 옆으로 쭉 뻗은 채 굳는다(IK가 닿지 않아 완전 신전)
+            //     · 마지막 구간에서 가로 거리를 <b>한꺼번에</b> 메우느라 옆으로 미끄러진다
+            //
+            //   ⇒ 가로 이동을 상승 <b>전체</b>에 나눠 싣는다. 세로와 같은 progress01을 쓰므로
+            //     몸이 «밧줄 위의 한 점»으로 유지되고, 마지막 구간은 그 지점에서 맨틀 지점까지의
+            //     <b>남은 거리만</b> 처리한다(예전처럼 시작점부터 다시 당기지 않는다 — 그러면 이미
+            //     이동한 만큼이 되감겨 튄다).
+            //
+            //   ★ 목표가 바로 위인 경우(_anchorWorldX ≈ _startWorldX)에는 이 항이 0이라 예전과
+            //     비트 단위로 같은 거동이다 — 기존 수직 등반 회귀 위험이 없다.
+            float alongRopeX = Mathf.Lerp(_startWorldX, _anchorWorldX, progress01);
             if (inFinalApproach && _hasMantleTarget && hasEdge)
             {
-                pos.x = Mathf.Lerp(_startWorldX, mantleTargetX, finalProgress01);
+                // 반복 구간이 끝난 지점의 x에서 출발해 맨틀 지점으로 마무리한다.
+                float handoffX = Mathf.Lerp(_startWorldX, _anchorWorldX,
+                    _totalRiseWorld > 0.0001f ? Mathf.Clamp01(_repeatRiseWorld / _totalRiseWorld) : 1f);
+                pos.x = Mathf.Lerp(handoffX, mantleTargetX, finalProgress01);
             }
             else
             {
-                pos.x = _startWorldX; // 반복 구간에서는 밧줄을 타고 곧장 위로 오른다(수평 이동 없음).
+                pos.x = alongRopeX;
             }
 
             _blackboard.MoveBodyToWorld(pos);

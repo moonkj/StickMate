@@ -2522,7 +2522,27 @@ namespace StickMate.States
             float armReachLocal = gripArm != null && gripArm.Upper != null && gripArm.Lower != null
                 ? gripArm.Upper.Length + gripArm.Lower.Length
                 : 0f;
-            float reachHighLocal = armReachLocal * ClimbGripReachUsable;
+            // ★★★ 2026-09-08 — <b>어깨 높이를 더한다.</b> 사용자 신고 "창에서 다른창으로 줄 던져서
+            //   이동할때 포즈가 이상함"의 원인이 여기였다.
+            //
+            //   무엇이 틀렸나: <see cref="ShoulderPivotLocalY"/>는 <b>발바닥 기준 어깨의 로컬 높이</b>다
+            //   (그 프로퍼티의 폴백이 «다리 위+아래 길이»인 것이 그 증거다 — 원점은 발이다).
+            //   그런데 «뻗은» 쪽은 <c>armReachLocal * ClimbGripReachUsable</c>, 즉 <b>어깨를 더하지 않은
+            //   순수 팔 길이</b>였다. 이 리그의 실측 비율로 계산하면:
+            //       뻗음  = 0.33H x 0.96 ≈ 0.32H
+            //       당김  = ShoulderPivotLocalY ≈ 0.75H
+            //   <b>«뻗은» 자세가 «당긴» 자세보다 낮다</b> — 두 극단이 뒤집혀 있어서 손이 어깨 위로
+            //   올라가는 순간이 <b>한 프레임도 없었다</b>. 팔은 늘 어깨 아래에 머물러 몸통 선에 겹쳐
+            //   숨었고, 화면에는 «밧줄에 머리로 매달린» 그림이 나왔다(실기 캡처로 확인).
+            //
+            //   ★ 이 함수가 IK에 넘기는 <c>grip</c>은 <b>로컬 절대 좌표</b>다(어깨 기준 상대가 아니다).
+            //     바로 위 ApplyParkourClimbPose가 <c>ledgeUpLocal - ShoulderPivotLocalY - vertBudget</c>
+            //     처럼 «턱의 로컬 높이»와 «어깨의 로컬 높이»를 같은 축에서 빼는 것과 같은 규약이다.
+            //     그러니 «머리 위로 뻗은 손»은 반드시 <b>어깨 + 팔길이</b>여야 한다.
+            //
+            //   ★ 당긴 쪽을 어깨 높이 그대로 두는 것은 의도다 — 밧줄을 당겨 손이 어깨선까지 내려오면
+            //     한 사이클이 끝난다. 그 아래로 더 내리면 팔이 몸통 뒤로 꺾여 보인다.
+            float reachHighLocal = ShoulderPivotLocalY + armReachLocal * ClimbGripReachUsable;
             float reachLowLocal = ShoulderPivotLocalY;
 
             float invX = 1f / Mathf.Max(0.0001f, RootScaleX);
