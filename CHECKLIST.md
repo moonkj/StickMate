@@ -72,8 +72,23 @@
   - [ ] **2-3 시각적 성장 콘텐츠 — 단계별 실제 비주얼.** 메커니즘(`CostumeStageOverride`,
         `ResolveStageShapes`)은 있으나, office 세트조차 `stage: 0`(기본형) 하나만 있고 10h/50h/100h
         진화 오버라이드가 **비어 있음**. 4세트 전부에 대해 단계별 조형 데이터 신규 저작 필요.
-  - [ ] product-strategy — 사이버펑크/대마법사/독서실 3종(유료 DLC로 명시됨) 가격·번들 구성, 광부는
-        기본 or 인게임 골드 획득 경로 확정 — 미착수.
+  - [x] product-strategy 완료(10회차, `docs/strategy/CHANNEL_PRICING_DECISIONS.md`) — **가격은
+        한 칸도 안 바뀜**: 독서실 $0(BaseTheme 4종, 이미 무료로 존재) / 사이버펑크·대마법사 각
+        $4.99. ★ **광부는 스펙 문구("기본 or 인게임 골드")와 달리 사용자가 이미 "유료 DLC로,
+        골드구매 SKU 신설 없음"으로 확정해 둔 과거 결정이 있었음**(Tasklist.md:25632) — 골드
+        경로 제안은 하지 않음(맞는 판단, 구조적으로도 42종 등급 붕괴를 막음). 신규: 코스튬 라인
+        3팩 번들 $12.13 제안. **진화 가속권(시간 돈으로 사기)은 기각** — 근거 5개 중 2개가
+        이미 프로덕션 코드(`CostumeEvolutionRules` C-7 / `CostumeEntitlement` C-3)에 못박혀 있어
+        판매 자체가 구조적으로 막혀 있음. 출시 순서: 4종 동시 출시 기각, 무료 독서실(1.0) →
+        사이버펑크 → 광부/대마법사 순.
+    - [ ] ★★ **신규 발견(P0급, 별도 배정 필요)** — `CostumeCatalog.AuditSource`가 BaseTheme
+          코스튬 감사에서 `mil` 하나만 막고 `cyber`/`neon`/`sport`/`ink`는 통과시키며, 회귀
+          테스트(`CostumeManifestCorridorTests.cs:458`)가 그걸 **양성 대조로 명시 단언**하고
+          있음. 즉 나중에 `costume.cyber`를 (Pack이 아니라) BaseTheme으로 저작하면 $4.99짜리
+          팩 간판이 동전 6,600(1.7일)에 새어나가는데 감사도 테스트도 초록으로 통과함. **지금
+          design-equipment/coder-systems가 만들 신규 코스튬 매니페스트(사이버펑크/대마법사)는
+          반드시 `sourceKind: Pack`으로 저작해야 한다** — coder-systems 착수 시 이 제약을 전달할
+          것. 감사 로직 자체 강화는 test-engineer/security 별도 배정 필요.
 
 - [x] **말풍선 대사(멘트) 전체 검수** (2026-09-08) — "체크시트에 멘트 정리도 추가해줘... 멘트들
       전체 검수가 필요함". design-narrative가 대사 리터럴 63줄(13개 소스 파일) 전수 스캔 — 골든
