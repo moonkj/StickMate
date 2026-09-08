@@ -1,0 +1,21 @@
+벡터 색 = 프로덕션 식(WornColor 항등 · 그늘 x0.28 · 트림 = 흰 α0.85 를 주색 위에 합성).
+비트맵 색 = 역할별 면적가중 평균. ΔE 는 CIEDE2000. (참고: 사람이 «같은 색»이라 부르는 상한은 통상 ΔE 5~10)
+
+아이템                            몸 M vs 비트맵몸            그늘 vs 비트맵암부            트림 vs 비트맵트림            보조 M2 vs 비트맵발광        
+--------------------------------------------------------------------------------------------------------------------------
+pack_cyber_head_patched_hood   #009682 vs #44836B    8.4 #002A24 vs #233C37    7.2 #D9EFEC vs #EEE9C9   13.9 #518D85 vs #75CF95   22.9
+pack_cyber_eyes_slit_visor     #009682 vs #5B816A   11.9 #002A24 vs #2F3A36   11.0 #D9EFEC vs #EDEAD3   11.6 #518D85 vs #7EC690   21.3
+pack_cyber_neck_cable_collar   #009682 vs #5B876C   10.5 #002A24 vs #193835    5.4 #D9EFEC vs #EEEACC   13.2 #518D85 vs #42D5A1   22.9
+pack_cyber_back_tarp_cape      #009682 vs #397A66   10.6 #002A24 vs #1A413C    7.1 #D9EFEC vs #E9E3C2   14.5 #518D85 vs #3BBA8E   16.9
+pack_mine_head_miner_helmet    #C96F00 vs #946449   16.6 #381F00 vs #2D2426   15.1 #F7E9D9 vs #F9EAC9    6.0 #8D7251 vs #FBB02D   27.9
+pack_mine_eyes_dust_goggles    #C96F00 vs #9C5F3C   14.8 #381F00 vs #3A221B    8.8 #F7E9D9 vs #F8EDCF    5.7 #8D7251 vs #FAA11D   26.2
+pack_mine_neck_mine_lamp       #C96F00 vs #9D6646   14.4 #381F00 vs #2A1E20   14.3 #F7E9D9 vs #F7F0DC    3.7 #8D7251 vs #FAC23F   30.1
+pack_mine_back_pick_harness    #C96F00 vs #9B6943   13.2 #381F00 vs #302627   14.0 #F7E9D9 vs #F7EDCD    6.7 #8D7251 vs #F6A323   25.9
+pack_arcane_head_wizard_hat    #00992E vs #4F774D   15.4 #002B0D vs #12312B   10.4 #D9F0E0 vs #F5E7BC   15.1 #518D63 vs #6BCC6B   20.0
+pack_arcane_eyes_astro_lens    #00992E vs #747854   20.4 #002B0D vs #1D2C26   12.6 #D9F0E0 vs #F3EAC6   12.9 #518D63 vs #7BD182   20.4
+pack_arcane_neck_moon_clasp    #00992E vs #648459   13.9 #002B0D vs #142A24   11.1 #D9F0E0 vs #F4E3B4   16.4 #518D63 vs #73D084   19.8
+pack_arcane_back_moon_robe     #00992E vs #336945   19.7 #002B0D vs #0C2D26    9.5 #D9F0E0 vs #F4E4B2   16.3 #518D63 vs #87CE7A   20.5
+
+평균 ΔE —  몸 14.2 · 암부 10.6 · 트림 11.3 · 발광/보조 22.9
+
+★ 참고: «크림 트림»을 카탈로그 보조색으로 옮길 수 있는가 -> pack_bitmap_r3_gate.py 가 답을 낸다(자립 대역 L∈[0.163,0.240]).

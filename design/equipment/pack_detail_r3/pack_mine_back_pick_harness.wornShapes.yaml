@@ -1,73 +1,5 @@
-%YAML 1.1
-%TAG !u! tag:unity3d.com,2011:
---- !u!114 &11400000
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 78e6f691c35d849a3aaae03fcb063cd4, type: 3}
-  m_Name: pack_mine_eyes_dust_goggles
-  m_EditorClassIdentifier: 
-  itemId: equip.eyes.dustgoggles
-  slot: 1
-  itemIndex: 7
-  displayName: Dust Goggles
-  description: Two panes against the coal dust. The wedge beneath them seals off
-    the nose.
-  requiredLevel: 1
-  hidesHair: 0
-  cohortId: 7
-  declaredRarity: 2
-  themeKey: packmine
-  declaredSubStat: 4
-  icon:
-  - kind: 4
-    values:
-    - 5.55
-    - 12.89
-    - 36.28
-    - 12.89
-    - 37.2
-    - 18.17
-    - 34.22
-    - 22.29
-    - 7.62
-    - 22.29
-    - 4.63
-    - 18.17
-    - 5.55
-    - 12.89
-    color: {r: 0.788235, g: 0.435294, b: 0, a: 1}
-    tone: 0
-  - kind: 4
-    values:
-    - 14.27
-    - 22.06
-    - 27.57
-    - 22.06
-    - 24.36
-    - 29.86
-    - 17.48
-    - 29.86
-    - 14.27
-    - 22.06
-    color: {r: 0.552941, g: 0.447059, b: 0.317647, a: 1}
-    tone: 1
-  - kind: 0
-    values:
-    - 6.24
-    - 18.17
-    - 2.8
-    - 10.14
-    color: {r: 0.788235, g: 0.435294, b: 0, a: 1}
-    tone: 0
-  cardIconOverride: {fileID: 21300000, guid: bc745d8e81c064d9e8cce7df0c84317a, type: 3}
   wornShapes:
-  - name: GoggleLens
+  - name: PickHaft
     loop: 1
     filled: 1
     tone: 0
@@ -76,7 +8,7 @@ MonoBehaviour:
     swingDegrees: 0
     surfaces: 0
     strokeMult: 1
-    strokeInR: 0.1153
+    strokeInR: 0.1243
     noStroke: 0
     alpha: 1
     lineAlpha: 1
@@ -84,13 +16,13 @@ MonoBehaviour:
     layer: 0
     bodyFixed: 0
     terms:
-    - 9
+    - 4
     - 1
     - 0
     - 0
     - 0
     - 1
-    - -1.18
+    - 0.92931
     - 2
     - 4
     - 0
@@ -100,13 +32,13 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - 0.46
+    - -1.51423
     - 1
     - 0
     - 0
     - 0
     - 1
-    - 1.18
+    - -1.31069
     - 2
     - 4
     - 0
@@ -116,13 +48,13 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - 0.46
+    - -4.55423
     - 1
     - 0
     - 0
     - 0
     - 1
-    - 1.32
+    - -1.72931
     - 2
     - 4
     - 0
@@ -132,13 +64,13 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - 0.1
+    - -4.24577
     - 1
     - 0
     - 0
     - 0
     - 1
-    - 1.02
+    - 0.51069
     - 2
     - 4
     - 0
@@ -148,13 +80,31 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - -0.34
+    - -1.20577
+  - name: PickHeadFront
+    loop: 1
+    filled: 1
+    tone: 1
+    swayStart: -1
+    swayCount: 0
+    swingDegrees: 0
+    surfaces: 0
+    strokeMult: 1
+    strokeInR: 0.1243
+    noStroke: 0
+    alpha: 1
+    lineAlpha: 1
+    underBack: 0
+    layer: 0
+    bodyFixed: 0
+    terms:
+    - 4
     - 1
     - 0
     - 0
     - 0
     - 1
-    - 0.34
+    - -0.76138
     - 2
     - 4
     - 0
@@ -164,13 +114,13 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - -0.34
+    - -3.86063
     - 1
     - 0
     - 0
     - 0
     - 1
-    - 0
+    - -0.63039
     - 2
     - 4
     - 0
@@ -180,13 +130,13 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - -0.78
+    - -5.15158
     - 1
     - 0
     - 0
     - 0
     - 1
-    - -0.34
+    - -1.02602
     - 2
     - 4
     - 0
@@ -196,13 +146,13 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - -0.34
+    - -5.29258
     - 1
     - 0
     - 0
     - 0
     - 1
-    - -1.02
+    - -1.74102
     - 2
     - 4
     - 0
@@ -212,13 +162,31 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - -0.34
+    - -4.20977
+  - name: PickHeadBack
+    loop: 1
+    filled: 1
+    tone: 1
+    swayStart: -1
+    swayCount: 0
+    swingDegrees: 0
+    surfaces: 0
+    strokeMult: 1
+    strokeInR: 0.1243
+    noStroke: 0
+    alpha: 1
+    lineAlpha: 1
+    underBack: 0
+    layer: 0
+    bodyFixed: 0
+    terms:
+    - 4
     - 1
     - 0
     - 0
     - 0
     - 1
-    - -1.32
+    - -1.27283
     - 2
     - 4
     - 0
@@ -228,8 +196,56 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - 0.1
-  - name: GoggleBlockFront
+    - -4.55475
+    - 1
+    - 0
+    - 0
+    - 0
+    - 1
+    - -2.51885
+    - 2
+    - 4
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 1
+    - -4.1926
+    - 1
+    - 0
+    - 0
+    - 0
+    - 1
+    - -2.50137
+    - 2
+    - 4
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 1
+    - -3.77296
+    - 1
+    - 0
+    - 0
+    - 0
+    - 1
+    - -1.22957
+    - 2
+    - 4
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 1
+    - -3.51565
+  - name: PickBlock
     loop: 1
     filled: 1
     tone: 2
@@ -238,10 +254,92 @@ MonoBehaviour:
     swingDegrees: 0
     surfaces: 0
     strokeMult: 1
-    strokeInR: 0.1153
-    noStroke: 1
+    strokeInR: 0.1243
+    noStroke: 0
     alpha: 1
-    lineAlpha: 0
+    lineAlpha: 1
+    underBack: 0
+    layer: 0
+    bodyFixed: 0
+    terms:
+    - 4
+    - 1
+    - 0
+    - 0
+    - 0
+    - 1
+    - -1.2334
+    - 2
+    - 4
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 1
+    - -4.71907
+    - 1
+    - 0
+    - 0
+    - 0
+    - 1
+    - -1.90965
+    - 2
+    - 4
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 1
+    - -4.22079
+    - 1
+    - 0
+    - 0
+    - 0
+    - 1
+    - -1.269
+    - 2
+    - 4
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 1
+    - -3.35133
+    - 1
+    - 0
+    - 0
+    - 0
+    - 1
+    - -0.59275
+    - 2
+    - 4
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 1
+    - -3.84961
+  - name: HarnessPad
+    loop: 1
+    filled: 1
+    tone: 0
+    swayStart: -1
+    swayCount: 0
+    swingDegrees: 0
+    surfaces: 0
+    strokeMult: 1
+    strokeInR: 0.1243
+    noStroke: 0
+    alpha: 1
+    lineAlpha: 1
     underBack: 0
     layer: 0
     bodyFixed: 0
@@ -252,7 +350,7 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - 1.36
+    - 0.72
     - 2
     - 4
     - 0
@@ -262,13 +360,13 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - -0.28
+    - -2.2
     - 1
     - 0
     - 0
     - 0
     - 1
-    - 1.50142
+    - 0.88971
     - 2
     - 4
     - 0
@@ -278,13 +376,13 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - -0.22142
+    - -2.12971
     - 1
     - 0
     - 0
     - 0
     - 1
-    - 1.56
+    - 0.96
     - 2
     - 4
     - 0
@@ -294,13 +392,13 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - -0.08
+    - -1.96
     - 1
     - 0
     - 0
     - 0
     - 1
-    - 1.56
+    - 0.96
     - 2
     - 4
     - 0
@@ -310,13 +408,13 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - 0.24
+    - -1.38
     - 1
     - 0
     - 0
     - 0
     - 1
-    - 1.50142
+    - 0.88971
     - 2
     - 4
     - 0
@@ -326,13 +424,13 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - 0.38142
+    - -1.21029
     - 1
     - 0
     - 0
     - 0
     - 1
-    - 1.36
+    - 0.72
     - 2
     - 4
     - 0
@@ -342,13 +440,13 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - 0.44
+    - -1.14
     - 1
     - 0
     - 0
     - 0
     - 1
-    - 1.22
+    - 0.12
     - 2
     - 4
     - 0
@@ -358,13 +456,13 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - 0.44
+    - -1.14
     - 1
     - 0
     - 0
     - 0
     - 1
-    - 1.07858
+    - -0.04971
     - 2
     - 4
     - 0
@@ -374,13 +472,13 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - 0.38142
+    - -1.21029
     - 1
     - 0
     - 0
     - 0
     - 1
-    - 1.02
+    - -0.12
     - 2
     - 4
     - 0
@@ -390,13 +488,13 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - 0.24
+    - -1.38
     - 1
     - 0
     - 0
     - 0
     - 1
-    - 1.02
+    - -0.12
     - 2
     - 4
     - 0
@@ -406,13 +504,13 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - -0.08
+    - -1.96
     - 1
     - 0
     - 0
     - 0
     - 1
-    - 1.07858
+    - -0.04971
     - 2
     - 4
     - 0
@@ -422,13 +520,13 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - -0.22142
+    - -2.12971
     - 1
     - 0
     - 0
     - 0
     - 1
-    - 1.22
+    - 0.12
     - 2
     - 4
     - 0
@@ -438,405 +536,31 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - -0.28
-  - name: GoggleBlockBack
-    loop: 1
-    filled: 1
-    tone: 2
-    swayStart: -1
-    swayCount: 0
-    swingDegrees: 0
-    surfaces: 0
-    strokeMult: 1
-    strokeInR: 0.1153
-    noStroke: 1
-    alpha: 1
-    lineAlpha: 0
-    underBack: 0
-    layer: 0
-    bodyFixed: 0
-    terms:
-    - 12
-    - 1
-    - 0
-    - 0
-    - 0
-    - 1
-    - -1.22
-    - 2
-    - 4
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 1
-    - -0.28
-    - 1
-    - 0
-    - 0
-    - 0
-    - 1
-    - -1.07858
-    - 2
-    - 4
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 1
-    - -0.22142
-    - 1
-    - 0
-    - 0
-    - 0
-    - 1
-    - -1.02
-    - 2
-    - 4
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 1
-    - -0.08
-    - 1
-    - 0
-    - 0
-    - 0
-    - 1
-    - -1.02
-    - 2
-    - 4
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 1
-    - 0.24
-    - 1
-    - 0
-    - 0
-    - 0
-    - 1
-    - -1.07858
-    - 2
-    - 4
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 1
-    - 0.38142
-    - 1
-    - 0
-    - 0
-    - 0
-    - 1
-    - -1.22
-    - 2
-    - 4
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 1
-    - 0.44
-    - 1
-    - 0
-    - 0
-    - 0
-    - 1
-    - -1.36
-    - 2
-    - 4
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 1
-    - 0.44
-    - 1
-    - 0
-    - 0
-    - 0
-    - 1
-    - -1.50142
-    - 2
-    - 4
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 1
-    - 0.38142
-    - 1
-    - 0
-    - 0
-    - 0
-    - 1
-    - -1.56
-    - 2
-    - 4
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 1
-    - 0.24
-    - 1
-    - 0
-    - 0
-    - 0
-    - 1
-    - -1.56
-    - 2
-    - 4
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 1
-    - -0.08
-    - 1
-    - 0
-    - 0
-    - 0
-    - 1
-    - -1.50142
-    - 2
-    - 4
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 1
-    - -0.22142
-    - 1
-    - 0
-    - 0
-    - 0
-    - 1
-    - -1.36
-    - 2
-    - 4
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 1
-    - -0.28
-  - name: GoggleSlitFront
-    loop: 1
-    filled: 1
-    tone: 1
-    swayStart: -1
-    swayCount: 0
-    swingDegrees: 0
-    surfaces: 0
-    strokeMult: 1
-    strokeInR: 0.1153
-    noStroke: 0
-    alpha: 1
-    lineAlpha: 1
-    underBack: 0
-    layer: 0
-    bodyFixed: 0
-    terms:
-    - 4
-    - 1
-    - 0
-    - 0
-    - 0
-    - 1
-    - 1.54246
-    - 2
-    - 4
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 1
-    - -0.17614
-    - 1
-    - 0
-    - 0
-    - 0
-    - 1
-    - 1.13895
-    - 2
-    - 4
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 1
-    - -0.41443
-    - 1
-    - 0
-    - 0
-    - 0
-    - 1
-    - 0.86105
-    - 2
-    - 4
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 1
-    - -0.18557
-    - 1
-    - 0
-    - 0
-    - 0
-    - 1
-    - 1.01754
-    - 2
-    - 4
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 1
-    - 0.25614
-  - name: GoggleSlitBack
-    loop: 1
-    filled: 1
-    tone: 1
-    swayStart: -1
-    swayCount: 0
-    swingDegrees: 0
-    surfaces: 0
-    strokeMult: 1
-    strokeInR: 0.1153
-    noStroke: 0
-    alpha: 1
-    lineAlpha: 1
-    underBack: 0
-    layer: 0
-    bodyFixed: 0
-    terms:
-    - 4
-    - 1
-    - 0
-    - 0
-    - 0
-    - 1
-    - -1.01754
-    - 2
-    - 4
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 1
-    - 0.25614
-    - 1
-    - 0
-    - 0
-    - 0
-    - 1
-    - -0.86105
-    - 2
-    - 4
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 1
-    - -0.18557
-    - 1
-    - 0
-    - 0
-    - 0
-    - 1
-    - -1.13895
-    - 2
-    - 4
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 1
-    - -0.41443
-    - 1
-    - 0
-    - 0
-    - 0
-    - 1
-    - -1.54246
-    - 2
-    - 4
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 1
-    - -0.17614
-  - name: GoggleStrap
+    - -2.2
+  - name: HaftGrip
     loop: 0
     filled: 0
-    tone: 0
+    tone: 4
     swayStart: -1
     swayCount: 0
     swingDegrees: 0
     surfaces: 0
-    strokeMult: 1
-    strokeInR: 0.1153
+    strokeMult: 0.8
+    strokeInR: 0.09944
     noStroke: 0
-    alpha: 1
-    lineAlpha: 1
+    alpha: 0
+    lineAlpha: 0.55
     underBack: 0
-    layer: 1
+    layer: 0
     bodyFixed: 0
     terms:
-    - 5
+    - 2
     - 1
     - 0
     - 0
     - 0
     - 1
-    - -1.01754
+    - -0.26068
     - 2
     - 4
     - 0
@@ -846,13 +570,13 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - 0.25614
+    - -3.26409
     - 1
     - 0
     - 0
     - 0
     - 1
-    - -1.02612
+    - -0.80812
     - 2
     - 4
     - 0
@@ -862,56 +586,8 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - 0.45908
-    - 1
-    - 0
-    - 0
-    - 0
-    - 1
-    - -0.92939
-    - 2
-    - 4
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 1
-    - 0.62404
-    - 1
-    - 0
-    - 0
-    - 0
-    - 1
-    - -0.72735
-    - 2
-    - 4
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 1
-    - 0.75101
-    - 1
-    - 0
-    - 0
-    - 0
-    - 1
-    - -0.42
-    - 2
-    - 4
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 0
-    - 1
-    - 0.84
-  - name: GoggleTrim
+    - -2.86071
+  - name: HarnessStrap
     loop: 0
     filled: 0
     tone: 3
@@ -920,21 +596,21 @@ MonoBehaviour:
     swingDegrees: 0
     surfaces: 0
     strokeMult: 0.75
-    strokeInR: 0.08647
+    strokeInR: 0.09323
     noStroke: 0
     alpha: 0
     lineAlpha: 0.85
-    underBack: 6
+    underBack: 2
     layer: 0
     bodyFixed: 0
     terms:
-    - 9
+    - 12
     - 1
     - 0
     - 0
     - 0
     - 1
-    - -1.18
+    - 0.72
     - 2
     - 4
     - 0
@@ -944,13 +620,13 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - 0.46
+    - -2.2
     - 1
     - 0
     - 0
     - 0
     - 1
-    - 1.18
+    - 0.88971
     - 2
     - 4
     - 0
@@ -960,13 +636,13 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - 0.46
+    - -2.12971
     - 1
     - 0
     - 0
     - 0
     - 1
-    - 1.32
+    - 0.96
     - 2
     - 4
     - 0
@@ -976,13 +652,13 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - 0.1
+    - -1.96
     - 1
     - 0
     - 0
     - 0
     - 1
-    - 1.02
+    - 0.96
     - 2
     - 4
     - 0
@@ -992,13 +668,13 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - -0.34
+    - -1.38
     - 1
     - 0
     - 0
     - 0
     - 1
-    - 0.34
+    - 0.88971
     - 2
     - 4
     - 0
@@ -1008,13 +684,13 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - -0.34
+    - -1.21029
     - 1
     - 0
     - 0
     - 0
     - 1
-    - 0
+    - 0.72
     - 2
     - 4
     - 0
@@ -1024,13 +700,13 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - -0.78
+    - -1.14
     - 1
     - 0
     - 0
     - 0
     - 1
-    - -0.34
+    - 0.12
     - 2
     - 4
     - 0
@@ -1040,13 +716,13 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - -0.34
+    - -1.14
     - 1
     - 0
     - 0
     - 0
     - 1
-    - -1.02
+    - -0.04971
     - 2
     - 4
     - 0
@@ -1056,13 +732,13 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - -0.34
+    - -1.21029
     - 1
     - 0
     - 0
     - 0
     - 1
-    - -1.32
+    - -0.12
     - 2
     - 4
     - 0
@@ -1072,9 +748,134 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - 0.1
-  wornGroupAlpha: 0
-  wornScale: 0
-  wornScaleY: 0
-  wornOffsetYInR: 0
-  wornMirrorX: 0
+    - -1.38
+    - 1
+    - 0
+    - 0
+    - 0
+    - 1
+    - -0.12
+    - 2
+    - 4
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 1
+    - -1.96
+    - 1
+    - 0
+    - 0
+    - 0
+    - 1
+    - -0.04971
+    - 2
+    - 4
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 1
+    - -2.12971
+    - 1
+    - 0
+    - 0
+    - 0
+    - 1
+    - 0.12
+    - 2
+    - 4
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 1
+    - -2.2
+  - name: HaftTrim
+    loop: 0
+    filled: 0
+    tone: 3
+    swayStart: -1
+    swayCount: 0
+    swingDegrees: 0
+    surfaces: 0
+    strokeMult: 0.75
+    strokeInR: 0.09323
+    noStroke: 0
+    alpha: 0
+    lineAlpha: 0.85
+    underBack: 7
+    layer: 0
+    bodyFixed: 0
+    terms:
+    - 4
+    - 1
+    - 0
+    - 0
+    - 0
+    - 1
+    - 0.92931
+    - 2
+    - 4
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 1
+    - -1.51423
+    - 1
+    - 0
+    - 0
+    - 0
+    - 1
+    - -1.31069
+    - 2
+    - 4
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 1
+    - -4.55423
+    - 1
+    - 0
+    - 0
+    - 0
+    - 1
+    - -1.72931
+    - 2
+    - 4
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 1
+    - -4.24577
+    - 1
+    - 0
+    - 0
+    - 0
+    - 1
+    - 0.51069
+    - 2
+    - 4
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 1
+    - -1.20577

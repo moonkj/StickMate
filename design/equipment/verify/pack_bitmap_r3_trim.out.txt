@@ -1,0 +1,17 @@
+아이템                           런중앙값  비트맵폭  R3폭(R)   두께(R)  착용0.75(pt)  획 대비
+--------------------------------------------------------------------------------------------
+pack_cyber_head_patched_hood       5.0      415     3.40    0.041         0.24     0.24x
+pack_cyber_eyes_slit_visor         4.0      414     3.14    0.030         0.18     0.18x
+pack_cyber_neck_cable_collar       6.0      311     2.36    0.046         0.26     0.26x
+pack_cyber_back_tarp_cape          4.0      414     3.13    0.030         0.18     0.18x
+pack_mine_head_miner_helmet        4.0      427     3.68    0.034         0.20     0.20x
+pack_mine_eyes_dust_goggles        3.0      420     3.12    0.022         0.13     0.13x
+pack_mine_neck_mine_lamp           4.0      429     3.72    0.035         0.20     0.20x
+pack_mine_back_pick_harness        5.0      418     3.48    0.042         0.24     0.24x
+pack_arcane_head_wizard_hat        5.0      416     4.40    0.053         0.31     0.31x
+pack_arcane_eyes_astro_lens        6.0      418     2.42    0.035         0.20     0.20x
+pack_arcane_neck_moon_clasp        5.0      419     2.96    0.035         0.21     0.21x
+pack_arcane_back_moon_robe         7.0      415     3.49    0.059         0.34     0.34x
+--------------------------------------------------------------------------------------------
+최소 0.022 R (0.13 pt) · 중앙값 0.035 R (0.20 pt) · 최대 0.059 R (0.34 pt)
+→ 엔진 최소 획 1.00pt 대비 R3 트림은 2.9 ~ 7.7 배 굵다.

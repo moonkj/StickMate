@@ -19,9 +19,9 @@ MonoBehaviour:
   displayNameKey: pack.arcane.name
   descriptionKey: pack.arcane.desc
   paletteOrigin: 0
-  paletteHueDegrees: 138
-  primaryColor: {r: 0, g: 0.6, b: 0.180392, a: 1}
-  secondaryColor: {r: 0.317647, g: 0.552941, b: 0.388235, a: 1}
+  paletteHueDegrees: 150
+  primaryColor: {r: 0, g: 0.6, b: 0.298039, a: 1}
+  secondaryColor: {r: 0.317647, g: 0.552941, b: 0.435294, a: 1}
   declaredItemCount: 4
   itemIndexBase: 8
   soundKeys: []
