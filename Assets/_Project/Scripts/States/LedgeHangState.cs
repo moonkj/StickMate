@@ -128,7 +128,7 @@ namespace StickMate.States
 
         public StickmanStateId StateId => StickmanStateId.LedgeHang;
 
-        /// <summary>"어우... 꽤 깊네"가 나오는 낙차(신장 배수 H). 그 아래는 "여기로 내려가자".
+        /// <summary>"어우... 아찔하네"가 나오는 낙차(신장 배수 H). 그 아래는 "여기로 내려가자".
         /// ★ 판단값이지 실측이 아니다 — UX_FLOW.md 31-2 #6 / MOTION_SPEC 2-7. 거리이므로 반드시
         /// H 배수다(31-4 C1 축 ①).</summary>
         private const float DeepDescentHeights = 1.6f;
@@ -190,7 +190,7 @@ namespace StickMate.States
             // ★ 2026-09-01 개정(UX_FLOW.md 31-2 #6 신규 등재 / MOTION_SPEC 1절 표 #3) — 임계값을
             //   **절대 월드 유닛에서 신장 배수(H)로** 옮긴다. 구 임계값 3.0유닛은 배율 1.0에서
             //   1.32H이고, 이 상태가 성립하는 최소 낙차 자체가 1.10H(아래 진입 임계값 주석 참고)라
-            //   "어우... 꽤 깊네"가 나오려면 낙차가 최소치의 1.2배를 넘어야 했다. 신장 배수로 적어
+            //   "어우... 아찔하네"가 나오려면 낙차가 최소치의 1.2배를 넘어야 했다. 신장 배수로 적어
             //   배율 슬라이더와 플랫폼(작업표시줄 높이)에 불변이 되게 한다.
             //
             //   ★ 1.6이라는 계수는 design-motion의 **판단값이지 실측이 아니다**. 실기에서 창-창
@@ -208,7 +208,7 @@ namespace StickMate.States
                     : StickConfig.BaselineCharacterTotalHeight;
                 return drop < DeepDescentHeights * h
                     ? DialogueLine.Say("여기로 내려가자")
-                    : DialogueLine.Say("어우... 꽤 깊네");
+                    : DialogueLine.Say("어우... 아찔하네");
             }, grabDuration + _holdDuration);
 
             Debug.Log($"[매달리기] 진입 — 방향={(_direction > 0 ? "오른쪽" : "왼쪽")}, " +

@@ -77,7 +77,8 @@ namespace StickMate.States
 
         public StickmanStateId StateId => StickmanStateId.ParkourClimb;
 
-        /// <summary>"가뿐하네"의 상한(신장 배수 H). Dock 단차(0.72H)는 이 아래라 가볍게 읽힌다.
+        /// <summary>"올라가 보자"(T1, 구 "가뿐하네")의 상한(신장 배수 H). Dock 단차(0.72H)는 이
+        /// 아래라 가볍게 읽힌다.
         /// ★ 판단값이지 실측이 아니다 — UX_FLOW.md 31-2 #4 / MOTION_SPEC 2-7. 실기 분포 확인 후
         /// 조정될 수 있다. 각도가 아니라 거리이므로 반드시 H 배수다(31-4 C1 축 ①).</summary>
         private const float LightClimbHeights = 0.95f;
@@ -278,7 +279,13 @@ namespace StickMate.States
             //   실제로 넣었다가 같은 날 되돌린 기록이 있다 — 문서를 반대로 읽은 것이었다).
             //   보류된 3줄은 design-motion의 임계 재조정(`MOTION_SPEC §21-3`, 0.95 → 0.4109 H)이
             //   착지해 배포 기본 등반이 T2로 옮겨 간 **뒤에** 함께 넣는다.
-            if (height < LightClimbHeights * h) return DialogueLine.Say("가뿐하네");
+            //
+            //   ★★ 2026-09-08 — "가뿐하네" 한 줄 자체를 "올라가 보자"로 교체했다(전체 대사 검수,
+            //   design-narrative). **줄 수는 그대로 1종**이라 위 "늘리지 마라"와 안 부딪힌다. 노력의
+            //   정도를 주장하지 않는 문장이라 0~LightClimbHeights 전 구간에서 참이고, 임계가
+            //   0.4109 H로 내려와도 다시 틀리지 않는다 — 위 재조정이 착지하는 날 이 줄을 또 고칠
+            //   필요가 없다.
+            if (height < LightClimbHeights * h) return DialogueLine.Say("올라가 보자");
 
             // ★ T2(중간 난이도). 임계 재조정 후 배포 기본 등반이 여기로 온다 — 자기 키의 90%를
             //   양손 4박자로 기어오르는 동작과 발성이 맞물리는 자리다.

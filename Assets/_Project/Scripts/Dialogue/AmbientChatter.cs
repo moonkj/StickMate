@@ -146,7 +146,16 @@ namespace StickMate.Dialogue
             //   데드존을 넘는 동안만 유지되고(WalkState.Tick) 그동안 보행 위상이 계속 돌아 다리가
             //   번갈아 나간다(StickmanPoseAnimator의 걷기 키포즈). 평가어("잘")라 반증 대상도 아니다.
             //   글자 수도 9자로 같아 가독예산(0.955초)과 발화 자격 게이트 거동이 한 톨도 안 바뀐다.
-            "다리가 잘 나가네",
+            //
+            // ★★ 2026-09-08 — 사용자 신고: "다리가 잘나가네 같이.. 어색한 멘트들이 있음". 위 분석이
+            //   고친 것은 <b>진실성</b>(자리·거동에서 파생되는가)이었을 뿐 <b>관용구 자연스러움</b>은
+            //   보지 않았다 — "다리가 나가다"는 한국어에서 (가) 탈진했다 (나) 부러졌다 쪽 관용이
+            //   먼저 와서, 의도한 «잘 걷고 있다»와 정반대로 읽힐 여지가 있었다(design-narrative 검수).
+            //   "발걸음이 가볍네"로 교체 — 위 분석이 지킨 두 성질(Walk가 정의상 참으로 만드는 사실만
+            //   말한다 / 평가어라 반증 대상이 아니다)을 그대로 보존하면서 관용구 문제만 없앤다.
+            //   9→8자로 <b>짧아져</b> 가독예산(0.955→0.880초)에 여유가 더 생기는 방향이라 회귀 위험이
+            //   없다. 같은 표 "다리 좀 풀자"와의 "다리" 중복도 덤으로 풀린다.
+            "발걸음이 가볍네",
 
             // ────────────────────────────────────────────────────────────────────
             // ★ 2026-09-06 요일 축 — R2 §3-4 #16·#17·#18
@@ -154,7 +163,7 @@ namespace StickMate.Dialogue
             // ★★ 금요일 Walk 자리에 대해: 선행 라운드(2026-09-02_대사체계_실측과_계약.md §5-2)가
             //    제안한 «발이 빨라지네»는 <b>R2 §3-5가 이미 기각했다</b>. 이유가 둘이다 —
             //    (가) 보행 속도는 요일에 따라 실제로 안 변한다(WalkState의 어떤 값도 요일을 안 본다),
-            //    (나) 같은 금요일에 상시 줄 «다리가 잘 나가네»와 나란히 나오면 정면 모순이다.
+            //    (나) 같은 금요일에 상시 줄 «발걸음이 가볍네»(구 «다리가 잘 나가네»)와 나란히 나오면 정면 모순이다.
             //    그래서 이 자리의 정본은 개정안 #17 «주말이 코앞이네»이고, 이 줄은 <b>날짜만</b> 말한다.
             //    → 배선 대상에서 빠진 것은 «발이 빨라지네»이고, 금요일 Walk 자리는 비어 있지 않다.
             "월요일이 왔네",
@@ -271,7 +280,7 @@ namespace StickMate.Dialogue
             AmbientDayBucket.None,      // 저쪽으로 가볼까
             AmbientDayBucket.None,      // 하나 둘 하나 둘
             AmbientDayBucket.None,      // 다리 좀 풀자
-            AmbientDayBucket.None,      // 다리가 잘 나가네
+            AmbientDayBucket.None,      // 발걸음이 가볍네
             AmbientDayBucket.Monday,    // 월요일이 왔네
             AmbientDayBucket.Friday,    // 주말이 코앞이네
             AmbientDayBucket.Weekend,   // 주말 산책이네
@@ -289,7 +298,7 @@ namespace StickMate.Dialogue
             AmbientTimeBucket.None,       // 저쪽으로 가볼까
             AmbientTimeBucket.None,       // 하나 둘 하나 둘
             AmbientTimeBucket.None,       // 다리 좀 풀자
-            AmbientTimeBucket.None,       // 다리가 잘 나가네
+            AmbientTimeBucket.None,       // 발걸음이 가볍네
             AmbientTimeBucket.None,       // 월요일이 왔네
             AmbientTimeBucket.None,       // 주말이 코앞이네
             AmbientTimeBucket.None,       // 주말 산책이네

@@ -667,14 +667,19 @@ namespace StickMate.States
         }
 
         /// <summary>
-        /// ★ 플레이스홀더 — 문안 자체는 design-narrative 몫이다(§8-6-D, 리더 지시). 여기서는 트리거
-        /// 배선(단일 지점, Enter() 한 곳)과 규칙 8 예산 계산만 확인한다. 문안을 배열/상수로 빼지
-        /// 않는 이유는 ParkourClimbState.ResolveClimbLine과 같다 — DialogueCorpus.ExtractSayReact가
-        /// <c>DialogueLine.Say(</c> 괄호 안의 인라인 리터럴만 스캔한다.
+        /// ★★ 2026-09-08 — design-narrative가 문안을 확정했다(전체 대사 검수, 사용자 신고 대응).
+        /// 옛 "밧줄이다!"는 발견형 감탄이었는데, 밧줄을 꺼내 던지는 주체가 다른 누가 아니라
+        /// <b>캐릭터 자신</b>이라 화자·사건 주체가 어긋났다 — 자기가 하는 행동을 보고 놀라는 그림.
+        /// 이 상태를 고른 실제 판정(손으로 오를 수 있는 상한을 넘어 밧줄 갈래가 확정됨,
+        /// AutoWanderController의 높이 분기)을 그대로 말하는 문장으로 바꿨다.
+        /// 트리거 배선(단일 지점, Enter() 한 곳)과 규칙 8 예산 계산만 여기서 확인한다. 문안을 배열/
+        /// 상수로 빼지 않는 이유는 ParkourClimbState.ResolveClimbLine과 같다 —
+        /// DialogueCorpus.ExtractSayReact가 <c>DialogueLine.Say(</c> 괄호 안의 인라인 리터럴만
+        /// 스캔한다.
         /// </summary>
         internal static DialogueLine ResolveThrowLine(object dialogueParams)
         {
-            return DialogueLine.Say("밧줄이다!");
+            return DialogueLine.Say("여긴 밧줄이 낫겠다");
         }
 
         // ============================================================================

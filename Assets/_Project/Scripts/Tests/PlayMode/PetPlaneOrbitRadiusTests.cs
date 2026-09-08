@@ -254,6 +254,72 @@ namespace StickMate.Tests.PlayMode
                 "유닛을 넘지 못합니다 — 실제로 그려지는 궤도가 몸통 폭 안에 갇혀 있습니다.");
         }
 
+        /// <summary>
+        /// ★★★ 2026-09-08 3차 신고 회귀 잠금: <i>"지금 종이비행기같은경우 몸의 반쪽까지만 주위를
+        /// 돌고있어 척추를 중심으로해서 반경이 정해져있는데 몸 바깥쪽으로 돌수있게 범위 수정해줘."</i>
+        ///
+        /// 원인: 같은 날 코스튬 DLC 작업(design-motion 14-5, D-6 — 종이비행기 궤도가 새 코스튬
+        /// 프롭 4종과 겹친다)이 궤도를 <b>상시</b> 뒤쪽 반원으로 접었다. 프롭이 실제로 서 있을 때만
+        /// 필요한 조치인데 코스튬을 아예 안 입은 평소에도 걸려 있었다 — 이 신고의 실체다.
+        ///
+        /// 이 테스트는 코스튬을 <b>입지 않은</b>(=<see cref="CharacterPetRenderer.PlaneOrbitFoldedToBackHalf"/>
+        /// 가 <c>false</c>여야 하는) 평소 상태에서, 궤도 한 바퀴(3.2초) 동안 앞/뒤 성분
+        /// (<c>(x−center)÷side</c>, <see cref="CharacterPetRenderer.PlaneOrbitSideForTesting"/>로
+        /// 캐릭터가 보는 방향을 지운 값)이 <b>양쪽 다</b> 공식 반폭 근처까지 도달하는지 잠근다 —
+        /// 한쪽(음수)만 도달하면 반원 접기가 여전히 상시 걸려 있다는 뜻이다.
+        /// </summary>
+        [UnityTest]
+        [Timeout(180000)]
+        public IEnumerator 코스튬_프롭이_없으면_궤도가_완전한_타원이다()
+        {
+            yield return LoadSceneAndPinIdle();
+            StickmanAgent agent = Agent();
+
+            CharacterPetRenderer pet = Object.FindFirstObjectByType<CharacterPetRenderer>();
+            Assert.IsNotNull(pet, $"{LogPrefix} CharacterPetRenderer가 씬에 없습니다.");
+
+            Assert.IsTrue(EquipmentModel.TryWear(EquipmentSlot.Pet, PetPlaneItem, null),
+                $"{LogPrefix} 종이비행기를 걸치지 못했습니다.");
+            for (int i = 0; i < 5; i++) yield return null;
+            Assert.AreEqual(PetPlaneItem, pet.ActivePetItemIndex,
+                $"{LogPrefix} 펫이 종이비행기로 빌드되지 않았습니다.");
+
+            Assert.IsFalse(pet.PlaneOrbitFoldedToBackHalf,
+                $"{LogPrefix} 코스튬을 입지 않았는데도 궤도가 뒤쪽 반원으로 접혀 있습니다 — " +
+                "이 테스트의 전제가 깨졌습니다(프롭이 서 있지 않은데 접혔다).");
+
+            float expectedHalfWidth = pet.PlaneOrbitHalfWidthWorld;
+            float maxForward = float.NegativeInfinity;
+            float minForward = float.PositiveInfinity;
+            float deadline = Time.realtimeSinceStartup + 4.0f;
+            while (Time.realtimeSinceStartup < deadline)
+            {
+                float side = pet.PlaneOrbitSideForTesting;
+                if (Mathf.Abs(side) > 0.01f)
+                {
+                    float centerX = pet.HeadAnchorWorldPosition.x;
+                    float forward = (pet.PetWorldPosition.x - centerX) / side;
+                    if (forward > maxForward) maxForward = forward;
+                    if (forward < minForward) minForward = forward;
+                }
+                yield return null;
+            }
+
+            Debug.Log($"{LogPrefix} 4초간 실측한 앞/뒤 성분 범위 [{minForward:F4}, {maxForward:F4}] " +
+                $"(공식 반폭 {expectedHalfWidth:F4}).");
+
+            // 절대 조건 — 완전한 타원이면 앞(+)/뒤(−) 모두 반폭 근처까지 도달한다.
+            Assert.Greater(maxForward, expectedHalfWidth - SampleTolerance,
+                $"{LogPrefix} 앞쪽(+) 최대 도달값 {maxForward:F4}이 공식 반폭 {expectedHalfWidth:F4}에 " +
+                "못 미칩니다 — 코스튬 없이도 궤도가 여전히 뒤쪽 반원으로 접혀 있습니다(신고 재현).");
+            Assert.Less(minForward, -(expectedHalfWidth - SampleTolerance),
+                $"{LogPrefix} 뒤쪽(−) 최대 도달값 {minForward:F4}이 −공식 반폭({-expectedHalfWidth:F4})에 " +
+                "못 미칩니다 — 뒤쪽 실루엣 범위가 줄었습니다(회귀).");
+
+            EquipmentModel.TryWear(EquipmentSlot.Pet, EquipmentModel.NotWorn, null);
+            yield return null;
+        }
+
         // ==================== 헬퍼 ====================
 
         private static StickmanAgent Agent()

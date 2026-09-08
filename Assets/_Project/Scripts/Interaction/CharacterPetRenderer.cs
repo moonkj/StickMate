@@ -316,6 +316,7 @@ namespace StickMate.Interaction
         private const float StrokeRatio = 0.022f;
 
         private StickmanAgent _agent;
+        private CostumePropRenderer _costumeProp;
         private StickmanMetrics _metrics;
         private LineRenderer _headOutline;
         private Material _lineMaterial;
@@ -400,6 +401,17 @@ namespace StickMate.Interaction
         /// <summary>테스트/진단용 — 종이비행기 궤도의 세로 반폭(월드 유닛, 지금 머리 반경 기준).</summary>
         public float PlaneOrbitHalfHeightWorld => HeadRadius * PlaneOrbitHalfHeightInR;
 
+        /// <summary>테스트/진단용 — 지금 이 프레임에 종이비행기 궤도가 뒤쪽 반원으로 접혀 있는가
+        /// (=코스튬 프롭이 실제로 서 있는가, <see cref="CostumePropRenderer.PropPlaced"/>).
+        /// 2026-09-08 신고("몸의 반쪽까지만 돈다") 회귀 잠금의 근거값 — 프롭이 없을 때는
+        /// <c>false</c>(완전한 타원)여야 한다.</summary>
+        public bool PlaneOrbitFoldedToBackHalf => _costumeProp != null && _costumeProp.PropPlaced;
+
+        /// <summary>테스트/진단용 — 지금 궤도가 놓인 쪽 부호(<see cref="TickPlaneOrbitSide"/>가 쓰는
+        /// 그 값). 가로 오프셋을 이 값으로 나누면 <c>side</c>와 무관하게 「앞/뒤」 성분만 남는다 —
+        /// 궤도가 완전한 타원인지 뒤쪽 반원인지를 캐릭터가 보는 방향과 무관하게 검증할 수 있다.</summary>
+        public float PlaneOrbitSideForTesting => _planeOrbitSide;
+
         /// <summary>테스트/진단용 — 풍선 매듭이 머리 중심에서 진행 반대쪽으로 떨어진 거리(월드 유닛,
         /// 지금 머리 반경 기준). 2026-09-07 3차 신고("멈춰있을 때도 여전히 겹쳐져 있음") 회귀 잠금의
         /// 근거값 — PlayMode 테스트가 여기서 풍선 주머니 자체 반경(<c>AppearanceShapeBuilder.BalloonRadiusInR</c>,
@@ -432,6 +444,7 @@ namespace StickMate.Interaction
         private void Awake()
         {
             _agent = GetComponent<StickmanAgent>();
+            _costumeProp = GetComponent<CostumePropRenderer>();
             _metrics = StickmanMetrics.Find(this);
             _torsoTransform = FindDirectChild("Torso");
 
@@ -598,20 +611,31 @@ namespace StickMate.Interaction
             float sin = Mathf.Sin(_orbitPhase);
             float cos = Mathf.Cos(_orbitPhase);
 
-            // ★★ 2026-09-08 — 궤도의 <b>전방 반원을 없앤다</b>(design-motion 14-5, 판정 (가)).
-            //   가로 성분만 «뒤쪽 반»으로 접는다: 0.5×W×(cos−1)은 언제나 ≤ 0이고,
-            //   cos=−1에서 −W로 <b>가장 먼 뒤쪽 도달점이 예전과 정확히 같다</b>.
-            //   즉 뒤쪽 실루엣은 한 톨도 안 바뀌고 <b>앞으로 나가던 절반만 사라진다</b>.
-            //   세로 성분(sin)과 궤도 중심·주기는 건드리지 않는다 — 「몸과 머리로 범위를 넓혀라」는
-            //   2차 신고가 그 축에 걸려 있다.
-            float forwardOffsetInR = 0.5f * PlaneOrbitHalfWidthInR * (cos - 1f);
+            // ★★ 2026-09-08 — 궤도의 <b>전방 반원을 없앤다</b>(design-motion 14-5, 판정 (가))는
+            //   원래 "상시 적용"이었으나, 사용자가 그 직후 이렇게 신고했다: "지금 종이비행기같은경우
+            //   몸의 반쪽까지만 주위를 돌고있어... 몸 바깥쪽으로 돌수있게 범위 수정해줘" — 반원 접기가
+            //   코스튬 프롭과 무관한 평소(코스튬 프롭 없음)에도 걸려 있던 것이 그 신고의 실체다.
+            //   ★★★ 같은 날 재판정 — <b>D-6가 실제로 막아야 했던 것은 «프롭이 떠 있을 때의 겹침»
+            //   하나뿐이다.</b> UX_MOTION_COSTUME_FOCUS.md §14-5 자신도 대안으로 "프롭이 없으면 그대로
+            //   둔다" 계열을 승인했다. 그래서 접기를 <b>프롭이 실제로 서 있을 때만</b>(=
+            //   <see cref="CostumePropRenderer.PropPlaced"/>) 켠다 — 몰입기+프롭 존재 조합에서만 겹침
+            //   회피가 필요하고, 그 밖의 모든 시간(코스튬 미착용 · 프롭 미저작 세트 · 적응기/한계
+            //   구간)에는 사용자가 요구한 <b>완전한 타원 궤도</b>(몸 양쪽을 다 돈다)로 돌아간다.
+            //   가로 성분: 접힌 동안은 0.5×W×(cos−1)(범위 [−W,0], 뒤쪽 반원), 아닐 때는 W×cos(범위
+            //   [−W,+W], 완전 타원) — 두 식 모두 cos=−1(가장 먼 뒤쪽 도달점)에서 값이 −W로 같으므로
+            //   접혔다 풀렸다 해도 뒤쪽 실루엣 끝은 안 튄다. 세로 성분(sin)과 궤도 중심·주기는 여전히
+            //   건드리지 않는다.
+            bool foldToBackHalf = _costumeProp != null && _costumeProp.PropPlaced;
+            float forwardOffsetInR = foldToBackHalf
+                ? 0.5f * PlaneOrbitHalfWidthInR * (cos - 1f)
+                : PlaneOrbitHalfWidthInR * cos;
             float side = TickPlaneOrbitSide(bb, dt);
             _position = new Vector2(cx + side * r * forwardOffsetInR, cy + r * PlaneOrbitHalfHeightInR * sin);
             ClampToScreen(ref _position, r * PlaneWingSpanInR);
 
-            // 기수각 = 궤도 접선 방향(d/dt). 가로 성분이 절반이 됐으므로 여기도 같은 식에서 파생한다 —
+            // 기수각 = 궤도 접선 방향(d/dt). 위 forwardOffsetInR과 같은 분기에서 파생한다 —
             // 두 곳이 갈라지면 기수가 진행 방향을 안 가리킨다.
-            float dx = side * (-0.5f * r * PlaneOrbitHalfWidthInR * sin);
+            float dx = side * (foldToBackHalf ? -0.5f : -1f) * r * PlaneOrbitHalfWidthInR * sin;
             float dy = r * PlaneOrbitHalfHeightInR * cos;
             float angle = Mathf.Atan2(dy, dx) * Mathf.Rad2Deg;
 
