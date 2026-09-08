@@ -1,0 +1,33 @@
+============================================================================================
+  r31 파서 교정 — 알려진 값으로 먼저 맞춘다
+============================================================================================
+   OK office propShapes 조각 수   파서=10  기대=10
+   OK office stage0 조각 수       파서=4  기대=4
+   OK office 근단 X              파서=0.26  기대=0.26
+   OK office 원단 X              파서=1.0  기대=1.0
+   OK office 상단 Y              파서=1.02  기대=1.02
+   OK cyber 단계별 조각 수           파서=(3, 6, 8, 11)  기대=(3, 6, 8, 11)
+   OK mine 단계별 조각 수            파서=(3, 8, 11, 13)  기대=(3, 8, 11, 13)
+   OK arcane 단계별 조각 수          파서=(5, 9, 13, 17)  기대=(5, 9, 13, 17)
+
+  교정 통과. 아래는 채움(filled) 조각 전수:
+   office   base  DeskLip    n=4 loop=True tone=1
+   office   S0    DeskLip    n=4 loop=True tone=1
+   office   S1    DeskLip    n=4 loop=True tone=1
+   office   S2    DeskLip    n=4 loop=True tone=1
+   office   S3    DeskLip    n=4 loop=True tone=1
+   cyber    base  BasePad    n=6 loop=True tone=1
+   cyber    S0    BasePad    n=6 loop=True tone=1
+   cyber    S1    BasePad    n=6 loop=True tone=1
+   cyber    S2    BasePad    n=6 loop=True tone=1
+   cyber    S3    BasePad    n=6 loop=True tone=1
+   mine     base  Vein1      n=4 loop=True tone=1
+   mine     S0    Vein1      n=4 loop=True tone=1
+   mine     S1    Vein1      n=4 loop=True tone=1
+   mine     S2    Vein1      n=4 loop=True tone=1
+   mine     S3    Vein1      n=4 loop=True tone=1
+   arcane   base  StaffMoon  n=24 loop=True tone=1
+   arcane   S0    StaffMoon  n=24 loop=True tone=1
+   arcane   S1    StaffMoon  n=24 loop=True tone=1
+   arcane   S2    StaffMoon  n=24 loop=True tone=1
+   arcane   S3    StaffMoon  n=24 loop=True tone=1
