@@ -200,7 +200,7 @@ namespace StickMate.States
                     float seekStepUpMax = AutoWanderController.ResolveStepUpMaxHeightStatic(_blackboard);
                     float seekMin = _blackboard.Config != null ? _blackboard.Config.parkourDetectionRadius : 0.5f;
                     _blackboard.TryVerifyClimbTargetNearBody(info, stepUpDirection, seekMin, seekStepUpMax,
-                        out stepUpWallTopY);
+                        out stepUpWallTopY, out _);
                 }
                 if (stepUpWallTopY > info.GroundWorldY)
                 {
@@ -234,7 +234,7 @@ namespace StickMate.States
                 if (!_blackboard.TryFindRopeClimbWallWide(info, ropeDirection, out _, out float ropeWallTopY, ropeStepUpMax, ropeMax))
                 {
                     _blackboard.TryVerifyClimbTargetNearBody(info, ropeDirection, ropeStepUpMax, ropeMax,
-                        out ropeWallTopY);
+                        out ropeWallTopY, out _);
                 }
                 if (ropeWallTopY > info.GroundWorldY)
                 {

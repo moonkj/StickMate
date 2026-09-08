@@ -3630,9 +3630,10 @@ namespace StickMate.States
         /// (사용자에게는 후자가 곧 «또 안 된다»로 보인다).</para>
         /// </summary>
         public bool TryVerifyClimbTargetNearBody(GroundSensor.GroundInfo info, int direction,
-            float minHeight, float maxHeight, out float wallTopWorldY)
+            float minHeight, float maxHeight, out float wallTopWorldY, out long wallHandle)
         {
             wallTopWorldY = 0f;
+            wallHandle = 0L;
             if (MainCamera == null || Body == null || !info.Grounded) return false;
             var footholds = FootholdPoller != null ? FootholdPoller.CachedFootholds : null;
             if (footholds == null || footholds.Count == 0) return false;
@@ -3664,6 +3665,7 @@ namespace StickMate.States
                 if (!found || topLeftWorld.y > bestTopY)
                 {
                     bestTopY = topLeftWorld.y;
+                    wallHandle = fh.Handle;   // ★ 핸들도 함께 — 소비자가 이 벽을 «계속» 붙잡아야 한다.
                     found = true;
                 }
             }

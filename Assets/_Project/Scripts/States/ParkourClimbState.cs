@@ -95,6 +95,20 @@ namespace StickMate.States
 
             GroundSensor.GroundInfo info = _blackboard.SenseGround();
             _hasWall = _blackboard.TryFindClimbableWall(info, _direction, out _wallHandle, out _wallTopWorldY);
+
+            // ★★★ 2026-09-08 — 경계 기준 탐색이 실패하면 <b>위치 기준</b>으로 한 번 더 본다.
+            //   RopeClimbState.Enter()와 <b>완전히 같은 사고</b>다(사용자 신고 "윈도우에서는 파쿠르도
+            //   동작안하는데"). 목표 지향 등반(AutoWanderController.TickClimbSeek)은 손 등반 대역의
+            //   벽도 고르는데, 그때 캐릭터가 서는 자리는 «발판 경계»가 아니라 «목표 창의 세로 모서리
+            //   앞»이다. 여기서 경계 기준으로만 다시 찾으면 방금 그 벽을 못 보고 즉시 취소된다.
+            //   ⇒ 판정을 쓰는 <b>모든</b> 지점이 같은 계산원을 봐야 한다.
+            if (!_hasWall)
+            {
+                float seekMin = _blackboard.Config != null ? _blackboard.Config.parkourDetectionRadius : 0.5f;
+                float seekMax = AutoWanderController.ResolveStepUpMaxHeightStatic(_blackboard);
+                _hasWall = _blackboard.TryVerifyClimbTargetNearBody(info, _direction,
+                    seekMin, seekMax, out _wallTopWorldY, out _wallHandle);
+            }
             _hasMantleTarget = TryComputeMantleTargetX(out float mantleTargetX);
 
             if (_blackboard.Body != null)

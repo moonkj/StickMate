@@ -145,6 +145,23 @@ namespace StickMate.States
             float ropeStepUpMax = AutoWanderController.ResolveStepUpMaxHeightStatic(_blackboard);
             float ropeMaxHeight = AutoWanderController.ResolveRopeClimbMaxHeight(_blackboard, info.GroundWorldY);
             _hasWall = _blackboard.TryFindRopeClimbWallWide(info, _direction, out _wallHandle, out _wallTopWorldY, ropeStepUpMax, ropeMaxHeight);
+
+            // ★★★ 2026-09-08 — 경계 기준 탐색이 실패하면 <b>위치 기준</b>으로 한 번 더 본다.
+            //   바로 위 문단이 경고한 그 사고가 <b>한 단계 더 깊은 곳에서 재발했다</b>(사용자 신고 5회차).
+            //   실기 로그:
+            //     [등반목표] 도착 — 밧줄, 벽핸들=5246684, 높이=13.233유닛 ... 지금 던집니다
+            //     [밧줄등반] Throw 진입 — 벽핸들=0, 오를 높이=0.000유닛
+            //     [밧줄등반] Throw 취소 — 목표 벽 소실
+            //   즉 목표 지향(AutoWanderController.TickClimbSeek)이 벽을 찾아 캐릭터를 그 앞까지
+            //   데려다 놓고 WalkState까지 통과했는데, <b>이 Enter()만</b> 여전히 «발판 경계»를 원점으로
+            //   삼는 계산을 해서 방금 그 벽을 못 찾았다.
+            //   ⇒ 소비자가 셋(AutoWander / WalkState / 여기)인데 앞의 둘만 고쳤던 것이다. 판정을 쓰는
+            //     <b>모든</b> 지점이 같은 계산원을 봐야 한다는 규칙은 «둘»이 아니라 «전부»다.
+            if (!_hasWall)
+            {
+                _hasWall = _blackboard.TryVerifyClimbTargetNearBody(info, _direction,
+                    ropeStepUpMax, ropeMaxHeight, out _wallTopWorldY, out _wallHandle);
+            }
             _hasMantleTarget = TryComputeMantleTargetX(out _, out _);
 
             if (_blackboard.Body != null)
