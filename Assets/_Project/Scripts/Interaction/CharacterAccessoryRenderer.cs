@@ -208,6 +208,55 @@ namespace StickMate.Interaction
         /// <summary>채움 면(모자류). 알파/표시 토글은 선과 같은 규칙을 따른다.</summary>
         private readonly List<MeshRenderer> _fills = new List<MeshRenderer>(4);
 
+        // ============================================================================
+        // ★★ 몸에 붙는 비트맵 (2026-09-09, docs/GAME_ARCHITECTURE_REVIEW.md §19)
+        // ============================================================================
+        /// <summary>
+        /// ★ 착용 비트맵. 아이템당 최대 <b>2장</b>(앞층 + 몸 뒤로 넘어가는 층)이고,
+        /// 그 「2」는 취향이 아니라 실측이다 — 인계본 12종 중 6종이 서로 다른 <c>sortingOrder</c>
+        /// 두 개를 쓴다(§19-7-c). 비어 있으면(출하 42종 전부) 이 목록은 <b>영원히 비어 있고</b>
+        /// 아래 다섯 자리의 순회는 전부 0회 돈다 = 옛 동작 그대로다.
+        ///
+        /// <para>★★ <b>이 목록이 존재하는 첫 번째 이유는 그리기가 아니라 「숨기기」다.</b>
+        /// 이 앱의 «캐릭터가 지금 보이는가» 판정은 <c>GetComponentsInChildren&lt;LineRenderer&gt;</c>로
+        /// 이뤄지는 자리가 <b>40곳</b>(프로덕션 1 + 테스트 39)이고, <see cref="SpriteRenderer"/>는
+        /// <see cref="LineRenderer"/>가 아니다. 배선을 빠뜨리면 전체화면 게임 위에 <b>몸 없는 비트맵
+        /// 모자만</b> 남고 그 40개 프로브는 <b>전부 초록</b>이다 — CLAUDE.md 절대 불변 원칙 2 위반이
+        /// 「죽은 프로브가 산 프로브와 똑같이 생긴」 형태로 일어난다(§19-8-1).
+        /// 그래서 <see cref="CollectVisuals"/>·<see cref="SetLinesEnabled"/>·<see cref="ApplyAlpha"/>·
+        /// <see cref="TryGetLowestInkWorldY"/>·<see cref="Rebuild"/> <b>다섯 곳 전부</b>에 이 목록이 들어간다.
+        /// 하나라도 빠지면 증상이 다르다.</para>
+        /// </summary>
+        private readonly List<SpriteRenderer> _sprites = new List<SpriteRenderer>(2);
+
+        /// <summary><see cref="_sprites"/>와 1:1인 «마지막으로 적용한 전역 알파». 선/채움과 같은 이유로
+        /// 되읽기 비교를 하지 않는다 — 24시간 상주 앱에서 매 프레임 세터를 돌리지 않기 위해서다.</summary>
+        private readonly List<float> _spriteAlphaApplied = new List<float>(2);
+
+        /// <summary>
+        /// ★ 그 비트맵의 <b>알파 타이트 박스</b>를 부모(컨테이너 또는 머리 그룹) 로컬로 미리 접어 둔 것.
+        ///
+        /// <para><b>왜 <c>SpriteRenderer.bounds</c>를 안 쓰는가</b>(§19-8-3): 스프라이트의 bounds는
+        /// <b>투명 여백까지 포함한 캔버스 사각형 전체</b>다. 모자가 캔버스의 60%만 차지하면
+        /// GETUP 바닥 클리어런스가 그 여백만큼 캐릭터를 <b>공중에 띄운다</b>. 그리고
+        /// <c>spriteMeshType: Tight</c>가 bounds를 실제로 줄이는지는 <b>버전 의존이고 실기로 재지
+        /// 않았다</b>(§19-12-2) — 재기 전에 그것을 전제한 설계를 쓰지 않는다.</para>
+        /// </summary>
+        private readonly List<WornSpriteInk> _spriteInk = new List<WornSpriteInk>(2);
+
+        /// <summary>비트맵 한 장의 잉크 사각형(부모 로컬). 좌우 반전은 <b>굽는 시점에 이미 적용돼</b> 있다.</summary>
+        private readonly struct WornSpriteInk
+        {
+            public readonly Transform Parent;
+            public readonly Vector2 Min;
+            public readonly Vector2 Max;
+
+            public WornSpriteInk(Transform parent, Vector2 min, Vector2 max)
+            {
+                Parent = parent; Min = min; Max = max;
+            }
+        }
+
         /// <summary>직접 만든 메시. <b>반드시 손으로 지운다</b> — GameObject를 Destroy해도 메시는
         /// 남아서 24시간 상주 앱에서 재구성마다 조금씩 샌다.</summary>
         private readonly List<Mesh> _fillMeshes = new List<Mesh>(4);
@@ -398,21 +447,28 @@ namespace StickMate.Interaction
         /// (RendererScaleRatioTests가 렌더러를 최소 리그에 붙여 프로퍼티만 읽는 것과 같은 방식).</summary>
         public void SetFacingForTests(float sign) => _facingSign = sign >= 0f ? 1f : -1f;
 
-        private void Awake()
+        private void Awake() => ResolveRig();
+
+        /// <summary>리그 참조를 한 번 푼다. <see cref="Awake"/>의 본문이고 <b>멱등</b>하다 —
+        /// 두 번째 호출은 같은 값을 다시 넣는다(머리 중립은 포즈 애니메이터가 생기기 전 값이라야
+        /// 하므로 이미 재어 뒀으면 다시 재지 않는다). 테스트 진입점이 이것을 공유하는 이유는
+        /// <see cref="RebuildForTests"/> 문단에 있다.</summary>
+        private void ResolveRig()
         {
             _agent = GetComponent<StickmanAgent>();
             _metrics = StickmanMetrics.Find(this);
             _torsoTransform = FindDirectChild("Torso");
             _headTransform = FindDirectChild("Head");
-            if (_headTransform != null)
+            if (_headTransform != null && !_hasHeadNeutral)
             {
                 _headNeutralLocal = _headTransform.localPosition;
                 _hasHeadNeutral = true;
-                for (int i = 0; i < _headTransform.childCount; i++)
-                {
-                    Transform c = _headTransform.GetChild(i);
-                    if (c != null && c.name == StickmanMetrics.HeadRingObjectName) _headOutline = c.GetComponent<LineRenderer>();
-                }
+            }
+            if (_headTransform == null) return;
+            for (int i = 0; i < _headTransform.childCount; i++)
+            {
+                Transform c = _headTransform.GetChild(i);
+                if (c != null && c.name == StickmanMetrics.HeadRingObjectName) _headOutline = c.GetComponent<LineRenderer>();
             }
         }
 
@@ -428,15 +484,33 @@ namespace StickMate.Interaction
 
         private void OnDestroy()
         {
-            if (_container != null) Destroy(_container);
+            if (_container != null) DestroySafely(_container);
             DestroyFillMeshes();
+        }
+
+        /// <summary>
+        /// 재생 중이면 <see cref="Object.Destroy(Object)"/>, 에디트 모드면
+        /// <see cref="Object.DestroyImmediate(Object)"/>.
+        ///
+        /// <para><b>배포 동작은 한 비트도 다르지 않다</b> — 빌드된 앱에서
+        /// <see cref="Application.isPlaying"/>은 언제나 참이라 항상 <c>Destroy</c>다.
+        /// 이 갈래는 <b>에디트 모드에서 이 렌더러를 실제로 굽는 테스트</b>(P0 교정 관문)를 위해 있다:
+        /// 그쪽에서 <c>Destroy</c>를 부르면 Unity가 «Destroy may not be called from edit mode»
+        /// 에러를 내고 <b>객체가 안 지워진 채</b> 다음 프레임을 기다린다 — 즉 재구성이
+        /// 조용히 반쪽만 도는 상태가 된다.</para>
+        /// </summary>
+        private static void DestroySafely(Object target)
+        {
+            if (target == null) return;
+            if (Application.isPlaying) Destroy(target);
+            else DestroyImmediate(target);
         }
 
         private void DestroyFillMeshes()
         {
             for (int i = 0; i < _fillMeshes.Count; i++)
             {
-                if (_fillMeshes[i] != null) Destroy(_fillMeshes[i]);
+                if (_fillMeshes[i] != null) DestroySafely(_fillMeshes[i]);
             }
             _fillMeshes.Clear();
             _fillColors.Clear();
@@ -604,6 +678,26 @@ namespace StickMate.Interaction
                 if (!any || y < worldY) { worldY = y; any = true; }
             }
 
+            // ★ 착용 비트맵(배선 5곳 중 넷째). <b>bounds가 아니라 알파 타이트 박스</b>를 쓴다 —
+            //   스프라이트의 bounds에는 투명 여백이 들어 있어서, 그대로 쓰면 여백만큼 캐릭터를
+            //   공중에 띄운다(<see cref="_spriteInk"/> 문단, §19-8-3). 네 모서리를 전부 변환하는
+            //   이유는 컨테이너가 상체 기울임으로 <b>회전</b>해 있어 최저점이 모서리에서 나기 때문이다.
+            for (int i = 0; i < _sprites.Count; i++)
+            {
+                SpriteRenderer sr = _sprites[i];
+                if (sr == null || !sr.enabled || !sr.gameObject.activeInHierarchy) continue;
+                if (i >= _spriteInk.Count) continue;
+                WornSpriteInk ink = _spriteInk[i];
+                if (ink.Parent == null) continue;
+                for (int c = 0; c < 4; c++)
+                {
+                    float lx = (c & 1) == 0 ? ink.Min.x : ink.Max.x;
+                    float ly = (c & 2) == 0 ? ink.Min.y : ink.Max.y;
+                    float y = ink.Parent.TransformPoint(new Vector3(lx, ly, 0f)).y;
+                    if (!any || y < worldY) { worldY = y; any = true; }
+                }
+            }
+
             if (!any) worldY = 0f;
             return any;
         }
@@ -624,6 +718,11 @@ namespace StickMate.Interaction
             if (sink == null || _container == null || !_container.activeSelf) return;
             sink.AddRange(_lines, CharacterVisualAnchor.BodyAttached);
             sink.AddRange(_fills, CharacterVisualAnchor.BodyAttached);
+            // ★ 배선 5곳 중 첫째 — <b>이 한 줄이 원칙 2를 지킨다.</b>
+            //   StickmanAgent.SetRenderersEnabled(false)(전체화면 자동 숨김 / 가출 은신)가 몸 바깥의
+            //   잉크에 닿는 <b>유일한</b> 통로가 이 창구다. 빠지면 게임 위에 비트맵 모자만 남고,
+            //   기존 LineRenderer 프로브 40개는 전부 초록이라 <b>아무도 신고하지 않는다</b>(§19-8-1).
+            sink.AddRange(_sprites, CharacterVisualAnchor.BodyAttached);
         }
 
         /// <summary>
@@ -632,6 +731,9 @@ namespace StickMate.Interaction
         /// 여러 곳에서 <c>GetComponentsInChildren&lt;LineRenderer&gt;(true).enabled</c>로 이루어지고
         /// (Core/StickmanAgent.SetRenderersEnabled, Tests/PlayMode/Phase5VisualLayerTests), 비활성
         /// GameObject의 컴포넌트도 그 조회에 잡히면서 <c>enabled</c>는 true로 남기 때문이다.
+        /// <para>★ 2026-09-09 — 이름은 «Lines»지만 <b>채움면과 착용 비트맵도</b> 함께 끈다.
+        /// 이름을 안 바꾼 이유는 이 저장소가 «식별자 문자열을 니들로 베낀» 테스트 때문에 이미
+        /// 거짓 빨강을 낸 적이 있어서다(CLAUDE.md). 여기서 <b>끄는 대상 목록</b>이 정본이다.</para>
         /// </summary>
         private void SetLinesEnabled(bool enabledState)
         {
@@ -644,6 +746,13 @@ namespace StickMate.Interaction
             {
                 MeshRenderer mr = _fills[i];
                 if (mr != null && mr.enabled != enabledState) mr.enabled = enabledState;
+            }
+            // ★ 배선 5곳 중 둘째 — 알파 0으로 내려간 프레임(랙돌/전체화면)에서 여기가 빠지면
+            //   비트맵만 <c>enabled = true</c>로 남는다. GameObject가 비활성이어도 그 값은 true다.
+            for (int i = 0; i < _sprites.Count; i++)
+            {
+                SpriteRenderer sr = _sprites[i];
+                if (sr != null && sr.enabled != enabledState) sr.enabled = enabledState;
             }
         }
 
@@ -867,7 +976,7 @@ namespace StickMate.Interaction
             if (_container == null) return;
             if (EquipmentModel.AnyEquipped()) return;
 
-            Destroy(_container);
+            DestroySafely(_container);
             _container = null;
             _headGroup = null;
             DestroyFillMeshes();
@@ -875,20 +984,33 @@ namespace StickMate.Interaction
             _lineDeclaredAlpha.Clear();
             _lineAlphaApplied.Clear();
             _fills.Clear();
+            ClearWornSprites();
             _swayLines.Clear();
             _swayApplied = false;
             _built = false;
             _builtSignature = -1;
         }
 
+        /// <summary>착용 비트맵 목록 셋(렌더러·적용 알파·잉크 박스)을 <b>한 번에</b> 비운다.
+        /// 셋은 언제나 같은 길이여야 하고, 따로 비우면 한쪽만 비는 프레임이 생긴다.
+        /// <c>GameObject</c>는 컨테이너가 통째로 파괴될 때 함께 사라지므로 여기서 지우지 않는다
+        /// (손으로 만든 <see cref="Mesh"/>와 달리 스프라이트는 우리가 만든 자원이 아니다).</summary>
+        private void ClearWornSprites()
+        {
+            _sprites.Clear();
+            _spriteAlphaApplied.Clear();
+            _spriteInk.Clear();
+        }
+
         private void Rebuild()
         {
-            if (_container != null) Destroy(_container);
+            if (_container != null) DestroySafely(_container);
             DestroyFillMeshes();
             _lines.Clear();
             _lineDeclaredAlpha.Clear();
             _lineAlphaApplied.Clear();
             _fills.Clear();
+            ClearWornSprites();   // ★ 배선 5곳 중 다섯째 — 안 비우면 파괴된 스프라이트가 목록에 남는다.
             _swayLines.Clear();
             _swayApplied = false;
 
@@ -917,9 +1039,23 @@ namespace StickMate.Interaction
                 var slot = (EquipmentSlot)i;
                 if (!ShouldDraw(slot)) continue;
 
+                int item = EquipmentModel.WornIndex(slot);
+
+                // ★★ 착용 비트맵 갈래 (2026-09-09, §19-6-c). 칸이 비면(출하 42종 전부) false 라
+                //   아래 벡터 경로가 <b>한 줄도 다르지 않게</b> 그대로 돈다 — 그것이 「이전 것 보존」의
+                //   정의다(빈칸 하나가 곧 롤백이다).
+                //
+                //   ★ <b>왜 AccessoryShapeBuilder.Append 안이 아니라 여기인가</b>: 그 함수는 몸만의
+                //   것이 아니다. 카드(AccessoryCardIcon)와 초상(CharacterPortraitStage)이 같은 함수를
+                //   표면 인자만 바꿔 부른다. 거기서 갈랐다면 <b>카드와 초상이 조용히 함께 벡터를
+                //   잃었을</b> 것이고, 카드는 이미 자기 칸(cardIconOverride)이 있어 두 칸이 서로를
+                //   덮는 사고가 났을 것이다. 그리고 여기 두면 벡터 경로가 <b>컴파일되고 테스트되는
+                //   채로</b> 남는다 — 저장소에 그 경로를 잡고 있는 테스트가 58개 파일이고,
+                //   그 초록이 곧 「보관본이 멀쩡하다」의 증거다.
+                if (TryAppendWornSprites(slot, item)) continue;
+
                 // 색은 <b>슬롯 단위</b>로 한 번 푼다 — 도형마다 카탈로그를 다시 뒤지지 않기 위해서고,
                 // 그래야 "이 아이템의 두 색"이라는 팔레트 규칙이 코드에서도 그대로 보인다.
-                int item = EquipmentModel.WornIndex(slot);
                 ItemCatalog.ResolveWornPalette(slot, item, ink, out Color primary, out Color secondary);
 
                 int start = _shapes.Count;
@@ -944,6 +1080,159 @@ namespace StickMate.Interaction
                         parent, k - start);
                 }
             }
+        }
+
+        // ============================================================================
+        // ★★ 착용 비트맵 (2026-09-09, docs/GAME_ARCHITECTURE_REVIEW.md §19)
+        // ============================================================================
+
+        /// <summary>
+        /// 이 자리의 착용 비트맵을 <b>실제로 만든다</b>. 만들었으면 참(= 이 슬롯의 벡터 경로를 건너뛴다).
+        ///
+        /// <para><b>앞장이 주인이다</b>: 앞층이 비어 있으면 뒤층만 있어도 거짓을 돌려준다.
+        /// 「뒤만 있고 앞이 없는」 아이템은 존재하지 않으므로 그 조합은 오타로 보고 벡터로 되돌린다 —
+        /// 빈칸이 곧 롤백이라는 계약을 깨지 않기 위해서다.</para>
+        /// </summary>
+        private bool TryAppendWornSprites(EquipmentSlot slot, int item)
+        {
+            Sprite front = ItemCatalog.WornSprite(slot, item);
+            if (front == null) return false;
+            if (!TryResolveWornSpriteOrder(slot, out int frontOrder)) return false;
+
+            Rect rectInR = ResolveWornSpriteRectInR(ItemCatalog.WornSpriteRectInR(slot, item), front);
+            Vector4 inkBoxInR = ItemCatalog.WornSpriteInkBoxInR(slot, item);
+            Transform parent = AccessoryShapeBuilder.IsHeadAttached(slot) ? _headGroup : _container.transform;
+
+            // 뒤층을 <b>먼저</b> 만든다 — 겹침은 sortingOrder가 정하지만, 목록 순서가 곧 진단 로그의
+            // 순서라 «뒤 → 앞»으로 읽히는 편이 낫다.
+            Sprite back = ItemCatalog.WornSpriteBack(slot, item);
+            if (back != null)
+            {
+                AddWornSprite(back, slot, rectInR, inkBoxInR, parent, AccessoryShapeBuilder.SortBack, "Back");
+            }
+            AddWornSprite(front, slot, rectInR, inkBoxInR, parent, frontOrder, "Front");
+            return true;
+        }
+
+        /// <summary>
+        /// 자리 -> 앞층 <see cref="Renderer.sortingOrder"/>. <b>표의 주인은 이 파일이 아니다</b> —
+        /// <see cref="AccessoryShapeBuilder.TryWornAssetSlotOrder"/>가 정본이고, 같은 정수를
+        /// 벡터 조각도 쓴다(§19-7-b: 정렬 레이어는 하나뿐이고 sortingOrder 정수가 유일한 근거다).
+        ///
+        /// <para>머리카락만 여기서 더한다: 그 자리는 에셋 <b>도형</b>에 대해 닫혀 있는데
+        /// (모자 커버선으로 잘리는 경로를 에셋 조각이 못 거친다 — 그쪽 함수 문단) 비트맵은 자르기를
+        /// 애초에 안 쓰고 <b>z-order가 대신 가린다</b>. 이펙트/펫은 여전히 거짓이다 — 그 둘은 몸 도형의
+        /// 주인이 다른 렌더러라(<c>CharacterPetRenderer</c>/<c>CharacterFxRenderer</c>) 여기서 열면
+        /// 「카드는 있는데 착용하면 두 개가 그려지는」 아이템을 만들 수 있다.</para>
+        /// </summary>
+        private static bool TryResolveWornSpriteOrder(EquipmentSlot slot, out int sortingOrder)
+        {
+            if (AccessoryShapeBuilder.TryWornAssetSlotOrder(slot, out sortingOrder)) return true;
+            if (slot == EquipmentSlot.Hair) { sortingOrder = AccessoryShapeBuilder.SortHair; return true; }
+            sortingOrder = 0;
+            return false;
+        }
+
+        /// <summary>배치 사각형의 되메움. 규칙의 주인은 <see cref="WornSpritePlacement.ResolveRectInR"/>다
+        /// (에디터 굽기·테스트가 <b>같은 함수</b>를 본다). 여기서는 스프라이트에서 비율만 뽑아 넘긴다.</summary>
+        internal static Rect ResolveWornSpriteRectInR(Rect declared, Sprite sprite)
+        {
+            if (sprite == null) return declared;
+            Vector2 canvas = WornSpriteCanvasSize(sprite);
+            return WornSpritePlacement.ResolveRectInR(declared,
+                canvas.x > 0.0001f ? canvas.y / canvas.x : 1f);
+        }
+
+        /// <summary>
+        /// 스프라이트 <b>캔버스 전체</b>의 월드 크기. <c>bounds</c>가 아니라
+        /// <c>rect / pixelsPerUnit</c>로 재는 이유: <c>spriteMeshType: Tight</c>가 <c>bounds</c>를
+        /// 줄이는지는 Unity 버전에 따라 다르고 실기로 확인되지 않았다(§19-12-2).
+        /// <c>rect</c>는 메시 종류와 <b>무관하게</b> 텍스처 사각형 그대로라, 이 값으로 잡으면
+        /// 배치가 임포트 설정에 흔들리지 않는다.
+        /// </summary>
+        internal static Vector2 WornSpriteCanvasSize(Sprite sprite)
+        {
+            if (sprite == null) return Vector2.zero;
+            float ppu = sprite.pixelsPerUnit;
+            if (ppu <= 0.0001f) ppu = 100f;
+            return sprite.rect.size / ppu;
+        }
+
+        /// <summary>
+        /// 비트맵 한 장을 실제로 붙인다.
+        ///
+        /// <list type="bullet">
+        ///   <item><b>앵커</b>는 자리에서 유도한다(머리/눈/머리카락 = 머리 중심, 목/어깨 = 어깨선).
+        ///     데이터에 안 넣는 이유는 층과 같다 — 자리끼리의 규칙이라 팩 작성자가 정하면 안 된다.</item>
+        ///   <item><b>좌우 반전</b>은 벡터와 <b>같은 트리거</b>다: <see cref="SyncFacing"/>이 부호가
+        ///     바뀐 프레임에 서명을 무효화해 <see cref="Rebuild"/>를 부르고, 여기서 <c>flipX</c>와
+        ///     중심 오프셋 부호가 함께 뒤집힌다. 도형과 스프라이트가 서로 다른 프레임에 뒤집히는
+        ///     자리가 구조적으로 없다.</item>
+        ///   <item><b>배율</b>은 곱하지 않는다 — <c>R</c>이 이미 루트 배율이 곱해진 월드 값이고
+        ///     컨테이너가 루트 배율을 상쇄해 안쪽 월드 스케일이 1이므로, <c>rect × R</c>이 곧
+        ///     화면에서의 크기다(이 파일 "이중 스케일" 문단).</item>
+        /// </list>
+        /// </summary>
+        private void AddWornSprite(Sprite sprite, EquipmentSlot slot, in Rect rectInR, in Vector4 inkBoxInR,
+            Transform parent, int sortingOrder, string suffix)
+        {
+            Vector2 canvas = WornSpriteCanvasSize(sprite);
+            if (canvas.x <= 0.0001f || canvas.y <= 0.0001f) return;
+
+            float r = R;
+            float anchorY = AccessoryShapeBuilder.IsHeadAttached(slot) ? HeadCenterY : ShoulderY;
+            float centerX = _facingSign * rectInR.x * r;
+            float centerY = anchorY + rectInR.y * r;
+            var scale = new Vector3(rectInR.width * r / canvas.x, rectInR.height * r / canvas.y, 1f);
+
+            // 피벗이 캔버스 중심이 아닐 수 있다(임포트 프리셋은 Center 로 못박지만 남의 에셋이
+            // 섞일 수 있다). 피벗->중심 벡터를 명시적으로 되빼면 그 경우에도 그림이 제자리에 온다.
+            // flipX 는 <b>피벗</b>을 축으로 뒤집으므로 그 벡터의 x도 함께 뒤집힌다.
+            float ppu = sprite.pixelsPerUnit > 0.0001f ? sprite.pixelsPerUnit : 100f;
+            Vector2 pivotToCenter = (sprite.rect.size * 0.5f - sprite.pivot) / ppu;
+
+            var go = new GameObject($"{slot}WornSprite{suffix}");
+            go.transform.SetParent(parent != null ? parent : _container.transform, false);
+            go.transform.localPosition = new Vector3(
+                centerX - _facingSign * scale.x * pivotToCenter.x,
+                centerY - scale.y * pivotToCenter.y, 0f);
+            go.transform.localScale = scale;
+
+            var sr = go.AddComponent<SpriteRenderer>();
+            sr.sprite = sprite;
+            sr.flipX = _facingSign < 0f;
+            sr.sortingOrder = sortingOrder;
+            sr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            sr.receiveShadows = false;
+            sr.color = Color.white;   // 잉크색을 곱하지 않는다 — 그림이 자기 색을 갖는다(§19-6-a).
+
+            _sprites.Add(sr);
+            _spriteAlphaApplied.Add(1f);   // 방금 넣은 색이 곧 「선언값(1) × 1」이다.
+            _spriteInk.Add(BuildWornSpriteInk(parent != null ? parent : _container.transform,
+                rectInR, inkBoxInR, anchorY, r));
+        }
+
+        /// <summary>
+        /// 잉크 사각형(부모 로컬)을 접는다. 타이트 박스를 안 구웠으면 <b>배치 사각형 전체</b>를
+        /// 잉크로 본다 — 「모른다」일 때 안전한 방향(여유를 더 주는 쪽)으로 틀린다.
+        /// <para>좌우 반전은 여기서 <b>이미</b> 적용된다. 반전하면 x의 최소/최대가 바뀌므로
+        /// 두 값을 곱한 뒤 다시 정렬한다(부호만 곱하고 넘기면 min &gt; max 인 사각형이 나온다).</para>
+        /// </summary>
+        private WornSpriteInk BuildWornSpriteInk(Transform parent, in Rect rectInR, in Vector4 inkBoxInR,
+            float anchorY, float r)
+        {
+            // 판정자를 두 벌로 적지 않는다 — 굽는 쪽(에디터)과 읽는 쪽(여기)이 같은 함수를 본다.
+            bool baked = WornSpritePlacement.IsInkBoxBaked(inkBoxInR);
+            float minXInR = baked ? inkBoxInR.x : rectInR.x - rectInR.width * 0.5f;
+            float maxXInR = baked ? inkBoxInR.z : rectInR.x + rectInR.width * 0.5f;
+            float minYInR = baked ? inkBoxInR.y : rectInR.y - rectInR.height * 0.5f;
+            float maxYInR = baked ? inkBoxInR.w : rectInR.y + rectInR.height * 0.5f;
+
+            float ax = _facingSign * minXInR * r;
+            float bx = _facingSign * maxXInR * r;
+            return new WornSpriteInk(parent,
+                new Vector2(Mathf.Min(ax, bx), anchorY + minYInR * r),
+                new Vector2(Mathf.Max(ax, bx), anchorY + maxYInR * r));
         }
 
         /// <summary>
@@ -1547,6 +1836,56 @@ namespace StickMate.Interaction
                 mesh.colors = colors;
                 _fillAlphaApplied[i] = _alpha;
             }
+
+            // ★ 배선 5곳 중 셋째 — 착용 비트맵. 선언 알파는 <b>언제나 1</b>이다(저작 규격이
+            //   «실루엣 안 α=255, 중간값 금지»라 조각별 부분투명이라는 개념이 없다, §19-8-2).
+            //   그래도 <b>전역</b> 페이드는 반드시 걸려야 한다 — 랙돌 진입/복귀의 0.18초 페이드에서
+            //   여기가 빠지면 몸이 사라지는 동안 모자만 불투명하게 남는다.
+            for (int i = 0; i < _sprites.Count; i++)
+            {
+                SpriteRenderer sr = _sprites[i];
+                if (sr == null) continue;
+                if (Mathf.Approximately(_spriteAlphaApplied[i], _alpha)) continue;
+                Color c = sr.color;
+                c.a = _alpha;
+                sr.color = c;
+                _spriteAlphaApplied[i] = _alpha;
+            }
+        }
+
+        // ==================== 테스트 진입점 (착용 비트맵) ====================
+        // ★ <c>public</c>인 이유: PlayMode 테스트 어셈블리는 <c>InternalsVisibleTo</c> 대상이 아니다
+        //   (Scripts/AssemblyInfo.cs는 EditMode 하나만 허용). 같은 사정으로
+        //   <c>ItemCatalog.TrySetWornSpriteForTests</c>도 public 이다.
+
+        /// <summary>
+        /// 테스트/진단 전용 — 지금 착용 상태로 컨테이너를 <b>실제 프로덕션 경로로</b> 굽는다.
+        ///
+        /// <para><see cref="LateUpdate"/>는 <c>_agent == null</c>이면 조기 반환하므로
+        /// (복제본 방어), <c>StickmanAgent</c> 없는 최소 리그에서는 아무것도 구워지지 않는다.
+        /// 그 리그가 <c>Tests/PlayMode/CharacterAccessoryScaleTests</c> 이래 이 저장소의 표준
+        /// 측정대이므로, 그 위에서 <b>같은 <see cref="Rebuild"/></b>를 부를 수 있게 연다 —
+        /// 도형 조립을 테스트가 흉내 내면 그 흉내가 프로덕션과 갈라지는 날 아무도 모른다.</para>
+        /// </summary>
+        public void RebuildForTests()
+        {
+            ResolveRig();
+            Rebuild();
+            _built = true;
+            _builtSignature = ComputeSignature();
+        }
+
+        /// <summary>테스트 전용 — 지금 붙어 있는 착용 비트맵. 비어 있으면 이 아이템은 벡터로 그려졌다.</summary>
+        public IReadOnlyList<SpriteRenderer> WornSpritesForTests => _sprites;
+
+        /// <summary>테스트 전용 — <see cref="SetLinesEnabled"/>를 그대로 부른다(숨김 배선 검증용).</summary>
+        public void SetVisualsEnabledForTests(bool enabledState) => SetLinesEnabled(enabledState);
+
+        /// <summary>테스트 전용 — 전역 페이드를 세우고 <see cref="ApplyAlpha"/>를 그대로 부른다.</summary>
+        public void ApplyGlobalAlphaForTests(float alpha)
+        {
+            _alpha = alpha;
+            ApplyAlpha();
         }
 
         /// <summary>액세서리도 캐릭터와 <b>같은 잉크색</b>을 쓴다 — 이 앱의 모든 시각 요소가 한 자루

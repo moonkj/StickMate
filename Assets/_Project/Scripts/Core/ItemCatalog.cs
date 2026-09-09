@@ -516,6 +516,15 @@ namespace StickMate.Core
         /// 「벡터 경로를 그대로 탄다」는 뜻이다 — 출하 42종 전부가 그 자리다.</summary>
         private static Sprite[][] _cardSpriteBySlot;
 
+        /// <summary>★ 2026-09-09 — 「몸에 붙는 <b>비트맵</b>」 4종
+        /// (<see cref="AccessoryDefSO.wornSpriteOverride"/> 외 3칸). 위 네 표와 <b>같은 이유</b>로
+        /// 항목이 아니라 여기 있다(<see cref="WornSprite"/> 문단). 안 적은 자리는 <c>null</c>/기본값이고,
+        /// 그것이 곧 「벡터 경로를 그대로 탄다」는 뜻이다 — 출하 42종 전부가 그 자리다.</summary>
+        private static Sprite[][] _wornSpriteBySlot;
+        private static Sprite[][] _wornSpriteBackBySlot;
+        private static Rect[][] _wornSpriteRectBySlot;
+        private static Vector4[][] _wornSpriteInkBoxBySlot;
+
         private static ItemCatalogEntry[][] BySlot
         {
             get { EnsureLoaded(); return _bySlot; }
@@ -556,6 +565,10 @@ namespace StickMate.Core
             var wornTransformBySlot = new AccessoryWornTransform[slots][];
             var hidesHairBySlot = new bool[slots][];
             var cardSpriteBySlot = new Sprite[slots][];
+            var wornSpriteBySlot = new Sprite[slots][];
+            var wornSpriteBackBySlot = new Sprite[slots][];
+            var wornSpriteRectBySlot = new Rect[slots][];
+            var wornSpriteInkBoxBySlot = new Vector4[slots][];
             for (int s = 0; s < slots; s++)
             {
                 bySlot[s] = new ItemCatalogEntry[counts[s]];
@@ -563,6 +576,10 @@ namespace StickMate.Core
                 wornTransformBySlot[s] = new AccessoryWornTransform[counts[s]];
                 hidesHairBySlot[s] = new bool[counts[s]];
                 cardSpriteBySlot[s] = new Sprite[counts[s]];
+                wornSpriteBySlot[s] = new Sprite[counts[s]];
+                wornSpriteBackBySlot[s] = new Sprite[counts[s]];
+                wornSpriteRectBySlot[s] = new Rect[counts[s]];
+                wornSpriteInkBoxBySlot[s] = new Vector4[counts[s]];
             }
 
             for (int i = 0; i < defs.Length; i++)
@@ -585,6 +602,10 @@ namespace StickMate.Core
                     def.wornGroupAlpha, def.wornScale, def.wornScaleY, def.wornOffsetYInR, def.wornMirrorX);
                 hidesHairBySlot[(int)def.slot][def.itemIndex] = def.hidesHair;
                 cardSpriteBySlot[(int)def.slot][def.itemIndex] = def.cardIconOverride;
+                wornSpriteBySlot[(int)def.slot][def.itemIndex] = def.wornSpriteOverride;
+                wornSpriteBackBySlot[(int)def.slot][def.itemIndex] = def.wornSpriteBackOverride;
+                wornSpriteRectBySlot[(int)def.slot][def.itemIndex] = def.wornSpriteRectInR;
+                wornSpriteInkBoxBySlot[(int)def.slot][def.itemIndex] = def.wornSpriteInkBoxInR;
             }
 
             if (defs.Length == 0)
@@ -597,6 +618,12 @@ namespace StickMate.Core
                 _wornTransformBySlot = wornTransformBySlot;
                 _hidesHairBySlot = hidesHairBySlot;
                 _cardSpriteBySlot = cardSpriteBySlot;
+                // ★ 아래 정상 경로와 <b>같은 줄 수</b>여야 한다 — 2026-09-05에 이 분기에만 있고
+                //   정상 경로에 없던 대입 하나가 «에셋의 몸 파라미터가 런타임에 전부 0» 결함이었다.
+                _wornSpriteBySlot = wornSpriteBySlot;
+                _wornSpriteBackBySlot = wornSpriteBackBySlot;
+                _wornSpriteRectBySlot = wornSpriteRectBySlot;
+                _wornSpriteInkBoxBySlot = wornSpriteInkBoxBySlot;
                 _entries = BuildFlat(bySlot);
                 return;
             }
@@ -640,6 +667,10 @@ namespace StickMate.Core
             _wornTransformBySlot = wornTransformBySlot;
             _hidesHairBySlot = hidesHairBySlot;
             _cardSpriteBySlot = cardSpriteBySlot;
+            _wornSpriteBySlot = wornSpriteBySlot;
+            _wornSpriteBackBySlot = wornSpriteBackBySlot;
+            _wornSpriteRectBySlot = wornSpriteRectBySlot;
+            _wornSpriteInkBoxBySlot = wornSpriteInkBoxBySlot;
             _entries = BuildFlat(bySlot);
         }
 
@@ -724,6 +755,154 @@ namespace StickMate.Core
             if (row == null || itemIndex < 0 || itemIndex >= row.Length) return null;
             return row[itemIndex];
         }
+
+        // ============================================================================
+        // ★★ 몸에 붙는 비트맵 4칸 (2026-09-09, docs/GAME_ARCHITECTURE_REVIEW.md §19-6-b)
+        // ============================================================================
+        // 위 CardSprite 와 <b>같은 형태</b>다 — 병렬 표 / 없는 자리는 기본값 / 기본값이 곧 옛 동작.
+        // 다른 것은 <b>소비자</b> 하나뿐이다: 카드 표면은 CardSprite 를, 몸 표면은 이 넷을 본다.
+        // 두 표면이 서로의 칸을 보지 않는다는 것이 이 설계의 요점이다(§19-6-c, 같은 그림이 두 표면에서
+        // 4.8배 다른 크기로 그려진다).
+
+        /// <summary>
+        /// ★ 이 아이템이 <b>몸에 붙는 비트맵</b>을 선언했는가, 했다면 무엇을
+        /// (<see cref="AccessoryDefSO.wornSpriteOverride"/>). 안 적은 자리·없는 자리는 <c>null</c>이고
+        /// 그것은 <b>결함이 아니라 기본 상태</b>다 — 출하 42종 전부가 여기 해당하고, <c>null</c>이 곧
+        /// 「지금까지의 벡터 경로를 그대로 탄다」는 뜻이다.
+        ///
+        /// <para><b>소비자는 몸 표면 하나뿐이다</b>(<c>CharacterAccessoryRenderer.Rebuild</c>의 슬롯 루프).
+        /// 카드(<c>AccessoryCardIcon</c>)와 초상(<c>CharacterPortraitStage</c>)은 이 함수를 <b>부르지
+        /// 않는다</b> — 그 둘은 <c>AccessoryShapeBuilder.Append</c>를 공유하므로, 갈래를 그 안에 넣었다면
+        /// 세 표면이 <b>함께</b> 벡터를 잃었을 것이다(§19-6-c).</para>
+        /// </summary>
+        public static Sprite WornSprite(EquipmentSlot slot, int itemIndex)
+        {
+            EnsureLoaded();
+            int s = (int)slot;
+            if (_wornSpriteBySlot == null || s < 0 || s >= _wornSpriteBySlot.Length) return null;
+            Sprite[] row = _wornSpriteBySlot[s];
+            if (row == null || itemIndex < 0 || itemIndex >= row.Length) return null;
+            return row[itemIndex];
+        }
+
+        /// <summary>몸 뒤로 넘어가는 층의 비트맵(<see cref="AccessoryDefSO.wornSpriteBackOverride"/>).
+        /// 없으면 <c>null</c> = 뒤층을 안 그린다. 앞층이 <c>null</c>이면 이 값은 소비되지 않는다
+        /// (앞장이 주인이다 — 그쪽 필드 문단).</summary>
+        public static Sprite WornSpriteBack(EquipmentSlot slot, int itemIndex)
+        {
+            EnsureLoaded();
+            int s = (int)slot;
+            if (_wornSpriteBackBySlot == null || s < 0 || s >= _wornSpriteBackBySlot.Length) return null;
+            Sprite[] row = _wornSpriteBackBySlot[s];
+            if (row == null || itemIndex < 0 || itemIndex >= row.Length) return null;
+            return row[itemIndex];
+        }
+
+        /// <summary>배치 사각형(앵커 기준 중심 오프셋 + 캔버스 크기, 전부 머리 반경 R 배수).
+        /// 안 적었으면 <c>default</c>(폭·높이 0)이고, 그 뜻은 「크기를 안 적었다」다 —
+        /// 되메우기는 렌더러가 한다(<c>CharacterAccessoryRenderer.ResolveWornSpriteRectInR</c>).</summary>
+        public static Rect WornSpriteRectInR(EquipmentSlot slot, int itemIndex)
+        {
+            EnsureLoaded();
+            int s = (int)slot;
+            if (_wornSpriteRectBySlot == null || s < 0 || s >= _wornSpriteRectBySlot.Length) return default;
+            Rect[] row = _wornSpriteRectBySlot[s];
+            if (row == null || itemIndex < 0 || itemIndex >= row.Length) return default;
+            return row[itemIndex];
+        }
+
+        /// <summary>알파 타이트 박스 (minX, minY, maxX, maxY) — <see cref="WornSpriteRectInR"/>와 같은
+        /// 좌표계(R 배수). 안 구웠으면 <c>default</c>(전부 0)이고 소비자는 사각형 전체를 잉크로 본다.
+        /// <b>에디터가 굽는 값이다</b>(<c>Assets/Editor/WornSpriteImport.cs</c>).</summary>
+        public static Vector4 WornSpriteInkBoxInR(EquipmentSlot slot, int itemIndex)
+        {
+            EnsureLoaded();
+            int s = (int)slot;
+            if (_wornSpriteInkBoxBySlot == null || s < 0 || s >= _wornSpriteInkBoxBySlot.Length) return default;
+            Vector4[] row = _wornSpriteInkBoxBySlot[s];
+            if (row == null || itemIndex < 0 || itemIndex >= row.Length) return default;
+            return row[itemIndex];
+        }
+
+        /// <summary>
+        /// ★ <b>테스트 전용</b> — 한 자리에 착용 비트맵을 심는다. 출하 42종이 전부 빈 칸이라
+        /// (그리고 <b>그것이 이 라운드의 합격 조건이라</b>) 심지 않으면 위 네 함수의 소비자를 재는
+        /// 모든 단언이 <b>공허하게 초록</b>이 된다 — CLAUDE.md가 못박은 「죽은 프로브」 그 형태다.
+        ///
+        /// <para><b>왜 <c>public</c>인가</b>: PlayMode 테스트 어셈블리는 <c>InternalsVisibleTo</c>
+        /// 대상이 아니다(<c>Scripts/AssemblyInfo.cs</c>는 EditMode 하나만 허용).
+        /// <c>Platform.FallbackPlatformWindowService</c>의 QA 진입점이 같은 이유로 <c>public</c>이다.</para>
+        ///
+        /// <para><b>왜 별도 오버라이드 사전이 아니라 실제 표에 쓰는가</b>: 사전을 앞단에 두면
+        /// <c>EnsureLoaded</c>가 <c>_wornSpriteBySlot</c> 대입을 <b>빠뜨려도</b> 테스트가 통과한다.
+        /// 그 결함은 이 파일에서 <b>실제로 일어난 적이 있다</b>(2026-09-05, <c>_wornTransformBySlot</c>).
+        /// 표에 직접 쓰면 그 대입이 없는 날 이 함수가 <c>false</c>를 돌려주며 크게 실패한다.</para>
+        ///
+        /// <returns>표에 실제로 심었으면 참. 거짓이면 <b>표가 없거나 자리가 없다</b> —
+        /// 부른 쪽은 이 값을 반드시 단언해야 한다(조용히 넘어가면 위 문단의 사고가 돌아온다).</returns>
+        /// </summary>
+        public static bool TrySetWornSpriteForTests(EquipmentSlot slot, int itemIndex,
+            Sprite front, Sprite back, Rect rectInR, Vector4 inkBoxInR)
+        {
+            EnsureLoaded();
+            int s = (int)slot;
+            if (_wornSpriteBySlot == null || s < 0 || s >= _wornSpriteBySlot.Length) return false;
+            Sprite[] row = _wornSpriteBySlot[s];
+            if (row == null || itemIndex < 0 || itemIndex >= row.Length) return false;
+            if (_wornSpriteBackBySlot?[s] == null || _wornSpriteRectBySlot?[s] == null
+                || _wornSpriteInkBoxBySlot?[s] == null) return false;
+
+            _wornSpriteTestPatches ??= new List<WornSpritePatch>(4);
+            _wornSpriteTestPatches.Add(new WornSpritePatch(s, itemIndex,
+                row[itemIndex], _wornSpriteBackBySlot[s][itemIndex],
+                _wornSpriteRectBySlot[s][itemIndex], _wornSpriteInkBoxBySlot[s][itemIndex]));
+
+            row[itemIndex] = front;
+            _wornSpriteBackBySlot[s][itemIndex] = back;
+            _wornSpriteRectBySlot[s][itemIndex] = rectInR;
+            _wornSpriteInkBoxBySlot[s][itemIndex] = inkBoxInR;
+            return true;
+        }
+
+        /// <summary>★ 테스트 전용 — <see cref="TrySetWornSpriteForTests"/>가 심은 것을 <b>원래 값으로</b>
+        /// 되돌린다(<c>null</c>로 지우지 않는다 — 언젠가 팩이 진짜 값을 실어 오면 그때 지우는 쪽이
+        /// 조용히 그 팩을 벗긴다). 심은 적이 없으면 아무 일도 하지 않는다.</summary>
+        public static void ClearWornSpriteTestPatches()
+        {
+            if (_wornSpriteTestPatches == null) return;
+            for (int i = _wornSpriteTestPatches.Count - 1; i >= 0; i--)
+            {
+                WornSpritePatch p = _wornSpriteTestPatches[i];
+                if (_wornSpriteBySlot != null && p.Slot < _wornSpriteBySlot.Length
+                    && _wornSpriteBySlot[p.Slot] != null && p.Item < _wornSpriteBySlot[p.Slot].Length)
+                {
+                    _wornSpriteBySlot[p.Slot][p.Item] = p.Front;
+                    _wornSpriteBackBySlot[p.Slot][p.Item] = p.Back;
+                    _wornSpriteRectBySlot[p.Slot][p.Item] = p.Rect;
+                    _wornSpriteInkBoxBySlot[p.Slot][p.Item] = p.InkBox;
+                }
+            }
+            _wornSpriteTestPatches.Clear();
+        }
+
+        /// <summary>심기 전의 값. 프로덕션에서는 <c>_wornSpriteTestPatches</c>가 영원히 <c>null</c>이라
+        /// 이 타입은 한 번도 만들어지지 않는다.</summary>
+        private readonly struct WornSpritePatch
+        {
+            public readonly int Slot;
+            public readonly int Item;
+            public readonly Sprite Front;
+            public readonly Sprite Back;
+            public readonly Rect Rect;
+            public readonly Vector4 InkBox;
+
+            public WornSpritePatch(int slot, int item, Sprite front, Sprite back, Rect rect, Vector4 inkBox)
+            {
+                Slot = slot; Item = item; Front = front; Back = back; Rect = rect; InkBox = inkBox;
+            }
+        }
+
+        private static List<WornSpritePatch> _wornSpriteTestPatches;
 
         /// <summary>
         /// ★ 에셋 하나 -> 카탈로그 항목 하나. <b>변환은 여기 한 곳뿐이다.</b>
