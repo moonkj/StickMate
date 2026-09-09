@@ -1,0 +1,16 @@
+# 문턱: 티끌 4.0pt² · 채움<=4 · 얇은판 4.00pt · 면오차 0.006R
+
+cyber_head_patched_hood            채움3 색면 ['51', '17', '10']   통과
+cyber_eyes_slit_visor              채움3 색면 ['10', '5', '0']   통과
+cyber_neck_cable_collar            채움4 색면 ['17', '11', '10', '5']   통과
+cyber_back_tarp_cape               채움3 색면 ['171', '26', '11']   통과
+mine_head_miner_helmet             채움4 색면 ['29', '25', '11', '8']   통과
+mine_eyes_dust_goggles             채움4 색면 ['19', '8', '8', '5']   통과
+mine_neck_mine_lamp                채움3 색면 ['25', '23', '18']   통과
+mine_back_pick_harness             채움4 색면 ['14', '10', '9', '8']   통과
+arcane_head_wizard_hat             채움4 색면 ['45', '28', '15', '11']   통과
+arcane_eyes_astro_lens             채움3 색면 ['24', '8', '7']   통과
+arcane_neck_moon_clasp             채움3 색면 ['35', '26', '15']   통과
+arcane_back_moon_robe              채움4 색면 ['119', '91', '58', '6']   통과
+
+합계 위반 0건

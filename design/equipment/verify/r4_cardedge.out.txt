@@ -1,0 +1,21 @@
+출하 인계본 12종 — R2/R3 게이트의 「카드 두 크기 최단변 >= 획」 축을 그대로 적용
+아이템             슬롯         전체최단 58pt      획     판정        꺾임-꺾임 58pt     판정      24pt(꺾임)     판정
+clothhat        HEAD          0.48pt  1.994    ★미달            5.00pt     OK        2.07pt     OK
+furhat          HEAD          0.45pt  1.994    ★미달           20.84pt     OK        8.62pt     OK
+fedora          HEAD          0.33pt  1.994    ★미달            4.90pt     OK        2.03pt     OK
+crown           HEAD          0.45pt  1.994    ★미달            5.96pt     OK        2.47pt     OK
+sunglasses      EYES          0.09pt  1.994    ★미달                없음     OK            없음     OK
+roundglasses    EYES          0.30pt  1.994    ★미달                없음     OK            없음     OK
+goggles         EYES          0.28pt  1.994    ★미달                없음     OK            없음     OK
+monocle         EYES          0.40pt  1.994    ★미달                없음     OK            없음     OK
+shortcape       BACK          0.56pt  1.994    ★미달            4.73pt     OK        1.96pt     OK
+longcape        BACK          0.45pt  1.994    ★미달            5.17pt     OK        2.14pt     OK
+wings           BACK          0.38pt  1.994    ★미달                없음     OK            없음     OK
+backpack        BACK          0.44pt  1.994    ★미달                없음     OK            없음     OK
+
+⇒ 옛 자(모든 변)      : 12종 중 **12종 미달**  — 즉 이 축은 출하된 물건을 전부 불합격시킨다.
+⇒ 새 자(꺾임-꺾임 변) : 12종 중 0종 미달  — 프로덕션 린트(rig.rule_one)와 같은 정의다.
+
+해석: 매끄러운 곡선은 **정의상** 짧은 변이 많다. 옛 자는 「곡선을 촘촘히 그리는 것」을 금지한다.
+      옛 자가 잡으려던 것(FX/PET 의 «작은 다각형»)은 규칙 1-C(rho_max >= 펜)와
+      「채움 잉크 사각형 >= 1.5획」이 이미 잡으므로, 그 둘은 그대로 두고 이 축만 교체한다.

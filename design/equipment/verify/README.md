@@ -402,3 +402,33 @@ python3 pack_detail_r2_sheet.py
 ★ 이 라운드가 새로 못박은 자 3개: (가) **채움 조각의 짧은 변도 ≥ 1.5획(0.516 R)** — 규칙 1-C(ρ≥0.218)만으로는 0.44 R 띠가 통과하는데
 그 띠는 카드에서 선으로 뭉갠다. (나) **둥근 모서리 표본은 모서리당 3점(n=2)** — 4점 이상이면 변이 카드 24pt 획(0.825pt) 아래로 내려간다.
 (다) **접합은 「닿음」이 아니라 「가로지름」으로 설계한다** — 곡선 표본점이 윤곽 위에 정확히 놓이지 않아 0.001 R 틈이 금지대로 잡힌다.
+
+---
+
+## 팩 12종 R4 — 「중절모급 퀄리티」 (2026-09-09, design-equipment)
+
+스펙 본문: `docs/EQUIPMENT_SHAPE_SPEC_PACK_DETAIL_R4.md`
+
+R2/R3 하니스를 **그대로 재사용**하고(PACKS/FILES 만 갈아 끼운다) 축 4개를 새로 세웠다.
+문턱은 발명하지 않고 **출하 중절모를 재서** 뽑았다.
+
+- `r4_geom.py` — 원천 3개를 같은 좌표계로 정규화(**손으로 베낀 사본 0개**):
+  인계본 12종은 `AccessoryShapeBuilder.Handoff.cs` 직접 파싱 · NECK 6종과 팩은 `.asset`/YAML 의 terms 스트림 해독.
+- ★ `r4_paint.py` — **정본 자**. 화가 알고리즘으로 직접 그린 뒤 그 조각의 재질색으로 **남은 화소**를 센다.
+  (앞선 두 근사 `r4_ink.py`·`r4_survive.py` 는 출하 선글라스에서 «거짓 초록»을 냈다 — 그 이력을 남겨 두었다.)
+- `r4_gate.py` — R4 4축(티끌 0 · 채움 ≤ 4 · 얇은판 규율 · 면오차). 출하 18종에 대면 **중절모·야구모자는
+  통과하고 왕관은 걸린다** — 자가 살아 있다는 최소 증거.
+- `r4_stack.py` — 동시 착용. 착용 장치 해상도(11.633 px/R)로 래스터해 덩어리 수와 머리 원반 가림을 잰다.
+- `r4_cardedge.py` — ★ **R2/R3 게이트 축 1개의 교정 근거.** 「카드 두 크기 최단변」의 옛 정의는
+  출하 인계본 **12종 전부를 미달**로 찍는다(중절모 0.33pt vs 필요 1.994pt).
+- `pack_detail_r4.py` — R4 좌표 + 축 교체 + `--dump/--emit/--verify-emit/--control`.
+- `r4_check.py` — R4 축 전수 + `control()`(R4 전용 양성 대조 4건).
+- `r4_summary.py` / `r4_sheet.py` — 최종 대조표 / 눈 확인용 시트(**최종 판정용 아님**).
+
+```
+cd design/equipment/verify
+python3 pack_detail_r4.py            # R2 20축 + R3 5축   (위반 0)
+python3 r4_check.py pack_detail_r4   # R4 4축             (위반 0)
+python3 -c "import r4_check; r4_check.control()"
+python3 pack_detail_r4.py --emit && python3 pack_detail_r4.py --verify-emit
+```
