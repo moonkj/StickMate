@@ -604,3 +604,8 @@
         `windows-preview-20260909a` 태그(코드기준 `8a91cb7`) → zip
         (33,730,826 bytes) 첨부해 게시:
         https://github.com/moonkj/StickMate/releases/tag/windows-preview-20260909a
+  - [x] 재게시(9차) 완료 — "일단 윈도우용 릴리즈 업로드해줘"(DLC 착용 품질 R4는
+        여전히 사용자 불만족, 보류 중인 채로 릴리즈만 우선 진행). DLC 12종 착용
+        조형 R4 재작업까지 반영. `windows-preview-20260909b` 태그(코드기준
+        `1283d74`) → zip(33,732,877 bytes) 첨부해 게시:
+        https://github.com/moonkj/StickMate/releases/tag/windows-preview-20260909b
