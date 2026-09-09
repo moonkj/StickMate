@@ -1250,6 +1250,15 @@ namespace StickMate.Interaction
         /// 굽는 쪽(<c>design-equipment</c>)이 정본이고, 여기서 색을 곱해 «고치면» 그라데이션·금속광택이
         /// 통째로 어두워진다 — 그래서 <b>손대지 않는다</b>. 판단은 리더/디자인 몫으로 남긴다.</para>
         ///
+        /// <para>★★ <b>2026-09-09 — 그 판단이 왕관 파생본에서 내려졌다(굽는 쪽에서).</b> 이 자리의 판 색은
+        /// <b>상태마다 다르다</b>: 카드·보유 <c>CardSurfaceMuted</c> / 카드·착용중
+        /// <c>Flatten(AccentSurface, CardSurface)</c> / 카드·잠김 <c>ThumbSurfaceLocked</c> /
+        /// 상세 <c>CardSurface</c>. 즉 <b>어떤 불투명 배경을 칠해도 넷 중 셋에서는 네모 타일이 된다</b>
+        /// (실측 대조 시트: <c>design/equipment/pack_bitmap_pilot_crown/card_bg_compare.png</c>).
+        /// 그래서 우리가 굽는 그림은 <b>알파를 보존</b>한다 — 판이 그대로 비쳐 이음매가 0이다.
+        /// <br/>이 함수는 <b>한 글자도 안 바뀐다</b>: 알파가 있든 없든 이미지 한 장을 그릴 뿐이고,
+        /// 「배경도 테두리도 그리지 않는다」는 계약이 그 둘을 이미 같은 방식으로 다룬다.</para>
+        ///
         /// <para><see cref="Image.preserveAspect"/>를 켜는 이유는 레터박스가 아니라 <b>왜곡</b>을 막기
         /// 위해서다: 12장 전부 1:1(512×512)이고 상자도 정사각이라 <b>지금은 항등</b>이지만, 정사각이
         /// 아닌 그림이 하나 섞이는 날 이것이 없으면 조용히 늘어난다(그 증상은 「원래 그런 아이콘」으로

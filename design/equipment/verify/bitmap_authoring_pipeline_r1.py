@@ -44,6 +44,80 @@ ANCHOR     = (512.0, 512.0)       # 머리 중심의 캔버스 좌표 (규격서
 HEAD_VIS_R = 1.17193              # 머리의 **보이는** 바깥 반경 (규격서 §1-3, 프리팹 역산)
 OVERLAP_R  = 0.20                 # 앞/뒤 판 세로 겹침 (규격서 §4-2 규칙 3)
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 0-b. 카드 파생본 규격 — 규격서 §7-2 «잉크 박스로 크롭해 다시 굽는 파생본» 을 이행한다
+# ─────────────────────────────────────────────────────────────────────────────
+# ★ 왜 착용 PNG를 카드에 그대로 못 쓰는가 (규격서 §7-2 원문):
+#     «왕관 잉크는 출하 256² 캔버스에서 118 텍셀인데 카드는 72pt(3× 폰에서 216px)다 → 1.8배 업샘플».
+#   같은 그림에서 굽되 **카드 프레임에 맞춰 다시 크롭·리샘플**하면 그 업샘플이 사라지고,
+#   «카드와 착용이 다른 물건으로 보인다»가 원리적으로 불가능해진다(같은 원본, 같은 팔레트).
+#
+# ★★ 카드 캔버스는 «적당한 여백»이 아니라 **옛 벡터 카드 프레임 그 자체**다.
+#   그래서 이 파생본은 <b>제자리 교체</b>가 된다 — 왕관이 카드에서 그려지던 크기도 자리도
+#   한 픽셀 안 움직이고 **화법만** 바뀐다. 한 번에 한 변수만 바꿔야 사용자가 판정할 수 있다.
+#   아래 숫자는 전부 프로덕션에서 옮겨 온 것이고 출처를 한 줄씩 적었다. 베낀 값이 썩는 것을
+#   막는 것은 이 주석이 아니라 EditMode 테스트다(PackCardBitmapIconTests — 같은 값을
+#   프로덕션 코드에서 <b>직접 읽어</b> 이 PNG의 실측 잉크 박스와 대조한다).
+CARD_PX = 256                     # Assets/Editor/PackCardIconImport.MaxTextureSize
+                                  #   (근거: 카드 실그리기 72pt × Retina 2배 = 144 물리픽셀 이상인 첫 2의 거듭제곱)
+_ICON_VIEWBOX  = 64.0             # AccessoryCardIcon.Frame.IconViewBox
+_STAGE_VIEW_W  = 200.0            # AccessoryCardIcon.Frame.StageViewBoxWidth
+_STAGE_HEAD_R  = 28.0             # AccessoryCardIcon.Frame.StageHeadRadius
+_STAGE_HEAD_CY = 46.0             # AccessoryCardIcon.Frame.StageHeadCenterY
+_STAGE_RENDER_W= 158.0            # AccessoryCardIcon.Frame.StageRenderWidth
+_STAGE_TOP_PX  = 26.0             # AccessoryCardIcon.Frame.StageTopPx
+CARD_SLOT_BOX = {                 # AccessoryCardIcon.Frame.TryGet 의 switch (box, top)
+    "Head":      (70.0, 6.0),
+    "Eyes":      (48.0, 38.0),
+    "Neck":      (54.0, 78.0),
+    "Shoulders": (88.0, 72.0),
+}
+VECTOR_ICON_PT = 58.0             # CharacterInfoWindow.IconSize      — 벡터 카드 아이콘 변
+BITMAP_ICON_PT = 72.0             # CharacterInfoWindow.BitmapIconSize (= ThumbHeight 78 − BitmapIconInset 6)
+
+# ★★ 배경 처리 — 리더 지시(«DLC 팩처럼 #15181E 불투명 배경을 깔아라»)에서 **실측으로 벗어난 자리**다.
+#
+#   지시의 근거는 CharacterInfoWindow.BuildBitmapCardArt 의 계약 «이미지 자체가 배경까지 갖고 온다»이고,
+#   그 계약 자체는 맞다(UI 는 판을 더 깔지 않는다). 다만 **판 색이 상태마다 다르다**:
+#
+#       카드 썸네일 · 보유    UiChrome.CardSurfaceMuted                      #15181E
+#       카드 썸네일 · 착용중  Flatten(AccentSurface, CardSurface)            #333129   ← 왕관은 지금 이 상태다
+#       카드 썸네일 · 잠김    UiChrome.ThumbSurfaceLocked                    #101318
+#       상세 패널 썸네일      UiChrome.CardSurface (보유) / ThumbSurfaceLocked(잠김)  #1B1F26
+#
+#   불투명 #15181E 는 이 넷 중 **첫 줄에서만** 이음매가 사라지고 나머지 셋에서는 네모 타일이 된다.
+#   실측 대조 시트: design/equipment/pack_bitmap_pilot_crown/card_bg_compare.png (Retina 2× 실크기).
+#   그래서 기본값을 «알파 보존»으로 둔다 — 네 상태 모두에서 이음매가 0이다.
+#   지시대로 되돌리려면 인자 하나다:  --card-bg '#15181E'
+#
+#   ※ 팩 12종이 불투명인 것은 «그렇게 하기로 정해서»가 아니라 원본 AI 렌더가 비네트를 칠해 왔기
+#     때문이고, 그 결과 mine 팩은 카드 안에 남색 타일이 보인다(BuildBitmapCardArt 문서가 실측으로
+#     인정한 그 증상이다). 왕관은 우리가 굽는 그림이라 그 증상을 물려받을 이유가 없다.
+CARD_BG_MUTED = None
+
+
+def card_frame(slot):
+    """옛 벡터 카드 프레임을 **R 단위 창**으로 되돌린다.
+
+    AccessoryCardIcon.BuildFramed 가 쓰는 식을 그대로 옮긴 것이다(축소 shrink=1 인 경우):
+        pxPerR = unitsPerR × (IconSize / IconViewBox)
+    비트맵 카드는 상자가 IconSize(58)가 아니라 BitmapIconSize(72)이므로, **같은 pxPerR** 을
+    유지하려면 창이 72/pxPerR R 만큼 넓어야 한다. 그러면 그 창에 그린 그림은 옛 벡터와
+    같은 배율·같은 자리에 놓인다.
+
+    반환: (span_r, center_y_r) — 캔버스 한 변이 몇 R 인가 / 캔버스 중심의 y(머리 중심 기준 R).
+    """
+    box, top = CARD_SLOT_BOX[slot]
+    px_per_stage_unit = _STAGE_RENDER_W / _STAGE_VIEW_W
+    head_radius_px = _STAGE_HEAD_R * px_per_stage_unit
+    head_center_px = _STAGE_TOP_PX + _STAGE_HEAD_CY * px_per_stage_unit
+    u = box / _ICON_VIEWBOX
+    units_per_r = head_radius_px / u
+    center_y_r = (head_center_px - top - _ICON_VIEWBOX * 0.5 * u) / head_radius_px
+    px_per_r = units_per_r * (VECTOR_ICON_PT / _ICON_VIEWBOX)     # 벡터 카드의 pt/R
+    span_r = BITMAP_ICON_PT / px_per_r
+    return span_r, center_y_r, px_per_r
+
 def px_of(x_r, y_r):
     return (ANCHOR[0] + x_r * K, ANCHOR[1] - y_r * K)
 
@@ -54,9 +128,12 @@ def r_of(px, py):
 class Item:
     """아이템 하나의 저작 파라미터. 새 아이템은 여기 한 줄만 늘어난다."""
     def __init__(s, key, src, out_front, out_back, ink_box_r, palette, mix, back_wall,
-                 band_top_r, back_bottom_r, smooth_px, min_patch_px, open_reach_px):
+                 band_top_r, back_bottom_r, smooth_px, min_patch_px, open_reach_px,
+                 out_card, card_slot):
         s.key, s.src = key, src
         s.out_front, s.out_back = out_front, out_back
+        s.out_card = out_card        # 카드 표면(cardIconOverride)이 읽는 PNG
+        s.card_slot = card_slot      # 카드 프레임을 고르는 슬롯 이름 (CARD_SLOT_BOX 의 키)
         s.ink = ink_box_r          # (minX, maxX, minY, maxY) 목표 — 규격서 §5-1
         s.palette = palette        # 이름 -> hex (밝은 순으로 적지 않아도 된다, 코드가 정렬한다)
         s.mix = mix                # 이름 -> 목표 면적률(합 1.0)
@@ -75,18 +152,45 @@ CROWN = Item(
     src="design/equipment/pack_bitmap_pilot_crown/crown_source_attempt2.png",
     out_front="Assets/_Project/Art/WornSprites/equip_head_crown.png",
     out_back="Assets/_Project/Art/WornSprites/equip_head_crown_back.png",
-    # 규격서 §5-1: x ±1.310 R · y +0.280 .. +2.380 R
-    ink_box_r=(-1.310, +1.310, +0.280, +2.380),
+    # ★★ 2026-09-09 R5 — 사용자 신고 «머리사이즈와 왕관사이즈가 안맞음» 으로 <b>다시 잰 값</b>.
+    #
+    #   규격서 §5-1의 원래 값은 x ±1.310 R · y +0.280 .. +2.380 R 이었다. 배선은 정상이었다
+    #   (실측: 렌더러가 캔버스 rect 5.688889 R ↔ 1024 px = 180 px/R 로 정확히 놓고,
+    #    잉크는 선언대로 ±1.3111 R 에 떨어진다 — 실기 픽셀 36 px / 머리 32 px = 1.125,
+    #    규격 계산 1.1188 과 0.5% 안에서 일치). <b>버그가 아니라 목표치 자체가 컸다.</b>
+    #
+    #   무엇이 바뀌었는지는 «색이 칠해진 덩어리»를 재면 보인다(실기 캡처 실측):
+    #     · 옛 벡터 왕관 : 금색 본체 폭 = 머리 보이는 지름 × <b>1.0009</b>
+    #                      (실루엣 전체는 ×1.1326 이지만 그 차이는 <b>잉크색 윤곽선</b>이라
+    #                       검은 머리와 시각적으로 하나로 붙어 «크다»고 읽히지 않는다)
+    #     · 새 비트맵    : 윤곽선이 없어 실루엣 = 금색 = 머리 × <b>1.1250</b>
+    #   즉 «칠해진 왕관»이 머리 대비 12.4% 커졌다. 그것이 사용자가 본 것이다.
+    #
+    #   그래서 목표를 <b>잉크 반폭 = 머리의 보이는 반경</b>으로 잡는다(= 사용자가 받아들였던
+    #   벡터 왕관의 색 본체 비율 1.0009 와 0.1% 안에서 같다). 균등 배율이므로 높이도 함께
+    #   ×0.8947 되어 머리 대비 0.8125 → 0.727 (벡터 0.777 보다 조금 낮다).
+    #     반폭   = HEAD_VIS_R = 1.17193 R          (폭 2.34386 R)
+    #     밑선   = +0.34444 R  <b>그대로 둔다</b>  (밴드가 머리에 얹힌 깊이를 안 바꾼다)
+    #     높이   = 2.34386 / 1.32959(원본 잉크 가로세로비) = 1.76288 R → 위끝 +2.10732 R
+    #   상자 높이에 여유(1.86)를 줘서 place() 의 min() 이 <b>가로</b>로 결정되게 하고,
+    #   상자 중심 y = 0.34444 + 1.76288/2 = 1.22588 로 두면 세로 가운데 맞춤이 밑선을 지킨다.
+    #   목업 대조: design/equipment/pack_bitmap_pilot_crown/crown_width_mock.png
+    ink_box_r=(-HEAD_VIS_R, +HEAD_VIS_R, 1.22588 - 0.93, 1.22588 + 0.93),
     # design-art §6-2 확정 5색
     palette={"W": "#BB8E1C", "M": "#9B7922", "MD": "#604B15", "SH": "#2B220A", "M2": "#C6443C"},
     # design-art §6-3 권고 B
     mix={"W": 0.21, "M": 0.58, "MD": 0.12, "SH": 0.02, "M2": 0.07},
     back_wall=("MD", "SH"),
-    band_top_r=+0.840,      # §5-1 «앞판 밴드 윗선»
-    back_bottom_r=+0.640,   # §5-1 «뒤판 아래끝» (= 0.840 − 0.200 겹침)
+    # ★ 밴드 윗선은 <b>그림의 특징</b>이라 그림과 같은 비율로 함께 줄어든다.
+    #   옛 값 +0.840 은 잉크 밑선(+0.34444)에서 0.49556 R 위 = 잉크 높이(1.9722)의 25.13%.
+    #   새 잉크 높이 1.76288 × 0.2513 = 0.44300 → +0.34444 + 0.44300 = +0.78744.
+    band_top_r=+0.78744,    # §5-1 «앞판 밴드 윗선» (R5 재유도)
+    back_bottom_r=+0.58744, # §5-1 «뒤판 아래끝» (= 밴드 윗선 − 겹침 0.200 R, 겹침은 절대값이라 안 줄인다)
     smooth_px=9, min_patch_px=260,
     # 실측(1024² 캔버스): 안쪽 면 4조각은 위쪽 배경까지 14~17 px, 구슬 어두운 면은 40 px.
     open_reach_px=30,
+    out_card="Assets/_Project/Resources/Items/Icons/equip_head_crown.png",
+    card_slot="Head",
 )
 
 ITEMS = {"crown": CROWN}
@@ -552,7 +656,91 @@ def style_metrics(path, log=print):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-def run(item, log=print):
+# 10. 카드 파생본 — **같은 그림**을 카드 프레임에 다시 앉힌다 (규격서 §7-2)
+# ─────────────────────────────────────────────────────────────────────────────
+def bake_card(front, back, names, item, bg_hex, log=print):
+    """앞판+뒤판을 합쳐 카드 캔버스(CARD_PX²)에 굽는다.
+
+    카드에는 **머리가 없다** — 그래서 뒤판(머리 뒤로 보내는 안쪽 면)을 앞판 밑에 깔아
+    «물건 전체»를 보여 준다. 착용 표면에서 뒤판이 안 보이는 것은 머리가 가리기 때문이지
+    그 조각이 물건의 일부가 아니어서가 아니다.
+    """
+    span_r, center_y_r, px_per_r = card_frame(item.card_slot)
+    log(f"  [카드] 프레임 = 옛 벡터 카드와 같은 배율: {px_per_r:.3f} pt/R "
+        f"→ 캔버스 {span_r:.4f} R 창, 중심 y {center_y_r:+.4f} R")
+
+    idx = np.where(front >= 0, front, back)
+    rgba = to_rgba(idx, names, item)
+
+    ys, xs = np.nonzero(rgba[..., 3] >= 128)
+    ix0, ix1 = r_of(xs.min(), 0)[0], r_of(xs.max() + 1, 0)[0]
+    iy1, iy0 = r_of(0, ys.min())[1], r_of(0, ys.max() + 1)[1]
+    log(f"  [카드] 합본 잉크(R)  x {ix0:+.4f}..{ix1:+.4f} ({ix1-ix0:.4f})  "
+        f"y {iy0:+.4f}..{iy1:+.4f} ({iy1-iy0:.4f})")
+    over = max((ix1 - ix0) / span_r, (iy1 - iy0) / span_r)
+    if over > 1.0:
+        # 벡터 쪽 BoxFit.Shrink 와 같은 처방 — 줄이기만 한다. 여기 걸리면 «자리 바뀜»이 생기므로
+        # 조용히 넘어가지 않고 크게 찍는다.
+        log(f"  [카드] ★ 잉크가 창을 {over:.3f}배 넘는다 — 벡터와 같은 규칙으로 축소한다(자리 이동 발생).")
+        span_r *= over
+
+    # 창(R) → 원본 캔버스 px. 창 위쪽이 캔버스 밖으로 나가는 것이 정상이다(머리 위 여백).
+    half = span_r * 0.5
+    wx0, wy1 = px_of(-half, center_y_r + half)      # 좌상단
+    wx1, wy0 = px_of(+half, center_y_r - half)      # 우하단
+    log(f"  [카드] 창(원본px) x {wx0:.1f}..{wx1:.1f}  y {wy1:.1f}..{wy0:.1f}  "
+        f"(변 {wx1-wx0:.1f}px → {CARD_PX}px, 축소 {(wx1-wx0)/CARD_PX:.2f}배)")
+
+    # 알파 프리멀티플로 축소한다 — place() 와 같은 이유(실루엣 밖 0색이 가장자리로 새어 든다).
+    a = rgba[..., 3:4].astype(np.float64) / 255.0
+    pm = np.concatenate([rgba[..., :3].astype(np.float64) / 255.0 * a, a], axis=2)
+    pad = int(np.ceil(max(0.0, -min(wx0, wy1), max(wx1, wy0) - AUTHOR_PX))) + 2
+    big = np.zeros((AUTHOR_PX + 2 * pad, AUTHOR_PX + 2 * pad, 4))
+    big[pad:pad + AUTHOR_PX, pad:pad + AUTHOR_PX] = pm
+    src = Image.fromarray((np.clip(big, 0, 1) * 255.0 + 0.5).astype(np.uint8), "RGBA")
+    win = src.crop((int(round(wx0)) + pad, int(round(wy1)) + pad,
+                    int(round(wx1)) + pad, int(round(wy0)) + pad))
+    small = np.asarray(win.resize((CARD_PX, CARD_PX), Image.LANCZOS)).astype(np.float64) / 255.0
+
+    sa = small[..., 3:4]
+    rgb = np.where(sa > 1e-3, small[..., :3] / np.maximum(sa, 1e-3), 0.0)
+    out = np.zeros((CARD_PX, CARD_PX, 4), np.uint8)
+    if bg_hex:
+        # 「이미지 자체가 배경까지 갖고 온다」 — 팩 12종과 같은 형태(알파 없음).
+        bg = hex_rgb(bg_hex) / 255.0
+        out[..., :3] = (np.clip(rgb * sa + bg * (1.0 - sa), 0, 1) * 255.0 + 0.5).astype(np.uint8)
+        out[..., 3] = 255
+    else:
+        out[..., :3] = (np.clip(rgb, 0, 1) * 255.0 + 0.5).astype(np.uint8)
+        out[..., 3] = (np.clip(sa[..., 0], 0, 1) * 255.0 + 0.5).astype(np.uint8)
+
+    path = os.path.join(ROOT, item.out_card)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    Image.fromarray(out, "RGBA").save(path)
+
+    # ---- 검산: 이 PNG가 정말 «옛 벡터와 같은 자리·같은 크기»인가 -----------------------
+    aa = np.asarray(Image.open(path).convert("RGBA")).astype(int)
+    if bg_hex:
+        d = np.abs(aa[..., :3] - hex_rgb(bg_hex).astype(int)).sum(axis=2)
+        m = d > 24
+    else:
+        m = aa[..., 3] >= 128
+    cy, cx = np.nonzero(m)
+    fx0, fx1 = cx.min() / CARD_PX, (cx.max() + 1) / CARD_PX
+    fy0, fy1 = cy.min() / CARD_PX, (cy.max() + 1) / CARD_PX
+    log(f"  [출력] {item.out_card}  {CARD_PX}×{CARD_PX} "
+        f"{'불투명(배경 ' + bg_hex + ')' if bg_hex else '알파 보존(배경 없음)'}")
+    log(f"    잉크 프레임비  x {fx0:.4f}..{fx1:.4f} (폭 {fx1-fx0:.4f})  "
+        f"y {fy0:.4f}..{fy1:.4f} (높이 {fy1-fy0:.4f})")
+    # ★ 「기대」는 <b>같은 잉크를 옛 벡터 카드의 배율로 그렸을 때</b>의 폭이다(옛 벡터 «왕관»의
+    #   폭이 아니다 — 그 물건은 조형이 달라 폭도 다르다). 둘이 같아야 «제자리 교체»가 성립한다.
+    log(f"    카드 실그리기  폭 {(fx1-fx0)*BITMAP_ICON_PT:.2f} pt · 높이 {(fy1-fy0)*BITMAP_ICON_PT:.2f} pt "
+        f"(기대 = 잉크 {(ix1-ix0):.4f} R × 벡터 배율 {px_per_r:.3f} pt/R = {(ix1-ix0)*px_per_r:.2f} pt)")
+    return dict(fx0=fx0, fx1=fx1, fy0=fy0, fy1=fy1, span_r=span_r, center_y_r=center_y_r)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+def run(item, log=print, card_bg=CARD_BG_MUTED):
     log(f"╔══ 착용 비트맵 후처리 — {item.key} ══╗")
     src = os.path.join(ROOT, item.src)
     a = np.asarray(Image.open(src).convert("RGBA")).astype(np.uint8)
@@ -574,6 +762,9 @@ def run(item, log=print):
         Image.fromarray(to_rgba(m, names, item)).save(p)
         log(f"  [출력] {path}  잉크 {int((m>=0).sum())} px")
 
+    log("╠══ 카드 파생본 (규격서 §7-2) ══╣")
+    card = bake_card(front, back, names, item, card_bg, log=log)
+
     log("╠══ 검산 ══╣")
     fa = audit(os.path.join(ROOT, item.out_front), log=log)
     ba = audit(os.path.join(ROOT, item.out_back), log=log)
@@ -594,11 +785,13 @@ def run(item, log=print):
     log(f"  C-11 머리 원반 노출 {100*(1-cover):.1f}%  (≥ 65 — 현행 벡터 중절모 68.7%)")
     style_metrics(os.path.join(ROOT, item.out_front), log=log)
     log("╚═══════════════════════════════════╝")
-    return dict(mix_worst=worst, front=fa, back=ba)
+    return dict(mix_worst=worst, front=fa, back=ba, card=card)
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("item", nargs="?", default="crown", choices=sorted(ITEMS))
+    ap.add_argument("--card-bg", default="none",
+                    help="카드 파생본의 배경색 hex(예: '#15181E'). 기본 'none' = 알파 보존(판 색을 그대로 비춘다).")
     args = ap.parse_args()
-    run(ITEMS[args.item])
+    run(ITEMS[args.item], card_bg=None if args.card_bg.lower() == "none" else args.card_bg)
