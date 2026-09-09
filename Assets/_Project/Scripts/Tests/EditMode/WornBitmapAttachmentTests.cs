@@ -32,11 +32,13 @@ namespace StickMate.Tests.EditMode
     /// ============================================================================
     /// 공허해지지 않게 하는 장치 — <b>출하 42종은 이 칸이 전부 비어 있다</b>
     /// ============================================================================
-    /// 그것이 이 라운드의 <b>합격 조건</b>이므로(§19-9-a: 「E1 착지 직후 전량 회귀는 0건 변화여야
+    /// 그것이 <b>P0의</b> 합격 조건이었으므로(§19-9-a: 「E1 착지 직후 전량 회귀는 0건 변화여야
     /// 한다」), 아무것도 심지 않으면 이 파일의 모든 단언이 <b>빈 목록 순회</b>가 된다.
+    /// ★ <b>2026-09-09(P1) 부터는 왕관 1종이 실제로 칸을 채웠다</b> — 그래서 그 관문은
+    /// 「전량 0종」이 아니라 <b>「폴더의 PNG와 정확히 일치」</b>로 바뀌었다(그 테스트 문단 참고).
     /// 그래서 <see cref="ItemCatalog.TrySetWornSpriteForTests"/>로 <b>실제 병렬 표에</b> 심고,
     /// 심는 데 실패하면 그 자체를 실패로 단언한다. 그리고
-    /// <see cref="출하_전량이_착용_비트맵_칸을_비웠다"/>가 <b>같은 파일에서</b> 그 계수기가
+    /// <see cref="착용_비트맵_선언이_폴더의_PNG와_정확히_일치한다"/>가 <b>같은 파일에서</b> 그 계수기가
     /// 살아 있음을 양성 대조로 증명한다.
     /// </summary>
     public sealed class WornBitmapAttachmentTests
@@ -202,22 +204,71 @@ namespace StickMate.Tests.EditMode
         // ============================================================================
 
         /// <summary>
-        /// ★ <b>E1의 합격 조건 그 자체</b>: 착용 비트맵 칸을 선언한 아이템이 <b>0종</b>이다.
-        /// 이것이 「전량 회귀 0건 변화」를 데이터 쪽에서 보증한다 — 칸이 비면 렌더러의 새 갈래가
-        /// 한 번도 도달하지 않으므로, 42종의 그림이 달라질 <b>물리적 경로가 없다</b>.
+        /// ★ <b>선언한 아이템 = 폴더에 PNG가 있는 아이템.</b> 양쪽 어느 방향으로 어긋나도 실패한다.
         ///
-        /// <para>★★ 그리고 그 0이 <b>계수기가 죽어서 나온 0이 아님</b>을 같은 실행에서 증명한다
-        /// (CLAUDE.md: 부재 단언은 대조가 있어야 뜻을 갖는다 — 부재 단언 61건이 썩으면
-        /// <b>조용히 초록</b>이 된다는 실측이 있었다).</para>
+        /// <para><b>2026-09-09 P1(왕관 파일럿)에서 바뀐 테스트다.</b> P0 판이 스스로 그렇게 적어
+        /// 두었다 — *"P1이라면 이 0을 「PNG 파일 수와 같다」로 바꾸는 것이 맞다. 그냥 지우면
+        /// 다음 사고를 못 잡는다."* 지금 그 지시를 이행한다. P0 판의 문장(«전량 0종»)은
+        /// 그림이 한 장 들어오는 순간 <b>참이 아니게</b> 되고, 참이 아닌 단언을 남겨 두면
+        /// 다음 사람이 그것을 지우면서 <b>대조까지 함께</b> 지운다.</para>
         ///
-        /// <para><b>P1(왕관 파일럿)에서 이 테스트는 반드시 바뀐다.</b> 그때는 이 0을
-        /// 「PNG 파일 수와 같다」로 바꾸는 것이 맞다 — 지금 그렇게 쓰지 않는 이유는
-        /// 파일이 0장이라 그 형태도 똑같이 공허하기 때문이다.</para>
+        /// <para>이 형태가 잡는 것이 P0 판보다 <b>많다</b>:</para>
+        /// <list type="number">
+        ///   <item><b>PNG는 있는데 배선이 안 됐다</b> — 임포트 도구를 안 돌렸거나 실패했다.
+        ///     증상은 «그림을 넣었는데 아무것도 안 바뀐다»이고, 그건 «아직 안 넣었다»와 화면이 같다.</item>
+        ///   <item><b>배선은 됐는데 PNG가 없다</b> — 파일을 지웠는데 에셋이 유령 참조를 들고 있다.</item>
+        ///   <item><b>뒤층 PNG가 있는데 뒤 칸이 비었다</b>(그 반대도) — 왕관이 정확히 이 형태를 쓴다.</item>
+        ///   <item><b>잉크박스를 안 구웠다</b> — 렌더러가 캔버스 전체를 잉크로 보고 캐릭터를
+        ///     공중에 띄운다(§19-8-3). 조용한 실패라 눈으로 못 잡는다.</item>
+        /// </list>
+        ///
+        /// <para>★ 폴더/접미사/접두사 문자열은 <b>프로덕션 상수에서 리플렉션으로 읽는다</b> —
+        /// 베끼면 도구가 폴더를 옮기는 날 이 테스트가 <b>조용히 0건을 세고 초록이 된다</b>
+        /// (CLAUDE.md: 부재 단언은 썩어도 안 빨개진다). 타입을 못 찾으면 <b>그 자리에서 실패</b>한다.</para>
         /// </summary>
         [Test]
-        public void 출하_전량이_착용_비트맵_칸을_비웠다()
+        public void 착용_비트맵_선언이_폴더의_PNG와_정확히_일치한다()
         {
-            var declared = new List<string>();
+            // ---- (a) 프로덕션 상수를 리플렉션으로 — 문자열을 베끼지 않는다 -------------------
+            System.Type tool = FindImportToolType();
+            Assert.IsNotNull(tool,
+                $"{LogPrefix} ★대조 실패 — 착용 비트맵 임포트 도구 타입({ImportToolTypeName})을 못 찾았습니다. " +
+                "이 테스트가 폴더 위치를 모르므로 아래 목록은 «비어 있다»와 «못 봤다»를 구분하지 못합니다.");
+            string spriteFolder = Const(tool, "SpriteFolder");
+            string itemFolder = Const(tool, "ItemFolder");
+            string backSuffix = Const(tool, "BackSuffix");
+            string probePrefix = Const(tool, "ProbePrefix");
+
+            // ---- (b) 폴더가 말하는 것 ---------------------------------------------------------
+            var frontPngs = new HashSet<string>();   // 에셋 이름(확장자·접미사 제거)
+            var backPngs = new HashSet<string>();
+            string[] files = Directory.Exists(spriteFolder)
+                ? Directory.GetFiles(spriteFolder, "*.png", SearchOption.TopDirectoryOnly)
+                : new string[0];
+            foreach (string f in files)
+            {
+                string name = Path.GetFileNameWithoutExtension(f);
+                if (name.StartsWith(probePrefix, System.StringComparison.Ordinal)) continue;   // 규격 확인용 고정물
+                if (name.EndsWith(backSuffix, System.StringComparison.Ordinal))
+                    backPngs.Add(name.Substring(0, name.Length - backSuffix.Length));
+                else frontPngs.Add(name);
+            }
+
+            // 파일 이름 -> 카탈로그 자리. 짝이 없으면 그것부터 결함이다.
+            var expectedFront = new Dictionary<string, string>();   // itemId -> PNG 파일 이름
+            var missingDefs = new List<string>();
+            foreach (string name in frontPngs)
+            {
+                var def = AssetDatabase.LoadAssetAtPath<AccessoryDefSO>($"{itemFolder}/{name}.asset");
+                if (def == null || string.IsNullOrEmpty(def.itemId)) { missingDefs.Add(name); continue; }
+                expectedFront[def.itemId] = name;
+            }
+            Assert.IsEmpty(missingDefs,
+                $"{LogPrefix} PNG는 있는데 같은 이름의 아이템 에셋이 없습니다: {string.Join(", ", missingDefs)}");
+
+            // ---- (c) 카탈로그가 말하는 것 -----------------------------------------------------
+            var wired = new List<string>();
+            var faults = new List<string>();
             int scanned = 0;
             for (int i = 0; i < ItemCatalog.Count; i++)
             {
@@ -225,33 +276,85 @@ namespace StickMate.Tests.EditMode
                 if (e == null || e.Category != ItemCategory.Equipment) continue;
                 if (!e.Slot.HasValue || e.ItemIndex < 0) continue;
                 scanned++;
-                if (ItemCatalog.WornSprite(e.Slot.Value, e.ItemIndex) != null
-                    || ItemCatalog.WornSpriteBack(e.Slot.Value, e.ItemIndex) != null
-                    || ItemCatalog.WornSpriteRectInR(e.Slot.Value, e.ItemIndex) != default(Rect)
-                    || ItemCatalog.WornSpriteInkBoxInR(e.Slot.Value, e.ItemIndex) != Vector4.zero)
+
+                Sprite front = ItemCatalog.WornSprite(e.Slot.Value, e.ItemIndex);
+                Sprite back = ItemCatalog.WornSpriteBack(e.Slot.Value, e.ItemIndex);
+                Rect rect = ItemCatalog.WornSpriteRectInR(e.Slot.Value, e.ItemIndex);
+                Vector4 ink = ItemCatalog.WornSpriteInkBoxInR(e.Slot.Value, e.ItemIndex);
+                bool declares = front != null || back != null || rect != default(Rect) || ink != Vector4.zero;
+                if (!declares) continue;
+                wired.Add(e.Id);
+
+                if (front == null) faults.Add($"{e.Id}: 앞층이 비었습니다(앞장이 주인이라 뒤층만으로는 벡터로 되돌아갑니다).");
+                if (rect.width <= 0f || rect.height <= 0f) faults.Add($"{e.Id}: wornSpriteRectInR 이 비었습니다(렌더러가 머리 지름으로 되메웁니다).");
+                if (!WornSpritePlacement.IsInkBoxBaked(ink)) faults.Add($"{e.Id}: 잉크박스를 안 구웠습니다 — 캔버스 여백까지 잉크로 읽혀 캐릭터가 뜹니다(§19-8-3).");
+
+                if (!expectedFront.TryGetValue(e.Id, out string pngName))
                 {
-                    declared.Add(e.Id);
+                    faults.Add($"{e.Id}: 배선은 있는데 {spriteFolder} 에 PNG가 없습니다(유령 참조).");
+                }
+                else
+                {
+                    bool wantBack = backPngs.Contains(pngName);
+                    if (wantBack && back == null) faults.Add($"{e.Id}: 뒤층 PNG는 있는데 wornSpriteBackOverride 가 비었습니다.");
+                    if (!wantBack && back != null) faults.Add($"{e.Id}: 뒤층 PNG가 없는데 wornSpriteBackOverride 가 채워져 있습니다.");
                 }
             }
 
             Assert.Greater(scanned, 0, $"{LogPrefix} 장비 아이템이 0종입니다 — 순회가 공허합니다.");
-            Assert.IsEmpty(declared,
-                $"{LogPrefix} 착용 비트맵을 선언한 아이템이 {declared.Count}종 있습니다: " +
-                string.Join(", ", declared) + "\n" +
-                "P0(그림 0장)의 합격 조건은 «전량이 비어 있다»입니다. 그림을 넣는 라운드(P1)라면 " +
-                "이 테스트를 «PNG 파일 수와 같다»로 바꾸세요 — 그냥 지우면 다음 사고를 못 잡습니다.");
 
-            // ★ 양성 대조 — 위 0이 「계수기가 죽어서」가 아님을 증명한다.
+            // 양쪽 집합이 같은가.
+            var onlyInFolder = new List<string>();
+            foreach (KeyValuePair<string, string> kv in expectedFront)
+                if (!wired.Contains(kv.Key)) onlyInFolder.Add(kv.Key);
+            Assert.IsEmpty(onlyInFolder,
+                $"{LogPrefix} PNG는 폴더에 있는데 배선이 안 된 아이템: {string.Join(", ", onlyInFolder)}\n" +
+                "임포트 도구를 돌리십시오: -executeMethod StickMate.EditorTools.WornSpriteImport.ApplyBatch");
+            Assert.IsEmpty(faults, $"{LogPrefix} 착용 비트맵 배선 결함 {faults.Count}건:\n  " + string.Join("\n  ", faults));
+            Assert.AreEqual(expectedFront.Count, wired.Count,
+                $"{LogPrefix} 폴더의 앞층 PNG {expectedFront.Count}장과 배선된 아이템 {wired.Count}종이 다릅니다 " +
+                $"(폴더: {string.Join(", ", expectedFront.Keys)} / 배선: {string.Join(", ", wired)}).");
+
+            // ★ 양성 대조 — 위 계수가 「표가 통째로 죽어서」 맞아떨어진 것이 아님을 증명한다.
+            //   (선언 0종일 때도 이 대조 하나로 목록이 살아 있음이 남는다 — P0 판의 그 장치를 그대로 옮겼다.)
             Sprite probe = Calibration();
-            Assert.IsTrue(ItemCatalog.TrySetWornSpriteForTests(EquipmentSlot.Head, 0, probe, null,
+            Assert.IsTrue(ItemCatalog.TrySetWornSpriteForTests(EquipmentSlot.Neck, 0, probe, null,
                 CalibrationRect, WornSpriteCalibration.ExpectedInkBoxInR(CalibrationRect)),
-                $"{LogPrefix} 대조군을 심지 못했습니다 — 위 «0종»이 아무것도 증명하지 않습니다.");
-            Assert.IsNotNull(ItemCatalog.WornSprite(EquipmentSlot.Head, 0),
-                $"{LogPrefix} 심은 뒤에도 WornSprite 가 null 입니다 — 위 «0종»은 표가 통째로 죽은 결과입니다.");
+                $"{LogPrefix} 대조군을 심지 못했습니다 — 위 집합 비교가 아무것도 증명하지 않습니다.");
+            Assert.IsNotNull(ItemCatalog.WornSprite(EquipmentSlot.Neck, 0),
+                $"{LogPrefix} 심은 뒤에도 WornSprite 가 null 입니다 — 위 계수는 표가 통째로 죽은 결과입니다.");
 
             ItemCatalog.ClearWornSpriteTestPatches();
-            Assert.IsNull(ItemCatalog.WornSprite(EquipmentSlot.Head, 0),
+            Assert.IsNull(ItemCatalog.WornSprite(EquipmentSlot.Neck, 0),
                 $"{LogPrefix} 테스트가 심은 값이 되돌아가지 않았습니다 — 뒤따르는 테스트가 오염됩니다.");
+
+            Debug.Log($"{LogPrefix} 장비 {scanned}종 스캔 — 폴더 앞층 PNG {expectedFront.Count}장 · 뒤층 {backPngs.Count}장 · " +
+                      $"배선 {wired.Count}종 (일치). 배선 목록: {(wired.Count == 0 ? "(없음)" : string.Join(", ", wired))}");
+        }
+
+        /// <summary>임포트 도구의 <b>타입 이름</b>. 이 어셈블리는 <c>Assembly-CSharp-Editor</c> 를
+        /// 참조하지 않으므로(asmdef) 리플렉션이 유일한 통로다. 못 찾으면 위에서 <b>실패</b>한다 —
+        /// 존재 단언이라 썩으면 시끄럽게 빨개진다.</summary>
+        private const string ImportToolTypeName = "StickMate.EditorTools.WornSpriteImport";
+
+        private static System.Type FindImportToolType()
+        {
+            foreach (System.Reflection.Assembly a in System.AppDomain.CurrentDomain.GetAssemblies())
+            {
+                System.Type t = a.GetType(ImportToolTypeName, false);
+                if (t != null) return t;
+            }
+            return null;
+        }
+
+        private static string Const(System.Type t, string field)
+        {
+            System.Reflection.FieldInfo fi = t.GetField(field,
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+            Assert.IsNotNull(fi, $"{LogPrefix} {t.FullName}.{field} 상수를 못 찾았습니다.");
+            var v = fi.GetValue(null) as string;
+            Assert.IsFalse(string.IsNullOrEmpty(v), $"{LogPrefix} {t.FullName}.{field} 가 비어 있습니다.");
+            return v;
         }
 
         // ============================================================================

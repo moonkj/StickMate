@@ -19,6 +19,10 @@ MonoBehaviour:
   description: "\uCC45\uC0C1 \uC704\uC5D0\uC11C\uB9CC \uD1B5\uC6A9\uB418\uB294 \uAD8C\uC704."
   requiredLevel: 20
   hidesHair: 0
+  cohortId: 0
+  declaredRarity: 0
+  themeKey: 
+  declaredSubStat: 0
   icon:
   - kind: 4
     values:
@@ -56,3 +60,19 @@ MonoBehaviour:
     - 32.11
     color: {r: 0.7764706, g: 0.26666668, b: 0.23529412, a: 1}
     tone: 1
+  cardIconOverride: {fileID: 0}
+  wornSpriteOverride: {fileID: 21300000, guid: f7d2efc139f2247a9a44eba7e86655df, type: 3}
+  wornSpriteBackOverride: {fileID: 21300000, guid: 1fca4e06f7f624deda3f0ae7fbf9e790, type: 3}
+  wornSpriteRectInR:
+    serializedVersion: 2
+    x: 0
+    y: 0
+    width: 5.688889
+    height: 5.688889
+  wornSpriteInkBoxInR: {x: -1.3111111, y: 0.34444445, z: 1.3111111, w: 2.3166668}
+  wornShapes: []
+  wornGroupAlpha: 0
+  wornScale: 0
+  wornScaleY: 0
+  wornOffsetYInR: 0
+  wornMirrorX: 0

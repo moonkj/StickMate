@@ -540,6 +540,7 @@ namespace StickMate.Tests.EditMode
             string[] files = BaseCohortAssetFiles(out string[] packFiles);
 
             int sawRequiredLevel = 0;
+            int sawDeclaredRarityKey = 0;
             var declared = new List<string>();
             foreach (string f in files)
             {
@@ -1014,18 +1015,37 @@ namespace StickMate.Tests.EditMode
         }
 
         /// <summary>
-        /// ★ C-5 ① — <b>키 없는 에셋은 파생이다.</b> 출하 42종에 <c>declaredRarity</c> 키가
-        /// <b>한 줄도 없어야</b> 한다. 있으면 그건 기본 아이템이 등급을 선언한 것이고,
-        /// 그 순간 "레벨이 오를수록 스탯이 안 내려간다"가 사람 손에 맡겨진다.
+        /// ★ C-5 ① — <b>기본 42종은 등급을 선언하지 않는다.</b> 선언하면 그 순간
+        /// "레벨이 오를수록 스탯이 안 내려간다"가 사람 손에 맡겨진다.
+        ///
+        /// <para>★★ <b>2026-09-09 정정 — 판정을 「키의 유무」에서 「값」으로 옮겼다.</b>
+        /// 원래 이 테스트는 <c>declaredRarity:</c> 라는 <b>줄이 파일에 한 줄도 없을 것</b>을 요구했다.
+        /// 그런데 <b>Unity가 에셋을 한 번이라도 다시 직렬화하면 기본값 키가 전부 적힌다</b> —
+        /// 왕관 착용 비트맵 배선(<c>Assets/Editor/WornSpriteImport.cs</c>가
+        /// <c>SerializedObject.ApplyModifiedPropertiesWithoutUndo</c> + <c>SaveAssets</c>)이
+        /// <c>equip_head_crown.asset</c>에 <c>declaredRarity: 0</c>을 넣었고, 값은
+        /// <see cref="DeclaredRarity.Derived"/>(= 선언하지 않음) 그대로인데 <b>줄이 생겼다는 이유만으로</b>
+        /// 빨개졌다. 즉 옛 판정은 «선언했는가»가 아니라 «Unity가 이 파일을 만졌는가»를 재고 있었고,
+        /// 그 둘은 다른 사실이다.</para>
+        ///
+        /// <para><b>무엇이 보존되는가</b>: 위험은 «기본 아이템이 <u>파생 아닌</u> 등급을 선언하는 것»이고
+        /// 그 판정은 그대로 남는다(아래 <c>declared</c> 목록). <b>무엇을 잃는가</b>: «아무도 이 파일을
+        /// 손대지 않았다»는 부수적 보증. 그건 애초에 이 테스트의 이름이 약속한 것이 아니었고,
+        /// P1(비트맵) 이후로는 <b>구조적으로 유지할 수 없다</b> — 나머지 41종도 같은 길을 간다.</para>
+        ///
+        /// <para>★ 값 판정이 «죽은 파서»가 아님은 같은 실행 안에서 두 대조가 증명한다:
+        /// (a) <c>requiredLevel</c> 계수기(파일을 실제로 읽는가), (b) 팩 에셋은 반대로
+        /// <b>파생 아닌 값</b>을 적어야 통과한다(= 값을 실제로 파싱하는가).</para>
         /// </summary>
         [Test]
-        public void 기본_42종은_선언_키를_아예_적지_않는다()
+        public void 기본_42종은_등급을_선언하지_않는다()
         {
             // ★ 목록은 폴더가 아니라 <b>타입</b>에서 온다 — 왜 그런지는 ItemAssetFiles() 주석.
             //   그리고 2026-09-08부터 <b>기본 코호트만</b> 본다(아래 BaseCohortAssetFiles 주석).
             string[] files = BaseCohortAssetFiles(out string[] packFiles);
 
             int sawRequiredLevel = 0;
+            int sawDeclaredRarityKey = 0;
             var declared = new List<string>();
             foreach (string f in files)
             {
@@ -1033,7 +1053,11 @@ namespace StickMate.Tests.EditMode
                 {
                     string t = line.Trim();
                     if (t.StartsWith("requiredLevel:", System.StringComparison.Ordinal)) sawRequiredLevel++;
-                    if (t.StartsWith("declaredRarity:", System.StringComparison.Ordinal))
+                    if (!t.StartsWith("declaredRarity:", System.StringComparison.Ordinal)) continue;
+                    sawDeclaredRarityKey++;
+                    // ★ 「키가 있다」가 아니라 「파생이 아닌 값이다」가 결함이다(위 문단).
+                    string v = t.Substring("declaredRarity:".Length).Trim();
+                    if (!int.TryParse(v, out int parsedValue) || parsedValue != (int)DeclaredRarity.Derived)
                         declared.Add($"  {Path.GetFileName(f)} -> {t}");
                 }
             }
@@ -1071,11 +1095,14 @@ namespace StickMate.Tests.EditMode
                 "ItemAssetFiles() 참조.)");
             Assert.IsEmpty(declared,
                 $"{LogPrefix} 기본 아이템이 등급을 선언했습니다({declared.Count}건). 기본 42종의 등급은 " +
-                "requiredLevel 파생이 유일한 출처입니다.\n" + string.Join("\n", declared));
+                "requiredLevel 파생이 유일한 출처입니다(키가 적혀 있는 것 자체는 결함이 아닙니다 — " +
+                $"Derived({(int)DeclaredRarity.Derived}) 가 아닌 값이 결함입니다).\n" + string.Join("\n", declared));
 
-            Debug.Log($"{LogPrefix} 기본 코호트 에셋 {files.Length}개 스캔 — declaredRarity 키 0건 " +
-                      $"(양성 대조: requiredLevel {sawRequiredLevel}건 검출 · " +
-                      $"팩 에셋 {packFiles.Length}개는 반대로 전부 선언함).");
+            Debug.Log($"{LogPrefix} 기본 코호트 에셋 {files.Length}개 스캔 — 파생 아닌 선언 0건 " +
+                      $"(declaredRarity 키가 적힌 파일 {sawDeclaredRarityKey}개 — Unity 재직렬화 흔적이고 " +
+                      $"값은 전부 Derived({(int)DeclaredRarity.Derived}) 다. " +
+                      $"양성 대조: requiredLevel {sawRequiredLevel}건 검출 · " +
+                      $"팩 에셋 {packFiles.Length}개는 반대로 전부 파생 아닌 값을 적음).");
         }
 
         /// <summary>
