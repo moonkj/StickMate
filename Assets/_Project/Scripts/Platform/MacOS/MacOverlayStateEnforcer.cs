@@ -329,6 +329,15 @@ namespace StickMate.Platform.MacOS
             //     ±1 흔든다(libuniwinc.cpp:694~).
             //   즉 여기서 같은 수술을 하면 <b>얻는 것 없이</b> 실측으로 튜닝이 끝난 경로에 위험만 넣는다.
             //   근거 전문: Platform/OverlayStateReapplyPolicy.cs.
+            // ★ 2026-09-14 동결 계측 — Windows판과 같은 자리에 같은 창구를 둔다. 다만 macOS 재대입은
+            //   styleMask 한 줄이라 창 사각형을 바꾸지 않으므로(위 문단) 규칙이 적지 않는다(causesWindowResize: false).
+            //   상세 문자열을 만들지 않도록 규칙을 먼저 묻는다.
+            if (FreezeForensics.IsActive && FreezeForensicsPolicy.ShouldRecordTransparencyReassign(false))
+            {
+                FreezeForensics.RecordTransparencyReassign(causesWindowResize: false,
+                    UniWindowController.GetMonitorCount(),
+                    $"macOS isTransparent 재대입 — 재적용 {_appliedCount}/{ReapplyAttempts}");
+            }
             _controller.isTransparent = DesiredTransparent;
             _controller.isTopmost = DesiredTopmost;
             _controller.isClickThrough = DesiredClickThrough;
@@ -510,6 +519,15 @@ namespace StickMate.Platform.MacOS
             if (calledSetResolution)
             {
                 _setResolutionCalls++;
+                // ★ 2026-09-14 동결 계측 — 스왑체인을 다시 만드는 호출 <b>직전</b>에 디스크까지 적는다
+                //   (Windows판과 같은 자리·같은 형태, 동작 변경 0).
+                if (FreezeForensics.IsActive)
+                {
+                    FreezeForensics.Record(FreezeForensicsEvent.SetResolution, 0f, 0f, targetPixelW, targetPixelH,
+                        UniWindowController.GetMonitorCount(),
+                        $"macOS Screen {Screen.width}x{Screen.height} {Screen.fullScreenMode} -> {targetPixelW}x{targetPixelH} Windowed, " +
+                        $"대상 모니터={monitor}, 누적 {_setResolutionCalls}/{OverlayBoundsFitPolicy.DefaultMaxSetResolutionCalls}, 시도 {_fullScreenApplyAttempts}/{MaxFullScreenApplyAttempts}");
+                }
                 Screen.SetResolution(targetPixelW, targetPixelH, FullScreenMode.Windowed);
             }
 
@@ -531,7 +549,24 @@ namespace StickMate.Platform.MacOS
             if (needsResize)
             {
                 _windowResizeCalls++;
+                // ★ 2026-09-14 동결 계측 — 창 크기 대입 직전(Windows판과 같은 자리·같은 형태).
+                if (FreezeForensics.IsActive)
+                {
+                    FreezeForensics.Record(FreezeForensicsEvent.WindowResize, posBefore.x, posBefore.y,
+                        monitor.width, monitor.height, UniWindowController.GetMonitorCount(),
+                        $"macOS 창 크기 {sizeBefore.x}x{sizeBefore.y} -> {monitor.width}x{monitor.height}, " +
+                        $"누적 {_windowResizeCalls}/{OverlayBoundsFitPolicy.DefaultMaxWindowResizeCalls}");
+                }
                 _controller.windowSize = monitor.size;
+            }
+            // ★ 2026-09-14 동결 계측 — 창 위치 대입 직전. 대입 줄 자체는 기존 한 줄 형태를 그대로 둔다
+            //   (OverlayResizeRatchetTests가 그 가드 형태를 문자 그대로 잠근다).
+            if (needsMove && FreezeForensics.IsActive)
+            {
+                FreezeForensics.Record(FreezeForensicsEvent.WindowMove, monitor.x, monitor.y,
+                    needsResize ? monitor.width : sizeBefore.x, needsResize ? monitor.height : sizeBefore.y,
+                    UniWindowController.GetMonitorCount(),
+                    $"macOS 창 위치 ({posBefore.x},{posBefore.y}) -> ({monitor.x},{monitor.y})");
             }
             if (needsMove) _controller.windowPosition = monitor.position;
 
@@ -626,7 +661,14 @@ namespace StickMate.Platform.MacOS
                 return;
             }
 
-            if (!_topologyWatcher.Observe(SampleTopology(), sampleDelta)) return;
+            // ★ 2026-09-14 동결 계측 — 관측만 한다(Windows판과 같은 자리·같은 형태). 감시기 입력·판정·재무장은
+            //   한 줄도 바뀌지 않았다(예전 한 줄 `if (!Observe(SampleTopology(), dt)) return;`을 변수로 풀었을 뿐이다).
+            bool wasSettling = _topologyWatcher.IsSettling;
+            DisplayTopologySignature topologySample = SampleTopology();
+            bool topologySettled = _topologyWatcher.Observe(topologySample, sampleDelta);
+            FreezeForensics.ObserveTopologyTransition(wasSettling, _topologyWatcher.IsSettling, topologySettled,
+                topologySample, "macOS");
+            if (!topologySettled) return;
 
             _fullScreenBoundsApplied = false;
             _fullScreenApplyAttempts = 0;
@@ -772,7 +814,9 @@ namespace StickMate.Platform.MacOS
             new System.Collections.Generic.List<OsMonitorFact>(8);
         private readonly System.Collections.Generic.List<Rect> _libraryRects =
             new System.Collections.Generic.List<Rect>(8);
-        private float _osMonitorRefreshTimer = float.PositiveInfinity;   // 첫 호출에서 즉시 1회.
+        // ★ 2026-09-14 (debugger D1) — 누적 타이머를 벽시계 문으로 바꿨다(Windows판과 같은 결함·같은 수정).
+        //   이 함수는 0.25초/0.5초 게이트 뒤에서만 불려 "1초마다"가 실제로는 15~30초마다였다. 첫 호출은 즉시 1회.
+        private WallClockIntervalGate _osMonitorRefreshGate;
 
         /// <summary>직전에 <b>목표로 삼은</b> 라이브러리 모니터 인덱스(-1 = 아직 없음).
         /// 사용자가 표시 모니터를 바꾼 순간을 잡는 유일한 신호다.</summary>
@@ -801,6 +845,8 @@ namespace StickMate.Platform.MacOS
 
         private const float OsMonitorRefreshIntervalSeconds = 1f;
         private OverlayMonitorChoiceSource _lastChoiceSource = (OverlayMonitorChoiceSource)(-1);
+        /// <summary>직전에 찍은 폴백 사유(null = 사유 없음). <see cref="LogChoiceOnce"/>의 중복 억제 입력.</summary>
+        private string _lastChoiceExtra;
 
         /// <summary>
         /// 사용자 확정 규칙(기본 가장 왼쪽 / 사용자가 고르면 그 화면)으로 목표 사각형을 정한다.
@@ -817,10 +863,8 @@ namespace StickMate.Platform.MacOS
             monitor = default;
             isMainDisplay = false;
 
-            _osMonitorRefreshTimer += Time.unscaledDeltaTime;
-            if (_osMonitorRefreshTimer >= OsMonitorRefreshIntervalSeconds)
+            if (_osMonitorRefreshGate.TryConsume(Time.unscaledTime, OsMonitorRefreshIntervalSeconds))
             {
-                _osMonitorRefreshTimer = 0f;
                 if (OsMonitorEnumerator != null)
                 {
                     try
@@ -891,8 +935,11 @@ namespace StickMate.Platform.MacOS
         /// 조용히 폴백하면 사용자가 "설정이 안 먹는다"고 신고한다(Windows판과 같은 계약).</summary>
         private void LogChoiceOnce(OverlayMonitorChoice choice, string extra = null)
         {
-            if (choice.Source == _lastChoiceSource && extra == null) return;
+            // ★ 2026-09-14 (debugger D1 후속) — 사유(extra)가 붙으면 호출마다 다시 찍던 우회를 닫았다.
+            //   판정은 플랫폼 중립 OverlayMonitorChoicePolicy.ShouldLogChoiceChange 한 곳(Windows판과 같은 함수).
+            if (!OverlayMonitorChoicePolicy.ShouldLogChoiceChange(_lastChoiceSource, _lastChoiceExtra, choice.Source, extra)) return;
             _lastChoiceSource = choice.Source;
+            _lastChoiceExtra = extra;
             Debug.Log("[표시모니터] " +
                 OverlayMonitorChoicePolicy.Describe(choice, Core.AppSettingsModel.PreferredOverlayMonitorKey) +
                 (extra != null ? " / " + extra : "") +

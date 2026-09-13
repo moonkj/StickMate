@@ -429,6 +429,19 @@ namespace StickMate.Platform.Windows
                 transparency = TransparencyReapply.ReassignGlassPathUnavailable;
             }
 
+            // ★ 2026-09-14 동결 계측 — 네이티브 SetBorderless(SetWindowPos 4회 = 표면 재생성)가 걸리는 대입 직전.
+            //   창 사각형을 바꾸는 경로만 적는다(FreezeForensicsPolicy.ShouldRecordTransparencyReassign).
+            //   ★ 가드 블록 <b>밖</b>에 같은 조건으로 둔다 — OverlayTransparencyReapplyTests가 "재대입 바로 위 줄이
+            //   정책 가드여야 한다"를 줄 단위로 잠그고 있고, 그 불변식(가드 밖 재대입 금지)을 흐리지 않기 위해서다.
+            if (OverlayStateReapplyPolicy.CausesWindowResize(transparency) && FreezeForensics.IsActive)
+            {
+                FreezeForensics.RecordTransparencyReassign(causesWindowResize: true,
+                    UniWindowController.GetMonitorCount(),
+                    $"Windows isTransparent 재대입 — {OverlayStateReapplyPolicy.Describe(transparency)}, " +
+                    $"재적용 {_appliedCount}/{ReapplyAttempts}, SetBorderless 누적 {_borderlessResizeEpisodes + 1}회, " +
+                    $"창 {_controller.windowPosition} {_controller.windowSize}");
+            }
+
             if (OverlayStateReapplyPolicy.CausesWindowResize(transparency))
             {
                 _controller.isTransparent = DesiredTransparent;
@@ -635,6 +648,14 @@ namespace StickMate.Platform.Windows
             if (calledSetResolution)
             {
                 _setResolutionCalls++;
+                // ★ 2026-09-14 동결 계측 — 스왑체인을 다시 만드는 호출 <b>직전</b>에 디스크까지 적는다(동작 변경 0).
+                if (FreezeForensics.IsActive)
+                {
+                    FreezeForensics.Record(FreezeForensicsEvent.SetResolution, 0f, 0f, targetPixelW, targetPixelH,
+                        UniWindowController.GetMonitorCount(),
+                        $"Windows Screen {Screen.width}x{Screen.height} {Screen.fullScreenMode} -> {targetPixelW}x{targetPixelH} Windowed, " +
+                        $"대상 모니터={monitor}, 누적 {_setResolutionCalls}/{MaxSetResolutionCalls}, 시도 {_fullScreenApplyAttempts}/{MaxFullScreenApplyAttempts}");
+                }
                 Screen.SetResolution(targetPixelW, targetPixelH, FullScreenMode.Windowed);
             }
 
@@ -654,7 +675,24 @@ namespace StickMate.Platform.Windows
             if (needsResize)
             {
                 _windowResizeCalls++;
+                // ★ 2026-09-14 동결 계측 — 창 크기 대입(= SetWindowPos → 스왑체인 재생성) 직전.
+                if (FreezeForensics.IsActive)
+                {
+                    FreezeForensics.Record(FreezeForensicsEvent.WindowResize, posBefore.x, posBefore.y,
+                        monitor.width, monitor.height, UniWindowController.GetMonitorCount(),
+                        $"Windows 창 크기 {sizeBefore.x}x{sizeBefore.y} -> {monitor.width}x{monitor.height}, " +
+                        $"누적 {_windowResizeCalls}/{OverlayBoundsFitPolicy.DefaultMaxWindowResizeCalls}");
+                }
                 _controller.windowSize = monitor.size;
+            }
+            // ★ 2026-09-14 동결 계측 — 창 위치 대입 직전(크기는 그대로 = 스왑체인 재생성 아님). 대입 줄 자체는
+            //   기존 한 줄 형태를 그대로 둔다(OverlayResizeRatchetTests가 그 가드 형태를 문자 그대로 잠근다).
+            if (needsMove && FreezeForensics.IsActive)
+            {
+                FreezeForensics.Record(FreezeForensicsEvent.WindowMove, monitor.x, monitor.y,
+                    needsResize ? monitor.width : sizeBefore.x, needsResize ? monitor.height : sizeBefore.y,
+                    UniWindowController.GetMonitorCount(),
+                    $"Windows 창 위치 ({posBefore.x},{posBefore.y}) -> ({monitor.x},{monitor.y})");
             }
             if (needsMove) _controller.windowPosition = monitor.position;
 
@@ -758,7 +796,15 @@ namespace StickMate.Platform.Windows
                 return;
             }
 
-            if (!_topologyWatcher.Observe(SampleTopology(), sampleDelta)) return;
+            // ★ 2026-09-14 동결 계측 — 관측만 한다. 감시기 입력·판정·재무장은 한 줄도 바뀌지 않았다
+            //   (예전 한 줄 `if (!Observe(SampleTopology(), dt)) return;`을 변수로 풀었을 뿐이다).
+            //   변화 감지(t0) · 안정 · 원복을 벽시계와 함께 디스크에 즉시 적는다(FreezeForensicsPolicy 문서).
+            bool wasSettling = _topologyWatcher.IsSettling;
+            DisplayTopologySignature topologySample = SampleTopology();
+            bool topologySettled = _topologyWatcher.Observe(topologySample, sampleDelta);
+            FreezeForensics.ObserveTopologyTransition(wasSettling, _topologyWatcher.IsSettling, topologySettled,
+                topologySample, "Windows");
+            if (!topologySettled) return;
 
             _fullScreenBoundsApplied = false;
             _fullScreenApplyAttempts = 0;
@@ -883,9 +929,14 @@ namespace StickMate.Platform.Windows
         /// <summary>OS 모니터 목록 캐시. 재열거 주기를 두는 이유: 이 함수는 토폴로지 관측(0.25초)에서도
         /// 불리므로, 매번 열거하면 24시간 상주 앱에서 순수 낭비다.</summary>
         private readonly List<OsMonitorFact> _osMonitors = new List<OsMonitorFact>(8);
-        private float _osMonitorRefreshTimer = float.PositiveInfinity;   // 첫 호출에서 즉시 1회.
+        // ★ 2026-09-14 (debugger D1) — 누적 타이머(`+= Time.unscaledDeltaTime`)를 벽시계 문으로 바꿨다.
+        //   이 함수는 0.25초/0.5초 게이트 뒤에서만 불려 한 번에 한 프레임 dt만 쌓였고, "1초마다"가 실제로는
+        //   15~30초마다였다(WallClockIntervalGate 문서). 첫 호출은 여전히 즉시 1회다.
+        private WallClockIntervalGate _osMonitorRefreshGate;
         private const float OsMonitorRefreshIntervalSeconds = 1f;
         private OverlayMonitorChoiceSource _lastChoiceSource = (OverlayMonitorChoiceSource)(-1);
+        /// <summary>직전에 찍은 폴백 사유(null = 사유 없음). <see cref="LogChoiceOnce"/>의 중복 억제 입력.</summary>
+        private string _lastChoiceExtra;
 
         /// <summary>
         /// 사용자 확정 규칙(기본 주 모니터 / 사용자가 고르면 그 화면)으로 목표 사각형을 정한다.
@@ -895,10 +946,8 @@ namespace StickMate.Platform.Windows
         {
             monitor = default;
 
-            _osMonitorRefreshTimer += Time.unscaledDeltaTime;
-            if (_osMonitorRefreshTimer >= OsMonitorRefreshIntervalSeconds)
+            if (_osMonitorRefreshGate.TryConsume(Time.unscaledTime, OsMonitorRefreshIntervalSeconds))
             {
-                _osMonitorRefreshTimer = 0f;
                 if (OsMonitorEnumerator != null)
                 {
                     try
@@ -952,6 +1001,11 @@ namespace StickMate.Platform.Windows
             }
 
             monitor = _libraryRects[libIndex];
+            // ★ 2026-09-14 (debugger D2) — 크기 0 검사를 재무장 <b>앞</b>으로 옮겼다(macOS판은 원래 이 순서였다).
+            //   예전에는 재무장이 먼저라, 사라지는 중인 모니터가 크기 0으로 조회되는 순간에도
+            //   `_lastAppliedTargetIndex`가 그 인덱스로 바뀌고 진동 이력이 버려진 뒤 false로 폴백했다 —
+            //   유효하지 않은 목표로 재적합 루프를 무장시키는 순서였다.
+            if (monitor.width <= 0f || monitor.height <= 0f) return false;
 
             // ★★ 2026-09-02 — <b>선택이 바뀌면 그 자리에서 창이 따라가야 한다</b>(ux-designer §49의
             //   성립 조건). 그냥 두면 창을 옮기는 유일한 경로(TickFullScreenBounds)가
@@ -967,7 +1021,6 @@ namespace StickMate.Platform.Windows
                 ReArmFullScreenFitForNewTarget();
             }
 
-            if (monitor.width <= 0f || monitor.height <= 0f) return false;
             _lastMonitorIndex = libIndex;
             LogChoiceOnce(choice);
             return true;
@@ -1006,8 +1059,11 @@ namespace StickMate.Platform.Windows
         /// 조용히 폴백하면 사용자가 "설정이 안 먹는다"고 신고한다(리더 지시 3항).</summary>
         private void LogChoiceOnce(OverlayMonitorChoice choice, string extra = null)
         {
-            if (choice.Source == _lastChoiceSource && extra == null) return;
+            // ★ 2026-09-14 (debugger D1 후속) — 사유(extra)가 붙으면 호출마다(0.25초) 다시 찍던 우회를 닫았다.
+            //   판정은 플랫폼 중립 OverlayMonitorChoicePolicy.ShouldLogChoiceChange 한 곳(macOS판과 같은 함수).
+            if (!OverlayMonitorChoicePolicy.ShouldLogChoiceChange(_lastChoiceSource, _lastChoiceExtra, choice.Source, extra)) return;
             _lastChoiceSource = choice.Source;
+            _lastChoiceExtra = extra;
             Debug.Log("[표시모니터] " +
                 OverlayMonitorChoicePolicy.Describe(choice, Core.AppSettingsModel.PreferredOverlayMonitorKey) +
                 (extra != null ? " / " + extra : "") +

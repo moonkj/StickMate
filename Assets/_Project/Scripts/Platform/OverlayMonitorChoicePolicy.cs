@@ -478,6 +478,17 @@ namespace StickMate.Platform
         }
 
         /// <summary>사람이 읽는 한 줄(전이 순간에만 조립 — 폴링 경로에서 문자열을 만들지 않는다).</summary>
+        /// <summary>
+        /// ★ 2026-09-14 (debugger 확정 결함 D1 후속) — <c>[표시모니터]</c> 줄을 <b>근거나 사유가 바뀔 때만</b> 찍는다.
+        /// <para>예전 규칙은 <c>source == 직전 &amp;&amp; extra == null</c>일 때만 억제했다. 그래서 폴백 사유
+        /// (<c>extra</c>)가 붙는 경로는 <b>같은 문장을 호출마다</b>(토폴로지 표본 0.25초) 다시 찍었다 —
+        /// 모니터를 뗀 직후 OS 목록이 낡아 폴백이 계속되는 바로 그 구간에서 로그가 폭주했다.
+        /// 이제 사유 문자열까지 비교한다. 사유가 사라지는 순간(복구)도 한 번 찍힌다.</para>
+        /// </summary>
+        public static bool ShouldLogChoiceChange(OverlayMonitorChoiceSource previousSource, string previousExtra,
+            OverlayMonitorChoiceSource source, string extra)
+            => previousSource != source || !string.Equals(previousExtra, extra, System.StringComparison.Ordinal);
+
         public static string Describe(OverlayMonitorChoice choice, string preferredKey)
         {
             switch (choice.Source)

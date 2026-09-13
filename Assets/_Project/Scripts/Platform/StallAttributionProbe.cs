@@ -141,18 +141,49 @@ namespace StickMate.Platform
     [DefaultExecutionOrder(-30000)]
     internal sealed class StallFrameBeginProbe : MonoBehaviour
     {
-        private void FixedUpdate() => StallAttribution.BeginFixedStep();
-        private void Update() => StallAttribution.BeginFrame();
-        private void LateUpdate() => StallAttribution.BeginLatePhase();
+        // ★ 2026-09-14 — 동결 워치독(FreezeWatchdog)에 프레임/단계를 발행한다. 원자적 쓰기 1~3회, 할당 0.
+        //   워치독은 다른 스레드라 Unity 시계를 못 부르므로 realtimeSinceStartup을 여기서 넘긴다.
+        private void FixedUpdate()
+        {
+            FreezeWatchdog.PublishPhase(MainThreadPhase.FixedUpdate);
+            StallAttribution.BeginFixedStep();
+        }
+
+        private void Update()
+        {
+            FreezeWatchdog.PublishMainFrame(Time.realtimeSinceStartupAsDouble);
+            StallAttribution.BeginFrame();
+        }
+
+        private void LateUpdate()
+        {
+            FreezeWatchdog.PublishPhase(MainThreadPhase.LateUpdate);
+            StallAttribution.BeginLatePhase();
+        }
     }
 
     /// <summary>모든 Update/LateUpdate/FixedUpdate보다 <b>나중에</b> 도는 단계 종료 표식.</summary>
     [DefaultExecutionOrder(30000)]
     internal sealed class StallFrameEndProbe : MonoBehaviour
     {
-        private void FixedUpdate() => StallAttribution.EndFixedStep();
-        private void Update() => StallAttribution.EndUpdatePhase();
-        private void LateUpdate() => StallAttribution.EndLogicPhase();
+        private void FixedUpdate()
+        {
+            StallAttribution.EndFixedStep();
+            FreezeWatchdog.PublishPhase(MainThreadPhase.AfterFixedUpdate);
+        }
+
+        private void Update()
+        {
+            StallAttribution.EndUpdatePhase();
+            FreezeWatchdog.PublishPhase(MainThreadPhase.AfterUpdate);
+        }
+
+        // LateUpdate 끝 = 로직 밖(렌더·프레젠트·프레임 상한 대기)의 시작. 정지가 여기서 나면 우리 C#이 아니다.
+        private void LateUpdate()
+        {
+            StallAttribution.EndLogicPhase();
+            FreezeWatchdog.PublishPhase(MainThreadPhase.AfterLogic);
+        }
     }
 
     /// <summary>

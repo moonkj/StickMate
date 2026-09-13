@@ -371,6 +371,20 @@ namespace StickMate.Platform
             if (_sectionDepth > 0) StackChildTicks[_sectionDepth - 1] += total;
         }
 
+        /// <summary>
+        /// ★ 2026-09-14 — <see cref="FreezeWatchdog"/>(<b>다른 스레드</b>)가 "메인이 멈춘 순간 어느 구간이
+        /// 열려 있었나"를 읽는 창구. 잠금 없이 int 두 개를 읽는다 — 진단 문자열 하나에만 쓰이고, 메인이
+        /// 3초 이상 멈춘 뒤에 읽으므로 값은 이미 안정돼 있다. 메인 스레드 경로에 비용을 한 줄도 더하지 않는다.
+        /// </summary>
+        /// <returns>열린 구간의 <see cref="StallSection"/> 값, 없으면 -1, 깊이 초과면 -2.</returns>
+        internal static int ProbeOpenSectionForWatchdog()
+        {
+            int depth = _sectionDepth;
+            if (depth <= 0) return -1;
+            if (depth > MaxSectionDepth) return -2;
+            return StackSection[depth - 1];
+        }
+
         /// <summary>테스트/진단용 — 이번 60초 창에서 그 구간이 쓴 총 자기시간(ms).</summary>
         public static double WindowSectionMs(StallSection section) => SectionWindowMs[(int)section];
 

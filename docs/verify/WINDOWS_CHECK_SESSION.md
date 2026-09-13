@@ -9,8 +9,12 @@
 >
 > **전체 70분.** 시간이 없으면 §0 → §A → §B 까지만 해도 값이 나온다(35분).
 > 뒤로 갈수록 「미관」이고 앞이 「우리가 만들 것이 바뀌는 것」이다.
+>
+> ★★★ **2026-09-14 추가 — CW-7(출시 차단 해제 조건) 항목 2개: §E-3 · §G-1.** 이 둘은 **70분 안에 들어 있지 않고,
+> 리더가 원인 수정 빌드를 지정한 세션에서만** 따로 돈다(약 20분). **지정이 없으면 건너뛴다 — 건너뛰는 것이 정상이다.**
+> 사유: 사용자 PC가 이 조작으로 **강제 리부팅**됐다(2026-09-14 신고). 근거 `docs/strategy/ROADMAP.md` §60.
 
-작성 2026-09-03 · `qa-regression` · 근거는 전부 저장소 실측(끝의 「출처」 참조)
+작성 2026-09-03 · `qa-regression` · 근거는 전부 저장소 실측(끝의 「출처」 참조) · §E-3/§G-1 추가 2026-09-14
 
 ---
 
@@ -203,6 +207,89 @@ macOS에서는 plist에 플래그가 남아 「첫 실행」이 **한 번도 재
 - [ ] **E-2 · 어느 화면에 뜨는가** — **본다**: 앱이 주 화면에 뜨는가, 창을 옮겨도 캐릭터가 따라오는가.
   **적는다**: `E-2.png`.
 
+- [ ] **E-3 · ★★★ 실행 중 외장 분리 → 재연결 (CW-7 · 출시 차단 해제 조건)**
+
+  > ⛔ **먼저 읽어 주세요 — 이 조작은 사용자 PC를 강제 리부팅시킨 전력이 있다**(2026-09-14 신고: 흰 화면 + 캐릭터만 보임 + 커서·Ctrl+Alt+Del 무반응).
+  > 1. **리더가 「원인 수정 빌드」를 지정한 세션에서만 한다.** 지정이 없으면 **하지 말고** 「E-3 미수행 — 수정 빌드 미지정」 한 줄만 적는다. **그 줄은 실패가 아니다.**
+  > 2. **지정된 빌드인지 먼저 확인한다** — `StickMate.exe`가 있는 폴더에서 PowerShell로
+  >    `(Get-Item .\StickMate_Data\Managed\StickMate.Runtime.dll).LastWriteTime` → 리더가 준 시각과 **다르면 하지 않는다.**
+  >    (`StickMate.exe` 날짜는 Unity 런처라 빌드 시점이 아니다 — 거짓 통과 7번.)
+  > 3. **열린 작업을 전부 저장하고 닫는다** — 문서·브라우저 입력 중인 칸·다른 앱 전부. 멈추면 **저장할 기회가 없다.**
+  > 4. **작업표시줄 자동 숨김을 끈다**(§B-6 상태). 강제 리부팅이면 종료 원복이 안 돌아서, 켜 둔 채면 **작업표시줄 설정이 바뀐 채 남는다**(ROADMAP §60-3 근거 3).
+  > 5. **휴대폰 동영상을 켠다** — 모니터 화면과 **작업표시줄 시계**가 함께 찍히게. PC 녹화는 PC가 멈추면 같이 사라진다.
+  >    ★ **30초 판정은 이 영상으로만 한다** — `Player.log` 줄에는 **시각이 없다**(우리 코드가 시각을 붙이지 않는다).
+  > 6. **아래 §H(멈췄을 때)를 휴대폰으로 미리 찍어 둔다.** 화면이 하얘지면 이 문서를 볼 수 없다.
+
+  **한다**:
+  1. §E 배치(외장이 주 화면 **왼쪽**) 그대로 앱 실행. 기본 표시 화면이 「가장 왼쪽」이라 **캐릭터가 외장에 뜬다**. 1분 둔다.
+  2. **시작 표시** — 아래 PowerShell **블록 ①**을 붙여넣는다(출력의 줄 수가 **0이면 멈추고 알려 주세요** — 로그 경로가 틀린 것이다).
+  3. **(a) 외장 케이블을 뽑는다** → 손 떼고 **30초** 관찰 → **(b) 다시 꽂는다** → 30초 관찰.
+  4. [디스플레이] 배치에서 외장을 주 화면 **오른쪽**으로 옮기고 적용 → 30초(이제 캐릭터는 **내장**에 뜬다 = 「뽑는 화면에 캐릭터가 **없는**」 경우).
+  5. **(c) 다시 뽑는다** → 30초 → **(d) 다시 꽂는다** → 30초.
+  6. **1분 더 둔 뒤** **블록 ②**를 붙여넣는다. 앱은 **처음부터 끝까지 끄지 않는다**(`Player.log`는 재실행마다 덮어써진다).
+
+  **본다** — 조작 (a)(b)(c)(d) **마다**, 조작 순간부터 30초 안에, **영상에 찍히게**:
+  ① 커서가 움직이는가 ② **Win 키**를 눌러 시작 메뉴가 열리고, 한 번 더 눌러 닫히는가
+  ③ 캐릭터가 **남은 화면에서 계속 움직이는가**(멈춘 그림이 아닌가) ④ 캐릭터 **옆 빈 곳을 클릭**하면 뒤의 바탕화면·창이 눌리는가(클릭 관통)
+  ⑤ 화면 전체가 **하얗거나 회색 판으로 덮였는가**.
+
+  **블록 ① — 시작 표시** (조작 전에 한 번)
+  ```powershell
+  $name = 'E-3'
+  $dir = "$env:USERPROFILE\Desktop\StickMate확인"; New-Item -ItemType Directory -Force -Path $dir | Out-Null
+  $log = "$env:USERPROFILE\AppData\LocalLow\Vibelab\StickMate\Player.log"
+  $mark = (Get-Content -Encoding UTF8 $log).Count
+  "$mark $(Get-Date -Format o)" | Out-File -Encoding UTF8 "$dir\$name-표시.txt"
+  "시작 표시 = $mark 줄"      # ← 0이면 멈추고 알려 주세요
+  ```
+
+  **블록 ② — 발췌와 판정 숫자** (마지막 조작 1분 뒤, 앱을 켠 채)
+  ```powershell
+  $name = 'E-3'
+  $dir = "$env:USERPROFILE\Desktop\StickMate확인"
+  $log = "$env:USERPROFILE\AppData\LocalLow\Vibelab\StickMate\Player.log"
+  $m = (Get-Content -Encoding UTF8 "$dir\$name-표시.txt").Trim().Split(' ')
+  $mark = [int]$m[0]; $sec = [int]((Get-Date) - [datetime]::Parse($m[1])).TotalSeconds
+  $pat = '\[렌더품질\]|디스플레이 구성 변경이 안정됐습니다|전체화면 확장 시도|\[프레임시간\]|\[프레임스파이크\]|\[표시모니터\]|\[세션가시성\]'
+  Get-Content -Encoding UTF8 $log | Select-String -Pattern $pat |
+    ForEach-Object { "{0,6}{1} {2}" -f $_.LineNumber, $(if ($_.LineNumber -gt $mark) {' *'} else {'  '}), $_.Line } |
+    Out-File -Encoding UTF8 "$dir\$name.txt"
+  $after = Get-Content -Encoding UTF8 $log | Select-Object -Skip $mark
+  $all   = Get-Content -Encoding UTF8 $log
+  "경과 $sec 초"
+  "[프레임시간]  기대 최소 $([math]::Max(0,[math]::Floor($sec/30)-1)) 줄 / 실제 $(($after | Select-String '\[프레임시간\]').Count) 줄"
+  "구성 변경 안정 = $(($after | Select-String '디스플레이 구성 변경이 안정됐습니다').Count) 줄"
+  "상한 도달     = $(($after | Select-String '★상한 도달').Count) 줄"
+  "프레임스파이크 = $(($after | Select-String '\[프레임스파이크\]').Count) 줄"
+  "(양성 대조) [프레임시간] 로그 전체 = $(($all | Select-String '\[프레임시간\]').Count) 줄   ← 0이면 발췌가 죽은 것(경로·인코딩) — 이 판정 전체 무효"
+  "(참고) [렌더품질] 로그 전체 = $(($all | Select-String '\[렌더품질\]').Count) 줄"
+  ```
+  (`$name.txt` 안에서 줄 번호 옆 `*`가 붙은 줄이 **시작 표시 이후**에 찍힌 줄이다.)
+
+  **적는다**: 휴대폰 영상 `E-3.mp4` · `E-3.txt` · **블록 ②의 출력 6줄 그대로** · 조작마다 한 줄:
+  `(a) 분리: ①O ②O ③O ④O ⑤없음 / 회복까지 약 N초` — 영상에서 센 초.
+
+  **통과 — 넷 전부**:
+  1. **영상**: (a)(b)(c)(d) 각각 30초 안에 ①②③④가 되고 ⑤가 없다. **리부팅이 필요 없었다.**
+  2. **`[프레임시간]` 실제 ≥ 기대 최소** — 이 줄은 **30초마다** 찍힌다. 모자라면 그만큼 **앱 루프가 멈춰 있었다**는 산출물이다.
+  3. **`구성 변경 안정` ≥ 1** — 앱이 화면 변화를 **실제로 봤다**는 산출물이다.
+  4. **양성 대조 — 로그 전체의 `[프레임시간]` ≥ 1.** 0이면 앱이 아니라 **발췌 명령이 죽은 것**이다(한글 로그를 `-Encoding UTF8` 없이 읽으면 전부 깨져 0이 된다).
+
+  **판정 4갈래**:
+  | 결과 | 조건 | 뜻 |
+  |---|---|---|
+  | **통과** | 위 1~4 전부 | CW-7의 E-3 몫 충족 |
+  | **실패 — 출시 차단 유지** | ①② 중 하나라도 30초 안에 안 됨 · ⑤ · **리부팅** | 신고된 결함 그대로. §H로 |
+  | **실패 — PC는 산다** | ①② O인데 ③ 또는 ④가 안 됨 | CW-7 미충족. 단 **계층이 다르다**(창 재적합 쪽) |
+  | **보류 — 리더 판정** | 영상은 전부 O인데 2·3·4 중 하나 미달, 또는 `구성 변경 안정` 줄 수 < 4, 또는 `상한 도달` ≥ 1 | 사람 눈은 통과인데 산출물이 안 받친다 — `E-3.txt` 그대로 넘긴다 |
+
+  **깨지면**:
+  - **멈춤**이면 이 항목이 잡으려던 바로 그 결함이다 → **§H를 그대로 따른다.** 세션의 CW-7 부분은 거기서 끝낸다(G-1 하지 않는다).
+  - **`구성 변경 안정` = 0**이면 재적합이 **무장조차 안 됐다.** 그 감시는 **조용히 빠지는 길이 둘** 있다 — 진동 래치가 걸렸거나(`TickDisplayTopology` 첫 return) 적합이 진행 중이었다(두 번째 return). 줄이 **없는 것 자체**가 원인 쪽 단서다.
+  - **`상한 도달` ≥ 1**이면 한 실행 안에서 `Screen.SetResolution` 상한(**4회**)을 다 썼다 — 그 뒤 크기 변경은 **다음 실행까지 반영되지 않는다**(설계된 한계). ③이 어긋나 보이면 이것부터 의심.
+  - ★ **`[모니터지형]` 줄로 판정하지 마라** — **기동 시 한 번만** 찍힌다. 분리 뒤 새 블록이 안 나오는 것이 **정상**이다(없는 것을 결함으로 읽으면 거짓 빨강).
+  - ★ `[표시모니터]`도 **선택 근거가 바뀔 때만** 찍혀서 안 나와도 정상이다 — 나오면 적기만 한다.
+
 > ★ 끝나면 배치를 원래대로 되돌려 주세요.
 
 ---
@@ -224,6 +311,90 @@ macOS에서는 plist에 플래그가 남아 「첫 실행」이 **한 번도 재
 
 ---
 
+## §G. 상주 중 화면 사건 (10분) — ★ CW-7, 수정 빌드 지정 시에만
+
+- [ ] **G-1 · ★★★ 디스플레이 절전 복귀 (CW-7)**
+
+  > ⛔ **E-3 머리의 규칙 1~6을 그대로 지킨다** — ① 리더가 수정 빌드를 지정했을 때만 ② `StickMate.Runtime.dll` 수정 시각 확인 ③ **열린 작업 전부 저장** ④ 자동 숨김 끔 ⑤ 휴대폰 영상(시계가 찍히게) ⑥ **§H를 휴대폰으로 미리 찍어 둠.**
+  > **왜 같은 규칙인가**: 절전 복귀가 E-3과 같은 멈춤을 부르는지 **미확인**이다(ROADMAP §60-2). 부른다면 이 결함은 「가끔」이 아니라 **매일** 난다.
+  > ★ **E-3이 멈춤으로 끝났으면 G-1은 하지 않는다.**
+
+  **한다**:
+  1. 외장을 연결한 채(§E 배치) 앱 실행. [설정 > 시스템 > **전원 및 절전**(Win10) / **전원 및 배터리**(Win11)] → **화면 끄기**의 **원래 값을 먼저 적고** → **1분**으로.
+  2. E-3의 **블록 ①**을 붙여넣되 첫 줄을 `$name = 'G-1'`로 바꾼다.
+  3. 마우스·키보드에서 손을 뗀다 → **화면이 꺼질 때까지** 기다린다 → 꺼진 뒤 **2분 더** 둔다.
+  4. **마우스를 움직여 깨운다.** 잠금 화면이 뜨면 로그인한다(30초는 **로그인한 순간부터** 센다).
+  5. 1분 둔 뒤 E-3의 **블록 ②**를 첫 줄 `$name = 'G-1'`로 바꿔 붙여넣는다.
+
+  **본다**: 깨운 뒤 30초 안에 E-3의 **①~⑤ 그대로**.
+  **적는다**: `G-1.mp4` · `G-1.txt` · 블록 ② 출력 6줄 · 「①O ②O ③O ④O ⑤없음 / 회복까지 약 N초」 한 줄.
+
+  **통과 — 셋 전부**: (1) 영상에서 30초 안에 ①②③④, ⑤ 없음, 리부팅 없음 (2) **`[프레임시간]` 실제 ≥ 기대 최소** — 화면이 꺼진 동안에도 앱 루프는 돌아야 한다 (3) 양성 대조 — 로그 전체의 `[프레임시간]` ≥ 1.
+  ★ **`구성 변경 안정`은 통과 조건이 아니다** — 화면이 꺼져도 모니터 구성이 안 바뀌는 기계에서는 **안 찍히는 것이 정상**이다. 대신 **몇 줄인지 반드시 적는다**:
+  ≥ 1이면 **이 기계에서 절전 복귀가 E-3과 같은 경로(모니터가 빠졌다 돌아옴)를 탄다**는 산출물이고, ROADMAP §60-2의 「가끔 → 매일」 질문의 답이다.
+
+  **깨지면**: 멈춤 → **§H.** ①② O인데 ③④가 안 되면 「실패 — PC는 산다」(E-3 표와 같은 갈래).
+  ★ **Windows에는 절전 전용 로그가 없다** — 우리 Windows 구현은 「화면이 꺼져 있다」를 **감지하지 않고 항상 켜져 있다고 보고**한다(`WindowsViewerPresenceService.cs` 클래스 문서). 그러니 **「절전 진입/복귀」 같은 줄을 찾지 마라** — 없는 것이 정상이다.
+
+  > ★ 끝나면 **화면 끄기 시간을 원래 값으로** 되돌려 주세요.
+
+---
+
+## §H. ★ 멈췄을 때 — E-3 · G-1 공통 (세션 전에 휴대폰으로 찍어 둘 것)
+
+### H-1 손 대기 전에 적는다 (10초)
+**멈춘 시각**(휴대폰 시계, 분까지) · **화면 모양**(전부 흰색 / 캐릭터만 보임 / 검정 / 그 밖) · **어느 조작 직후였나**((a)~(d) 또는 G-1 깨움) · 외장 모니터에 무엇이 보이나.
+
+### H-2 한 칸씩 해 보고 **예/아니오와 기다린 초**를 적는다
+★ **순서를 지켜 주세요** — 앞 칸일수록 **원인을 가르는 칸**이고, 뒤 칸일수록 증거를 지운다.
+
+| 순 | 한다 | 기다림 | 적는다 | 이 칸이 가르는 것 |
+|---:|---|---:|---|---|
+| 1 | 마우스를 움직인다 | 10초 | **커서가 움직이나** | 커서가 움직이면 OS 입력은 산다 |
+| 2 | **Caps Lock**을 두 번 누른다(키보드에 표시등이 있을 때) | 즉시 | 표시등이 켜졌다 꺼지나 | OS가 키를 받는가 |
+| 3 | **`Ctrl+Alt+Win+K`**(캐릭터 숨기기) | 10초 | **흰 화면이 걷히나** | ★ 걷히면 **우리 창이 화면을 덮은 것**이다 — 가장 값진 한 줄 |
+| 4 | (커서가 움직이고 작업표시줄이 보이면) 트레이의 StickMate 아이콘 우클릭 → **「StickMate 종료」** | 15초 | 메뉴가 떴나 / 화면이 돌아왔나 | 앱을 내리면 풀리는가 |
+| 5 | **`Ctrl+Alt+Del`** | 30초 | 파란 보안 화면이 떴나. 떴으면 [작업 관리자] → StickMate **[작업 끝내기]** → 20초 → 돌아왔나 | 셸이 사는가 / 우리 프로세스가 붙잡고 있나 |
+| 6 | **`Win+Ctrl+Shift+B`**(Windows 기본 — 그래픽 드라이버 재시작) | 15초 | 화면이 한 번 깜빡였나 / 돌아왔나 | 드라이버 쪽인가 |
+| 7 | (E-3이면) 외장 케이블을 **다시 꽂는다** | 30초 | 돌아왔나 | 모니터가 돌아오면 풀리는가 |
+| 8 | 위가 전부 안 되면 **전원 버튼을 길게(약 10초)** 눌러 끈다 | — | **멈춘 시각부터 전원까지 총 몇 초 기다렸나** | — |
+
+### H-3 리부팅 후 — ★ **순서가 전부다**
+1. ⛔ **StickMate를 켜지 마세요.** 켜는 순간 멈춘 실행의 `Player.log`가 `Player-prev.log`로 밀리고, **한 번 더 켜면 사라진다.**
+   (이미 한 번 켰다면 **`Player-prev.log`가 멈춘 실행**이다. 두 번 켰다면 「멈춘 실행 로그 소실」로 적는다.)
+2. **로그 회수** — PowerShell에 붙여넣기:
+   ```powershell
+   $src = "$env:USERPROFILE\AppData\LocalLow\Vibelab\StickMate"
+   $dir = "$env:USERPROFILE\Desktop\StickMate확인\멈춤"
+   New-Item -ItemType Directory -Force -Path $dir | Out-Null
+   Get-ChildItem $src -Filter 'Player*.log' | Select-Object Name, Length, LastWriteTime |
+     Tee-Object -FilePath "$dir\로그시각.txt"
+   Copy-Item "$src\Player*.log" $dir -Force
+   Get-ChildItem $dir    # ← Player.log가 실제로 들어왔는지 눈으로 확인. 빈 목록이면 실패다.
+   ```
+   ★ **어느 파일이 멈춘 실행인지는 이름이 아니라 `LastWriteTime`으로 고른다** — **멈춘 시각 직전**에 멈춘 파일이 그것이다.
+   리부팅 **후** 시각이면 그건 새 실행이다(이 저장소는 「하루 전 로그를 현재 상태로 읽은」 사고가 있었다).
+   ★ 강제 전원 차단이라 **마지막 몇 줄이 디스크에 못 내려갔을 수 있다** — 마지막 줄이 멈춘 조작보다 앞이면 그것도 적는다.
+3. **안정성 모니터** — `Win+R` → `perfmon /rel` → 멈춘 날짜 칸 클릭 → 화면 캡처 `멈춤-안정성.png`.
+   아래 목록에 「Windows 오류」·「하드웨어 오류」·「StickMate」 줄이 있으면 **각각 더블클릭해 상세도** 캡처(`멈춤-안정성-상세-1.png` …).
+4. **이벤트 로그 발췌** — PowerShell:
+   ```powershell
+   $dir = "$env:USERPROFILE\Desktop\StickMate확인\멈춤"
+   $since = (Get-Date).AddHours(-6)     # 멈춘 지 6시간이 넘었으면 숫자를 늘린다
+   Get-WinEvent -FilterHashtable @{LogName='System'; Id=41,6008,4101; StartTime=$since} -ErrorAction SilentlyContinue |
+     Format-List TimeCreated, Id, ProviderName, Message | Out-File -Encoding UTF8 "$dir\시스템이벤트.txt"
+   Get-WinEvent -FilterHashtable @{LogName='Application'; ProviderName='Application Hang','Application Error'; StartTime=$since} -ErrorAction SilentlyContinue |
+     Format-List TimeCreated, Id, ProviderName, Message | Out-File -Encoding UTF8 "$dir\앱이벤트.txt"
+   "(양성 대조) 비정상 종료 기록 = $((Select-String -Path "$dir\시스템이벤트.txt" -Pattern '^Id\s*:\s*(41|6008)\s*$').Count) 줄"
+   ```
+   ★ **강제로 전원을 껐다면 양성 대조가 1 이상이어야 한다**(41 = 예기치 않은 재부팅, 6008 = 직전 종료가 비정상). **0이면 이 발췌가 죽은 것**이다 — `AddHours` 숫자를 늘려 다시.
+   `4101`(디스플레이 드라이버가 응답을 멈췄다가 복구됨)이 **멈춘 시각 근처**에 있으면 그 줄이 원인 쪽 핵심 단서다.
+5. **그 다음에야** 앱을 한 번 켠다 — §0-1 원장 확인과 같은 목적. 로그에 `★ 복구 —` 줄이 뜨면 적는다(자동 숨김을 꺼 두었으면 **안 뜨는 것이 정상**).
+   그리고 **그 실행은 바로 종료**하고 E-3/G-1을 **다시 시도하지 않는다.**
+6. **넘기는 것**: `StickMate확인\멈춤\` 폴더 통째로 · H-1/H-2 기록 · 휴대폰 영상.
+
+---
+
 ## §Z. 우리에게 넘길 것 (5분)
 
 ### Z-1 로그 발췌 — PowerShell에 그대로 붙여넣기
@@ -231,7 +402,7 @@ macOS에서는 plist에 플래그가 남아 「첫 실행」이 **한 번도 재
 $dir = "$env:USERPROFILE\Desktop\StickMate확인"
 New-Item -ItemType Directory -Force -Path $dir | Out-Null
 $log = "$env:USERPROFILE\AppData\LocalLow\Vibelab\StickMate\Player.log"
-$tags = '\[렌더품질\]|\[작업표시줄\]|\[작업표시줄버튼\]|\[모니터지형\]|\[표시모니터\]|\[화면클램프\]|\[전체화면판정\]|\[부채꼴\]|\[무릎앉아\]|\[착지충격\]|\[매달리기\]|\[발판진단\]|\[세션가시성\]|\[앱제어\]|\[정보창\]|\[설정창\]'
+$tags = '\[렌더품질\]|\[작업표시줄\]|\[작업표시줄버튼\]|\[모니터지형\]|\[표시모니터\]|\[화면클램프\]|\[전체화면판정\]|\[부채꼴\]|\[무릎앉아\]|\[착지충격\]|\[매달리기\]|\[발판진단\]|\[세션가시성\]|\[앱제어\]|\[정보창\]|\[설정창\]|\[WindowsOverlayStateEnforcer\]|\[프레임시간\]|\[프레임스파이크\]|\[트레이\]'
 Get-Content -Encoding UTF8 $log | Select-String -Pattern $tags |
   Out-File -Encoding UTF8 "$dir\발췌.txt"
 Copy-Item $log "$dir\Player.log" -Force
@@ -250,6 +421,7 @@ Get-ChildItem $dir    # ← 실제로 들어왔는지 눈으로 확인. 빈 목�
 
 ### Z-3 마무리
 - [ ] 표시 배율 100% · 작업표시줄 하단 · 자동 숨김 원래대로 · 모니터 배치 원래대로 되돌렸는가
+- [ ] (G-1을 했다면) **화면 끄기 시간**을 원래 값으로 되돌렸는가
 - [ ] `%USERPROFILE%\AppData\LocalLow\Vibelab\StickMate\stickmate_reserved_bar_restore.json` 이 남아 있다면 **`"active": false`** 인가 (`true`면 알려 주세요 — 우리가 원복 절차를 드립니다)
 
 ---
@@ -271,6 +443,17 @@ Get-ChildItem $dir    # ← 실제로 들어왔는지 눈으로 확인. 빈 목�
 | B-3 | `Tests/EditMode/PlatformParityAuditTests.cs:2811` `실기미확인_착지티어_…` / `:2887` `실기미확인_매달리기_…` |
 | C | 같은 파일 `:2311` `실기미확인_획_하한의_월드_환산이_Windows_DPI에서_실측되지_않았다` · `ComicFontFloorOutlineRingTests.cs:216` |
 | E | `Platform/MonitorTopologyReport.cs` (Windows는 `FlippedFromPrimaryBottom`, macOS는 `CocoaBottomLeft`) |
+| E-3 · G-1 근거 | `docs/strategy/ROADMAP.md` §60 (출시 차단 판정 · CW-7 · 해제 조건 (a)(b)(c)) · §17-2 CW-7 행 |
+| E-3 `구성 변경 안정` | `Platform/Windows/WindowsOverlayStateEnforcer.cs` `TickDisplayTopology` — 로그 줄 `디스플레이 구성 변경이 안정됐습니다` · **조용한 return 2개**(진동 래치 / 적합 진행 중) · 판단은 `Platform/DisplayTopologyWatcher.cs`(디바운스 0.75초) |
+| E-3 `상한 도달` | 같은 파일 `MaxSetResolutionCalls = 4` · `전체화면 확장 시도` 줄의 `★상한 도달` |
+| E-3 `[모니터지형]` 판정 제외 | `MonitorTopologyReport.EmitOnce` — `if (Emitted) return;` **프로세스당 1회** |
+| E-3 `[표시모니터]` | 같은 Enforcer `LogChoiceOnce` — **선택 근거가 바뀔 때만** |
+| E-3 · G-1 `[프레임시간]` | `Platform/FramePacing.cs` `ReportIntervalSeconds = 30f` · 스위치 `logFrameTimeStats` — **출하 애셋 `Data/DefaultStickConfig.asset`에서 `1`**(코드 기본값이 아니라 애셋을 확인했다 — 거짓 통과 9번). ★ 5분 요약 `[FramePacing/적응형] 최근 N초`는 첫 60초 뒤 300초 주기라 **30초 판정에 못 쓴다** |
+| E-3 · G-1 `[프레임스파이크]` | `Platform/FramePacing.cs` — 백버퍼가 바뀌면 `백버퍼가 바뀌었다(스왑체인 재생성 유력)` |
+| E-3 · G-1 양성 대조 선택 | `[프레임시간]`은 `FramePacing.ApplyOnce` → `FrameTimeStats.Configure` + 애셋 스위치 **둘만** 탄다. ★ `[렌더품질]`은 **쓰지 않았다** — `WindowsOverlayStateEnforcer.ApplyTransparentSafeCameraBackground`에서 `isTransparent` · `cam != null` 관문 **뒤에만** 불리고 프로세스당 1회라, 멀쩡한 실행에서도 0이 나올 수 있다(양성 대조가 거짓 빨강을 내면 판정 전체가 무효로 떨어진다) |
+| E-3 시각 없음 | 비테스트 코드에 로그 시각 부착 0건(`HH:mm:ss` · `logMessageReceived` 검색 — 같은 검색이 `Tests/`에서는 맞아 프로브 생존 확인) |
+| G-1 절전 전용 로그 없음 | `Platform/Windows/WindowsViewerPresenceService.cs` 클래스 문서 — Windows `DisplayAsleep`은 **항상 false로 보고** |
+| §H 3칸 · 4칸 | `Core/StickmanAgent.cs` `UserHideHotkeyLetter = "K"` · `Platform/SystemTrayPresencePolicy.cs` `LabelFor` → `StickMate 종료` |
 | F | `Platform/FullscreenSuspendPolicy.cs:208-273` · `docs/marketing/TRUTH_INVENTORY.md` §6 (등급 1 실기 미검증) |
 | 세션 잠금 | `PlatformParityAuditTests.cs:2189` — **이번 표에 넣지 않았다**(잠금/해제 재현이 낮 시간을 많이 먹는다). 여유가 남으면 `[세션가시성]` 줄만 봐도 된다 |
 | 안전 규칙 2 | `docs/strategy/CHANNEL_PRICING_DECISIONS.md:792-798` (T1~T4 자동 앞당김) |
@@ -279,3 +462,7 @@ Get-ChildItem $dir    # ← 실제로 들어왔는지 눈으로 확인. 빈 목�
 **이 표에 없는 것은 이번 라운드가 「안 봤다」는 뜻이다.** 다음 사람이 「전부 봤다」로 읽지 않게 여기 적어 둔다:
 모바일 3플랫폼 · 성능 수치(vsync A/B는 `docs/PERFORMANCE_NOTES.md` §16에 별도 절차가 이미 있다) ·
 세션 잠금 실기 · 스팀 오프라인 소유 조회 · 저장 원자성(`File.Replace` IOException) 재현.
+★ **2026-09-14 추가분(E-3 · G-1)이 안 보는 것**: 디스플레이 변경 촉발 목록(`ARCHITECTURE.md` 「촉발 조건」) 중
+**DPI 배율 실행 중 변경 · RDP 접속 · GPU 드라이버 리셋 · 외장이 dGPU 연결인 구성**(신고는 내장 그래픽 연결) ·
+**절전 복귀를 외장 없이 한 경우** · **macOS의 같은 시나리오**(ROADMAP §60-5 「별도 배정 필요」) ·
+**전원 차단 중 세이브 쓰기**(§60-3 근거 4 「실기 미확인」). 그리고 **§H는 원인을 가르는 절차이지 원인을 확정하지 않는다.**
