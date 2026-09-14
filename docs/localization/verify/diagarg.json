@@ -1,326 +1,386 @@
 [
  {
+  "file": "Core/StickmanAgent.cs",
+  "line": 447,
+  "callee": "ExpireUserSummonGrant",
+  "text": "등급 1 진입 — 이미 떠 있던 표면은 예외 없이 걷는다"
+ },
+ {
+  "file": "Core/StickmanAgent.cs",
+  "line": 1827,
+  "callee": "ExpireUserSummonGrant",
+  "text": "등급 2 진입("
+ },
+ {
   "file": "Dialogue/DialogueBubbleRenderer.cs",
-  "line": 991,
+  "line": 948,
+  "callee": "HideImmediateInternal",
+  "text": "화면 변경 유예 진입 — 페이드아웃 중이던 말풍선은 붙잡지 않고 즉시 제거(보존 동결)"
+ },
+ {
+  "file": "Dialogue/DialogueBubbleRenderer.cs",
+  "line": 949,
+  "callee": "HideImmediateInternal",
+  "text": "화면 변경 유예 진입 — 한 번도 그려지지 않은 말풍선은 붙잡지 않고 즉시 제거(보존 동결)"
+ },
+ {
+  "file": "Dialogue/DialogueBubbleRenderer.cs",
+  "line": 1074,
   "callee": "HideImmediateInternal",
   "text": "강제 인터럽트 — 페이드아웃 잔상 즉시 제거"
  },
  {
   "file": "Dialogue/DialogueBubbleRenderer.cs",
-  "line": 1147,
+  "line": 1246,
   "callee": "HideImmediateInternal",
   "text": "전체화면 감지(Suspended)"
  },
  {
   "file": "Dialogue/DialogueBubbleRenderer.cs",
-  "line": 1189,
+  "line": 1299,
   "callee": "HideImmediateInternal",
   "text": "정상 종료 페이드아웃 완료, 종류={KindLabel(_activeKind)}, "
  },
  {
   "file": "Dialogue/DialogueBubbleRenderer.cs",
-  "line": 1190,
+  "line": 1300,
   "callee": "HideImmediateInternal",
   "text": "노출 {(Time.unscaledTime - _shownAtUnscaledTime):F2}초"
  },
  {
   "file": "Dialogue/DialogueBubbleRenderer.cs",
-  "line": 1253,
+  "line": 1363,
   "callee": "HideImmediateInternal",
   "text": "외부 요청"
  },
  {
   "file": "Interaction/ActionCommandPopover.cs",
-  "line": 566,
+  "line": 593,
   "callee": "Execute",
   "text": "행동 명령창 [{CommandNames[i]}]"
  },
  {
   "file": "Interaction/ActionCommandPopover.cs",
-  "line": 595,
+  "line": 622,
   "callee": "TryRecallNow",
   "text": "행동 명령창 [돌아와!]"
  },
  {
   "file": "Interaction/ActionCommandPopover.cs",
-  "line": 626,
-  "callee": "Close",
-  "text": "[앱 종료] 확정"
- },
- {
-  "file": "Interaction/ActionCommandPopover.cs",
-  "line": 699,
+  "line": 674,
   "callee": "Close",
   "text": "[돌아와!] 소환"
  },
  {
   "file": "Interaction/ActionCommandPopover.cs",
-  "line": 700,
+  "line": 675,
   "callee": "CloseAllExcept",
   "text": "[돌아와!] 소환 — 일회성 응답이라 창에 남을 것이 없다"
  },
  {
-  "file": "Interaction/AppControlDirector.cs",
-  "line": 582,
-  "callee": "ForceTriggerNow",
-  "text": "앱제어 {source}"
- },
- {
-  "file": "Interaction/AppControlDirector.cs",
-  "line": 593,
-  "callee": "ForceTriggerNow",
-  "text": "앱제어 {source}"
- },
- {
-  "file": "Interaction/AppControlDirector.cs",
-  "line": 604,
-  "callee": "ForceTriggerNow",
-  "text": "앱제어 {source}"
- },
- {
-  "file": "Interaction/AppControlDirector.cs",
-  "line": 627,
-  "callee": "TryRecallNow",
-  "text": "앱제어 {source}"
- },
- {
-  "file": "Interaction/AppControlDirector.cs",
-  "line": 637,
-  "callee": "TryForceRunawayNow",
-  "text": "앱제어 {source}"
- },
- {
-  "file": "Interaction/AppControlDirector.cs",
-  "line": 658,
-  "callee": "ForceTriggerNow",
-  "text": "앱제어 {source}"
- },
- {
-  "file": "Interaction/AppControlDirector.cs",
-  "line": 674,
-  "callee": "ForceTriggerNow",
-  "text": "앱제어 {source}"
- },
- {
-  "file": "Interaction/AppControlDirector.cs",
-  "line": 690,
-  "callee": "ForceTriggerNow",
-  "text": "앱제어 {source}"
- },
- {
-  "file": "Interaction/AppControlDirector.cs",
-  "line": 706,
-  "callee": "ForceTriggerNow",
-  "text": "앱제어 {source}"
- },
- {
   "file": "Interaction/ArcheryDirector.cs",
-  "line": 283,
+  "line": 323,
   "callee": "Begin",
   "text": "자동 추첨"
  },
  {
   "file": "Interaction/CharacterInfoWindow.cs",
-  "line": 690,
+  "line": 945,
+  "callee": "TryGrantUserSummon",
+  "text": "정보창 열기({source})"
+ },
+ {
+  "file": "Interaction/CharacterInfoWindow.cs",
+  "line": 948,
   "callee": "CloseOverlappingSurfaces",
   "text": "캐릭터 창 열림({source})"
  },
  {
   "file": "Interaction/CharacterInfoWindow.cs",
-  "line": 763,
+  "line": 1036,
   "callee": "Close",
   "text": "전체화면 감지 — 자동 숨김(비침해 원칙 2)"
  },
  {
   "file": "Interaction/CharacterInfoWindow.cs",
-  "line": 1201,
+  "line": 1529,
   "callee": "Close",
   "text": "[✕] 클릭"
  },
  {
   "file": "Interaction/CharacterInfoWindow.cs",
-  "line": 1233,
+  "line": 1569,
   "callee": "OpenSettings",
   "text": "정보창 헤더 [설정]"
  },
  {
   "file": "Interaction/GearRadialMenuWidget.cs",
-  "line": 589,
+  "line": 935,
+  "callee": "DisarmQuit",
+  "text": "부채꼴 접힘({reason})"
+ },
+ {
+  "file": "Interaction/GearRadialMenuWidget.cs",
+  "line": 989,
   "callee": "Collapse",
   "text": "[{ButtonNames[index]}] 재클릭"
  },
  {
   "file": "Interaction/GearRadialMenuWidget.cs",
-  "line": 618,
+  "line": 1047,
+  "callee": "DisarmQuit",
+  "text": "확정"
+ },
+ {
+  "file": "Interaction/GearRadialMenuWidget.cs",
+  "line": 1048,
+  "callee": "QuitApplication",
+  "text": "부채꼴 [앱 종료]"
+ },
+ {
+  "file": "Interaction/GearRadialMenuWidget.cs",
+  "line": 1082,
+  "callee": "DisarmQuit",
+  "text": "{ActionCommandPopover.QuitConfirmSeconds:F0}초 경과"
+ },
+ {
+  "file": "Interaction/GearRadialMenuWidget.cs",
+  "line": 1089,
+  "callee": "DisarmQuit",
+  "text": "커서가 [{ButtonNames[_hoverIndex]}]로 옮겨감"
+ },
+ {
+  "file": "Interaction/GearRadialMenuWidget.cs",
+  "line": 1101,
   "callee": "Toggle",
   "text": "부채꼴 메뉴 [캐릭터]"
  },
  {
   "file": "Interaction/GearRadialMenuWidget.cs",
-  "line": 619,
+  "line": 1102,
   "callee": "Collapse",
   "text": "[캐릭터] 선택"
  },
  {
   "file": "Interaction/GearRadialMenuWidget.cs",
-  "line": 630,
+  "line": 1113,
   "callee": "Open",
   "text": "부채꼴 [집중 모드]"
  },
  {
   "file": "Interaction/GearRadialMenuWidget.cs",
-  "line": 642,
+  "line": 1125,
   "callee": "Open",
   "text": "부채꼴 [오늘 할일]"
  },
  {
   "file": "Interaction/GearRadialMenuWidget.cs",
-  "line": 657,
+  "line": 1140,
   "callee": "Open",
   "text": "부채꼴 [행동]"
  },
  {
   "file": "Interaction/GearRadialMenuWidget.cs",
-  "line": 666,
+  "line": 1149,
   "callee": "Collapse",
   "text": "[{ButtonNames[index]}] 열기 실패"
  },
  {
   "file": "Interaction/GearRadialMenuWidget.cs",
-  "line": 782,
+  "line": 1265,
   "callee": "ClosePopovers",
   "text": "전체화면 감지 — 자동 숨김"
  },
  {
   "file": "Interaction/GearRadialMenuWidget.cs",
-  "line": 824,
+  "line": 1375,
   "callee": "Collapse",
   "text": "{AutoCollapseIdleSeconds:F0}초 동안 커서가 부채꼴 밖"
  },
  {
   "file": "Interaction/GearRadialMenuWidget.cs",
-  "line": 835,
+  "line": 1386,
   "callee": "Collapse",
   "text": "팝오버가 닫힘"
  },
  {
+  "file": "Interaction/GearRadialMenuWidget.cs",
+  "line": 1393,
+  "callee": "DisarmQuit",
+  "text": "부채꼴 숨김"
+ },
+ {
   "file": "Interaction/PopoverPanel.cs",
-  "line": 356,
+  "line": 511,
   "callee": "Close",
   "text": "무입력 {IdleAutoCloseSeconds:F0}초 — 자리를 비운 것으로 보고 차단막까지 거둡니다(원칙"
  },
  {
   "file": "Interaction/PopoverPanel.cs",
-  "line": 518,
+  "line": 893,
   "callee": "Close",
   "text": "[✕] 클릭"
  },
  {
   "file": "Interaction/PopoverPanel.cs",
-  "line": 647,
+  "line": 1082,
   "callee": "Close",
   "text": "[✕] 클릭"
  },
  {
   "file": "Interaction/SettingsWindow.cs",
-  "line": 169,
+  "line": 181,
   "callee": "Open",
   "text": "전체화면이 {away:F0}초 만에 지나가 자동으로 닫혔던 창을 돌려놓습니다 "
  },
  {
   "file": "Interaction/SettingsWindow.cs",
-  "line": 170,
+  "line": 182,
   "callee": "Open",
   "text": "(우리가 닫은 게 아니라 빼앗은 것이므로 되돌립니다)"
  },
  {
   "file": "Interaction/SettingsWindow.cs",
-  "line": 525,
+  "line": 648,
+  "callee": "TryGrantUserSummon",
+  "text": "설정창 열기({source})"
+ },
+ {
+  "file": "Interaction/SettingsWindow.cs",
+  "line": 659,
   "callee": "CloseOverlappingSurfaces",
   "text": "설정창 열림({source})"
  },
  {
   "file": "Interaction/SettingsWindow.cs",
-  "line": 580,
-  "callee": "Open",
+  "line": 721,
+  "callee": "ReopenFromSheet",
   "text": "설정창 닫힘({source}) — 열기 전에 보던 창으로 복귀"
  },
  {
   "file": "Interaction/SettingsWindow.cs",
-  "line": 622,
+  "line": 772,
   "callee": "Close",
   "text": "전체화면 감지 — 자동 숨김(비침해 원칙 2)"
  },
  {
   "file": "Interaction/SettingsWindow.cs",
-  "line": 751,
+  "line": 1043,
   "callee": "Close",
   "text": "[✕] 클릭"
  },
  {
   "file": "Interaction/SettingsWindow.cs",
-  "line": 758,
+  "line": 1050,
   "callee": "SetTab",
   "text": "탭 클릭"
  },
  {
   "file": "Interaction/SettingsWindow.cs",
-  "line": 941,
+  "line": 1247,
   "callee": "Close",
   "text": "[✕] 클릭"
  },
  {
   "file": "Interaction/SettingsWindow.cs",
-  "line": 1011,
+  "line": 1329,
   "callee": "SetTab",
   "text": "탭 클릭"
  },
  {
   "file": "Interaction/SettingsWindow.cs",
-  "line": 1211,
+  "line": 1451,
+  "callee": "SetMutedForThisSession",
+  "text": "설정창 [일반] 표시"
+ },
+ {
+  "file": "Interaction/SettingsWindow.cs",
+  "line": 1588,
   "callee": "SetUserHidden",
   "text": "설정창 [일반] 지금 즉시"
  },
  {
   "file": "Interaction/SettingsWindow.cs",
-  "line": 1241,
+  "line": 1617,
   "callee": "ReturnToDefaultPosition",
   "text": "설정창 [일반] 톱니 위치 [처음 자리로]"
  },
  {
   "file": "Interaction/SettingsWindow.cs",
-  "line": 1321,
+  "line": 1726,
   "callee": "Request",
   "text": "설정창 슬라이더"
  },
  {
+  "file": "Interaction/StressGaugeRenderer.cs",
+  "line": 440,
+  "callee": "FreezeAndHide",
+  "text": "[스트레스]"
+ },
+ {
+  "file": "Interaction/StressGaugeRenderer.cs",
+  "line": 440,
+  "callee": "FreezeAndHide",
+  "text": "기분 표시"
+ },
+ {
   "file": "Interaction/TodoPostItWidget.cs",
-  "line": 587,
+  "line": 861,
   "callee": "CollapseExpansion",
   "text": "카드 위에서 {IdleAutoCollapseSeconds:F0}초 동안 아무 일도 없었습니다 — "
  },
  {
   "file": "Interaction/TodoPostItWidget.cs",
-  "line": 588,
+  "line": 862,
   "callee": "CollapseExpansion",
   "text": "펼쳐 둔 만큼의 클릭관통 해제 면적을 무기한 남기지 않습니다(원칙 2)"
  },
  {
   "file": "Interaction/TodoPostItWidget.cs",
-  "line": 699,
+  "line": 973,
   "callee": "CollapseExpansion",
   "text": "[+N개 더보기] 재클릭"
  },
  {
+  "file": "States/DanceState.cs",
+  "line": 389,
+  "callee": "BeginOutro",
+  "text": "정상 퇴장(박자 경계)"
+ },
+ {
+  "file": "States/DanceState.cs",
+  "line": 403,
+  "callee": "BeginOutro",
+  "text": "에피소드 만료"
+ },
+ {
+  "file": "States/DanceState.cs",
+  "line": 475,
+  "callee": "BeginOutro",
+  "text": "{reason} — 도움닫기 중 즉시 취소"
+ },
+ {
+  "file": "States/DanceState.cs",
+  "line": 480,
+  "callee": "BeginOutro",
+  "text": "{reason} — 아직 루프에 들어가지 않았다"
+ },
+ {
   "file": "States/LedgeHangState.cs",
-  "line": 128,
+  "line": 249,
   "callee": "ReportFootholdChangeIfNeeded",
   "text": "매달리기 시작"
  },
  {
   "file": "States/ParkourClimbState.cs",
-  "line": 242,
+  "line": 401,
   "callee": "ReportFootholdChangeIfNeeded",
   "text": "벽타기 완료 — 턱 위에 올라섬"
+ },
+ {
+  "file": "States/RopeClimbState.cs",
+  "line": 504,
+  "callee": "ReportFootholdChangeIfNeeded",
+  "text": "밧줄등반 완료 — 턱 위에 올라섬"
  }
 ]

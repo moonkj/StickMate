@@ -27,14 +27,30 @@ SHIP 으로 남긴다. 실제로는 **로그에만 나가는 개발자 문자열
 ★ "0건"에 양성 대조를 붙인다 — `--selftest`.
    합성 소스로 (a) 진단 사유를 실제로 잡는가 (b) 화면에 나가는 것을 잘못 잡지 않는가
    양쪽을 모두 찍는다. 한쪽이라도 깨지면 이 스크립트의 모든 숫자를 폐기한다.
+
+종료 코드: 0 = 통과 / 1 = 대조 실패 / 2 = ★ 판정 불가
+           (수동 목록 앵커가 원천에서 정해진 횟수만큼 안 잡힘 · ship.json 이 현재 소스와 다름)
+
+★ 2026-09-15 — **수동 목록 키를 (파일, 줄 번호) → (파일, 문자열 앵커)로 바꿨다.**
+  줄 번호 키 17줄이 `ship.json` 재생성 뒤 **적중 0**이 됐는데 rc 0으로 「번역 대상 459」를 냈다
+  (경고 한 줄만 찍고 초록 — 거짓 통과 형태). 줄 번호가 이미 **어느 커밋과도 맞지 않는** 상태였고
+  (작업 트리 기준으로 적힌 값), 낡은 스냅숏이 우연히 5건을 맞춰 주고 있었다.
+  ⇒ 앵커 = 원천 `.cs` 에서 `census.lex_csharp`(ship.json 을 만든 렉서)가 뽑는 리터럴 값.
+    각 리터럴이 그 파일에서 **기대 횟수만큼** 안 잡히면 판정 불가. 원천에서 사라진 항목은
+    **지우지 않고** 기대 0 + 사라진 커밋으로 남긴다 — 되살아나면 그것도 판정 불가다.
+  ⇒ 이 스크립트는 SHIP 리터럴을 ship.json 의 **줄 번호로** 고르므로, ship.json 이 지금
+    `ship.run()` 결과와 (파일, 줄, 판정, 문자열)까지 같지 않으면 판정 불가로 끝낸다.
 """
 import os, re, sys, json, collections
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
 SCRIPTS = os.path.join(ROOT, "Assets", "_Project", "Scripts")
+SHIP_JSON = os.path.join(HERE, 'ship.json')
 sys.path.insert(0, HERE)
 from census import lex_csharp, HANGUL  # noqa
+
+RC_OK, RC_FAIL, RC_UNDECIDABLE = 0, 1, 2
 
 # ============================================================================
 # ★ 자동 검출기가 **구조적으로 못 보는** 비번역 문자열 — 수동 목록
@@ -42,33 +58,123 @@ from census import lex_csharp, HANGUL  # noqa
 # 이 검출기는 "호출부가 있는 리터럴"만 본다. 대입 / 배열 초기화 / 식 본문(=>)에 있는
 # 비번역 문자열은 감싸는 괄호가 없어 잡히지 않는다. 각 줄에 **왜 번역 대상이 아닌지**를 적는다 —
 # 사유 없는 면제는 다음 사람이 지울 수도 되살릴 수도 없다.
-MANUAL_NONTRANSLATABLE = {
-    # 폰트 패밀리 이름 = OS 리소스 식별자. 번역하면 폰트를 못 찾는다.
-    ('Dialogue/DialogueBubbleRenderer.cs', 2342): '맑은 고딕 Bold — Windows 폰트 패밀리명',
-    ('Dialogue/DialogueBubbleRenderer.cs', 2363): '맑은 고딕 — Windows 폰트 패밀리명',
-    # 글리프 커버리지 프로브 문자열. 한글이 그려지는지 묻는 것이므로 영어로 바꾸면 검사가 무의미해진다.
-    ('Dialogue/DialogueBubbleRenderer.cs', 2429): 'RequestCharactersInTexture("한글") — 커버리지 프로브',
-    # 준비 완료 로그의 화자 상태 라벨.
-    ('Dialogue/DialogueBubbleRenderer.cs', 937): '지정됨 — Debug.Log 조립 조각',
-    ('Dialogue/DialogueBubbleRenderer.cs', 938): '미지정(...) — Debug.Log 조립 조각',
-    # 로그용 종류 라벨(KindLabel). XML 문서가 "로그용"이라고 스스로 적었다.
-    ('Dialogue/DialogueBubbleRenderer.cs', 1130): '서술/반응 — KindLabel, 로그 전용',
-    # DescribeSuspendReason() — Suspend/Resume 로그에만 붙는다.
-    ('Core/StickmanAgent.cs', 1303): 'DescribeSuspendReason — 로그 전용',
-    ('Core/StickmanAgent.cs', 1304): 'DescribeSuspendReason — 로그 전용',
-    ('Core/StickmanAgent.cs', 1305): 'DescribeSuspendReason — 로그 전용',
-    ('Core/StickmanAgent.cs', 1306): 'DescribeSuspendReason — 로그 전용',
-    # HotkeySource() — ForceTriggerNow(reason) 로 흘러가는 사유 접두사.
-    ('Interaction/AppControlDirector.cs', 331): 'HotkeySource — 사유 접두사',
-    # TryResolvePlacement 의 out kindLabel — Begin() 로그에만 쓰인다.
-    ('Interaction/ArcheryDirector.cs', 401): 'kindLabel — Begin() 로그 전용',
-    # ModeLabel() / CollapseReason* — 접힘 사유 라벨. 로그에만 나간다.
-    ('Interaction/GearRadialMenuWidget.cs', 562): 'ModeLabel — 접힘 사유, 로그 전용',
-    ('Interaction/GearRadialMenuWidget.cs', 563): 'ModeLabel — 접힘 사유, 로그 전용',
-    ('Interaction/GearRadialMenuWidget.cs', 564): 'ModeLabel — 접힘 사유, 로그 전용',
-    ('Interaction/TodoPostItWidget.cs', 163): 'CollapseReasonUser — 로그 전용',
-    ('Interaction/TodoPostItWidget.cs', 164): 'CollapseReasonAuto — 로그 전용',
-}
+#
+# 항목: (옛 키 — 추적용, 파일, 앵커 리터럴들, 파일 안 리터럴별 기대 횟수, 사유, 원천에서 사라진 커밋 또는 None)
+#   옛 키의 줄 번호는 **판정에 쓰지 않는다**. 2026-09-15 전환 때 각 줄이 가리키던 리터럴을
+#   그 줄이 실제로 맞았던 커밋에서 렉서로 복원해 앵커로 옮겼다(괄호 안 = 복원한 커밋).
+MANUAL_NONTRANSLATABLE = (
+    # 폰트 패밀리 이름 = OS 리소스 식별자. 번역하면 폰트를 못 찾는다. (3694244)
+    ('DialogueBubbleRenderer.cs:2342', 'Dialogue/DialogueBubbleRenderer.cs', ('맑은 고딕 Bold',), 1,
+     '맑은 고딕 Bold — Windows 폰트 패밀리명', None),
+    ('DialogueBubbleRenderer.cs:2363', 'Dialogue/DialogueBubbleRenderer.cs', ('맑은 고딕',), 1,
+     '맑은 고딕 — Windows 폰트 패밀리명', None),
+    # 글리프 커버리지 프로브 문자열. 한글이 그려지는지 묻는 것이므로 영어로 바꾸면 검사가 무의미해진다. (3694244)
+    ('DialogueBubbleRenderer.cs:2429', 'Dialogue/DialogueBubbleRenderer.cs', ('한글',), 1,
+     'RequestCharactersInTexture("한글") — 커버리지 프로브', None),
+    # 준비 완료 로그의 화자 상태 라벨. (89de9de~da71068)
+    ('DialogueBubbleRenderer.cs:937', 'Dialogue/DialogueBubbleRenderer.cs', ('지정됨',), 1,
+     '지정됨 — Debug.Log 조립 조각', None),
+    ('DialogueBubbleRenderer.cs:938', 'Dialogue/DialogueBubbleRenderer.cs',
+     ('미지정(바인딩 전까지 아무것도 그리지 않음)', '미지정(모든 대사 수신)'), 1,
+     '미지정(...) — Debug.Log 조립 조각', None),
+    # 로그용 종류 라벨(KindLabel). XML 문서가 "로그용"이라고 스스로 적었다. (da71068~3694244)
+    ('DialogueBubbleRenderer.cs:1130', 'Dialogue/DialogueBubbleRenderer.cs', ('서술', '반응'), 1,
+     '서술/반응 — KindLabel, 로그 전용', None),
+    # DescribeSuspendReason() — Suspend/Resume 로그에만 붙는다. (7ed996d)
+    ('StickmanAgent.cs:1303', 'Core/StickmanAgent.cs',
+     ('전체화면 감지 + 사용자 직접 숨김(둘 다 켜져 있어 한쪽만 풀려도 계속 숨습니다)',), 1,
+     'DescribeSuspendReason — 로그 전용', None),
+    ('StickmanAgent.cs:1304', 'Core/StickmanAgent.cs', ('사용자 직접 숨김(', ' / 설정창 [일반])'), 1,
+     'DescribeSuspendReason — 로그 전용', None),
+    ('StickmanAgent.cs:1305', 'Core/StickmanAgent.cs', ('전체화면 앱 감지(자동 숨김, 원칙 2)',), 1,
+     'DescribeSuspendReason — 로그 전용', None),
+    ('StickmanAgent.cs:1306', 'Core/StickmanAgent.cs', ('두 축 모두 해제',), 1,
+     'DescribeSuspendReason — 로그 전용', None),
+    # ★ 2026-09-15 추가(리더 조건부 채택 — 반환값이 로그로만 흐를 때만). 호출 사슬 전수(줄 번호):
+    #   DescribeSuspendReason(StickmanAgent.cs:1721, 이 리터럴 :1728) → 유일한 호출 :1676 `_lastSuspendReason`
+    #   (이 필드는 :1676/:1677/:1683/:1684/:1717 밖에서 안 쓰인다) → Suspend(:1677, 정의 :1816):
+    #   `reason` 출현 :1881 Debug.Log · :1827 ExpireUserSummonGrant("등급 2 진입(" + reason + ")")
+    #   → 정의 :425, `why` 출현은 :430 Debug.Log 하나뿐 / Resume(:1683, 정의 :1894): :1928 Debug.Log.
+    #   사용자 화면 문자열(설정창·툴팁·트레이·말풍선·캡션)로 흐르는 경로 0. 사슬이 바뀌면 이 항목부터 다시 잰다.
+    ('(2026-09-15 추가) DescribeSuspendReason 축 4', 'Core/StickmanAgent.cs',
+     ('다른 가상 데스크톱(공개 API로 소속만 확인 — 돌아오면 스스로 복귀합니다)',), 1,
+     'DescribeSuspendReason — 로그 전용', None),
+    # HotkeySource() — ForceTriggerNow(reason) 로 흘러가는 사유 접두사. (1eb0e2b)
+    ('AppControlDirector.cs:331', 'Interaction/AppControlDirector.cs', ('전역 단축키 ',), 1,
+     'HotkeySource — 사유 접두사', None),
+    # TryResolvePlacement 의 out kindLabel — Begin() 로그에만 쓰인다. (7ab0468~4a5a4de)
+    ('ArcheryDirector.cs:401', 'Interaction/ArcheryDirector.cs', ('창/Dock 발판', '바탕화면'), 1,
+     'kindLabel — Begin() 로그 전용', None),
+    # ModeLabel() / CollapseReason* — 접힘 사유 라벨. 로그에만 나간다. (1eb0e2b~7ed996d)
+    ('GearRadialMenuWidget.cs:562', 'Interaction/GearRadialMenuWidget.cs', ('이동 시작',), 0,
+     'ModeLabel — 접힘 사유, 로그 전용', '0229f52'),   # ★ 원천에서 사라짐 — 같은 Drag 분기가 "앵커 이동"으로 바뀌었다
+    # ★ 2026-09-15 추가(리더 채택) — 위 항목의 후속 문구. 근거: 리터럴은 전 원천에 이 파일 1곳(렉서 기준),
+    #   ModeLabel 호출부는 GearRadialMenuWidget.cs:942 `Debug.Log($"[부채꼴] 접힘({ModeLabel(mode)}) …")` 1곳뿐.
+    ('(2026-09-15 추가) ModeLabel Drag', 'Interaction/GearRadialMenuWidget.cs', ('앵커 이동',), 1,
+     'ModeLabel — 접힘 사유, 로그 전용', None),
+    ('GearRadialMenuWidget.cs:563', 'Interaction/GearRadialMenuWidget.cs', ('무반응 자동',), 1,
+     'ModeLabel — 접힘 사유, 로그 전용', None),
+    ('GearRadialMenuWidget.cs:564', 'Interaction/GearRadialMenuWidget.cs', ('사용자 동작',), 1,
+     'ModeLabel — 접힘 사유, 로그 전용', None),
+    ('TodoPostItWidget.cs:163', 'Interaction/TodoPostItWidget.cs', ('사용자 동작',), 1,
+     'CollapseReasonUser — 로그 전용', None),
+    ('TodoPostItWidget.cs:164', 'Interaction/TodoPostItWidget.cs', ('무반응 자동',), 1,
+     'CollapseReasonAuto — 로그 전용', None),
+)
+
+
+def _source_literals(rel):
+    """원천 파일의 리터럴 값 목록(렉서 추출). 파일이 없으면 None."""
+    p = os.path.join(SCRIPTS, rel)
+    if not os.path.exists(p):
+        return None
+    with open(p, encoding='utf-8') as fh:
+        return [L['value'] for L in lex_csharp(fh.read())[0]]
+
+
+def resolve_manual(entries=None, lits_of=_source_literals):
+    """(면제 앵커 집합 {(파일, 리터럴)}, 문제 목록). 문제가 하나라도 있으면 판정 불가."""
+    entries = MANUAL_NONTRANSLATABLE if entries is None else entries
+    cache, anchors, problems = {}, set(), []
+    for old, f, texts, expected, _why, gone in entries:
+        if f not in cache:
+            cache[f] = lits_of(f)
+        lits = cache[f]
+        if lits is None:
+            problems.append('%s: 원천 파일 없음 (%s)' % (old, f))
+            continue
+        cnt = collections.Counter(lits)
+        for t in texts:
+            n = cnt.get(t, 0)
+            if n != expected:
+                problems.append('%s: %s 에서 %r 이 %d번 잡힘(기대 %d)%s'
+                                % (old, f, t, n, expected,
+                                   ' — 「%s에서 사라짐」 기록이 뒤집혔다' % gone if gone else ''))
+            if expected > 0:
+                anchors.add((f, t))
+    return anchors, problems
+
+
+def manual_exclusions(ss, anchors, auto):
+    """SHIP 행 중 수동 앵커에 걸리고 자동 검출기가 이미 잡지 않은 것."""
+    return [r for r in ss if (r['file'], r['text']) in anchors and (r['file'], r['line']) not in auto]
+
+
+def ship_drift(ship):
+    """ship.json 과 지금 소스로 `ship.run()`이 낼 결과의 차이. **줄 번호까지** 본다 —
+    이 스크립트는 SHIP 리터럴을 줄 번호로 고르기 때문이다. 파일은 쓰지 않는다."""
+    import ship as ship_py  # noqa
+    import census  # noqa
+    rows, _ = ship_py.run()
+    key = lambda rs: collections.Counter((e['file'], e['line'], e['verdict'], e['text']) for e in rs)
+    akey = lambda rs: collections.Counter((e['file'], e['text']) for e in rs)
+    gone, born = key(ship['cs']) - key(rows), key(rows) - key(ship['cs'])
+    assets = census.census_assets()
+    a_gone, a_born = akey(ship['asset']) - akey(assets), akey(assets) - akey(ship['asset'])
+    files = collections.Counter(k[0] for k in list(gone.elements()) + list(born.elements()))
+    return {'stale': bool(gone or born or a_gone or a_born), 'gone': sum(gone.values()),
+            'born': sum(born.values()), 'asset_gone': sum(a_gone.values()),
+            'asset_born': sum(a_born.values()), 'files': files}
 
 
 SINK = re.compile(r'\.text\s*=(?!=)|new\s+DialogueIntent|DialogueIntent\s*\(|'
@@ -235,7 +341,27 @@ def load_sources(root):
 
 
 def run():
-    ship = json.load(open(os.path.join(HERE, 'ship.json'), encoding='utf-8'))
+    if not os.path.exists(SHIP_JSON):
+        print("★ 판정 불가 — ship.json 이 없다. `python3 ship.py` 로 만든다.")
+        return RC_UNDECIDABLE
+    # ★ 싸고 결정적인 가드를 먼저 — 느린 검출(수 분)을 돌리기 전에 끝낸다.
+    anchors, problems = resolve_manual()
+    if problems:
+        print("★ 판정 불가 — 수동 비번역 목록 앵커가 원천에서 정해진 횟수만큼 안 잡힌다:")
+        for p in problems:
+            print("  " + p)
+        print("  (문구가 바뀌었으면 그 항목의 앵커를 새 문구로 옮기되, 사라진 항목은 지우지 말고 기대 0 + 커밋으로 남긴다)")
+        return RC_UNDECIDABLE
+    ship = json.load(open(SHIP_JSON, encoding='utf-8'))
+    drift = ship_drift(ship)
+    if drift['stale']:
+        print("★ 판정 불가 — ship.json 이 현재 소스와 다르다(줄 번호 포함). `python3 ship.py` 로 다시 만든 뒤 재실행한다.")
+        print("  cs 행 사라짐 %d / 생김 %d · asset 사라짐 %d / 생김 %d · 달라진 파일 %d개"
+              % (drift['gone'], drift['born'], drift['asset_gone'], drift['asset_born'], len(drift['files'])))
+        for f, c in drift['files'].most_common(5):
+            print("    %5d  %s" % (c, f))
+        return RC_UNDECIDABLE
+
     want = collections.defaultdict(set)
     for r in ship['cs']:
         if r['verdict'] == 'SHIP':
@@ -265,7 +391,7 @@ def run():
                   open(os.path.join(HERE, 'diagarg.json'), 'w', encoding='utf-8'),
                   ensure_ascii=False, indent=1)
         print("diagarg.json 에 %d건" % len(hits))
-        return
+        return RC_OK
     print("=" * 78)
     print("진단 사유 인자 — SHIP 에 잘못 남아 있는 비번역 문자열")
     print("=" * 78)
@@ -276,38 +402,21 @@ def run():
           % len(unknown))
     auto = {(f, l) for f, l, _n, _v in hits}
     ss = [r for r in ship['cs'] if r['verdict'] == 'SHIP']
-    man = [r for r in ss if (r['file'], r['line']) in MANUAL_NONTRANSLATABLE
-           and (r['file'], r['line']) not in auto]
+    man = manual_exclusions(ss, anchors, auto)
 
-    # ★★ 2026-09-05 R5 — **줄번호 니들은 썩는다.** 이 목록은 (파일, 줄) 로 못이 박혀 있어서
-    #   위쪽에 코드 한 줄만 들어가도 조용히 빗나간다. 그리고 빗나간 결과는
-    #   「그 문자열이 사라졌다」와 **출력상 완전히 같다** — 이 저장소가 반복해 당한 형태다.
-    #   ⇒ 표류를 **개별로** 보고하고, 자동 검출기가 이미 잡은 것과 진짜 실종을 가른다.
-    ship_by_file = {}
-    for r in ss:
-        ship_by_file.setdefault(r['file'], []).append(r)
-    drifted, dead = [], []
-    hit_keys = {(r['file'], r['line']) for r in man}
-    for (f, l), why in sorted(MANUAL_NONTRANSLATABLE.items()):
-        if (f, l) in hit_keys or (f, l) in auto:
-            continue
-        # 같은 파일 안에서 그 자리를 잃었다 — 자동 검출기가 흡수했는가, 아예 사라졌는가?
-        same_file_auto = [ln for (af, ln) in auto if af == f]
-        if same_file_auto:
-            drifted.append((f, l, why))
-        else:
-            dead.append((f, l, why))
-    print("\n  수동 비번역 목록 적중 = %d건 (목록 %d줄)" % (len(man), len(MANUAL_NONTRANSLATABLE)))
-    if drifted:
-        print("  ~~ 줄 표류/자동흡수 의심 %d건 (같은 파일을 자동 검출기가 이미 보고 있다):" % len(drifted))
-        for f, l, why in drifted[:8]:
-            print("     %s:%d  %s" % (f, l, why))
-    if dead:
-        print("  !! ★ 죽은 니들 %d건 — 그 파일을 자동 검출기도 안 보고 있다. **줄번호가 밀렸거나 문자열이 사라졌고, 둘은 출력이 같다.**" % len(dead))
-        for f, l, why in dead[:8]:
-            print("     %s:%d  %s" % (f, l, why))
-    if not man:
-        print("  !! 수동 목록이 하나도 안 맞았다 — 줄 번호가 밀렸다는 뜻이다. 목록을 갱신하라.")
+    # ★ 항목별로 무엇을 했는지 전부 찍는다 — 「적중 0」이 «면제할 것이 없음»인지 «니들이 죽었음»인지
+    #   출력만으로 갈라야 한다(앵커는 위에서 이미 실재가 확인됐다).
+    print("\n  수동 비번역 목록 %d항목 — 항목별 기여 (원천 앵커 확인됨)" % len(MANUAL_NONTRANSLATABLE))
+    print("    %-32s %4s %4s %4s  %s" % ('옛 키(추적용)', 'SHIP', '자동', '제외', '앵커'))
+    for old, f, texts, expected, why, gone in MANUAL_NONTRANSLATABLE:
+        rows = [r for r in ss if r['file'] == f and r['text'] in texts]
+        absorbed = [r for r in rows if (r['file'], r['line']) in auto]
+        excl = [r for r in man if r['file'] == f and r['text'] in texts]
+        note = (' ★ 원천에서 사라짐 — %s' % gone) if gone else (
+            '' if rows else '  (SHIP 아님 — ship.py 가 이미 거른다)')
+        print("    %-32s %4d %4d %4d  %s%s" % (old, len(rows), len(absorbed), len(excl),
+                                            ' / '.join(repr(t) for t in texts), note))
+    print("\n  수동 비번역 목록 적중 = %d건 (목록 %d항목)" % (len(man), len(MANUAL_NONTRANSLATABLE)))
     print("  ★ SHIP %d − 진단사유 %d − 수동 %d = **번역 대상 .cs %d건**"
           % (len(ss), len(hits), len(man), len(ss) - len(hits) - len(man)))
     print("  ★ + .asset %d = **총 %d건** (%s 스냅샷)"
@@ -315,6 +424,7 @@ def run():
              __import__('time').strftime('%Y-%m-%d %H:%M')))
     print("\n  ※ 이 검출기는 **호출부가 있는** 리터럴만 본다. 대입/배열초기화/식본문에 있는")
     print("     비번역 문자열(폰트명·진단라벨)은 잡지 못한다 — 수동 목록이 따로 필요하다.")
+    return RC_OK
 
 
 # ------------------------------------------------------------------ 양성 대조
@@ -368,6 +478,7 @@ namespace X {
 
 def selftest():
     ok = True
+    undecidable = False
     n = [0]
 
     def probe(tag, code, target, expect):
@@ -392,6 +503,16 @@ def selftest():
         if not good:
             ok = False
 
+    def chk(tag, cond, detail='', undec=False):
+        nonlocal ok, undecidable
+        n[0] += 1
+        print("  %-4s %-52s %s" % ('PASS' if cond else ('판정불가' if undec else 'FAIL'), tag, detail))
+        if not cond:
+            if undec:
+                undecidable = True
+            else:
+                ok = False
+
     print("== 양성 대조 ==")
     probe("진단 사유 인자를 실제로 DIAG 로 잡는다", SELF_DIAG, "[✕] 클릭", 'DIAG')
     probe("전이(Outer→Inner)도 따라가 DIAG", SELF_CHAIN, "전체화면 감지", 'DIAG')
@@ -400,14 +521,62 @@ def selftest():
     probe("화면에 나가는 인자는 SHIP 으로 남는다", SELF_SHIP, "안녕하세요", 'SHIP')
     probe("★ 같은 소스의 화면 대입 리터럴은 DIAG 가 아니다", SELF_DIAG, "화면 글자", 'NOCALL')
     probe("★ 기본값 파라미터(= null)가 DIAG 오판을 만들지 않는다", SELF_DEFAULT, "장비", 'UNKNOWN')
+
+    # ---- 수동 목록 앵커 (2026-09-15) — 실제 원천에 대고 잰다. 변이는 메모리 사본만 ----
+    print("== 수동 목록 앵커 (원천 실재 + 변이 대조) ==")
+    anchors, problems = resolve_manual()
+    chk("원천 앵커 — %d항목 전부 기대 횟수만큼 잡힌다" % len(MANUAL_NONTRANSLATABLE),
+        not problems, '; '.join(problems) or '앵커 %d개' % len(anchors), undec=True)
+    live = [e for e in MANUAL_NONTRANSLATABLE if e[3] > 0]
+    gone = [e for e in MANUAL_NONTRANSLATABLE if e[5]]
+    chk("★ 양성 — 살아 있는 항목과 사라짐 기록 항목이 둘 다 실재한다(빈 목록 초록 방지)",
+        len(live) > 0 and len(gone) > 0, '살아 있음 %d · 사라짐 기록 %d' % (len(live), len(gone)))
+    if live and not problems:
+        e0 = live[0]
+        path0 = os.path.join(SCRIPTS, e0[1])
+        with open(path0, encoding='utf-8') as fh:
+            src0 = fh.read()
+
+        def lits_with(mutated):
+            return lambda rel: ([L['value'] for L in lex_csharp(mutated)[0]] if rel == e0[1]
+                                else _source_literals(rel))
+
+        _, p1 = resolve_manual(lits_of=lits_with('\n\n\n' + src0))
+        chk("★ 변이 ① 줄만 밀림(파일 앞 빈 줄 3개) → 앵커 그대로(판정 가능)", not p1, '; '.join(p1) or e0[0])
+        needle = '"%s"' % e0[2][0]
+        if needle in src0:
+            _, p2 = resolve_manual(lits_of=lits_with(src0.replace(needle, '"%s변이"' % e0[2][0], 1)))
+            chk("★ 변이 ② 앵커 문자열이 원천에서 바뀜 → 판정 불가", bool(p2), '; '.join(p2) or '(문제 없음 = 앵커가 죽어 있다)')
+        else:
+            chk("★ 변이 ② 앵커 리터럴을 원천에서 찾아야 변이를 심을 수 있다", False, needle, undec=True)
+        if os.path.exists(SHIP_JSON):
+            ship = json.load(open(SHIP_JSON, encoding='utf-8'))
+            ss = [r for r in ship['cs'] if r['verdict'] == 'SHIP']
+            full = manual_exclusions(ss, anchors, set())
+            contrib = {e[0]: len([r for r in full if r['file'] == e[1] and r['text'] in e[2]]) for e in live}
+            victim = max(live, key=lambda e: contrib[e[0]])
+            rest, _ = resolve_manual(entries=[e for e in MANUAL_NONTRANSLATABLE if e is not victim])
+            # 같은 파일·같은 문구를 다른 항목이 겹쳐 들고 있지 않은 경우에만 «정확히 기여만큼»이 성립한다
+            after = manual_exclusions(ss, rest, set())
+            chk("★ 변이 ③ 항목 삭제(%s) → 수동 제외가 그 항목 기여만큼 준다(= 번역 대상이 그만큼 는다)" % victim[0],
+                contrib[victim[0]] > 0 and len(full) - len(after) == contrib[victim[0]],
+                '전체 %d → 삭제 후 %d, 기여 %d (자동 흡수 무시한 앵커 층 계산)'
+                % (len(full), len(after), contrib[victim[0]]))
+        else:
+            chk("★ 변이 ③ ship.json 이 있어야 잴 수 있다", False, '', undec=True)
+
     if not ok:
         print("\n★★ 대조 실패 — 이 스크립트의 모든 숫자를 폐기한다.")
-        sys.exit(1)
+        return RC_FAIL
+    if undecidable:
+        print("\n★ 판정 불가 — 위 표시 항목을 먼저 해소하라.")
+        return RC_UNDECIDABLE
     print("\n★ %d/%d 통과." % (n[0], n[0]))
+    return RC_OK
 
 
 if __name__ == '__main__':
     if '--selftest' in sys.argv:
-        selftest()
+        sys.exit(selftest())
     else:
-        run()
+        sys.exit(run())

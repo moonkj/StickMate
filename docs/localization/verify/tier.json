@@ -2,50 +2,62 @@
  "UI": [
   [
    "Interaction/SettingsWindow.cs",
-   75
+   78
   ],
   [
    "Interaction/CharacterInfoWindow.cs",
-   50
-  ],
-  [
-   "Interaction/ActionCommandPopover.cs",
-   28
-  ],
-  [
-   "Interaction/FocusSessionPopover.cs",
-   25
-  ],
-  [
-   "Dialogue/DialogueBubbleRenderer.cs",
-   18
-  ],
-  [
-   "Interaction/GearRadialMenuWidget.cs",
-   18
+   53
   ],
   [
    "Interaction/TodoBoardPopover.cs",
-   18
+   41
+  ],
+  [
+   "Interaction/GearRadialMenuWidget.cs",
+   29
+  ],
+  [
+   "Dialogue/DialogueBubbleRenderer.cs",
+   22
+  ],
+  [
+   "Interaction/ActionCommandPopover.cs",
+   21
+  ],
+  [
+   "Interaction/FocusSessionPopover.cs",
+   19
+  ],
+  [
+   "Interaction/CharacterInfoWindow.Shop.cs",
+   13
   ],
   [
    "Interaction/CharacterInfoWindow.Cards.cs",
+   10
+  ],
+  [
+   "Interaction/CharacterInfoWindow.Dlc.cs",
    9
   ],
   [
-   "Interaction/CharacterInfoWindow.Tabs.cs",
+   "Interaction/TodoPostItWidget.cs",
+   8
+  ],
+  [
+   "Interaction/CharacterInfoWindow.Stats.cs",
    5
   ],
   [
-   "Interaction/CharacterInfoWindow.Inventory.cs",
+   "Interaction/CharacterInfoWindow.Tabs.cs",
    4
   ],
   [
-   "Interaction/PopoverPanel.cs",
+   "Interaction/CharacterInfoWindow.Inventory.cs",
    3
   ],
   [
-   "Interaction/TodoPostItWidget.cs",
+   "Interaction/PopoverPanel.cs",
    3
   ],
   [
@@ -60,19 +72,27 @@
  "DLG": [
   [
    "Dialogue/AmbientChatter.cs",
-   13
+   28
+  ],
+  [
+   "Dialogue/GrabReactionLines.cs",
+   9
+  ],
+  [
+   "States/ParkourClimbState.cs",
+   8
   ],
   [
    "Dialogue/DialogueIntent.cs",
    6
   ],
   [
-   "States/RunawayState.cs",
-   5
+   "States/DanceState.cs",
+   6
   ],
   [
-   "States/ParkourClimbState.cs",
-   4
+   "States/RunawayState.cs",
+   5
   ],
   [
    "States/LedgeHangState.cs",
@@ -87,22 +107,42 @@
    2
   ],
   [
+   "States/RopeClimbState.cs",
+   2
+  ],
+  [
    "States/WindowTheftState.cs",
    1
   ]
  ],
  "DATA": [
   [
+   "Core/ItemCatalog.cs",
+   86
+  ],
+  [
    "Platform/FramePacing.cs",
-   57
+   63
+  ],
+  [
+   "Core/PackRegistry.cs",
+   58
+  ],
+  [
+   "Interaction/AppControlDirector.cs",
+   51
   ],
   [
    "Platform/StallAttribution.cs",
-   30
+   32
   ],
   [
-   "Core/ItemCatalog.cs",
-   29
+   "Core/StickmanAgent.cs",
+   23
+  ],
+  [
+   "Core/EquipmentStatRules.cs",
+   20
   ],
   [
    "States/GroundSensor.cs",
@@ -110,18 +150,22 @@
   ],
   [
    "Core/CharacterSaveStore.cs",
-   14
+   15
   ],
   [
-   "Core/StickmanAgent.cs",
-   12
+   "Platform/AudioReactiveDancePolicy.cs",
+   9
+  ],
+  [
+   "Platform/ViewerPresence.cs",
+   9
   ],
   [
    "Platform/ScreenCoordinateConverter.cs",
    8
   ],
   [
-   "Platform/ViewerPresence.cs",
+   "Interaction/CharacterPortraitStage.cs",
    8
   ],
   [
@@ -129,19 +173,27 @@
    7
   ],
   [
-   "Interaction/CharacterPortraitStage.cs",
-   7
+   "Platform/GlyphPixelSnapPolicy.cs",
+   6
+  ],
+  [
+   "States/RagdollImpactResolver.cs",
+   6
+  ],
+  [
+   "Interaction/StressGaugeRenderer.cs",
+   5
+  ],
+  [
+   "Interaction/CharacterStatReadout.cs",
+   4
   ],
   [
    "Core/CharacterScaleController.cs",
    3
   ],
   [
-   "States/RagdollImpactResolver.cs",
-   3
-  ],
-  [
-   "Interaction/StressGaugeRenderer.cs",
+   "States/AutoWanderController.cs",
    3
   ],
   [
@@ -153,22 +205,42 @@
    2
   ],
   [
+   "States/ThrowTumbleState.cs",
+   2
+  ],
+  [
+   "Interaction/AccessoryShapeBuilder.FxPetCard.cs",
+   2
+  ],
+  [
+   "Core/AudioReactiveDanceGate.cs",
+   1
+  ],
+  [
    "Core/CharacterProgressionModel.cs",
+   1
+  ],
+  [
+   "Core/HiddenCharacterCommandGate.cs",
+   1
+  ],
+  [
+   "Platform/IReservedScreenEdgeService.cs",
    1
   ]
  ],
  "DIAG": [
   [
    "Platform/OverlayCompositionSnapshot.cs",
-   92
+   111
   ],
   [
    "Core/StickMateDisplayNames.cs",
-   49
+   52
   ],
   [
-   "Interaction/AppControlDirector.cs",
-   38
+   "Core/CostumeCatalog.cs",
+   48
   ],
   [
    "Platform/Windows/WindowsTopmostWatchdog.cs",
@@ -183,16 +255,64 @@
    33
   ],
   [
+   "Interaction/CharacterProgressionDirector.cs",
+   33
+  ],
+  [
+   "Platform/PortableExecutableExportReader.cs",
+   30
+  ],
+  [
    "Platform/Windows/Win32WindowService.cs",
    30
   ],
   [
    "Platform/Windows/WindowsCompositionProbe.cs",
-   26
+   29
   ],
   [
    "Platform/MacOS/MacOverlayStateEnforcer.cs",
-   21
+   26
+  ],
+  [
+   "Platform/PropertyListRootReader.cs",
+   25
+  ],
+  [
+   "Interaction/InfoGearIconWidget.cs",
+   25
+  ],
+  [
+   "Platform/FreezeWatchdog.cs",
+   18
+  ],
+  [
+   "Platform/FallbackPlatformWindowService.cs",
+   17
+  ],
+  [
+   "Platform/HybridGpuPreferencePolicy.cs",
+   16
+  ],
+  [
+   "Core/AccessoryDefSO.cs",
+   15
+  ],
+  [
+   "Platform/AudioReactiveDanceDirector.cs",
+   15
+  ],
+  [
+   "Platform/DisplayChangeHoldDriver.cs",
+   15
+  ],
+  [
+   "Platform/LayeredHybridTimeline.cs",
+   15
+  ],
+  [
+   "Platform/Windows/WindowsOverlayStateEnforcer.cs",
+   15
   ],
   [
    "Interaction/WindowTheftDirector.cs",
@@ -203,19 +323,27 @@
    12
   ],
   [
-   "Platform/FallbackPlatformWindowService.cs",
-   11
+   "Platform/ReservedBarRevealDirector.cs",
+   12
   ],
   [
-   "Platform/ReservedBarRevealDirector.cs",
-   11
+   "Platform/StrokeWidthDiagnostics.cs",
+   12
+  ],
+  [
+   "Interaction/ArcheryDirector.cs",
+   12
   ],
   [
    "Platform/ReservedBarRevealPolicy.cs",
    11
   ],
   [
-   "Interaction/InfoGearIconWidget.cs",
+   "Platform/SessionExitMarker.cs",
+   11
+  ],
+  [
+   "Interaction/FocusWatchDirector.cs",
    11
   ],
   [
@@ -227,7 +355,7 @@
    10
   ],
   [
-   "Platform/Windows/WindowsLayeredHybridResolver.cs",
+   "Interaction/ClickHitboxNearMissPolicy.cs",
    10
   ],
   [
@@ -235,7 +363,23 @@
    9
   ],
   [
+   "Platform/SystemTrayPresencePolicy.cs",
+   9
+  ],
+  [
    "Platform/TopmostBandOcclusion.cs",
+   9
+  ],
+  [
+   "Platform/Windows/WindowsLayeredHybridResolver.cs",
+   9
+  ],
+  [
+   "Platform/Windows/WindowsTaskbarButtonRemover.cs",
+   9
+  ],
+  [
+   "Platform/Windows/WindowsVirtualDesktopProbe.cs",
    9
   ],
   [
@@ -243,7 +387,19 @@
    9
   ],
   [
-   "Platform/Windows/WindowsOverlayStateEnforcer.cs",
+   "Core/CostumeKeyposeTableSO.cs",
+   8
+  ],
+  [
+   "Platform/FreezeForensicsPolicy.cs",
+   8
+  ],
+  [
+   "Platform/Windows/WindowsSystemTrayIcon.cs",
+   8
+  ],
+  [
+   "Platform/Windows/WindowsToolWindowStyleControl.cs",
    8
   ],
   [
@@ -251,19 +407,19 @@
    8
   ],
   [
-   "Interaction/ArcheryDirector.cs",
+   "Interaction/DanceEpisodeDirector.cs",
    8
   ],
   [
-   "Interaction/FocusWatchRenderer.cs",
-   8
+   "Core/RopeClimbQaOverride.cs",
+   7
   ],
   [
    "Platform/DockPhysicsStep.cs",
    7
   ],
   [
-   "Platform/StrokeWidthDiagnostics.cs",
+   "Platform/MacOS/MacSystemAudioActivityProbe.cs",
    7
   ],
   [
@@ -271,8 +427,20 @@
    7
   ],
   [
-   "Interaction/CharacterProgressionDirector.cs",
+   "Platform/Windows/WindowsSystemAudioActivityProbe.cs",
    7
+  ],
+  [
+   "Interaction/IdleAmbientMotionRenderer.cs",
+   7
+  ],
+  [
+   "Platform/AppShutdownSequence.cs",
+   6
+  ],
+  [
+   "Interaction/CostumePropRenderer.cs",
+   6
   ],
   [
    "Core/EquipmentDebugUnlock.cs",
@@ -280,6 +448,14 @@
   ],
   [
    "Core/ItemCatalogDigest.cs",
+   5
+  ],
+  [
+   "Platform/AudioReactiveDanceRunner.cs",
+   5
+  ],
+  [
+   "Platform/FreezeForensicsLog.cs",
    5
   ],
   [
@@ -291,7 +467,15 @@
    5
   ],
   [
+   "Platform/SessionVisibilityPolicy.cs",
+   5
+  ],
+  [
    "Core/StickMateDevTools.cs",
+   4
+  ],
+  [
+   "Platform/FootholdPoller.cs",
    4
   ],
   [
@@ -315,7 +499,19 @@
    4
   ],
   [
+   "Interaction/StickmanClickHitbox.cs",
+   4
+  ],
+  [
+   "Platform/AppSwitcherPresencePolicy.cs",
+   3
+  ],
+  [
    "Platform/DisplayTopologyWatcher.cs",
+   3
+  ],
+  [
+   "Platform/VirtualDesktopSuspendPolicy.cs",
    3
   ],
   [
@@ -323,11 +519,7 @@
    3
   ],
   [
-   "Interaction/IdleAmbientMotionRenderer.cs",
-   3
-  ],
-  [
-   "Interaction/StickmanClickHitbox.cs",
+   "Interaction/CharacterStatsDirector.cs",
    3
   ],
   [
@@ -343,11 +535,23 @@
    2
   ],
   [
-   "States/ThrowTumbleState.cs",
+   "Interaction/ArcheryRenderer.cs",
    2
   ],
   [
    "Interaction/HardwareReactionDirector.cs",
+   2
+  ],
+  [
+   "Interaction/RopeClimbRenderer.cs",
+   2
+  ],
+  [
+   "Interaction/RunawayRenderer.cs",
+   2
+  ],
+  [
+   "Interaction/TodoReminderRenderer.cs",
    2
   ],
   [
@@ -371,6 +575,14 @@
    1
   ],
   [
+   "Platform/SystemAudioActivityProbeFactory.cs",
+   1
+  ],
+  [
+   "Platform/SystemTrayCommandRouter.cs",
+   1
+  ],
+  [
    "Interaction/GraffitiDirector.cs",
    1
   ],
@@ -384,6 +596,10 @@
   ],
   [
    "Interaction/WindowCrashRenderer.cs",
+   1
+  ],
+  [
+   "Store/SteamPackEntitlementSource.cs",
    1
   ]
  ]

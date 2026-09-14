@@ -38,6 +38,7 @@ model: opus
 | `regress.sh compare <옛.xml> <새.xml>` | 새로 빨개짐 / 초록 복귀 / 계속 빨감 / 신설 결함 / **짝없는 소멸** + 판정 불가 전이·픽스처 실패 전이. 새 결과가 빨강이면 rc 3 |
 | `regress.sh selfcheck` | 가드·판정이 실제로 무는지. 2026-09-14 밤 기준 **✓ 66**(Unity가 도는 중이면 G6까지 ✓ 67 — R1/R2/R5 합성 대조 + 실측 교정 M5p·edit-full·play-full·ledgehang + 정규식 교차 판정기). 대조 수는 늘 수 있으니 숫자보다 **✗ 0·미확인 0**을 봐라 |
 | `nunit_verdict.py <xml>` | 규칙 1 판정 모듈(`regress.sh`·`baseline.py` 공유). 공유라 같이 틀릴 수 있어 selfcheck가 모듈 없는 정규식 판정기와 교차 대조한다 |
+| (규칙) 스냅숏 입력 판정 스크립트 | ★ 2026-09-15 — 생성물·캐시·스냅숏을 읽는 판정 도구는 **입력 신선도 가드 필수**(원천 재계산과 다르면 rc=2, 「경고만 찍고 rc=0」은 가드 아님), 줄 번호 키 금지, selftest 변이 대조 3종. 새 도구·기존 도구 점검 시 이 기준으로 본다(localization `ebscope`·`tier`·`diagarg` 선례). 정본: `docs/TEAM.md` 「기준과 대상이 같이 낡은 스냅숏」 절 |
 | `renames.py --check` | 개명 대장. 소스 트리로 R1/R2/R3 재검증 |
 | `baseline.py [--check]` | `BASELINE.md` 재생성 / 자기검사 |
 | `Tools/FalsePassScan/falsepass.py --selftest` | 단언 없음(A) · 빈 컬렉션(B) 색출. **교정 먼저** |
