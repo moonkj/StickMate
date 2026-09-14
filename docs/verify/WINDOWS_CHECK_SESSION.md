@@ -15,7 +15,7 @@
 > ★ **빌드의 성격(원인 수정 / 완화)을 반드시 함께 적는다** — 완화 빌드의 통과가 「고쳐졌다」로 세어지면 안 된다(§W의 E-3 판정 표 아래).
 > 사유: 사용자 PC가 이 조작으로 **강제 리부팅**됐다(2026-09-14 신고). 근거 `docs/strategy/ROADMAP.md` §60.
 
-작성 2026-09-03 · `qa-regression` · 근거는 전부 저장소 실측(끝의 「출처」 참조) · E-3·G-1(§W)·§H·§R·세션 순서 추가 2026-09-14 · E-3 반복 지침(N-3) · §R 빌드 구분표·4차 표지 판독 · 원장 폴더 판독 정정 2026-09-14 오후 · §R 빌드 커밋별 행(2·3·4·5차)·차수 확인·표지 판독 5차 반영·R-4(복사 중 원본 이름 바꾸기·삭제) 2026-09-14 저녁 · §R 2차 패스(5-b·5-c 행·판정 6종·`active` 세 경우·중첩 `trigger`, 5-c 미러 기준) 2026-09-14 밤 · 지정 빌드 `eb4670d`(§R 행·차수 확인·§W) · F-4 우클릭 선택 항목 2026-09-14 밤 늦게
+작성 2026-09-03 · `qa-regression` · 근거는 전부 저장소 실측(끝의 「출처」 참조) · E-3·G-1(§W)·§H·§R·세션 순서 추가 2026-09-14 · E-3 반복 지침(N-3) · §R 빌드 구분표·4차 표지 판독 · 원장 폴더 판독 정정 2026-09-14 오후 · §R 빌드 커밋별 행(2·3·4·5차)·차수 확인·표지 판독 5차 반영·R-4(복사 중 원본 이름 바꾸기·삭제) 2026-09-14 저녁 · §R 2차 패스(5-b·5-c 행·판정 6종·`active` 세 경우·중첩 `trigger`, 5-c 미러 기준) 2026-09-14 밤 · 지정 빌드 `eb4670d`(§R 행·차수 확인·§W) · F-4 우클릭 선택 항목 2026-09-14 밤 늦게 · F-4 ③ H1 확인 단계 · §L 리더 로그 판독 규칙(부록 · 사용자 시간 0) 2026-09-15
 
 
 ## ★ 세션 순서 (2026-09-14 확정 — 이 순서를 지켜 주세요)
@@ -244,12 +244,54 @@ macOS에서는 plist에 플래그가 남아 「첫 실행」이 **한 번도 재
   **적는다**: `F-3.png` + `[전체화면판정]` 줄.
   **깨지면**: 안 사라지면 원칙 2(비침해) 위반이고, 안 돌아오면 사용자가 앱을 잃는다.
 - [ ] **F-4 · (선택 · 1분 · 강제 리부팅 위험 없음) 전체화면 앱 위에서 캐릭터 우클릭 → 부채꼴** — 빌드가 **`eb4670d` 이후**일 때만(E-1·E-2 = 우클릭 입구 복원. 확인은 §R 「차수 확인」 블록의 `BlocksUserSummon = True`). product-strategy N-15 권고.
-  **한다**: ① 브라우저를 **F11 전체화면**으로 → 캐릭터 몸 위에서 **마우스 오른쪽 버튼** 한 번 → 부채꼴이 열렸으면 부채꼴 밖을 눌러 닫는다. ② (전체화면 게임이 있으면) 게임 실행 → 캐릭터가 있던 자리에서 우클릭 한 번 → 게임을 끈다.
-  **본다**: ① 부채꼴이 **열리는가** ② 게임 위에서는 부채꼴이 **열리지 않는가**.
-  **적는다**: `F-4 ① 열림 / 안 열림 / 무효` · `F-4 ② 안 열림 / 열림 / 무효 / 미수행(게임 없음)` + `F-4.png`(① 직후).
-  **무효**: 차수 확인에서 `BlocksUserSummon = False`(E-1 이전 빌드) · 캐릭터가 그 화면에 없었다(숨김 중 · 다른 모니터 · 가출) · 브라우저가 전체화면이 아니었다(주소창이 보임) · 우클릭이 캐릭터 몸 밖이었다.
+  **한다** (순서는 ① → ③ → ②): ① 브라우저를 **F11 전체화면**으로 → 캐릭터 몸 위에서 **마우스 오른쪽 버튼** 한 번 → 부채꼴이 열렸으면 부채꼴 밖을 눌러 닫는다(★ ③을 할 때는 닫지 말고 바로 ③). ② (전체화면 게임이 있으면) 게임 실행 → 캐릭터가 있던 자리에서 우클릭 한 번 → 게임을 끈다.
+  ③ **H1 확인** (①에서 부채꼴이 열렸을 때만 · 브라우저 전체화면 그대로 · ② 전에): 부채꼴에서 **[캐릭터]** → 정보창이 뜨면 정보창 **안의 탭 이름 하나**(예: [장비])를 **한 번** 누른다 → 마우스에서 손을 떼고 **천천히 넷까지 센다**(3초 이상 — 짧으면 무효) → 정보창에서 **떨어진 브라우저 화면**(캐릭터·정보창이 아닌 곳)을 **한 번** 누른다 → **5초** 지켜본다 → PowerShell에 아래 **블록 F-4③**을 붙여넣는다 → 정보창이 남아 있으면 [✕]로 닫고 ②로.
+  **본다**: ① 부채꼴이 **열리는가** ② 게임 위에서는 부채꼴이 **열리지 않는가** ③ 브라우저를 누르고 **몇 초 뒤 정보창이 저절로 닫히는가**(정보창·설정창은 창 밖 클릭으로 닫히지 않는다 — 닫혔다면 앱이 닫은 것이다).
+  **적는다**: `F-4 ① 열림 / 안 열림 / 무효` · `F-4 ② 안 열림 / 열림 / 무효 / 미수행(게임 없음)` + `F-4.png`(① 직후) · `F-4 ③ 닫힘(약 N초) / 남음 / 무효 / 미수행` + `체류 약 N초` + 블록 F-4③ 출력(자동 저장 `F-4-3.txt` · 로그 사본 `F-4-Player.log`).
+  **무효**: 차수 확인에서 `BlocksUserSummon = False`(E-1 이전 빌드) · 캐릭터가 그 화면에 없었다(숨김 중 · 다른 모니터 · 가출) · 브라우저가 전체화면이 아니었다(주소창이 보임) · 우클릭이 캐릭터 몸 밖이었다 · (③만) 체류 3초 미만 · ③ 도중 브라우저·정보창 말고 다른 곳(작업표시줄·다른 앱)을 눌렀다 · 블록 F-4③의 양성 대조 또는 앵커가 0.
   **출시 후보(QG-1) 세션에서는 필수**(N-15 잔여 — PlayMode로 못 보는 축).
   **깨지면**: ① 안 열림 = **N-15(등급 1 마우스 입구 0)가 실기에 남아 있다** — PlayMode는 우리 창이 등급 1 앱의 우클릭을 삼키는지 못 본다(그래서 이 항목이 있다). ② 열림 = 게임 위에 부채꼴이 뜬다(원칙 2 위반 — **결함으로 적는다**). ★ 2026-09-15 정정(verify-change 적발): 지정 빌드 `eb4670d`에서도 등급 2(게임) 우클릭은 게이트 **넷째 항(소환 막힘)**이 이미 닫는다 — 수정 전 코드로 돌린 PlayMode B7이 통과했다. 그러니 ② 「열림」은 N-17(숨긴 몸 자리 입력 — `eb4670d`에는 미수정, 저장소에는 E-4로 수정)의 증상이 **아니라 넷째 항 잠금의 이상**이다. 로그 `[전체화면판정]` 줄에서 그 순간 등급 2였는지 함께 적는다(등급 2가 아니었으면 무효).
+
+  **③ 판독 주의 — 다섯 개** (`dev-platform` 확정 · 근거 `docs/platform/E1_FOREGROUND_TIER_FACTS.md` A-5 「판독 규칙」)
+  1. **부분 문자열만 센다** — S1 `전경 창이 우리 오버레이 자신이라` / S2 `전경 창이 우리 프로세스(pid`. `—`(U+2014 EM DASH)·따옴표는 검색식에서 뺀다.
+  2. **`Get-Content -Encoding UTF8` + `Select-String -SimpleMatch`** — 인코딩을 빼면 한글이 깨져 **0건 = 죽은 프로브**다. 기본(정규식)에서는 `(`·`[`가 메타 문자다.
+  3. **양성 대조**: `[전체화면판정] 등급 1(패널 회수)` **≥ 1**. 0이면 F11 전체화면이 아니었거나 읽기가 죽은 것 — **판독 무효**.
+  4. **흔들림 로그**(`원시 판정이 …로 흔들렸지만`)는 **게임 축 전용**이라 이 단계에서는 안 나오는 것이 정상이다 — **없다고 H1을 기각하지 않는다.**
+  5. **체류가 3초 미만이면 무효** — 등급 확정은 폴링 1.5초 두 번(약 1.5~3.0초)을 넘겨야 나서, 짧은 체류는 흔적 없이 흡수될 수 있다.
+
+  **블록 F-4③** (③의 5초 관찰 뒤 · ② 전에 · 앱을 끄지 않은 채 — 중간에 빈 줄이 없어야 한다)
+  ```powershell
+  $src = "$env:USERPROFILE\AppData\LocalLow\Vibelab\StickMate"
+  $dir = "$env:USERPROFILE\Desktop\StickMate확인"; New-Item -ItemType Directory -Force -Path $dir | Out-Null
+  Copy-Item "$src\Player.log" "$dir\F-4-Player.log" -Force
+  $log = Get-Content -Encoding UTF8 "$src\Player.log"
+  $anc = @($log | Select-String -SimpleMatch '직접 불렀습니다(캐릭터 우클릭)')
+  $out = @("(양성 대조) 등급 1 줄 전체 = $(@($log | Select-String -SimpleMatch '[전체화면판정] 등급 1(패널 회수)').Count)   ← 0이면 판독 무효", "(앵커) 캐릭터 우클릭 허가 줄 = $($anc.Count)   ← 0이면 판독 무효")
+  if ($anc.Count -gt 0) {
+    $after = @($log | Select-Object -Skip $anc[-1].LineNumber)
+    $first = @($after | Select-String -SimpleMatch '[전체화면판정] 등급') | Select-Object -First 1
+    $kind = '없음'
+    if ($first) { $kind = '그 밖'; if ($first | Select-String -SimpleMatch '전경 창이 우리 오버레이 자신이라') { $kind = 'S1' } elseif ($first | Select-String -SimpleMatch '전경 창이 우리 프로세스(pid') { $kind = 'S2' } }
+    $out += "S1 = $(@($after | Select-String -SimpleMatch '전경 창이 우리 오버레이 자신이라').Count)"
+    $out += "S2 = $(@($after | Select-String -SimpleMatch '전경 창이 우리 프로세스(pid').Count)"
+    $out += "앵커 뒤 첫 등급 줄 = $kind"
+    $out += "앵커 뒤 등급 1 재진입 = $(@($after | Select-String -SimpleMatch '[전체화면판정] 등급 1(패널 회수)').Count)"
+    $out += "허가 만료(등급 1 진입) = $(@($after | Select-String -SimpleMatch '허가를 만료시켰습니다' | Select-String -SimpleMatch '등급 1 진입').Count)"
+    $out += "(보조) 정보창 닫힘(전체화면 감지 = $(@($after | Select-String -SimpleMatch '[정보창] 닫힘(전체화면 감지').Count)"
+  }
+  $out | Out-File -Encoding UTF8 "$dir\F-4-3.txt"; $out
+  ```
+  - ★ **앵커** = ①의 캐릭터 우클릭이 등급 1 중에 낸 허가 줄. 셈은 **마지막 앵커 뒤**만 한다 — **F-2의 톱니 클릭도 우리 창을 전경으로 만들어 S1을 남길 수 있어서**, 로그 전체로 세면 ③이 아닌 줄이 섞인다. 양성 대조만 로그 **전체**로 센다(F11 진입 줄은 앵커 앞에 있다).
+  - ★ `앵커 뒤 첫 등급 줄 = 그 밖`은 대개 **PowerShell로 옮긴 순간**의 줄이다(정상). `(보조) 정보창 닫힘`은 게임·다른 가상 데스크톱의 숨김 경로에서도 같은 글자로 찍힌다 — 그래서 블록을 **② 전에** 돌리고, 이 숫자로 판정하지 않는다.
+  - ★ **실행 미확인** — Windows에서 돌려 본 적이 없다(같은 규칙의 파이썬 판독기로 합성 로그만 확인 — §L). 빨간 오류면 **판독 무효**로 적고 오류 첫 줄을 옮긴다.
+
+  | ③ 결과 | 조건 |
+  |---|---|
+  | **H1 발현** | 주의 3·5 유효 · 앵커 ≥ 1 · **S1 + S2 ≥ 1**(기대: 첫 등급 줄 = S1/S2 · 재진입 ≥ 1 · 허가 만료 ≥ 1) · 눈 판정 「닫힘」(브라우저를 누르고 약 1.5~3초 뒤) |
+  | **H1 기각** | 주의 3·5 유효 · 앵커 ≥ 1 · **S1 + S2 = 0** · 첫 등급 줄 = `그 밖` 또는 `없음` · 눈 판정 「남음」 |
+  | **판정 불가** | 눈과 로그가 어긋남(「닫힘」인데 S1 + S2 = 0 / 「남음」인데 ≥ 1) — 적기만 하고 리더에게(§L-(a)) |
+
+  **깨지면(③)**: 「H1 발현」 = Windows 전체화면 판정이 **전경 창 기준**이라 우리 창을 누르는 순간 등급 0으로 떨어지고, 브라우저로 돌아가면 등급 1로 **다시 들어가며** 사용자가 연 창을 걷는다. **결함인지 허용인지는 이 표가 판정하지 않는다**(UX·리더) — 수정 후보는 `E1_FOREGROUND_TIER_FACTS.md` A-6이고 **착수는 이 실기 결과 뒤**다. macOS는 코드상 같은 형태가 없다(A-3).
 
 ---
 
@@ -986,6 +1028,123 @@ Get-ChildItem $dir    # ← 실제로 들어왔는지 눈으로 확인. 빈 목�
 
 ---
 
+## §L. 리더 로그 판독 규칙 (부록 — 사용자가 하는 단계가 아니다 · 사용자 시간 0)
+
+> **사용자님은 이 절을 하지 않습니다.** 리더가 받은 `StickMate확인` 폴더(`Player.log` · `Player-prev.log` · `F-4-Player.log` · `발췌*.txt`)를 읽을 때의 규칙 세 개를 한곳에 모았다. 머리의 세션 순서·소요 시간과 무관하다.
+> **공통**: ① 부분 문자열만 찾는다 — `—`(U+2014 EM DASH)·따옴표는 검색식에 넣지 않는다 ② 로그 1개 = 실행 1회(`Player-prev.log`는 따로 센다) ③ 줄에 시각이 없다(출처 「E-3 시각 없음」) — 시간 축은 `[스톨구간]` 줄뿐이다 ④ 파일 `LastWriteTime`과 빌드(§R 「차수 확인」)부터 고정한다 — 하루 전 로그를 현재 상태로 읽은 사고가 있었다 ⑤ macOS에서 셀 때 셸의 `grep`을 믿지 않는다(별칭이 옵션을 무시한 사고 — `docs/narrative/ENTRY_WORDING_AUDIT_2026-09-14.md` §10-0 자백 1) — 아래 판독기나 `/usr/bin/grep -F -c`.
+> 인용 문자열은 전부 지정 빌드 `eb4670d`와 HEAD `e6b14c2`에서 **같은 파일·같은 줄**로 실재를 대조했다(출처 「§L」). 로그 문구를 바꾸는 커밋이 나면 이 절을 다시 잰다.
+
+### L-(a) H1 판독 — 우리 창을 누르면 등급 1이 풀렸다가 다시 들어가며 사용자 창을 걷는가 (Windows 전용)
+근거: `docs/platform/E1_FOREGROUND_TIER_FACTS.md` A-5(`dev-platform` — 서명 · 기대 순서 6줄 · 판독 규칙 · 기각 증거) · 사용자 단계는 §F **F-4 ③**.
+1. 서명 S1 `전경 창이 우리 오버레이 자신이라` / S2 `전경 창이 우리 프로세스(pid`. **판독 주의 다섯 개는 F-4 ③의 것 그대로**다(부분 문자열 · UTF-8 + `-SimpleMatch` · 양성 대조 등급 1 줄 ≥ 1 · 흔들림 줄 부재로 기각 금지 · 체류 3초 미만 무효).
+2. 사용자 출력 `F-4-3.txt`로 끝내지 않는다 — **같은 `F-4-Player.log`를 아래 판독기(다른 구현)로 다시 세어** `(a)` 줄과 대조한다. 어긋나면 둘 다 판독 무효로 두고 원인부터 본다.
+3. **마지막 앵커 뒤**의 줄만 ③의 증거다. 앵커 앞의 S1/S2(예: F-2 톱니 클릭 중)는 ③ 판정에 쓰지 않지만 **H1 발현의 증거로는 유효**하다 → L-(b)의 N_self로 센다.
+4. 한계: 확정 폴링 전에 사용자가 다른 일반 창으로 옮기면 S1/S2 대신 `판정 근거 창 = pid` 줄이 찍힌다(A-5 규칙 5). 트레이 메뉴를 약 1.5초 넘게 열어 두면 트레이 호스트 창 때문에 S2가 날 수 있다(A-2 (라)) — F-2 ①·⑥ 같은 트레이 조작 근처의 S2는 H1과 가려 적는다.
+5. macOS 로그: S1·S2 문구는 `Win32WindowService.cs`에만 있다(비테스트 각 1건) — 코드상 같은 형태 없음(A-3). N_self 기대값 0.
+
+### L-(b) 등급 1 재진입 빈도 — 신호 설계 착수 판정
+근거: `docs/ux/SETTINGS_ENTRY_NARROW_WIDTH.md` §18-2(셀 줄) · §18-3(임계값) — `ux-designer`. 이 절은 옮겨 적기만 하고 임계값을 새로 정하지 않는다.
+
+| 기호 | 세는 줄(부분 문자열) | 비고 |
+|---|---|---|
+| **L1** | `[전체화면판정] 등급 1(패널 회수)` | **빈도 원천.** 등급이 **바뀐 폴링에서만** 찍힌다. 기동 직후 등급 0은 안 찍힌다 |
+| **N** | L1 중 **바로 앞 `[전체화면판정] 등급` 줄이 등급 0**인 것 | 등급 1 재진입 에지. 첫 진입(앞 줄 없음)·2 → 1(앞 줄 등급 2)은 빠진다 |
+| N_self | N 중 **앞 등급 0 줄에 S1 또는 S2**가 있는 것 | **H1 자기 유발** — 신호 대상이 아니라 H1 수정 경로(A-6 (a)) |
+| N_ext | N − N_self | 남의 앱이 만든 에지 |
+| E | 한 줄에 `허가를 만료시켰습니다`와 `등급 1 진입`이 **둘 다** | N 줄 뒤 · 다음 `[전체화면판정] 등급` 줄 전. 사용자가 부른 표면이 **실제로** 걷혔다(피해 확인). N_ext⁺ = E를 동반한 N_ext |
+| R | `등급 1 중 사용자가 표면을 직접 불렀습니다(` | 새 허가(갱신은 안 찍힌다) |
+| T | `[스톨구간] #` | 60초마다. 줄 안 `가동 X분` → H = (마지막 X − 첫 X) ÷ 60 시간 |
+| ✘ | `[표면회수] 등급 1 해제` · `전체화면 앱이 떴지만` | ★ **빈도에 쓰지 않는다** — 허가 발급·만료 때도 찍혀 **과대 계수**다. 피해 확인 보조로만 |
+
+- **유효 조건(양성 대조)**: L1 ≥ 1 **그리고** T ≥ 1. 하나라도 0이면 파일이 틀렸거나 인코딩이 죽었거나 계측이 꺼진 빌드다 → **그 로그의 셈 전부 무효.**
+- **배포 폴링 1.5초**(`DefaultStickConfig.asset` `fullscreenPollInterval: 1.5`) → 등급 확정 지연 약 1.5~3.0초. 등급 0 체류가 약 1.5초 미만이면 에지도 회수도 안 남는다.
+- **판정** — 먼저 **N_self⁺ ≥ 1이면 H1 수정 경로로 리더가 올리고 그 에지는 뺀다**(H1 수정 뒤 같은 절차로 다시 센다):
+
+| 판정 | 조건 |
+|---|---|
+| **신호 설계 착수** | 하나라도 참 — **T1** 빼앗긴 뒤 60초 안 재호출: N_ext⁺ 에지 뒤 **다음 T 줄 전에** R이 오는 에지 **≥ 2** · **T2** H < 1.5시간 로그에서 N_ext⁺ **≥ 3** · **T3** H ≥ 1.5시간 로그에서 N_ext⁺ ÷ H **≥ 2회/시간** |
+| 한 세션 더 수집 | N_ext⁺ = 2 · H < 1.5 · T1 거짓 |
+| 현행 유지 | N_ext⁺ ≤ 1 · T1 거짓 |
+| ★ **표 공백** | H ≥ 1.5 · 2 ≤ N_ext⁺ < 2H · T1 거짓(예: 2시간 로그에 3회) — §18-3 표에 칸이 없다(qa-regression 발견 2026-09-15). **판정하지 말고 숫자만 `ux-designer`에게** |
+
+- ★ **이 체크 세션의 로그는 T1만 쓴다** — F-1·F-2·F-4가 일부러 전체화면을 오간 에지가 섞여 T2·T3을 오염한다(§18-3 「세는 사람이 빼야 할 것」). T1도 완전히 깨끗하지는 않다.
+
+**리더 판독기** (macOS 파이썬 3 · 리더 scratchpad에 `h1scan.py`로 저장해 `python3 h1scan.py <로그 경로>` · 저장소에 두지 않는다). **rc 0 = 판독함 / 2 = 무효**(읽기 실패 · UTF-8 아님 · (a) 양성 대조나 앵커 0 · (b) 유효 조건 미달). ★ **종료코드만 보지 말고 출력 줄을 본다** — `| tail`처럼 파이프를 붙이면 rc는 끝 명령의 것이다.
+```python
+import sys, re
+# §L 판독기 — Player.log 한 개(= 실행 1회). 부분 문자열만 쓴다(EM DASH·정규식 검색 없음). rc 0 = 판독함 / 2 = 무효
+TIER = '[전체화면판정] 등급'; L0 = TIER + ' 0'; L1 = TIER + ' 1(패널 회수)'
+S1 = '전경 창이 우리 오버레이 자신이라'; S2 = '전경 창이 우리 프로세스(pid'
+EA, EB = '허가를 만료시켰습니다', '등급 1 진입'; R = '등급 1 중 사용자가 표면을 직접 불렀습니다('
+ANCHOR = R + '캐릭터 우클릭)'; T = '[스톨구간] #'; CLOSE = '[정보창] 닫힘(전체화면 감지'
+try:
+    lines = open(sys.argv[1], encoding='utf-8-sig').read().splitlines()
+except (OSError, UnicodeDecodeError, IndexError) as e:
+    print('무효 — 읽기 실패:', type(e).__name__); sys.exit(2)
+rc = 0
+tiers = [i for i, l in enumerate(lines) if TIER in l]
+n1 = sum(L1 in lines[i] for i in tiers)
+anc = [i for i, l in enumerate(lines) if ANCHOR in l]
+print(f'(a) 양성 대조 등급 1 줄={n1} · 앵커(캐릭터 우클릭 허가) 줄={len(anc)}')
+if n1 == 0 or not anc:
+    print('(a) 무효 — 양성 대조 또는 앵커 0'); rc = 2
+else:
+    after = lines[anc[-1] + 1:]
+    first = next((l for l in after if TIER in l), None)
+    kind = '없음' if first is None else 'S1' if S1 in first else 'S2' if S2 in first else '그 밖'
+    print(f'(a) 앵커 뒤 S1={sum(S1 in l for l in after)} S2={sum(S2 in l for l in after)} 첫 등급 줄={kind} '
+          f'재진입 등급 1={sum(L1 in l for l in after)} 만료(등급 1 진입)={sum(EA in l and EB in l for l in after)} '
+          f'닫힘(전체화면 감지={sum(CLOSE in l for l in after)}')
+ts = [i for i, l in enumerate(lines) if T in l]
+mins = [float(m.group(1).replace(',', '.')) for m in (re.search(r'가동 (\d+(?:[.,]\d+)?)분', lines[i]) for i in ts) if m]
+if n1 == 0 or not ts or len(mins) != len(ts):
+    print(f'(b) 무효 — 등급 1 줄={n1} · [스톨구간] 줄={len(ts)} · 가동 분 읽음={len(mins)}'); sys.exit(2)
+H = (mins[-1] - mins[0]) / 60
+N = Nself = NselfP = Next = NextP = burst = 0
+for k, i in enumerate(tiers):
+    if k > 0 and L1 in lines[i] and L0 in lines[tiers[k - 1]]:
+        N += 1
+        end = tiers[k + 1] if k + 1 < len(tiers) else len(lines)
+        hurt = any(EA in x and EB in x for x in lines[i + 1:end])
+        if S1 in lines[tiers[k - 1]] or S2 in lines[tiers[k - 1]]:
+            Nself += 1; NselfP += hurt
+        else:
+            Next += 1; NextP += hurt
+            if hurt:
+                nt = next((j for j in ts if j > i), len(lines))
+                burst += any(R in x for x in lines[i + 1:nt])
+t1, t2, t3 = burst >= 2, H < 1.5 and NextP >= 3, H >= 1.5 and NextP / H >= 2
+print(f'(b) H={H:.2f}시간 N={N} N_self={Nself} N_self⁺={NselfP} N_ext={Next} N_ext⁺={NextP} 버스트={burst} T1={t1} T2={t2} T3={t3}')
+if NselfP: print('(b) H1 자기 유발 에지 있음 — 신호가 아니라 H1 수정 경로(아래 판정에서 뺐다)')
+print('(b) 판정 =', '신호 설계 착수' if (t1 or t2 or t3) else '한 세션 더 수집' if (NextP == 2 and H < 1.5)
+      else '현행 유지' if NextP <= 1 else '표 공백 — 판정하지 않음(숫자만 ux-designer에게)')
+sys.exit(rc)
+```
+- 확인한 범위: **합성 로그 13경우 + 없는 파일**뿐이다(출처 「§L 판독기」). **실기 로그 0회.** 실제 `Player.log`에서 줄 사이에 끼는 Unity 스택 줄·다른 태그는 부분 문자열에 안 걸린다고 **판단**했다(미확인).
+
+### L-(c) 옛 사실을 말하는 로그 줄 — 이 문장들을 사실로 읽지 않는다
+근거: `docs/narrative/ENTRY_WORDING_AUDIT_2026-09-14.md` §10-1(숨김 한 번의 순서) · §10-2(줄별 표) · §10-3(N-8) — `design-narrative`.
+숨김 관련 로그 **7자리**가 화면 캡션(`SettingsWindow.cs:289` `이 창은 남고 톱니가 떠요`)과 **반대 사실**을 말한다. 사용자 명시 숨김 단독이면 톱니는 「남는」 것이 아니라 **없던 것이 뜬다**(평상시 톱니는 `0229f52`부터 없다).
+★ 브리프 요지의 「톱니가 그대로 남습니다」는 **로그에 그 글자로는 없다**(`git grep -F` 0건) — 아래 **식별 부분 문자열**로 찾는다. 줄 번호는 `eb4670d` = HEAD `e6b14c2`(두 커밋에서 같은 줄).
+
+| ID | 파일:줄 | 로그 접두사 | 식별 부분 문자열 | 로그가 말하는 것(요지) | 실제 상태(코드) | N-8 |
+|---|---|---|---|---|---|---|
+| L1 | `Core/StickmanAgent.cs:491` (줄 `:488-492`) | `[사용자숨김] 숨김(` / `[사용자숨김] 해제(` | `톱니·열려 있던 창·부채꼴은 그대로 남습니다` | 숨겨도 톱니·창·부채꼴이 남는다 | 숨김 단독: 톱니는 **뜨고** 창·부채꼴은 남는다. 전체화면 게임 중·다른 가상 데스크톱(Windows 전용) 중에 숨기면 **전부 걷힌다**. **해제**에도 같은 문장이 찍힌다(무관) | **안(B)** |
+| L2 | `Core/StickmanAgent.cs:1887-1889` (줄 `:1881-1890`의 거짓 갈래) | `[숨김] 캐릭터를 숨기고 물리를 멈춥니다` | `사용자 명시 숨김 단독이라` | 표면을 걷지 않아 톱니·창·부채꼴이 그대로 | 톱니는 **뜬다** · 창·부채꼴 남음. 참 갈래(`톱니도 HidesScreenSurfaces를 보고 함께 내려갑니다`)는 **참** | **안(B)** |
+| L3 | `Interaction/AppControlDirector.cs:590-591` (줄 `:588-593`) | `[앱제어] 캐릭터 숨김(` | `그대로 남습니다. 전체화면 앱을 오갔다` | 단축키 K로 숨겨도 톱니·열린 창·부채꼴이 남는다 | L1과 같다(게임 중에도 K는 눌린다 → 그때는 전부 걷힘) | 밖 |
+| L4 | `Interaction/SettingsWindow.cs:1594` (줄 `:1589-1595`) | `[설정창] 캐릭터 숨김` | `톱니와 부채꼴도 그대로입니다` | 설정창 [숨기기] 뒤 톱니·부채꼴 그대로 | 톱니는 **없던 것이 뜬다** · 부채꼴은 **열려 있지 않다**(설정창을 열 때 배타 규약으로 닫힘). 같은 파일 캡션과 정면 충돌 | 밖 |
+| L5 | `Interaction/InfoGearIconWidget.cs:1032` | `[톱니] 전체화면 해제` | `톱니가 다시 나타납니다` | 자동 숨김이 풀리면 톱니가 다시 뜬다 | 평소(사용자 숨김·가출 아님)는 **같은 LateUpdate에서 도로 꺼져 0프레임** — 바로 다음 줄이 L7이다. 숨김·가출 중일 때만 실제로 뜬다. Windows 가상 데스크톱 복귀에도 찍혀 「전체화면」도 틀린다 | 밖 |
+| L6 | `Interaction/InfoGearIconWidget.cs:1021-1022` | `[톱니] ` + 사유(예 `전체화면 감지`) | `사유가 사라지면 톱니만 다시 나타납니다` | 사유가 사라지면 톱니가 돌아온다 | 사유가 사라져도 톱니는 **캐릭터가 화면에 없을 때만** 뜬다(뒷문장만 거짓) | 밖 |
+| L7 | `Interaction/InfoGearIconWidget.cs:968-969` | `[톱니] 상시 톱니를 걷습니다` | `상시 톱니를 걷습니다` | 상시 톱니를 걷고, 캐릭터가 사라지면 다시 뜬다 | 「상시 톱니」는 2026-09-05부터 없다(켬 쪽 `:966` `대기 톱니를 띄웁니다`는 **참**). 게임 중에는 캐릭터가 사라져도 톱니가 안 뜬다 | 밖 |
+
+**판독 규칙**
+1. 위 7자리의 문장을 **톱니·창·부채꼴 상태의 증거로 인용하지 않는다.** 상태는 위 「실제 상태」 칸의 코드 사실 · 참인 줄(`대기 톱니를 띄웁니다` 등) · 스크린샷으로 본다. L-(a)·L-(b) 판독에도 쓰지 않는다.
+2. ★ **N-8 목록 안(L1·L2 — `StickmanAgent.cs`는 목록 B)은 1.0 출시 후보까지 고치지 않을 수 있다** — 고치면 그 출시 후보와 E-3 빌드의 목록 교차가 1이 되어 **E-3가 증거에서 떨어진다**(§10-3 · `docs/verify/DISPLAY_CHANGE_PATH_FILES.md` ④-7). ⇒ **출시 후보 로그에서도 L1·L2는 옛 문장 그대로일 수 있다.**
+3. L3~L7은 목록 밖이라 `coder` 소규모 라운드에서 **먼저 바뀔 수 있다**. ⇒ 부분 문자열 **0건**은 「그 사건이 없었다」와 「새 문구 빌드」 둘 다일 수 있다 — **0을 결함·미반영으로 읽지 않는다**(새 문구는 §10-2 「새 문구」 칸). 빌드부터 고정한다.
+4. ★ **L1 부분 문자열은 L2 줄에도 걸린다** — L2는 소스에서 두 조각(`…부채꼴은 ` + `그대로 남습니다(…`)이라 `git grep`에는 `:491` 하나만 나오지만 **로그에서는 이어 붙어** 같은 글자가 된다. 줄을 셀 때는 **접두사**로 가른다.
+
+---
+
 ## 출처 (우리 쪽 확인용 — 사용자님은 안 보셔도 됩니다)
 
 | 항목 | 근거 |
@@ -1057,6 +1216,10 @@ Get-ChildItem $dir    # ← 실제로 들어왔는지 눈으로 확인. 빈 목�
 | 블록 ④ 2차 기준 2초 | 리더 판정의 **추정값**(감지 표본 + 라이브러리 신호 경로를 넉넉히 덮음). 코드 사실(`a6b3101`): 감지 표본 `Platform/Windows/WindowsOverlayStateEnforcer.cs:145` `TopologySampleIntervalSeconds = 0.25f` · 라이브러리 신호 `:986` `OnMonitorChanged +=` → `:992-993` → `DisplayChangeHoldDriver.cs:66` — **이 경로의 지연은 잰 적이 없다.** 판정에 쓰지 않는 이유: 휴대폰·PC 시계 오차, 작업표시줄 시계의 초 단위 |
 | R-3 판독 문자열 | 작업 트리 `Platform/ReservedBarRevealPolicy.cs:209` `자동 숨김이 켜져 있어 이번 실행 동안만 해제했습니다` · `:211` `지난 실행이 원복하지 못하고 종료된 흔적을 발견했습니다` · `:213` `지난 실행의 흔적이 남아 있었지만 시스템은 이미 원래 설정이었습니다` · `:215` `종료합니다 — …` (음성 대조: 만든 문자열 `지난 실행의 흔적을 삼켰습니다` 0건) · 근거 `ROADMAP.md` §60-8 (다)-(a) (c) 실험 · (다)-(b) D2 |
 | F | `Platform/FullscreenSuspendPolicy.cs:208-273` · `docs/marketing/TRUTH_INVENTORY.md` §6 (등급 1 실기 미검증) |
+| F-4 ③ · §L-(a) H1 (2026-09-15 · 줄 번호는 지정 빌드 `eb4670d` = HEAD `e6b14c2` — `git diff --stat eb4670d HEAD`가 아래 파일 중 `Interaction/AppControlDirector.cs`만 잡는다) | 서명 S1 `Platform/Windows/Win32WindowService.cs:2056` · S2 `:2065`(비테스트 `git grep -F` 각 1건 · 음성 대조 만든 문자열 0건) · 등급 줄 머리 `:1975`는 등급이 **바뀐 폴링에서만**(`:1971-1976`) · 흔들림 줄 `:1964`는 `raw` 축에서만(`:1959-1967`) · 등급 설명 `Platform/FullscreenSuspendPolicy.cs:311`·`:313`·`:316` · ★ `[전체화면판정] 등급 1(패널 회수)`·`[전체화면판정] 등급`은 **소스에 한 조각으로 없다 — 런타임 조립**(비테스트 `git grep -F` 0건. 조각 `[전체화면판정] ` `:1975` + 설명 `:313`) · 앵커도 조립: `Core/StickmanAgent.cs:401` `직접 불렀습니다({source})` + `Interaction/AppControlDirector.cs:985`(`eb4670d` `:894`) `TryGrantUserSummon("캐릭터 우클릭")` — 우클릭 라벨 호출은 이 1곳(음성 대조 `직접 불렀습니다(캐릭터 좌클릭)` 0건) · 허가는 `CanGrant` 통과 + **새 허가일 때만** 로그(`StickmanAgent.cs:387` 이하, 갱신이면 `:401` 전에 반환) · 만료 `:430` + 사유 `:447` · 정보창 닫힘 `Interaction/CharacterInfoWindow.cs:993` + `:1036`(같은 글자가 `InfoGearIconWidget.cs:1012` 숨김 경로에서도 나온다 — 보조로만) · 창 밖 클릭이 닫지 않음 `CharacterInfoWindow.cs:111` · `SettingsWindow.cs:664` · 폴링 `Data/DefaultStickConfig.asset:116` `fullscreenPollInterval: 1.5` · 산술·서명·기대 순서 `docs/platform/E1_FOREGROUND_TIER_FACTS.md` A-2·A-3·A-4·A-5·A-6(`dev-platform`, 커밋 `0052d6e` 2026-09-15). **Select-String 문서**(https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/select-string?view=powershell-5.1): `-SimpleMatch` *"It doesn't interpret the value of the **Pattern** parameter as a regular expression statement."* · *"When the output of a `Select-String` command is sent down the pipeline to another `Select-String` command, the receiving command searches only the text in the matched line."* · *"By default, matches aren't case-sensitive."* · *"When matching phrases, `Select-String` uses the current culture that is set for the system."* (2026-09-15 확인 — 한글 부분 문자열에 문화권 비교가 끼치는 영향은 **미확인**). 파이프 입력의 `LineNumber` 뜻은 문서에 없다(E-3 블록 ②와 같은 전제). **Windows 실행 미확인** |
+| §L-(b) 빈도 | 셀 줄·임계값 정본 `docs/ux/SETTINGS_ENTRY_NARROW_WIDTH.md` §18-2·§18-3(`ux-designer`, 커밋 `0052d6e` — `e6b14c2` 시점에는 §18이 없었다) · 과대 계수 줄 `Core/StickmanAgent.cs:1704`(`전체화면 앱이 떴지만`) · `:1707`(`[표면회수] 등급 1 해제`) · R `:401` · E `:430`+`:447` · T `Platform/StallAttribution.cs:1223`(`[스톨구간] #…가동 X분`) · 주기 `:115` `SummaryIntervalSeconds = 60f` · 스위치 `Data/DefaultStickConfig.asset:438` `logStallAttribution: 1` · 「표 공백」은 §18-3 판정 표 세 칸의 합집합 밖 조건을 이 라운드가 찾은 것이다(ux-designer 미확인) |
+| §L-(c) 옛 사실 로그 | 줄별 판정 정본 `docs/narrative/ENTRY_WORDING_AUDIT_2026-09-14.md` §10-1·§10-2·§10-3(`design-narrative`, §10은 커밋 `0052d6e`) · 식별 부분 문자열 7개 비테스트 `git grep -F` — `eb4670d`·HEAD 각 1건·같은 줄(L1 `StickmanAgent.cs:491` · L2 `:1887` · L3 `AppControlDirector.cs:591` · L4 `SettingsWindow.cs:1594` · L5 `InfoGearIconWidget.cs:1032` · L6 `:1022` · L7 `:968`) · 참인 줄 `InfoGearIconWidget.cs:966` `대기 톱니를 띄웁니다` 1건 · 캡션 `SettingsWindow.cs:289` 1건 · ★ 음성 대조: 브리프 요지 `톱니가 그대로 남습니다` 0건 · 만든 문자열 0건 · L3 첫 후보 `톱니·열린 창·부채꼴은`은 **4건**(주석 3 포함)이라 버리고 유일한 조각으로 바꿨다 · L1 조각이 L2 줄에도 걸리는 것은 `StickmanAgent.cs:1887-1888` 두 리터럴의 이음매로 확인 · N-8 소속: `docs/verify/DISPLAY_CHANGE_PATH_FILES.md` ②(가) 공식 추출식(41행) — `Core/StickmanAgent.cs` B / `AppControlDirector.cs`·`SettingsWindow.cs`·`InfoGearIconWidget.cs` 목록 밖(양성 대조 `Platform/Windows/Win32WindowService.cs` A · `Platform/DisplayChangeHoldDriver.cs` A · 음성 대조 없는 경로 빈칸) |
+| §L 판독기 | scratchpad 합성 로그 13경우 + 없는 파일(파이프 없이 rc 측정 — ★ 첫 측정은 `\| tr` 끝 명령의 rc를 읽어 전부 0으로 나온 **죽은 프로브**였고, 같은 라운드의 변이 스크립트는 cp949 인코딩 예외로 중간에 죽어 두 경우가 「파일 없음」으로 나왔다 — 둘 다 버리고 다시 쟀다): H1 발현(F-2 톱니 S1 섞임 포함 — 앵커 뒤 S1=1 · N_self⁺=2) rc 0 · H1 없음(첫 등급 줄 `그 밖`) rc 0 · 외부 에지 버스트 2 → 착수 rc 0 · T2 → 착수 rc 0 · 2시간 3회 → 표 공백 rc 0 · 첫 진입·2 → 1·E 없음·다른 만료 줄·해제 줄·흔들림 줄 → N_ext⁺ 0이고 앵커 0이라 rc 2 · T 없음 rc 2 · L1 없음 rc 2 · **변이** EM DASH 제거 → 결과 불변 · CRLF+BOM → 불변 · 해제·흔들림 줄 끼움 → 불변 · S1 니들 한 칸 변이 → S1 0·N_self 2→0(탐지 경로 생존) · cp949 파일 → rc 2 · 없는 파일 → rc 2. **실기 로그 0회** |
 | 세션 잠금 | `PlatformParityAuditTests.cs:2189` — **이번 표에 넣지 않았다**(잠금/해제 재현이 낮 시간을 많이 먹는다). 여유가 남으면 `[세션가시성]` 줄만 봐도 된다 |
 | 안전 규칙 2 | `docs/strategy/CHANNEL_PRICING_DECISIONS.md:792-798` (T1~T4 자동 앞당김) |
 | §0 | `docs/COMPANY_RENAME_MIGRATION.md` §0 · §2 |
@@ -1072,3 +1235,4 @@ Get-ChildItem $dir    # ← 실제로 들어왔는지 눈으로 확인. 빈 목�
 유예 수치 3초·2초·15초의 적정성(커밋 본문상 추정값) · **말풍선 보존 동결** 줄(`[말풍선]`)과 드래그 보류 줄(`[DragThrowController]`)은 발췌에 넣지 않았다.
 ★ **§R 빌드 행·표지 판독(2026-09-14 저녁)이 안 보는 것**: 3차·4차·5차 **빌드가 실제로 없어** 그 행의 줄·파일은 전부 코드 읽기로만 적었다(실기 0회) · 5차는 `7900ad0` 기준 — 뒤 커밋이 순서·표지 파일을 고치면 이 행을 다시 잰다 · 세션 종료와 `quitting` 중 **어느 입구가 먼저 오는지**(실기 미확인) · 종료 시작·정상 종료 표지 **쓰기 실패**(로그가 없어 판독으로 못 가른다) · 진행 저장 처리기가 **등록된 뒤**의 줄(coder 라운드 몫 — 등록되면 5차·5-b·5-c 행을 다시 잰다) · **5-b·5-c는 트리 적용 전 미러 기준**(적용·커밋 뒤 표·출처를 다시 잰다) · 한 순서가 기다리는 사이 다른 순서가 끼어드는 **중첩이 실제로 일어나는지**(실재 미확인 — 표의 중첩 서술은 전부 「일어난다면」이다) · 5-b 식별 이름을 **빌드 dll에서** 찾아본 적 없음.
 ★ **R-4가 안 보는 것**: 복사 **대상**(`previous-abnormal-player-NN.log`)·표지 파일의 공유 방식 · 탐색기로 **실제로** 이름을 바꾸거나 지우는 조작(판독 무효가 확정이라 하지 않는다) · 원본을 쥐는 시간 **실측**(추정뿐) · Unity 로그 교체가 이름 바꾸기인지 복사인지 · 백신 등 다른 프로그램이 원본을 쥘 때의 구분(기준선·창 밖 칸으로 무효 처리만 한다).
+★ **F-4 ③ · §L(2026-09-15)이 안 보는 것**: **Unity 엔진 창 프로시저가 클릭에 활성화를 막는지**(A-2 (다) — ③이 재려는 바로 그 사실이라 코드로는 판정 불가) · 설정창에서 같은 체류를 했을 때(③은 정보창만) · PowerShell 블록의 Windows 실행 · 파이프 입력 `LineNumber`의 실제 뜻 · 문화권 비교가 한글 `-SimpleMatch`에 끼치는 영향 · 실제 `Player.log`의 줄 모양(스택 줄 등 — 판독기는 합성 로그로만 확인) · macOS 로그의 등급 0 사유 문자열 전수(N_self는 Windows 사유로만 정의) · §L-(b) 「표 공백」 칸의 판정(ux-designer 몫) · §L-(c) 7자리 밖의 낡은 로그(§4 잔여 — `ENTRY_WORDING_AUDIT` §10-4) · ③의 체류 초·닫힘 초는 사용자 눈 셈이다(로그에 시각이 없다).

@@ -1,6 +1,7 @@
-# PlayMode 빨강 7건 수정 명세 (test-engineer, 2026-09-14)
+# PlayMode 빨강 7건 수정 명세 (test-engineer, 2026-09-14 · 2026-09-15 갱신: 간헐 #8 추가 · #4 간헐 확정 · 분류 규칙)
 
-- 대상 실행: `Logs/coder-onbstore/play-full.xml` — test-run `result="Failed(Child)"`, 783 / 통과 750 / 실패 5 / 건너뜀 26 / 판정 불가 2, macOS 배치모드, 화면 640×480, 그래픽 API Null.
+- ★ 2026-09-15 갱신 실행: `Logs/vc-e4/P-full.xml` — E-4 커밋 `e6b14c2` 검증 전량(verify-change). test-run `result="Failed(Child)"`, 802 = testcasecount 802 / 통과 769 / 실패 6 / 건너뜀 25 / 판정 불가 2, `site`가 SetUp·TearDown인 스위트 0. 격리 ×3은 `Logs/vc-e4/iso-CostumeFocusStillTierTests-{1,2,3}.xml`, `Logs/vc-e4/iso-PetBalloonClearsBodyTests-{1,2,3}.xml`(각 total 2 = testcasecount 2).
+- 대상 실행(첫 판): `Logs/coder-onbstore/play-full.xml` — test-run `result="Failed(Child)"`, 783 / 통과 750 / 실패 5 / 건너뜀 26 / 판정 불가 2, macOS 배치모드, 화면 640×480, 그래픽 API Null.
 - 입력: `Tasklist.md` 「[qa-regression] TearDown 거짓 통과 전수 재판독 + PlayMode 실패 원인 조사」, 그 아래 「리더 판정」 ③④. qa의 이력 스캔은 `scratchpad/qa-sfx/hist.out`.
 - 기준 코드: HEAD `7900ad0` + 트리. 아래에 인용한 파일은 `git status` 수정 목록에 하나도 없다. 즉 인용한 줄 번호는 HEAD와 같다.
 - 이 문서가 한 일: 코드 읽기와 산술만 했다. **Unity 0회, 트리 편집 0회.** 줄 인용은 전부 `awk`로 줄 번호를 붙여 원문에서 옮겼다.
@@ -8,6 +9,38 @@
   - **사실(코드)**: 인용한 줄로 기전이 닫힌다.
   - **추정**: 수치 또는 순서를 실측하지 않았다.
   - **문서 근거**: 디자인 문서만 주장하고 자동 검사는 없다.
+- 2026-09-15 갱신분(§분류 규칙, §4-7, §11)의 기준 코드는 HEAD `e6b14c2`다. 인용 파일 8개(`CostumeFocusStillTierTests.cs`·`PetBalloonClearsBodyTests.cs`·`CostumeFocusRig.cs`·`StickmanBlackboard.cs`·`StickmanPoseAnimator.cs`·`FramePacing.cs`·`CostumeKeyposeTableSO.cs`·`CharacterPetRenderer.cs`)는 `git diff --stat 7900ad0 e6b14c2`에서 변화 0이고 트리 수정도 0이다(양성 대조: 같은 명령이 새 파일 `PanelsOnlyTierMouseEntryTests.cs` +898을 냈다). ⇒ §4의 줄 번호는 `e6b14c2`에서도 유효하다. §1~3·5~7의 인용 파일은 이번에 다시 대조하지 않았다.
+
+---
+
+## 분류 규칙 · 알려진 목록 (2026-09-15 현행화)
+
+### 분류 규칙
+1. **보호 편입 금지.** `PanelsOnlyTierMouseEntryTests`의 아래 3건은 E-4 변이 V4(게이트 앞 옛 억제 `return`)를 PlayMode에서 잡는 유일한 방어다. **알려진 빨강·판정 불가·간헐 어느 목록에도 넣지 않는다.** 빨개지면 그 커밋의 회귀로 다룬다.
+   - `B3_B4_등급1_무허가에서_캐릭터_우클릭으로_부채꼴_정보창_설정창까지_네_홉이_열린다`
+   - `B10_등급1_더하기_사용자_숨김_중_보이지_않는_몸_자리_우클릭은_부채꼴도_허가도_내지_않는다`
+   - `항별_입력값_B1_B7_B9_B10_B11에서_게이트가_어느_항으로_닫혔는지`
+   - `P-full.xml`에서 3건 모두 `Passed`다(V4를 잡는다는 판정은 verify-change 변이 실측을 인용한 것이고, 이 문서가 다시 재지 않았다).
+2. **새 빨강 분류 관례(리더 결정).** 커밋 게이트에서 「새로 빨개진 이름」은 ① **격리 ×3**으로 간헐과 재현을 가르고 ② 바뀐 코드 경로가 **그 테스트에서 실행됐는지 로그로 확인한 뒤에야** 분류한다.
+   - 사례: #8은 E-4 검증 전량에서 처음 빨개졌다. 격리 ×3에서 1/3만 빨강이었고 E-4 코드 경로는 실행되지 않았다(verify-change 로그 확인) ⇒ 「간헐 — E-4 무관」.
+   - 이 문서가 다른 자로 보강했다: `git show --name-only e6b14c2`(14개 파일)에 #8·#4 기전 파일이 0건이다(§4-7, §11-4).
+
+### 알려진 목록 — `Logs/vc-e4/P-full.xml` 기준
+이름은 xml `fullname`에서 파이썬으로 대조했다(`StickMate.Tests.PlayMode.` 뒤). 아래 8개 이름은 전부 적중했다. 음성 대조로 넣은 없는 이름은 `ABSENT`로 나왔다.
+
+| 분류 | # | 이름 | 절 |
+|---|---|---|---|
+| 알려진 빨강 | 1 | `PortraitEyeVisibilityTests.EyesAreAbsentUnderEveryGlassesItem` | §1 |
+| 알려진 빨강 | 3 | `CostumeFocusPropLifecycleTests.몰입기_도중_취소해도_프롭이_화면에_남지_않는다` | §3 |
+| 알려진 빨강 | 5 | `SettingsWindowReturnPathTests.ClosingSettingsReopensTheInfoWindowItReplaced` | §5·6 |
+| 알려진 빨강 | 7 | `AccessoryFillRenderingTests.왕관은_채워지되_얹는_물건으로_남는다` | §7 |
+| **간헐** | 4 | `PetBalloonClearsBodyTests.실제로_그려지는_풍선이_Idle에서_몸통_물리_반폭_밖에_있다` | §4, §4-7 |
+| **간헐** | 8 | `CostumeFocusStillTierTests.몰입기_동안_절감등급_Still에_도달한다` | §11 |
+| 판정 불가 | 2 | `TodoBoardDateNavigationTests.ClickingACalendarCellPicksTheDayInsteadOfDraggingTheWindow` | §2 |
+| 판정 불가 | 6 | `SettingsWindowReturnPathTests.ClickingOutsideSettingsNeitherClosesItNorReturnsTheInfoWindow` | §5·6 |
+
+- 합계: 실패 6(알려진 빨강 4 + 간헐 2)이 xml `failed="6"`과 같고, 판정 불가 2가 `inconclusive="2"`와 같다.
+- 간헐 2건은 **이번 전량에서 빨강**이었다. 다음 전량에서 초록이 나와도 「고쳐졌다」로 읽지 않는다.
 
 ---
 
@@ -18,10 +51,11 @@
 | 1 | `PortraitEyeVisibilityTests.EyesAreAbsentUnderEveryGlassesItem` | EYES 목록을 숫자 6과 이름 표로 하드코딩했다. 새 3종이 눈을 가리는지는 이 테스트의 판정과 **무관하다**. 초상화의 눈 그리기는 상수로 꺼져 있고 EYES 슬롯을 보지 않는다 | 테스트 | 불필요(코드로 확정). 수정 후 픽스처 실행 + 변이 E1~E3 | test-engineer |
 | 2 | `TodoBoardDateNavigationTests.ClickingACalendarCell…` (판정 불가) | 테스트 결함 확정. 빈 목록에서 [‹]는 설계상 비활성이다. 이 테스트는 PlayMode에서 처음으로 돈 것이 09-14다 | 테스트 | 불필요. 수정 후 실행 + 변이 T1~T3 | test-engineer |
 | 3 | `CostumeFocusPropLifecycleTests.몰입기_도중_취소해도…` | 테스트가 프로덕션 계약보다 강한 주장(동기 해제)을 했다. 원칙 1은 포즈 층의 이중 게이트로 이미 막혀 있다 | 테스트 | **R3** | test-engineer |
-| 4 | `PetBalloonClearsBodyTests.실제로_그려지는_풍선이…` | 공식값을 몸통 x에 대고 비교한 것이 설계 결함이다. **qa 가설(착지 기울기)은 수치로 반증된다.** 원인 후보는 Idle **두리번 상체 기울임** | 테스트 | **R2** | test-engineer |
+| 4 | `PetBalloonClearsBodyTests.실제로_그려지는_풍선이…` | 공식값을 몸통 x에 대고 비교한 것이 설계 결함이다. **qa 가설(착지 기울기)은 수치로 반증된다.** 원인 후보는 Idle **두리번 상체 기울임**. ★ 09-15 **간헐 확정**(격리 ×3 중 2 빨강). 빨강 조건은 `최소 편차 ≤ 0.5575`다(§4-7) | 테스트 | **R2** | test-engineer |
 | 5 | `SettingsWindowReturnPathTests.ClosingSettingsReopens…` | 640×480에서 [설정] 칩이 접힌다(ce3b102 [DLC] 탭). 테스트가 해상도 전제를 묵시적으로 가졌다 | 테스트(+UX 질문) | **R1** | test-engineer / ux-designer |
 | 6 | `SettingsWindowReturnPathTests.ClickingOutsideSettings…` (판정 불가) | 5와 같은 원인이다. 거기에 `Assume` 때문에 러너에 안 보였다 | 테스트 | **R1** | test-engineer |
 | 7 | `AccessoryFillRenderingTests.왕관은_채워지되…` | 게이트에 착용 비트맵 갈래가 없다. 왕관은 존폐 대기라서 조건부 `Assert.Ignore`로 처리한다 | 테스트(인프라) | 불필요. 수정 후 실행 + 변이 K1~K3 | test-engineer |
+| 8 | `CostumeFocusStillTierTests.몰입기_동안_절감등급_Still에_도달한다` (09-15 추가) | **간헐**(격리 ×3 중 1 빨강). 가설: 「Still 도달(폴링 위상으로 2.00초 고정) 전에 코스튬 쓰기 ≥ 1」 단언이 **코스튬 듀티 주기의 무쓰기 구간(코드상 최장 3.2초)**과 관측 시작 위상에 기댄다. 프레임 수 의존이 아니라 **벽시계 위상 의존**이다. 결과는 두 모양뿐이었다: 통과 6회는 전부 `1→8 / 3회`, 빨강 2회는 전부 `1→10 / 0회` | 테스트(추정) | **필요**(§11-8, 러너 라운드 배정 대기) | test-engineer |
 
 - R1~R3은 리더 판정 ③에 이름이 붙은 것만 대응시켰다.
 - qa 계획 원문(R1~R6의 정의 문장)은 Tasklist와 qa scratch에서 찾지 못했다. **R4·R5가 무엇인지는 미확인**이다(§9 자백).
@@ -346,6 +380,34 @@ Assert.Less(minAbsDeviation, expectedOffset + SampleTolerance, …);            
 
 범위 밖 관찰(미검증 — design-equipment/design-motion 참고): 피격 기울임 `bodyLeanHitDegrees` 14°에서는 원시 부족분이 0.890·sin 14° = 0.215다. 그러면 0.5775 − 0.215 − 0.132 = 0.230 < 0.300이 되어, **추종 필터 전 기준으로** 주머니가 몸통 반폭 안에 들어올 수 있다. 이 테스트 이름은 Idle 범위라 단언하지 않는다.
 
+### 4-7. 2026-09-15 추가 실측 — 간헐 확정 · 기준값 확정
+**기준값 — 사실(코드 + 로그).** 보고마다 「0.5775」와 「> 0.5575」로 표기가 갈렸다. 원인은 **실패 메시지가 문턱이 아니라 공식값을 찍는 것**이다.
+- `PetBalloonClearsBodyTests.cs:85` `private const float SampleTolerance = 0.02f;`
+- `:155` `float expectedOffset = pet.BalloonTetherOffsetWorld;` → `CharacterPetRenderer.cs:420` `HeadRadius * BalloonTetherBehindInR`, `:275` `= 3.5f`
+  - 로그 `:174-175`가 찍은 런타임 값은 4회 모두 `공식값 0.5775`다(= 머리 반경 0.165 × 3.5).
+- 판정식 원문과 문턱
+  - `:178` `Assert.Greater(minAbsDeviation, expectedOffset - SampleTolerance, …)` → **통과 조건 `minAbsDeviation > 0.5575`**(엄격 부등호, float32 뺄셈, 표시 F4)
+  - `:181` `Assert.Less(minAbsDeviation, expectedOffset + SampleTolerance, …)` → `< 0.5975`
+  - `:186-187` `minAbsDeviation - metrics.HeadRadius * BalloonRadiusInR > physicalHalfWidth` → `> 0.432`(0.300 + 0.165×0.80)
+- 메시지 `:179-180` 「실측 편차 {minAbsDeviation}유닛이 **공식값 {expectedOffset}유닛**에 못 미칩니다」가 찍는 값은 0.5775다. 문턱 0.5575는 로그 어디에도 찍히지 않는다.
+- ★ **확정: 하한 단언 빨강 ⇔ 1초 최소 편차 ≤ 0.5575.** (상한 단언 `:181` — 편차 ≥ 0.5975도 빨강 — 은 별도. 2026-09-15 verify-change 정정) 보고서에는 이 값을 쓴다. 「0.5775에 못 미침」은 문턱이 아니다. 수정본(§4-4 B)의 메시지에는 문턱값 `expectedOffset − SampleTolerance`를 함께 싣는다.
+
+**격리 ×3 + 전량 (`Logs/vc-e4/`, 로그 `[PET-풍선-몸통이탈] 1초간 실측한 최소 가로 편차` 줄)**
+| 실행 | 최소 편차 | 공식값 대비 부족분(0.5775 − x) | 문턱 대비(x − 0.5575) | 결과 |
+|---|---|---|---|---|
+| `P-full` | 0.5185 | 0.0590 | −0.0390 | 빨강 |
+| `iso-…-1` | 0.5537 | 0.0238 | −0.0038 | 빨강 |
+| `iso-…-2` | 0.5465 | 0.0310 | −0.0110 | 빨강 |
+| `iso-…-3` | 0.5775 | 0.0000 | +0.0200 | 통과 |
+
+- ⇒ 격리 3회 중 2회 빨강이고, 값이 회차마다 다르다 → **간헐 확정**이다. 매번 같은 값을 내는 결정적 결함이 아니다.
+- §4-2 가설과의 대조 — 추정을 유지하고, 판별은 R2가 한다.
+  - 부족분 0.024~0.059는 §4-2 저역통과 근사 0.03~0.07과 같은 자릿수다.
+  - iso-3의 부족분이 **정확히 0**이었다. 「두리번이 창과 안 겹친 회차는 공식값 그대로」(§4-6 ② H-두리번 예측)와 맞는다. 다만 H-착지 잔여도 산술상 0.0012(§4-2)라서 F4 표시로는 0에 가깝다. **이 표본 하나로는 두 가설을 가를 힘이 약하다.**
+  - ★ 자백: §4-2의 발생 확률 추정(창과 겹칠 확률 약 1/3)은 **관측보다 낮다.** 이번 4회 중 3회가 빨강이고, 앞 집계는 7회 중 4회였다(두 집계의 중복 여부는 미확인). 기전 가설은 그대로 두지만 확률 추정은 틀렸을 가능성이 높다. 휴식 진입과 Idle 진입의 동기(§4-2 「미확인」)가 겹침을 늘릴 수 있다. R2 ①의 10회 반복이 잰다.
+- E-4 무관 — 다른 자로 확인했다.
+  - `git show --name-only e6b14c2`의 14개 파일에 `PetBalloonClearsBodyTests.cs`·`CharacterPetRenderer.cs`·`AutoWanderController.cs`·`StickmanBlackboard.cs`·`StickmanPoseAnimator.cs`·`DefaultStickConfig.asset`이 0건이다. 양성 대조로 같은 명령의 전체 목록이 출력됐다.
+
 ---
 
 ## 5·6. `SettingsWindowReturnPathTests` — `ClosingSettingsReopensTheInfoWindowItReplaced` + `ClickingOutsideSettingsNeitherClosesItNorReturnsTheInfoWindow`
@@ -542,6 +604,11 @@ if (wornFront != null)
 6. UnityTest `yield return null` 재개 지점(Update 뒤, LateUpdate 앞)은 Unity 문서의 일반 규칙에 기댔다. 이 버전에서는 미실측이다(R3 ①).
 7. Slit Visor·Dust Goggles 에셋이 R3판인지 R4판인지 대조하지 않았다. 두 눈 커버는 추정이다.
 8. `CostumeFocusPropLifecycleTests` 생성 커밋을 `git log -- <경로>`로 잡지 못했다(경로 이력 비어 있음, 이름 변경 추정). 「처음부터 실패」는 이력 xml 2회에만 근거한다.
+9. (2026-09-15) zsh에서 `--include=*.cs`를 따옴표 없이 **또** 썼다. 자백 1과 같은 형태다. `CostumeFocusRhythm` 위치 검색이 `no matches found`와 빈 경로로 끝났고 출력이 「0건」처럼 생겼다 → 따옴표를 붙여 다시 돌렸다(`Core/CostumeKeyposeTableSO.cs:219`).
+10. (2026-09-15) §4-2의 두리번 겹침 확률 1/3 추정이 관측(이번 4회 중 3회 빨강)보다 낮다(§4-7).
+11. (2026-09-15) #8의 H1(경계 보행)은 **러너로 확인하지 않았다.** 기존 로그로는 가를 수 없었다(§11-4). 코드로 닫힌 것은 쓰기 시각표와 Still 도달 2.00초까지다.
+12. (2026-09-15) 브리프의 「관측 창 전체 8~10회」는 **누적 계기의 끝값**이었다. 창 안에서 쓴 횟수는 7회(통과) 또는 9회(빨강)다(§11-2). 전달 과정에서 생긴 표기 차이일 수 있다. verify-change 원문과는 대조하지 않았다.
+13. (2026-09-15) 두 가지는 verify-change 실측을 **인용만** 했다: 「V4를 잡는 유일한 방어」, 「E-4 코드 경로 미실행(로그)」. 이 문서는 이름·결과(xml)와 커밋 파일 목록(git)만 다시 쟀다.
 
 ## 10. 플랫폼 영향
 
@@ -555,3 +622,152 @@ if (wornFront != null)
   - 7: 동일하게 뜬다.
   - 나머지는 없음.
 - 프로덕션 코드 수정 제안: **0건.** 7번 에셋 롤백은 사용자 결정 대기다. 테스트 수정은 PlayMode 테스트 어셈블리와 EditMode 명부 파일에 한정되고 `#if` 분기가 없다. 그래도 적용 라운드에서 격리 미러 osx·win 교차 컴파일 0 에러를 확인한다.
+- ★ 2026-09-15 추가
+  - **Windows 영향**: #8의 기전 파일(`FramePacing` 판정 경로·`CostumeFocusRhythm`·포즈 층·배회)은 전부 플랫폼 중립이고 테스트에 `#if`가 없다. ⇒ Windows 러너에서 돌리면 같은 위상 간헐이 날 것으로 판단한다(미확인, Windows 러너에서 이 테스트를 돈 기록이 없다). 수정안 A는 테스트만 바꾸므로 영향 없음이다. #4 §4-7은 기준값 확정뿐이라 영향 없음이다. 분류 규칙은 러너 판정 절차라 플랫폼과 무관하다.
+  - **macOS 영향**: #8은 이 머신(macOS 배치모드)에서 관측된 간헐이다. 사용자 체감 영향은 없다 — 정지 구간에 코스튬 쓰기가 0인 것은 절감 설계 그 자체다(§11-3 나). 프로덕션 수정 제안은 여전히 0건이다.
+
+---
+
+## 11. `CostumeFocusStillTierTests.몰입기_동안_절감등급_Still에_도달한다` — 간헐 #8 (2026-09-15 추가)
+
+- 이 절이 한 일: 테스트·프로덕션 소스 읽기, 로그 인용, 산술. **Unity 0회, 트리 편집 0회. 원인을 러너로 확인하지 않았다.** 코드로 닫히는 부분은 사실(코드), 회차별 위상은 추정으로 나눠 적는다.
+- 기준 코드: HEAD `e6b14c2`. 인용 파일은 머리말의 `7900ad0..e6b14c2` 변화 0 확인에 포함된다.
+
+### 11-1. 현재 단언
+`Tests/PlayMode/CostumeFocusStillTierTests.cs:359-362`
+```csharp
+Assert.Greater(poseWritesAtStill, poseWritesAtStart,
+    $"{LogPrefix} Still에 도달한 시점까지 코스튬 포즈가 한 번도 쓰지 않았습니다 " +
+    $"({poseWritesAtStart} -> {poseWritesAtStill}). 그렇다면 이 Still은 «코스튬이 돌면서도 " +
+    "절감이 산다»의 증거가 아니라 «코스튬이 안 돌았다»의 증거입니다.");
+```
+- `poseWritesAtStart = bb.CostumePoseWriteCount`(`:291`)는 관측 직전 값이다. `poseWritesAtStill`(`:314`)은 `CurrentTier()`가 처음 `Still`인 프레임의 값이다.
+- 관측은 `TestClock.SampleForSeconds(3f * dwell, …)`(`:287`, `:296`)다. `TestClock.cs:58-61`이 `elapsed += Time.unscaledDeltaTime`으로 **벽시계** 예산을 잰다.
+
+### 11-2. 실측 — 로그 `[코스튬절감-TEST] 몰입기 관측` 줄 원문
+| 실행 | 결과 | 프레임 / 벽시계 | Still 도달 | 누적 계기 시작 → 끝 | Still까지 쓰기 |
+|---|---|---|---|---|---|
+| `Logs/vc-e4/P-full` | 빨강 | 62,493 / 4.80초 | 2.00초 | 1 → 10 | 0 |
+| `Logs/vc-e4/iso-…-1` | 빨강 | 67,011 / 4.80초 | 2.00초 | 1 → 10 | 0 |
+| `Logs/vc-e4/iso-…-2` | 통과 | 67,170 / 4.80초 | 2.00초 | 1 → 8 | 3 |
+| `Logs/vc-e4/iso-…-3` | 통과 | 65,332 / 4.80초 | 2.00초 | 1 → 8 | 3 |
+| 이전 전량 4회: `docs/verify/runs/part2-final_play` · `Logs/coder-onbstore/play-full` · `Logs/coder-onbstore/s4-playfull` · `docs/verify/runs/vc-e12_play` | 통과 | 64,390~66,032 / 4.80초 | 2.00초 | 1 → 8 | 3 |
+
+- ★ 정정: 「관측 창 전체 8~10회」는 누적 계기의 **끝값**이다. 창 안에서 쓴 횟수는 통과 7회, 빨강 9회다.
+- **모양은 둘뿐이다.** 통과 6회는 전부 `1→8 / 3회`, 빨강 2회는 전부 `1→10 / 0회`다. 연속 분포가 아니라 이봉이다.
+- **빨강 쪽이 창 전체로는 더 많이 썼다.** 메시지의 추론 「코스튬이 안 돌았다」와 정반대다.
+
+### 11-3. 기전 — 코드로 닫히는 부분 (사실(코드))
+**(가) Still 도달 시각은 폴링 위상에 고정된다 → 늘 2.00초.**
+- `FramePacing.cs:152-180` `ResetForTests`가 `_presencePollTimer = 0`, `_idleDwellSeconds = 0`, `_tierChangedAtTime = −∞`로 되돌린다. 테스트는 관측 직전에 부른다(`:255`).
+- `:632-640`: 폴링 타이머가 `PresencePollActiveSeconds = 0.5f`(`:355`)에 닿을 때만 `EvaluateAdaptiveTier`가 돈다.
+- `:664` `characterStill = characterIdle && _idleDwellSeconds >= StillDwellSeconds`, `StillDwellSeconds = 1.6f`(`:395`)
+- ⇒ 평가 시각 0.5 / 1.0 / 1.5 / 2.0초 중 dwell ≥ 1.6인 첫 평가 = **2.0초**다.
+  - 하강 제동 `TierDescendCooldownSeconds = 1f`(`:435`, `:701`)는 걸리지 않는다. 첫 적용(0.5초, 로그 「등급 Active -> Active」)에서 1.5초 뒤이기 때문이다.
+- 프레임 수와 무관하다(4.80초에 62k~67k 프레임). **CLAUDE.md의 프레임 예산 금지 규칙 위반은 이 테스트에 없다.** `Assert.Greater(frames, 30)`(`:330`)은 비공허성 하한일 뿐이다.
+
+**(나) 코스튬 계기는 「층이 돌았다」가 아니라 「스텝이 바뀌어 썼다」를 센다.**
+- `StickmanBlackboard.cs:2735` `if (CostumePoseWroteThisFrame) CostumePoseWriteCount++;` — 값은 `ApplyCostumeFocusStepPose`의 반환값이다.
+- `StickmanPoseAnimator.cs:3224` `if (HoldsCostumeStepAlready(settings, step, offsetY)) return false;` — 리그가 이미 그 키포즈를 들고 있으면 쓰지 않는다(PC-4).
+- 프로덕션 문서가 둘을 이미 갈랐다.
+  - `StickmanBlackboard.cs:2648-2651` 「돌았다」와 「썼다」는 다르다.
+  - `:2668-2671` 「스텝 사이 프레임의 쓰기가 0」이 절감의 증거다.
+- ⇒ 테스트 메시지(`:360-362`)의 「쓰기 0 = 코스튬이 안 돌았다」는 **프로덕션 계약과 어긋난 추론**이다.
+
+**(다) 몰입기 첫 소구간에는 설계상 3.2초 무쓰기 구간이 있다.** 전부 프로덕션 상수와 에셋에서 유도했다.
+- 세션: `CostumeFocusRig.cs:70` `SessionMinutes = 1f` → 60초
+  - `FocusSessionPhase.cs:75-78` 가장자리 = min(clamp(0.20×60, 60, 300), 0.40×60) = **24초**
+  - `:83-84` 몰입기 = 60 − 48 = **12초**. 로그 「몰입기 길이 12.00초」, 「Adapt → Immersion (경과 24초…)」와 일치한다.
+- 리듬(`Core/CostumeKeyposeTableSO.cs`)
+  - 소구간 = 12/3 = 4초(`:252-258`)
+  - 주기 = clamp(12/3/3 = 1.33, 4, 8) = **4초**(`:268-273`). 상한 설정은 `costumeFocusDutyCycleMaxSeconds: 8`(`Data/DefaultStickConfig.asset:216`)
+- 표: `Resources/Items/CostumeKeyposeTable_office.asset:15` `stepsPerSecond: 3`, 키포즈 3개, `:38` `stageKeyposeStart: []` → 창은 0번부터 3개(`StageWindow` `:182-194`)
+- 소구간별 작업 구간 W(`:282-294`, 루프 = 키 3개 ÷ 스텝레이트)
+
+  | 소구간 | 스텝/초 | 루프 | 듀티 | 루프 수 floor(듀티×4÷루프 + 0.5) | W |
+  |---|---|---|---|---|---|
+  | 0 진입 | 3 | 1.0초 | 1/3 | floor(1.833) = 1 | 1.0초 |
+  | 1 절정 | 5 | 0.6초 | 1/2 | floor(3.833) = 3 | 1.8초 |
+  | 2 이완 | 3 | 1.0초 | 1/6 | floor(1.167) = 1 | 1.0초 |
+
+- `StickmanBlackboard.cs:2717-2722`: `phase = Repeat(몰입 경과, 주기)`, `working = phase < W`, 정지 구간의 스텝은 0이다.
+- ⇒ 몰입 경과 기준 **쓰기 시각**(스텝이 바뀌는 순간만)
+  - 0(첫 적용) · 0.333 · 0.667 · 1.0
+  - 4.2 · 4.4 · 4.6 · 4.8 · 5.0 · 5.2 · 5.4 · 5.6 · 5.8 (9회). 4.0초는 정지 스텝 0 → 작업 스텝 0이라 쓰지 않는다.
+  - 8.333 · 8.667 · 9.0
+- 무쓰기 구간: **1.0→4.2 = 3.2초**, 5.8→8.333 = 2.53초, 9.0→12.0 = 3.0초. **최장 3.2초 > Still 도달 2.0초.**
+
+### 11-4. 가설 — 관측 시작 위상 (추정, 러너 미확인)
+관측 시작 시점의 몰입 경과를 τ0라 하자. 위 쓰기 시각표에서 관측된 두 모양이 **정확히** 나온다.
+
+| τ0 구간 | Still까지 (τ0, τ0+2.0] 쓰기 | 창 (τ0, τ0+4.8] 쓰기 | 누적 계기 | 해당 관측 |
+|---|---|---|---|---|
+| [0, 0.2) | 0.333·0.667·1.0 = **3** | 3 + 4.2·4.4·4.6·4.8 = **7** | 1 → 8 | 통과 6회 전부 (★ 2026-09-15 verify-change 정정: [0.2, 0.333)은 5.0초 쓰기가 창에 들어와 `3/8` = `1→9` — 미관측) |
+| [1.0, 2.2) | **0** | 4.2~5.8 = **9** | 1 → 10 | 빨강 2회 전부 |
+
+- 두 구간 밖의 τ0는 다른 모양을 낸다. 예를 들어 [0.333, 1.0)이면 Still까지 1~2회다. 8회 중 0회 관측됐다.
+- **H1 — 경계 보행: τ0가 1.0초 이상 밀리는 이유.**
+  - 적응기 24초에는 배회가 돈다. 몰입기 배회 확률 0(`costumeImmersionWalkChance: 0`, `DefaultStickConfig.asset:217`)은 **다음 추첨부터** 적용된다(`AutoWanderController.cs:471-478`, 테스트 자신의 상수 문서 `:87-89`).
+  - 경계 프레임에 걷고 있었으면 `WaitForGroundedIdle`(`:244` → `CostumeFocusRig.cs:352-360`)이 그 에피소드 끝까지 기다린다. 그동안은 Idle이 아니라서 코스튬 층이 돌지 않는다(`StickmanBlackboard.cs:2524` 게이트, §3-3).
+  - Idle에 드는 첫 프레임에 스텝 0을 한 번 쓴다 → `poseWritesAtStart = 1`로 **통과 회차와 같은 값**이 된다. 시작값만으로 두 경우를 가를 수 없는 이유다.
+  - 보행 에피소드 1.5~4초(`DefaultStickConfig.asset:122-123`) 중 남은 시간이 1.0~2.2초면 빨강이 된다.
+- 기존 로그로 가를 수 있는가 — **가를 수 없다(자백).**
+  - `[눈추적]` 표본이 경계 프레임을 찍지 않는다.
+  - 「마지막 `[눈추적]` 몸통 x → 프롭 앵커 x」 이동은 빨강 2회(iso-1 6.71→3.22, P-full 0.82→8.77)에도, 통과 2회(iso-2 0.00→2.70, vc-e12 0.00→5.25)에도 있었다.
+  - 프롭은 진입 프레임의 몸통 x에 선다(iso-3 1.05→1.05, onbstore −6.71→−6.71). 그래서 「경계 전에 걸었다」까지만 말할 수 있고 「경계에서 걷고 있었다」는 말할 수 없다.
+- 기각한 가설
+  - **H3 프롭 늦은 배치**: `StartAndReachImmersion`은 `PropPlaced`를 최대 2초 기다린다(`CostumeFocusRig.cs:341`). 늦게 서면 그동안 층이 꺼진다. 그러나 빨강 2회 모두 `[코스튬프롭] 소환 — … 폴백 1단`이라 진입 프레임에 섰다 → **기각(로그)**.
+  - **H2 제스처 가림**: `StickmanBlackboard.cs:2348` `if (!gesturing && TickCostumeKeypose(pose))`라서 제스처 동안에는 층이 멈춘다. 그런데 그동안 `ApplyFocusWatchStancePose`가 마디를 옮기므로, 제스처가 끝나는 프레임에 `HoldsCostumeStepAlready`가 거짓이 되어 **쓰기가 한 번 더 난다.** 「Still까지 정확히 0」을 만들려면 제스처가 2초 창 전체를 덮어야 한다. 제스처 길이는 약 1초대다(두리번 0.9초 §4-2, 끄덕임 1.20초 `:2343`) → **약한 기각(추정)**.
+- **E-4 무관**
+  - verify-change가 E-4 코드 경로 미실행을 로그로 확인했다.
+  - 다른 자로도 같은 결론이다: `git show --name-only e6b14c2`의 14개 파일에 이 테스트·`CostumeFocusRig`·`TestClock`·`StickmanBlackboard`·`StickmanPoseAnimator`·`FramePacing`·`CostumeKeyposeTableSO`·`FocusSessionPhase`·`AutoWanderController`·office 표·`DefaultStickConfig`가 0건이다.
+- 이전 전량 4회가 전부 통과였던 이유(추정): 경계 보행 발생률을 모른다(러너가 잰다). 그리고 이 테스트는 PlayMode 전량에서만 돌았다. 09-08 이후 전량 공백은 TEAM.md 「상시 백테스팅 공백」 참고.
+
+### 11-5. 판정
+- **틀린 쪽: 테스트(추정 — 러너 판별 전).** 정지 구간에 쓰기가 0인 것은 절감 설계 그 자체다(`StickmanBlackboard.cs:2668-2671`).
+- **기대값의 근거 상수: 없다.** `> poseWritesAtStart`는 숫자 없는 「≥ 1회」 단언이다. 이것이 늘 성립하려면 `Still 도달(4 × 0.5 = 2.0초) ≥ 최장 무쓰기(3.2초)`여야 한다. 코드상 성립하지 않는다.
+- **프레임·틱 경계 의존인가: 프레임 수는 아니다(11-3 가). 벽시계 위상 의존이다.**
+  - ① 폴링 위상: 관측 시작에 고정, 결정적
+  - ② 코스튬 듀티 위상: 몰입 경과에 고정, 결정적
+  - ③ 둘 사이 어긋남 τ0: 경계 보행에 따라 흔들린다. **①·②는 결정적이고 ③만 흔들린다.**
+- 증거 가치: 통과 회차의 「3회」도 사실은 **τ0 ≈ 0 위상의 산물**이다. 「Still 순간에 층이 돌고 있었다」의 직접 증거가 아니다. 반대로 빨강 회차에서도 층은 돌았다(창 전체 9회).
+
+### 11-6. 수정 방향 후보 (테스트 쪽, 채택은 리더)
+**A (권고) — 계기를 「썼다」에서 「돌았다」로 바꾼다.**
+- Still 첫 프레임에서 `Assert.GreaterOrEqual(bb.CostumeStepIndex, 0, …)`을 단언한다.
+  - `CostumeStepIndex`는 매 프레임 `StickmanBlackboard.cs:2113`에서 −1로 내려가고 `:2727`에서만 선다(public 게터 `:2656`).
+  - ⇒ 「Still에 도달한 **그 프레임**에 코스튬 층이 돌았다」. 테스트 주석 `:358` 「Still에 도달한 그 순간에도 LFVS는 돌고 있었다」가 원래 하려던 말이다.
+- 쓰기 양성 단언은 **창 전체**로 옮긴다: 관측 끝에서 `Assert.Greater(bb.CostumePoseWriteCount, poseWritesAtStart)`.
+  - 창 4.8초(= 3 × dwell)는 최장 무쓰기 3.2초보다 길다.
+  - 이 여유를 전제로 검산하려고 최장 무쓰기를 `CostumeFocusRhythm` 공개 함수로 계산하면, TEAM.md 「기대값을 프로덕션 함수로 만들지 마라」에 닿는다. 그래서 그 계산은 **예산 충분성 전제에만** 쓰고 판정 기대값에는 쓰지 않는다. 판정은 실측 계기 두 개(스텝 인덱스 · 누적 쓰기)만으로 한다.
+- 메시지에 `τ0 = SessionDurationSeconds − RemainingSeconds − EdgeSeconds`, `CostumeSubPhase`, `CostumeStepIndex`, 관측 시작 프레임 상태를 싣는다. 다음 빨강에서 로그만으로 위상을 읽기 위해서다.
+- 메서드 이름은 유지한다(`docs/verify/renames.tsv` 기준선 연속).
+
+**B — 관측 시작 위상을 고정한다.** `WaitForGroundedIdle` 뒤에 τ0가 작업 구간 시작에 올 때까지 기다린 다음 관측한다. 결정적이지만 테스트가 **유리한 위상을 고르는** 형태다. 실사용자의 위상은 임의라서 A보다 약하다. 병행한다면 보조로만 쓴다.
+
+**C (기각) — 프로덕션을 바꾼다.** 정지 구간에도 주기적으로 쓰기, 또는 dwell 단축. 절감 설계를 테스트에 맞춰 깨는 것이다.
+
+**D (기각) — 예산 연장이나 재시도.** 이봉의 원인을 가리고 판정 불가처럼 숨긴다. §0 공통 규칙과 같은 병이다.
+
+### 11-7. 변이
+| 변이 | 주입(진단 사본·격리 미러) | 수정본 A | 옛 테스트 |
+|---|---|---|---|
+| S1 | `TickCostumeKeypose` 첫 줄에 `return false`(층 사망) | 빨강(스텝 인덱스 −1, 창 쓰기 0) | 빨강 |
+| S2 | 절감 등급이 Still이면 코스튬 층이 `return false` — 「절감과 충돌」의 실물 | **빨강**(Still 프레임 스텝 인덱스 −1) | τ0 ≈ 0 회차에서 **초록**(Still 전 3회를 이미 셌다) |
+| S3 (위상 강제) | Idle 유지 상태에서 관측 시작을 τ0 ∈ [1.05, 2.2)초로 미룬다(τ0 ≥ 2.2이면 옛 테스트도 통과 — 2026-09-15 verify-change 정정) | 초록 | **결정적 빨강**(`n → n`) — H1 인과의 한 축 |
+| S4 (대조) | 관측 시작을 τ0 < 0.3초로 강제한다 | 초록 | 초록 |
+
+- S2가 수정본 A의 핵심 이득이다. 옛 단언은 「Still 전에 한 번이라도 썼다」만 보므로, 절감 등급이 층을 끄는 회귀를 τ0 ≈ 0 회차에서 놓친다.
+
+### 11-8. 러너 판별 설계 (러너 라운드 — 리더 배정 필요)
+1. **진단 사본**(커밋 안 함)을 **10회** 돌린다. 기록 항목:
+   - 관측 시작의 τ0
+   - 몰입기 진입 프레임의 `CurrentStateId`(구간 전이를 매 프레임 폴링해 그 프레임 값)
+   - `WaitForGroundedIdle` 소요 벽시계
+   - 계기가 오른 모든 프레임의 몰입 경과
+   - 쓰기 줄 수가 계기 증가량과 같은지 확인한다. 다르면 그 회차는 무효다.
+2. 가설별 예측
+   - **H1**: 빨강 회차는 전부 진입 프레임 상태 ≠ Idle이고 τ0 ∈ [1.0, 2.2)다. 통과 회차는 τ0 < 0.2이다([0.2, 0.333)은 `1→9` — 미관측, 2026-09-15 정정). 쓰기 시각이 11-3 (다) 표와 ±1프레임 안에서 일치한다.
+   - **H-기타**: 빨강 회차가 τ0 < 1.0이거나 진입 프레임이 Idle이다 → H1 기각 → **디버거로 이동**.
+3. **개입**: S3에서 옛 테스트 10/10 빨강, S4에서 10/10 초록이 나오면 위상 인과가 확정된다.
+4. **수정본 A**: 10회 초록, S1·S2 각각 빨강. xml 판정은 TEAM.md 픽스처 끝 실패 규칙 1(`docs/verify/nunit_verdict.py`)로 한다.

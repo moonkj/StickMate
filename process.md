@@ -1136,3 +1136,16 @@ coder-ui 러너(macOS 타깃): EditMode 3158 실패 0, PlayMode 12픽스처 95/9
 
 ### 다음
 verify-change → 커밋(E-4 + 매뉴얼·체크표·UX_FLOW/WIDGETS) → 문서 묶음(UX 판정·내러티브·systems·platform·marketing) → game-architect 판정 따라 자동 표면 축 분리(coder-ui + test-engineer) → dev-platform 5-d → test-engineer red7 → 전역 격리 정합 → E-3(좁은 폭).
+
+## 2026-09-15 새벽 (계속 5-2) — 커밋 `e6b14c2`(E-4) · `0052d6e`(문서 묶음) · E-4 페르소나 검증
+
+### 흐름
+- **`e6b14c2` E-4**: verify-change 조건부(PlayMode 새 빨강 2) → 격리 ×3로 둘 다 간헐·E-4 코드 경로 미실행 로그 확인 → 커밋. 새 빨강 분류 관례(격리 ×3 + 코드 경로 로그) 확립. 리더 커밋 메시지 오류 1(L5 「미뤘다가 해제 뒤 잡힘」은 드래그에 대해 틀림 — 누름은 버려짐) → `0052d6e`에 정정 절.
+- **`0052d6e` 문서 묶음**: N-20(자동 표면 임대 누수, E-1 든 프리뷰 필수)·N-21(우클릭 사전 안내, 프리뷰 권고 동반) 출시 게이트, Windows 전경 판정 H1 사실, 로그 문안, 비침해 주장 판정, 번역 판정 스크립트 거짓 초록 3건(기준과 대상이 같이 낡은 스냅숏) + TEAM.md 규칙. verify-change 조건부(스냅숏이 E-4 소스 기준 → E-4 먼저 커밋으로 충족) + 리더 정정 17건.
+- **E-4 페르소나(이번에는 커밋 직후)**: 체감 개선 판정. 새 적발 — 숨긴 채 열린 부채꼴이 같은 자리 우클릭으로 안 닫힘, 가출 은신 자리 좌우 비대칭(→ ux-designer 게이트 재배열), **보존 동결 중 클릭 누수 가설**(OS 관통은 물리 레이캐스트, 우리 판정은 콜라이더 기하 — 다른 질의라 게임 위 부채꼴 가능, Major 후보 → debugger 과학적 토론), 게임 중 클릭 로그량(→ coder 소규모).
+
+### 상태
+HEAD `0052d6e`. EditMode 3158 초록 · PlayMode 802(알려진 4 + 간헐 2 + 판정 불가 2)(verify-change, macOS). 진행 중: dev-platform 5-d 러너, debugger 동결 가설, ux-designer 게이트 재배열, design-narrative 문구 재판정 적용, verify-change 문서 묶음 ③(매뉴얼·red7 명세·체크표). Windows 실기 0회(사용자 E-3 대기).
+
+### 다음
+문서 묶음 ③ 커밋 → 5-d verify-change → 커밋(+ 번역 스냅숏 재생성 조건) → coder-ui N-20 → N-21 + 게이트 재배열 → test-engineer red7(#8 수정안 A) → 전역 격리 정합 → E-3(좁은 폭) → coder 소규모(로그 목록 밖·보관함 한 줄·게임 중 로그 요약).
