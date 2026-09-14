@@ -381,7 +381,10 @@ namespace StickMate.Tests.EditMode
         /// 형식 별칭(<c>using FS = System.IO.FileStream;</c> 뒤 <c>new FS(…)</c>, <c>using F = System.IO.File;</c> 뒤 <c>F.Copy(…)</c>) ·
         /// <c>using static System.IO.File;</c> 뒤의 맨 <c>Copy(…)</c>·<c>Delete(…)</c> · 리플렉션 생성(<c>Activator.CreateInstance(typeof(FileStream), …)</c>) ·
         /// 다른 API가 여는 핸들(<c>FileInfo.Create()</c>·<c>FileInfo.CopyTo(…)</c>·<c>FileInfo.Replace(…)</c>, P/Invoke <c>CreateFile</c>, <c>SafeFileHandle</c>) ·
-        /// 열거형 캐스트(<c>(FileShare)0</c>·<c>(FileMode)6</c> — N4의 <c>(FileAccess)1</c>과 같은 부류, 여는 곳이 <c>FileStream</c>이면 생성 수 계수가 대신 막는다).
+        /// 열거형 캐스트(<c>(FileShare)0</c>·<c>(FileMode)6</c> — N4의 <c>(FileAccess)1</c>과 같은 부류, 여는 곳이 <c>FileStream</c>이면 생성 수 계수가 대신 막는다) ·
+        /// ★ 5-d(verify-change 2단계 추가) 셸 명령 실행(<c>Process.Start("cmd", "/c del …")</c>·<c>Process.Start("mv", …)</c> — 지우거나 옮기는 일이 다른 프로세스에서 일어나
+        /// 이 파일의 글자로는 보이지 않는다) · <c>Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(…)</c>·<c>MoveFile(…)</c>(금지 목록의 글자는 <c>File.Delete(</c>·<c>File.Move(</c>라
+        /// <c>FileSystem.DeleteFile(</c>을 잡지 않는다).
         /// <c>.CopyTo(</c>·<c>.Replace(</c>·<c>.Create(</c>는 <c>Stream.CopyTo</c>(새 핸들을 열지 않는다)·<c>string.Replace</c> 등과 글자로 구별되지 않아 넣지 않았다.
         /// <b>타깃 형식 <c>new(</c>는 문맥과 무관하게 0건을 요구한다</b> — 만들어지는 형식이 앞서 선언한 변수·인자·반환 형식에서 오면 FileStream 문맥인지 글자로 가를 수 없다.
         /// 대가: FileStream이 아닌 타깃 형식 생성이나 제네릭 제약 <c>where T : new()</c>도 빨개진다(조용한 초록보다 시끄러운 빨강 쪽 — 명시 형식으로 고쳐 쓰면 된다).</para>

@@ -29,6 +29,10 @@ namespace StickMate.Tests.EditMode
     ///
     /// <para>★ 5-c(리더 판정): 같은 프로세스에서 정상 종료 표지가 실제로 쓰인 뒤에는 진행 저장 처리기를 부르지 않는다(C_세션_종료_뒤_quitting이_…_부르지_않는다, 재진입 표 5열).
     /// 표지 쓰기가 실패했으면 다음 순서가 저장을 다시 부른다(S1_정상_종료_표지를_못_쓴_순서_뒤에는_…).</para>
+    ///
+    /// <para>★ 5-d(verify-change 2단계 생존 변이 N3·N5b·N6 + N4·N5 보강): 원복 조회 실패에도 원복을 쓴다(N3_…) · 표지 쓰기 실패·저장 도중 끼어듦에도 종료를 요청한다(N5b_…·N5_…) ·
+    /// 세션 종료 → 종료 요청 → quitting 실제 경로에서 표지 실패 뒤 저장을 다시 부른다(N4_…) · 중첩 뒤 바깥이 흔적을 다시 쓰지 않는다(재진입 표 흔적 바이트 불변 + N6_대조_…) ·
+    /// 흔적 리디렉션 해제는 스위트 바닥으로 돌아간다(흔적_리디렉션_해제는_…).</para>
     /// </summary>
     public sealed class SessionEndShutdownTests
     {
@@ -45,11 +49,24 @@ namespace StickMate.Tests.EditMode
             /// <summary>★ 5-b — 다음 쓰기 호출 <b>안에서</b>, 그 쓰기가 반영되기 <b>전에</b> 한 번 불린다. 부르기 전에 비운다.</summary>
             public Action DuringNextWrite;
 
+            /// <summary>
+            /// ★ 5-d — 참이면 조회가 실패를 돌려준다(셸이 먼저 내려가 상태를 못 읽는 경우 흉내). 실패해도 값 칸에는 <b>원래 값처럼 보이는 값(참)</b>을 싣는다 —
+            /// 실패를 무시하고 그 값을 믿는 구현이면 "이미 원래 값"으로 읽고 원복을 건너뛰어 빨개진다. 조회 호출 수는 <see cref="ReadCount"/>.
+            /// </summary>
+            public bool ReadFails;
+            public int ReadCount;
+
             public bool TryReadAutoHide(out bool autoHideEnabled)
             {
+                ReadCount++;
                 Action hook = DuringNextRead;
                 DuringNextRead = null;
                 hook?.Invoke();
+                if (ReadFails)
+                {
+                    autoHideEnabled = true;
+                    return false;
+                }
                 autoHideEnabled = AutoHide;
                 return true;
             }
@@ -580,7 +597,10 @@ namespace StickMate.Tests.EditMode
         public void R7_재실행_가드는_표지_두_단계와_진행_저장에만_걸린다()
         {
             var skippedOnceMarked = new HashSet<AppShutdownStep> { AppShutdownStep.MarkExitStarted, AppShutdownStep.FlushProgressSave, AppShutdownStep.MarkCleanExit };
-            foreach (AppShutdownStep step in (AppShutdownStep[])Enum.GetValues(typeof(AppShutdownStep)))
+            var steps = (AppShutdownStep[])Enum.GetValues(typeof(AppShutdownStep));
+            Assert.AreEqual(AppShutdownSequence.Order.Count, steps.Length,
+                "전제: 규칙 표가 순서의 단계 전부를 돈다 — 목록이 비면 아래 반복문 안 단언이 0회 돌고 초록이다(5-d, falsepass B).");
+            foreach (AppShutdownStep step in steps)
             {
                 Assert.IsTrue(AppShutdownSequence.ShouldRunStep(step, cleanExitAlreadyMarkedThisRun: false, progressSaveInProgress: false),
                     $"{step}: 정상 종료 표지를 아직 안 썼고 저장도 쉬고 있으면 모든 단계가 돌아야 한다.");
@@ -860,6 +880,169 @@ namespace StickMate.Tests.EditMode
             Assert.AreEqual(markerAfterFirst, MarkerText(ours), "재시도하는 두 번째 순서가 표지를 다시 썼다(R7).");
         }
 
+        // ------------------------------------------------------------------ 5-d — verify-change 2단계 생존 변이 N3·N5b·N6 · N4·N5 의도 경로 · 흔적 리디렉션
+
+        /// <summary>
+        /// ★ 5-d(verify-change 2단계 생존 변이 N3) — 종료 원복의 <b>조회가 실패</b>해도(셸이 먼저 내려가 상태를 못 읽음) 이번 실행이 바꿨으면 원래 값을 <b>쓰고</b> 흔적을 닫는다.
+        /// <c>ReservedBarRevealPolicy.ResolveQuit</c>는 「조회 성공 + 이미 원래 값」일 때만 쓰기를 건너뛴다. 조회 실패를 「이미 원복됨」으로 읽고 반환하면
+        /// <c>WM_ENDSESSION</c>이 반환된 뒤 자동 숨김이 풀린 채 끊긴다(5-b 우선순위 1). 가짜 제어기의 실패 조회는 값 칸에 원래 값처럼 보이는 값을 싣는다 —
+        /// 실패를 무시하고 그 값을 믿는 구현도 여기서 빨개진다.
+        /// </summary>
+        [Test]
+        public void N3_원복_조회가_실패해도_세션_종료_반환_전에_원래_값을_쓰고_흔적을_닫는다()
+        {
+            const bool userOriginalAutoHide = true;
+            var control = new FakeControl { AutoHide = userOriginalAutoHide };
+            ReservedBarRevealDirector.RunStartup(control);
+            Assert.IsTrue(ReservedBarRevealDirector.ChangedThisSession, "전제: 기동이 자동 숨김을 해제했다.");
+            Assert.AreNotEqual(userOriginalAutoHide, control.AutoHide, "전제: 지금은 사용자의 원래 값이 아니다(막대가 보인다).");
+            int writesBefore = control.WriteCount, readsBefore = control.ReadCount;
+            control.ReadFails = true;
+            int quits = 0;
+            AppShutdownSequence.QuitRequesterOverrideForTesting = () => quits++;
+
+            Assert.IsTrue(AppShutdownSequence.TryHandleSessionEndMessage(SessionEndPolicy.WmEndSession, 1, SessionEndPolicy.EndSessionLogoff), "전제: 세션 종료로 처리됐다.");
+            bool autoHideAtReturn = control.AutoHide;   // ★ 반환 순간 — 이 뒤로는 언제든 끊길 수 있다.
+            ReservedBarLedgerState ledgerAtReturn = ReservedBarRestoreLedger.Read(control.PlatformTag, out _);
+
+            Assert.Greater(control.ReadCount, readsBefore, "전제: 종료 원복이 조회를 실제로 시도했고, 그 조회는 실패로 돌아왔다.");
+            Assert.AreEqual(writesBefore + 1, control.WriteCount, "조회가 실패했는데 원복 쓰기를 시도하지 않았다 — 조회 실패를 '이미 원복됨'으로 읽었다(N3).");
+            Assert.AreEqual(userOriginalAutoHide, autoHideAtReturn, "WM_ENDSESSION 처리가 반환된 순간 작업표시줄이 사용자의 원래 값이 아니다(우선순위 1, N3).");
+            Assert.AreEqual(ReservedBarLedgerState.Closed, ledgerAtReturn, "원복 쓰기가 성공했는데 흔적이 닫히지 않았다.");
+            Assert.IsFalse(ReservedBarRevealDirector.ChangedThisSession, "원복했는데 '이번 실행이 바꿨음'이 남았다.");
+            Assert.AreEqual(ReservedBarReason.RestoreOnQuit, ReservedBarRevealDirector.LastShutdownReason, "조회 실패 경로의 판정은 '종료 원복'이어야 한다.");
+            Assert.AreEqual(1, quits, "전제: 세션 종료 처리가 앱 종료를 한 번 요청했다.");
+        }
+
+        /// <summary>
+        /// ★ 5-d(verify-change 2단계 생존 변이 N5b · N5 의도 경로) — 표지가 켜져 있고 정상 종료 표지 쓰기가 <b>실제로 실패</b>해도 세션 종료 처리는 앱 종료를 요청한다.
+        /// 종료 요청은 「살아남은 채 원복된 작업표시줄」을 없애는 장치다(X1) — 표지 성공 여부와 무관해야 한다. 실패는 <see cref="BlockMarkerWrites"/>로 만든다(임시 폴더 안).
+        /// </summary>
+        [Test]
+        public void N5b_정상_종료_표지_쓰기가_실제로_실패해도_세션_종료_처리는_앱_종료를_한_번_요청한다()
+        {
+            string ours = PrepareMarkerFolders(out string prev);
+            SessionExitMarker.RunStartup(ours, 5601, prev, _ => false);
+            BlockMarkerWrites(ours);
+            var control = new FakeControl { AutoHide = true };
+            ReservedBarRevealDirector.RunStartup(control);
+            int quits = 0;
+            AppShutdownSequence.QuitRequesterOverrideForTesting = () => quits++;
+
+            AppShutdownSequence.HandleSessionEnding(SessionEndPolicy.EndSessionLogoff);
+
+            Assert.IsTrue(SessionExitMarker.IsStarted, "전제: 표지가 켜져 있다.");
+            Assert.IsFalse(SessionExitMarker.CleanExitWrittenThisRun, "전제: 정상 종료 표지 쓰기가 실제로 실패했다.");
+            Assert.IsFalse(AppShutdownSequence.ProgressSaveInProgress, "전제: 저장 중이 아니다(걸쇠에 걸린 경로가 아니다).");
+            Assert.IsTrue(control.AutoHide, "전제: 원복은 끝났다.");
+            Assert.AreEqual(1, quits, "표지 쓰기가 실패했다고 앱 종료 요청을 건너뛰었다 — 살아남으면 원복된 작업표시줄을 든 채 계속 돈다(X1, N5b).");
+        }
+
+        /// <summary>
+        /// ★ 5-d(N5 의도 경로) — 진행 저장이 도는 중에 끼어든 세션 종료(걸쇠에 걸려 저장·정상 종료 표지를 건너뛴 순서)도 앱 종료를 요청한다. 5-c까지는 재진입 표의
+        /// <c>InsideSave</c> 한 행이 이 계약을 우연히 잡았다 — 그 행의 목적은 저장 재진입이다. 끼어든 순서 안의 관측은 기록만 하고 끝난 뒤 단언한다(처리기 호출부가 예외를 삼킨다).
+        /// </summary>
+        [Test]
+        public void N5_저장_도중_끼어든_세션_종료도_정상_종료_표지_없이_앱_종료를_요청한다()
+        {
+            string ours = PrepareMarkerFolders(out string prev);
+            SessionExitMarker.RunStartup(ours, 5701, prev, _ => false);
+            int quits = 0;
+            bool? writtenAtQuit = null, savingAtQuit = null;
+            AppShutdownSequence.QuitRequesterOverrideForTesting = () =>
+            {
+                quits++;
+                writtenAtQuit = SessionExitMarker.CleanExitWrittenThisRun;
+                savingAtQuit = AppShutdownSequence.ProgressSaveInProgress;
+            };
+            bool nested = false;
+            Assert.IsTrue(AppShutdownSequence.RegisterSaveHandler(new AppShutdownSaveHandler(t =>
+            {
+                if (!nested)
+                {
+                    nested = true;
+                    AppShutdownSequence.HandleSessionEnding(SessionEndPolicy.EndSessionLogoff);
+                }
+                return true;
+            })));
+
+            AppShutdownSequence.Run(AppShutdownTrigger.ApplicationQuitting);
+
+            Assert.IsTrue(nested, "전제: 저장 처리기 안에서 세션 종료가 끼어들었다.");
+            Assert.AreEqual(false, writtenAtQuit, "전제: 끼어든 순서는 정상 종료 표지를 쓰지 않은 채 종료를 요청하는 자리였다.");
+            Assert.AreEqual(true, savingAtQuit, "전제: 종료 요청 순간 바깥 저장이 아직 돌고 있었다.");
+            Assert.AreEqual(1, quits, "저장 도중 끼어든 세션 종료가 앱 종료를 요청하지 않았다(N5).");
+            AssertMarker(MarkerText(ours), SessionExitMarkerPolicy.CleanExitState, 5701, AppShutdownTrigger.ApplicationQuitting, "바깥 순서가 저장을 마친 뒤 표지를 썼다.");
+        }
+
+        /// <summary>
+        /// ★ 5-d(N4 의도 경로) — 실제 입구 경로(세션 종료 처리 → 앱 종료 요청 → quitting)에서 세션 종료 순서의 정상 종료 표지 쓰기가 실패하면, 뒤따르는 quitting 순서가
+        /// 진행 저장을 <b>다시 부른다</b>. 5-c의 <see cref="S1_정상_종료_표지를_못_쓴_순서_뒤에는_두_번째_순서가_진행_저장을_다시_부른다"/>는 <c>Run</c>을 직접 두 번 불렀다 —
+        /// 여기서는 종료 요청이 이어 부르는 경로로 같은 계약을 본다. 「④를 시도했으면 ③을 건너뜀」(N4)은 여기서 빨개진다.
+        /// </summary>
+        [Test]
+        public void N4_세션_종료의_정상_종료_표지_쓰기가_실패하면_종료_요청으로_이어지는_quitting이_진행_저장을_다시_부른다()
+        {
+            string ours = PrepareMarkerFolders(out string prev);
+            SessionExitMarker.RunStartup(ours, 5801, prev, _ => false);
+            BlockMarkerWrites(ours);
+            var seen = new List<AppShutdownTrigger>();
+            Assert.IsTrue(AppShutdownSequence.RegisterSaveHandler(new AppShutdownSaveHandler(t => { seen.Add(t); return true; })));
+            int quits = 0;
+            AppShutdownSequence.QuitRequesterOverrideForTesting = () =>
+            {
+                quits++;
+                AppShutdownSequence.Run(AppShutdownTrigger.ApplicationQuitting);   // Unity가 종료 요청 뒤 quitting에서 부르는 것과 같은 호출.
+            };
+
+            AppShutdownSequence.HandleSessionEnding(SessionEndPolicy.EndSessionLogoff);
+
+            Assert.AreEqual(1, quits, "전제: 세션 종료 처리가 앱 종료를 요청했다(→ quitting 순서).");
+            Assert.IsFalse(SessionExitMarker.CleanExitWrittenThisRun, "전제: 두 순서 모두 정상 종료 표지를 못 썼다.");
+            CollectionAssert.AreEqual(new[] { AppShutdownTrigger.SessionEnding, AppShutdownTrigger.ApplicationQuitting }, seen,
+                "세션 종료의 표지 쓰기가 실패했는데 뒤따르는 quitting 순서가 진행 저장을 다시 부르지 않았다 — 표지가 거짓말하지 않았는데 저장만 잃는다(N4).");
+        }
+
+        /// <summary>
+        /// ★ 5-d 교정(N6 관측) — 흔적을 <b>같은 값으로</b> 다시 쓰기만 해도 파일 바이트가 달라진다(기록 시각 칸). 이게 거짓이면 재진입 표의
+        /// 「끼어든 순서가 반환된 뒤 흔적 바이트 불변」 단언은 재기록을 못 본다.
+        /// </summary>
+        [Test]
+        public void N6_대조_흔적을_같은_값으로_다시_쓰면_바이트가_달라진다()
+        {
+            string temp = Path.GetFullPath(Application.temporaryCachePath).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            StringAssert.StartsWith(temp, Path.GetFullPath(ReservedBarRestoreLedger.FilePath), "전제: 이 테스트의 흔적은 임시 폴더다(개발자 실제 흔적이 아니다).");
+            Assert.IsTrue(ReservedBarRestoreLedger.Close(true, "TestOS"), "전제: 첫 쓰기 성공.");
+            byte[] first = File.ReadAllBytes(ReservedBarRestoreLedger.FilePath);
+            Assert.IsTrue(ReservedBarRestoreLedger.Close(true, "TestOS"), "전제: 두 번째 쓰기 성공.");
+            CollectionAssert.AreNotEqual(first, File.ReadAllBytes(ReservedBarRestoreLedger.FilePath),
+                "같은 값 재기록이 바이트를 바꾸지 않는다 — 재진입 표의 흔적 바이트 불변 단언은 재기록을 구별하지 못한다(N6 관측 교정 실패).");
+        }
+
+        /// <summary>
+        /// ★ 5-d(verify-change 2단계 부수) — 픽스처가 흔적 리디렉션을 해제해도(<c>ResetForTesting</c>) <b>스위트 바닥</b>(임시 폴더)으로 돌아가고,
+        /// 에디터의 실제 <c>persistentDataPath</c> 흔적으로 떨어지지 않는다. 5-c까지는 첫 픽스처 TearDown이 리디렉션을 null로 지웠다.
+        /// 이 테스트는 스위트 격리(<c>GlobalEditModeTestIsolation</c>)가 바닥을 깐 상태를 전제로 한다 — 필터로 이 테스트 하나만 돌려도 그 <c>[SetUpFixture]</c>는 돈다.
+        /// </summary>
+        [Test]
+        public void 흔적_리디렉션_해제는_스위트_바닥으로_돌아가고_실제_경로로_떨어지지_않는다()
+        {
+            string fixtureDir = Path.GetFullPath(Path.GetDirectoryName(ReservedBarRestoreLedger.FilePath));
+            Assert.IsTrue(ReservedBarRestoreLedger.IsRedirectedForTesting, "전제: SetUp이 이 픽스처 경로로 옮겼다.");
+
+            ReservedBarRestoreLedger.ResetForTesting();
+
+            string after = Path.GetFullPath(Path.GetDirectoryName(ReservedBarRestoreLedger.FilePath));
+            string temp = Path.GetFullPath(Application.temporaryCachePath).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            Assert.IsTrue(ReservedBarRestoreLedger.IsRedirectedForTesting,
+                "픽스처 해제 뒤 흔적 리디렉션이 꺼졌다 — 뒤따르는 테스트가 흔적 API를 스치면 에디터의 실제 흔적 파일을 연다.");
+            StringAssert.StartsWith(temp, after + Path.DirectorySeparatorChar, "해제 뒤 흔적 경로가 임시 캐시 밖이다.");
+            Assert.IsFalse((after + Path.DirectorySeparatorChar).StartsWith(
+                    Path.GetFullPath(Application.persistentDataPath).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar, StringComparison.Ordinal),
+                "해제 뒤 흔적 경로가 실제 persistentDataPath 아래다.");
+            Assert.AreNotEqual(fixtureDir, after, "대조: 해제가 픽스처 경로를 그대로 두었다 — 해제가 아무것도 하지 않았으면 위 단언들이 공허하다.");
+        }
+
         // ------------------------------------------------------------------ C — 진행 저장 합류 계약 (5차, coder 설계 채택안)
 
         private static bool SaveSucceeds(AppShutdownTrigger trigger) => true;
@@ -1005,7 +1188,8 @@ namespace StickMate.Tests.EditMode
         /// 순서가 저장한다 — 아직 표지가 없으니 표지가 거짓말하지 않는다).</item>
         /// <item>최종 표지의 <c>trigger=</c>는 그 줄을 실제로 쓴 순서의 것이다 — 기대값은 <b>표에 손으로 적었다</b>(프로덕션 규칙으로 만들지 않는다). 끼어든 순서가 먼저 썼으면
         /// 바깥은 그 바이트를 바꾸지 않고, 저장 도중 끼어든 순서는 쓰지 않는다(그 순간 끊겼다면 다음 실행은 <c>ExitStartedNotFinished</c>).</item>
-        /// <item>같은 값 시스템 쓰기는 원복 <b>쓰기</b> 안에서 끼어들 때만 두 번이다(표 4열). 원복 성공 로그는 한 줄, 경고는 0줄 — 바깥이 이미 닫힌 흔적을 다시 쓰거나 어긋난 로그를 남기지 않는다.</item>
+        /// <item>같은 값 시스템 쓰기는 원복 <b>쓰기</b> 안에서 끼어들 때만 두 번이다(표 4열). 원복 성공 로그는 한 줄, 경고는 0줄 — 바깥이 이미 닫힌 흔적을 다시 쓰거나 어긋난 로그를 남기지 않는다.
+        /// ★ 5-d(verify-change 2단계 생존 변이 N6): 로그만으로는 「가드를 흔적 닫기 뒤로 옮긴」 재기록을 못 봤다 — 끼어든 순서가 반환된 순간의 흔적 <b>바이트</b>가 끝까지 같아야 한다.</item>
         /// </list>
         /// <para>끼어든 호출 안의 관측은 <b>기록만 하고 단언은 모두 끝난 뒤에 한다</b> — 순서(<c>Run</c>)와 처리기 호출부가 예외를 삼키므로, 그 안에서 단언하면 실패가 사라진다.</para>
         /// </summary>
@@ -1048,6 +1232,7 @@ namespace StickMate.Tests.EditMode
             bool? autoHideAtSessionEndReturn = null;
             ReservedBarLedgerState? ledgerAtSessionEndReturn = null;
             string markerAtInnerReturn = null;
+            byte[] ledgerBytesAtInnerReturn = null;
             bool nested = false;
 
             void EnterSessionEnd()
@@ -1069,6 +1254,7 @@ namespace StickMate.Tests.EditMode
                 nested = true;
                 Enter(inner);
                 markerAtInnerReturn = MarkerText(ours);
+                ledgerBytesAtInnerReturn = File.ReadAllBytes(ReservedBarRestoreLedger.FilePath);   // ★ 5-d N6 — 이 뒤로 바깥은 흔적을 다시 쓰면 안 된다.
             }
 
             int depth = 0, maxDepth = 0;
@@ -1166,6 +1352,9 @@ namespace StickMate.Tests.EditMode
             Assert.AreEqual(0, logs.FindAll(l => l.Key != LogType.Log).Count,
                 $"[{label}] 경고·오류가 났다 — 닫힌 흔적 앞에서 바깥이 어긋난 판정을 남겼다. " + Describe());
             Assert.AreEqual(ReservedBarLedgerState.Closed, ReservedBarRestoreLedger.Read(control.PlatformTag, out _), $"[{label}] 끝난 뒤 흔적이 닫혀 있지 않다.");
+            Assert.IsNotNull(ledgerBytesAtInnerReturn, $"전제: [{label}] 끼어든 순서가 반환된 순간의 흔적 바이트를 읽었다.");
+            CollectionAssert.AreEqual(ledgerBytesAtInnerReturn, File.ReadAllBytes(ReservedBarRestoreLedger.FilePath),
+                $"[{label}] 끼어든 순서가 반환된 뒤 바깥 순서가 흔적을 다시 썼다 — 이미 닫힌 흔적을 또 쓴다(우선순위 4, N6; 재기록이 바이트를 바꾸는지는 N6_대조_… 교정). " + Describe());
             Assert.IsFalse(ReservedBarRevealDirector.ChangedThisSession, $"[{label}] 끝난 뒤에도 '이번 실행이 바꿨음'이 남았다.");
             Assert.AreEqual(PreviousSessionVerdict.CleanExit, SessionExitMarker.RunStartup(ours, pid + 2, prev, _ => false).Verdict, $"[{label}] 다음 실행 판정.");
         }

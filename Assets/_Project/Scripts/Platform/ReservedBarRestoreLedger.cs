@@ -119,8 +119,32 @@ namespace StickMate.Platform
         /// (그 상황에서 시스템을 바꾸지 않는 것이 이 기능의 핵심 안전장치다).</summary>
         public static void RedirectToPathForTesting(string directory) => s_testingDirectoryOverride = directory;
 
-        /// <summary>테스트 전용 — 리디렉션 해제. 임시 폴더는 지우지 않는다(삭제 능력 0건 유지).</summary>
-        public static void ResetForTesting() => s_testingDirectoryOverride = null;
+        /// <summary>
+        /// ★ 5-d 스위트 바닥 리디렉션(테스트 전용). 스위트 격리(<c>[SetUpFixture]</c>)가 깔고, 개별 픽스처의 <see cref="ResetForTesting"/>은
+        /// null이 아니라 이 자리로 되돌린다. 5-c까지는 첫 픽스처 TearDown이 리디렉션을 null로 지워, 그 뒤 스위트에서 흔적 API를 스치는 테스트가
+        /// 에디터의 실제 <c>persistentDataPath</c> 흔적을 열 수 있었다(verify-change 2단계 부수 — 당시 영향 테스트 미발견). 프로덕션에서는 언제나 null이다.
+        /// </summary>
+        private static string s_suiteBaselineDirectory;
+
+        /// <summary>테스트 전용(스위트 격리 전용) — 흔적 경로를 임시 폴더로 옮기고 그 자리를 <b>스위트 바닥</b>으로 기억한다.
+        /// 이후 <see cref="ResetForTesting"/>은 이 자리로 되돌린다.</summary>
+        public static string RedirectSuiteBaselineForTesting(string label)
+        {
+            string dir = RedirectToTemporaryDirectoryForTesting(label);
+            s_suiteBaselineDirectory = dir;
+            return dir;
+        }
+
+        /// <summary>테스트 전용(스위트 격리 전용) — 스위트 바닥까지 걷는다(스위트 끝에서만 부른다).</summary>
+        public static void ClearSuiteBaselineForTesting()
+        {
+            s_suiteBaselineDirectory = null;
+            s_testingDirectoryOverride = null;
+        }
+
+        /// <summary>테스트 전용 — 픽스처 리디렉션 해제. ★ 5-d: null이 아니라 <b>스위트 바닥</b>(깔려 있으면)으로 되돌린다.
+        /// 임시 폴더는 지우지 않는다(삭제 능력 0건 유지).</summary>
+        public static void ResetForTesting() => s_testingDirectoryOverride = s_suiteBaselineDirectory;
 
         /// <summary>
         /// 흔적을 읽는다. <b>어떤 실패도 예외로 새어 나가지 않는다</b> — 기동 경로에서 도는 코드가

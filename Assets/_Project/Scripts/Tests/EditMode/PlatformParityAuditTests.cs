@@ -3295,6 +3295,87 @@ namespace StickMate.Tests.EditMode
                 "감사가 낡은 사실을 말하고 있으니 지금 다시 읽고 갱신하세요.");
         }
 
+        /// <summary>
+        /// <b>[미해결 B] 전체화면 등급의 '기준 모니터'와 '적용 범위'가 갈라져 있다.</b> 2026-09-15 신설(dev-platform).
+        ///
+        /// <para>바로 위 <c>역방향_보조모니터_전체화면_감지는_Windows가_낫다</c>는 <b>감지</b> 비대칭만 얼리고 초록으로 끝난다.
+        /// 이 항목은 그 옆의 두 축을 러너에 「건너뜀」으로 보이게 남긴다 — (가) macOS의 기준 모니터가 메인 디스플레이뿐이다,
+        /// (나) 두 플랫폼 모두 등급 결과를 오버레이가 놓인 모니터와 무관하게 전역으로 싣는다.
+        /// 고칠 대상인지 둘 대상인지는 이 파일이 정하지 않는다 — 미해결, game-architect 판정 대기.
+        /// 근거: <c>docs/platform/E1_FOREGROUND_TIER_FACTS.md</c> B절.</para>
+        ///
+        /// <para><b>썩음 방지 — Ignore 전에 사유가 기대는 코드 사실을 다시 잰다</b>:
+        /// ① Windows가 전경 창이 놓인 모니터를 묻지 않게 되면 실패(위 역방향 항목과 같은 뜻의 회귀).
+        /// ② 두 추출 본문(macOS 판정 · 적용 자리)에 양성 앵커를 먼저 확인한다 — 추출이 엉뚱한 곳을 보면 아래 부재 판정이 공허하게 참이 된다.
+        /// ③ 부재 니들 <c>TryGetTargetMonitorRect(</c>가 두 오버레이 집행기 소스에 <b>실재</b>하는지 먼저 확인한다 — 이름이 바뀌어 사라지면
+        /// 「적용 자리가 오버레이 모니터를 참조하지 않는다」가 조용히 참이 된다(부재 단언은 썩으면 초록이 된다).
+        /// ④ 두 축이 <b>모두</b> 닫히면 통과. ★ <b>한 축만</b> 닫히면 실패 — 등재안(B-4)은 축마다 통과였으나 그러면 남은 한 축이 러너에서
+        /// 「통과」로 사라진다. 사유를 남은 축으로 고쳐 쓰라고 시끄럽게 알린다.</para>
+        /// </summary>
+        [Test]
+        public void 미해결_전체화면_등급의_기준_모니터와_적용_범위가_갈라져_있다()
+        {
+            string macSourceB = StripLineComments(ReadSource(MacWindowServicePath));
+            string winSourceB = StripLineComments(ReadSource(WinWindowServicePath));
+            string agentSourceB = StripLineComments(ReadSource(Path.Combine(
+                Application.dataPath, "_Project", "Scripts", "Core", "StickmanAgent.cs")));
+
+            // ① Windows 기준 모니터 = 전경 창이 놓인 모니터(회귀 가드).
+            string winJudgeBodyB = MethodBody(winSourceB, "private void EvaluateFullscreen(",
+                "Win32WindowService.EvaluateFullscreen");
+            StringAssert.Contains("MonitorFromWindow(fg", winJudgeBodyB,
+                "Windows 전체화면 판정이 더 이상 '전경 창이 놓인 모니터'를 묻지 않습니다 — 이 항목 사유가 기대는 사실이 무너졌습니다. " +
+                "역방향_보조모니터_전체화면_감지는_Windows가_낫다와 함께 보고 이 항목의 사유를 다시 쓰세요.");
+
+            // ② 양성 앵커 — 두 추출 본문이 진짜 판정 본문 · 진짜 적용 자리인가.
+            string macJudgeBodyB = MethodBody(macSourceB, "private void EvaluateFullscreen(",
+                "MacWindowService.EvaluateFullscreen");
+            StringAssert.Contains(nameof(FullscreenGameCategory) + "." + nameof(FullscreenGameCategory.IsGameCategory) + "(", macJudgeBodyB,
+                "macOS 전체화면 판정 본문에 게임 분류 호출이 없습니다 — 추출 앵커가 엉뚱한 본문을 보고 있을 수 있습니다. 앵커를 갱신하세요.");
+            string applyBodyB = MethodBody(agentSourceB, "private void TickFullscreenSuspend(",
+                "StickmanAgent.TickFullscreenSuspend");
+            StringAssert.Contains(nameof(ForeignFullscreenTierPolicy) + "." + nameof(ForeignFullscreenTierPolicy.RetreatsPanels) + "(", applyBodyB,
+                "StickmanAgent.TickFullscreenSuspend 본문에 등급 → 표면 회수 배선이 없습니다 — 적용 자리가 옮겨졌습니다. " +
+                "옮겨진 자리로 이 항목의 추출 앵커를 갱신하세요. 그대로 두면 아래 부재 판정이 엉뚱한 본문을 보고 참이 됩니다.");
+
+            // ③ 부재 니들의 실재 대조 — 오버레이 모니터를 고르는 조회가 두 집행기에 실제로 있다.
+            const string overlayMonitorQueryB = "TryGetTargetMonitorRect(";
+            foreach (string enforcerPathB in new[] { MacEnforcerPath, WinEnforcerPath })
+            {
+                StringAssert.Contains(overlayMonitorQueryB, StripLineComments(ReadSource(enforcerPathB)),
+                    $"{Path.GetFileName(enforcerPathB)}에 오버레이 모니터 조회 \"{overlayMonitorQueryB}\"가 없습니다 — 이름이 바뀌었습니다. " +
+                    "새 이름으로 이 니들을 갱신하세요. 그대로 두면 '적용 자리가 오버레이 모니터를 참조하지 않는다'가 조용히 참이 됩니다.");
+            }
+
+            // ④ 두 축의 현재 상태.
+            bool applyScopeAxisClosedB = applyBodyB.Contains(overlayMonitorQueryB);
+            bool macReferenceAxisClosedB = !macJudgeBodyB.Contains("CGMainDisplayID()");
+            if (applyScopeAxisClosedB && macReferenceAxisClosedB)
+            {
+                Assert.Pass("두 축이 모두 닫혔습니다 — macOS 판정이 메인 디스플레이만 보지 않고, 적용 자리가 오버레이 모니터를 참조합니다. " +
+                    "이 항목의 접두사를 떼고 '판정 모니터와 적용 모니터가 같은 사실에서 나온다'는 정식 검사로 바꾸세요.");
+            }
+            if (applyScopeAxisClosedB != macReferenceAxisClosedB)
+            {
+                Assert.Fail("두 축 중 한 축만 닫혔습니다(적용 범위 축 닫힘=" + applyScopeAxisClosedB +
+                    ", macOS 기준 모니터 축 닫힘=" + macReferenceAxisClosedB + ") — 이 항목 사유의 절반이 낡았습니다. " +
+                    "닫힌 축을 사유에서 빼고 남은 축만으로 다시 쓰세요(한 축만 닫혔을 때 통과시키면 남은 축이 러너에서 「통과」로 사라집니다).");
+            }
+
+            Assert.Ignore(
+                "【미해결 · 판정 기준 비대칭 · 코드 판독 / 실기 0회】 신설 2026-09-15 (dev-platform)\n" +
+                "항목: 전체화면 등급의 '기준 모니터'와 '적용 범위'가 갈라져 있다. 미해결 — game-architect 판정 대기.\n" +
+                "· (가) macOS 기준 모니터: MacWindowService.EvaluateFullscreen은 첫 layer 0 창을 메인 디스플레이(CGMainDisplayID) 사각형과만 비교한다 —\n" +
+                "  보조 디스플레이에 뜬 전체화면 앱(프로젝터 슬라이드쇼 등)은 등급 0으로 판정되고, 오버레이가 그 화면에 있으면 창·패널과 그 클릭 차단막을 걷지 않는다.\n" +
+                "· (나) 적용 범위(두 플랫폼 공통): StickmanAgent.TickFullscreenSuspend가 등급을 캐릭터 숨김·표면 회수 필드에 그대로 싣고,\n" +
+                "  오버레이가 놓인 모니터(두 OverlayStateEnforcer의 TryGetTargetMonitorRect)는 참조하지 않는다 — 다른 모니터의 전체화면 앱이 우리 화면의 표면을 걷는다\n" +
+                "  (Windows는 전경 창이 놓인 모니터로 감지하므로 어느 모니터의 전체화면 앱이든, macOS는 메인 디스플레이의 전체화면 앱일 때).\n" +
+                "· 감지 비대칭 자체는 역방향_보조모니터_전체화면_감지는_Windows가_낫다가 얼려 두었다. 이 항목은 그 옆의 두 축을 러너에 보이게 남긴다.\n" +
+                "해소 조건(판정이 '고친다'일 때): '오버레이가 놓인 모니터와 겹치는 전체화면인가'를 플랫폼 중립 정책(Platform/FullscreenSuspendPolicy.cs)에서 묻고,\n" +
+                "두 플랫폼은 창이 놓인 디스플레이 사각형과 오버레이 모니터 사각형을 사실로만 넘긴다. 판정이 '둔다'이면 접두사를 결정_으로 바꾼다.\n" +
+                "근거: docs/platform/E1_FOREGROUND_TIER_FACTS.md B절.");
+        }
+
         // ============================================================================
         // ★ Windows 하단 막대 낙차 — D/E 두 항목이 공유하는 **가정**
         // ============================================================================

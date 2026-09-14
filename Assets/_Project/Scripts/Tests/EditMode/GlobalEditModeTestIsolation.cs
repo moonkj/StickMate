@@ -29,7 +29,8 @@ public sealed class GlobalEditModeTestIsolation
         // ★ 2026-09-02 — 작업표시줄 자동 숨김 원복 흔적도 스위트 전체에서 임시 폴더로 옮긴다.
         // ReservedBarRevealPolicyTests가 테스트마다 다시 옮기지만, 그 앞뒤로 도는 다른 테스트가
         // 흔적 API를 스치더라도 개발자의 실제 파일이 열리지 않게 바닥을 깔아 둔다.
-        ReservedBarRestoreLedger.RedirectToTemporaryDirectoryForTesting("editmode");
+        // ★ 5-d — 「바닥」으로 깐다: 픽스처가 ResetForTesting을 불러도 null이 아니라 이 자리로 돌아온다(5-c까지는 첫 픽스처 TearDown이 지웠다).
+        ReservedBarRestoreLedger.RedirectSuiteBaselineForTesting("editmode");
 
         string dir = CharacterSaveStore.RedirectToTemporaryDirectoryForTesting("editmode");
 
@@ -47,7 +48,7 @@ public sealed class GlobalEditModeTestIsolation
     {
         EquipmentDebugUnlock.SetTestOverride(null);
         CharacterSaveStore.ResetForTesting();
-        ReservedBarRestoreLedger.ResetForTesting();
+        ReservedBarRestoreLedger.ClearSuiteBaselineForTesting();   // ★ 5-d — 스위트 끝에서만 바닥까지 걷는다(ResetForTesting은 이제 바닥으로 돌아갈 뿐이다).
         Debug.Log($"[테스트격리] EditMode 저장 경로를 원래대로 되돌렸습니다 — 리디렉션={CharacterSaveStore.IsRedirectedForTesting}.");
     }
 
@@ -75,6 +76,12 @@ public sealed class GlobalEditModeTestIsolation
     // 프로덕션이 아니라 테스트 코드에 두는 이유: 이 앱의 프로덕션 코드에는 파일 삭제 능력이
     // 0건이라는 불변식을 Tests/EditMode/UserAssetImmutabilityAuditTests가 잠근다. 그 불변식을
     // 테스트 편의로 깨지 않는다.
+    //
+    // ★ 5-d(verify-change 2단계 부수) — 작업표시줄 원복 흔적은 OneTimeSetUp에서 「스위트 바닥」으로 깐다(RedirectSuiteBaselineForTesting).
+    //   픽스처의 ResetForTesting은 null이 아니라 이 바닥으로 돌아가므로, EditMode 스위트 도중 흔적 리디렉션이 꺼지는 순간은 이제 없어야 한다.
+    //   아래 메서드 안 주석의 「스위트 도중 꺼져 있는 순간이 정상적으로 존재한다」는 5-c까지의 사실이고 else 분기는 방어로 남는다.
+    //   ★ 그 주석을 메서드 안에서 고치지 않은 이유: SaveIsolationPurgeTests.정리기_두_사본이_한_글자도_다르지_않다가 이 메서드부터 파일 끝까지를
+    //   PlayMode 사본(GlobalPlayModeTestIsolation.cs)과 <b>한 글자씩</b> 비교한다 — 한쪽 주석만 고쳐도 빨개진다.
     public static int PurgeIsolatedDirectories()
     {
         // 저장 파일은 이 격리의 <b>본체</b>다 — 리디렉션돼 있지 않으면 그 자체가 사고이므로 단언한다.
