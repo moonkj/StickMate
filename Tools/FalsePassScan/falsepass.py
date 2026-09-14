@@ -10,6 +10,14 @@
   (B) 빈 컬렉션 위의 foreach 안에만 단언 — 목록이 비면 0회 실행되고 초록.
                                           (TEAM.md 거짓통과 5번: "면제 목록이 비면 foreach가
                                            아무것도 안 재고 초록")
+  (C) ★ 2026-09-14 — [OneTimeTearDown] 안의 단언인데 **마지막 단언 뒤에 성공 로그 줄이 없다.**
+      그 단언이 깨지면 결과 xml failed="0"·Unity rc 0이고 흔적은 스위트의 site="TearDown"뿐이다
+      (Logs/coder-onbstore/mut-M5p.xml). xml이 덮어써지면 로그로도 역추적이 안 된다 —
+      NUnit `TearDown :` 접두어는 Unity 로그에 안 찍힌다(M5p.log 0건).
+      TEAM.md 「픽스처 끝에서 난 실패는 실패 개수에 안 들어간다」 규칙 4: **단언 뒤에 성공 로그 한 줄**
+      (선례 PlayModeSaveIsolationGateTests). ★ 이 스캐너는 xml을 읽지 않는다 — 결과 판정은
+      docs/verify/nunit_verdict.py 가 한다. 여기서는 그 형태가 **생길 자리**를 소스에서 짚는다.
+      한계: 본문이 부르는 helper 안의 단언은 따라가지 않는다(텍스트 휴리스틱).
 
 ★ 이 도구 자신의 함정 — 「생성기와 검사기가 같이 틀린다」(TEAM.md 신형)
   이 스캐너는 C# 파서가 아니라 **텍스트 휴리스틱**이다. 그래서 결과를 그대로 믿으면 안 되고,
@@ -208,6 +216,67 @@ def analyze(name, body, line_no):
                     '앞에 "비어 있지 않다"를 못 박은 단언이 없다 — 0건이면 0회 실행되고 초록이다: '
                     + lines[risky[0][0]].strip()[:110]))
     return findings
+
+
+# ---------------------------------------------------------------------------
+# (C) [OneTimeTearDown] 단언 — 2026-09-14
+# ---------------------------------------------------------------------------
+# ★ 줄 머리의 속성만 센다. `/// <c>[OneTimeTearDown]</c>` 같은 문서 주석은 속성이 아니다
+#   (실측: GearMenuOnboardingHintTests.cs:33 · PlayModeSaveIsolationGate.cs:15/31 이 문서 주석 안에 그 글자를 갖는다).
+TEARDOWN_ATTR = re.compile(r'^\s*\[\s*OneTimeTearDown\s*\]')
+SUCCESS_LOG = re.compile(r'\b(?:UnityEngine\s*\.\s*)?Debug\s*\.\s*Log\s*\(')
+
+
+def split_teardowns(src):
+    """[OneTimeTearDown] 메서드 본문을 (이름, 본문, 시작줄) 로 잘라 낸다(split_methods와 같은 중괄호 규칙)."""
+    out = []
+    lines = src.split('\n')
+    i = 0
+    while i < len(lines):
+        if not TEARDOWN_ATTR.search(lines[i]):
+            i += 1
+            continue
+        name, j = None, i
+        while j < len(lines) and j < i + 10:
+            m = re.search(r'(?:void|IEnumerator|Task)\s+(\w[\w가-힣]*)\s*\(', lines[j], re.UNICODE)
+            if m:
+                name = m.group(1)
+                break
+            j += 1
+        if name is None:
+            i += 1
+            continue
+        k = j
+        while k < len(lines) and '{' not in strip_noise(lines[k]):
+            k += 1
+        depth, body, start, started = 0, [], k, False
+        while k < len(lines):
+            s = strip_noise(lines[k])
+            depth += s.count('{') - s.count('}')
+            body.append(lines[k])
+            if '{' in s:
+                started = True
+            if started and depth <= 0:
+                break
+            k += 1
+        out.append((name, '\n'.join(body), start + 1))
+        i = k + 1
+    return out
+
+
+def analyze_teardown(name, body, line_no):
+    """(C) — 재는 단언이 있는데 마지막 단언 줄 뒤에 Debug.Log 줄이 없으면 1건."""
+    lines = code_lines(body)
+    asserts = [i for i, ln in enumerate(lines)
+               if ASSERT.search(NON_MEASURING.sub('', strip_noise(ln)))]
+    if not asserts:
+        return []
+    tail = lines[asserts[-1] + 1:]
+    if any(SUCCESS_LOG.search(strip_noise(ln)) for ln in tail):
+        return []
+    return [('C', f'[OneTimeTearDown] 안에 단언 {len(asserts)}줄이 있는데 **마지막 단언 뒤에 성공 로그 줄이 없다** — '
+                  '이 단언이 깨지면 결과 xml은 failed="0"·Unity rc 0이고 흔적은 스위트의 site="TearDown"뿐이다. '
+                  '판정은 docs/verify/nunit_verdict.py(규칙 1)로 하고, 단언 뒤에 성공 로그 한 줄을 남겨라(규칙 4)')]
 
 
 NUMERIC_BOUND = re.compile(r'[<>]=?\s*\d+')
@@ -412,8 +481,81 @@ CALIB = [
 ]
 
 
+# (C) 교정 표본 — 역시 저장소에서 읽지 않는다.
+CALIB_TEARDOWN = [
+    ("""
+    [OneTimeTearDown]
+    public void 단언으로_끝나는_정리()
+    {
+        CharacterSaveStore.ResetForTesting();
+        Debug.Log("[테스트격리] 계수 = " + n);
+        Assert.AreEqual(0, n, "실제 저장소에 닿았다");
+    }
+    """, '단언으로_끝나는_정리', {'C'}),
+
+    ("""
+    [OneTimeTearDown]
+    public void 단언_뒤에_성공_로그를_남긴다()
+    {
+        Assert.AreEqual(tests - 1, checks, "경계 회계");
+        Assert.GreaterOrEqual(checks, 2, "경계 2회");
+        Debug.Log("[게이트] 경계 검사 " + checks + "회 — 확인했습니다");
+    }
+    """, '단언_뒤에_성공_로그를_남긴다', set()),
+
+    ("""
+    [OneTimeTearDown]
+    public void 단언_없는_정리()
+    {
+        CharacterSaveStore.ResetForTesting();
+        ReservedEdgeProbe.ResetForTests();
+    }
+    """, '단언_없는_정리', set()),
+
+    ("""
+    /// 옛 판은 <c>[OneTimeSetUp]</c>에서 기억하고 <c>[OneTimeTearDown]</c>에서 되돌렸다.
+    [Test]
+    public void 문서_주석_안의_글자는_속성이_아니다()
+    {
+        Assert.AreEqual(3, Compute());
+    }
+    """, None, set()),                     # None = split_teardowns가 아무것도 잘라내지 않아야 한다
+
+    ("""
+    [OneTimeTearDown]
+    public void 로그가_단언보다_앞에만_있다()
+    {
+        UnityEngine.Debug.Log("시작");
+        Assert.IsNull(probeFailure, "측정 무효");
+        // Debug.Log("주석 안의 로그는 로그가 아니다");
+    }
+    """, '로그가_단언보다_앞에만_있다', {'C'}),
+]
+
+
 def selftest():
     ok = True
+    print("── 교정 (C) [OneTimeTearDown] 단언 — 알려진 값으로 먼저 맞춘다 ──")
+    for src, name, expect in CALIB_TEARDOWN:
+        tds = split_teardowns(src)
+        if name is None:
+            if tds:
+                print(f"  ✗ 문서 주석 안의 [OneTimeTearDown] 글자를 속성으로 잘라냈다: {[t[0] for t in tds]}")
+                ok = False
+            else:
+                print("  ✓ 문서 주석 안의 글자는 속성으로 세지 않는다(음성 대조)")
+            continue
+        got = [t[0] for t in tds]
+        if name not in got:
+            print(f"  ✗ 정리 메서드 '{name}'를 잘라내지 못했다 (찾은 것: {got})")
+            ok = False
+            continue
+        body, ln = next((b, l) for n, b, l in tds if n == name)
+        kinds = {k for k, _ in analyze_teardown(name, body, ln)}
+        mark = '✓' if kinds == expect else '✗'
+        if kinds != expect:
+            ok = False
+        print(f"  {mark} {name}: 기대 {sorted(expect) or '깨끗'} / 실제 {sorted(kinds) or '깨끗'}")
     print("── 교정(알려진 값으로 먼저 맞춘다) ──")
     for src, name, expect in CALIB:
         methods = split_methods(src)
@@ -454,7 +596,7 @@ def main():
     if a.since_mtime:
         since = datetime.datetime.strptime(a.since_mtime, '%Y-%m-%d %H:%M').timestamp()
 
-    files, total_methods, hits = 0, 0, []
+    files, total_methods, total_teardowns, hits = 0, 0, 0, []
     for dirpath, _, names in os.walk(a.root):
         for n in sorted(names):
             if not n.endswith('.cs'):
@@ -468,8 +610,12 @@ def main():
                 total_methods += 1
                 for kind, why in analyze(name, body, ln):
                     hits.append((kind, p, ln, name, why))
+            for name, body, ln in split_teardowns(src):
+                total_teardowns += 1
+                for kind, why in analyze_teardown(name, body, ln):
+                    hits.append((kind, p, ln, name, why))
 
-    print(f"검사한 파일 {files}개 / 테스트 메서드 {total_methods}개")
+    print(f"검사한 파일 {files}개 / 테스트 메서드 {total_methods}개 / [OneTimeTearDown] {total_teardowns}개")
     if total_methods == 0:
         print("★ 테스트 메서드를 0개 셌다 — 스캔이 성립하지 않았다(경로/필터 확인). '깨끗'이 아니다.")
         return 1

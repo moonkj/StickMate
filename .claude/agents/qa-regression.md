@@ -22,6 +22,8 @@ model: opus
 오늘 밤에만 **거짓 통과 9건**이 나왔다. 전부 같은 형태 — **실패한 측정과 성공한 측정이 똑같이 생겼다.**
 1. `-runTests`에 **`-quit`을 같이 주면 0건 실행 + 종료코드 0**. 콤마 구분 필터도 같다.
 2. **이틀 전 결과 xml**을 새 결과로 읽음. → 결과 파일은 **먼저 지우고** mtime·testcasecount 확인.
+   ★ 2026-09-14: `failed=0`·종료코드 0이어도 **픽스처 `OneTimeTearDown` 실패가 숨는다** — test-run `result`와
+   `test-suite@site="SetUp"|"TearDown"`까지 본다(`docs/TEAM.md` 해당 절, 양성 대조 `Logs/coder-onbstore/mut-M5p.xml`).
 3. **하루 전 로그**를 현재 상태로 읽음. → 드라이버 로그(`/tmp/stickmate-run/`)와
    사용자 인스턴스 로그(`~/Library/Logs/`)를 구분해라. 다른 프로세스·다른 빌드일 수 있다.
 4. 면제 목록이 비면 `foreach`가 아무것도 안 재고 초록.
@@ -31,9 +33,11 @@ model: opus
 ## 도구 (전부 `docs/verify/`)
 | 도구 | 하는 일 |
 |---|---|
-| `regress.sh <edit\|play> <라벨>` | 전량 실행. 가드 G1~G9 + G4a. **종료코드로 판정하지 마라** — 실패 0에도 2가 나온다 |
-| `regress.sh compare <옛.xml> <새.xml>` | 새로 빨개짐 / 초록 복귀 / 계속 빨감 / 신설 결함 / **짝없는 소멸**로 가른다 |
-| `regress.sh selfcheck` | 가드가 실제로 무는지. **음성 대조 13 + 양성 대조 6** |
+| `regress.sh <edit\|play> <라벨>` | 전량 실행. 가드 G1~G9 + G4a. **Unity 종료코드로 판정하지 마라** — 실패 0에도 2가 나오고, 픽스처 TearDown 실패에도 0이 나온다 |
+| `regress.sh report <xml>` | 2026-09-14부터 `nunit_verdict.py` 규칙 1(failed==0 ∧ test-run result ∈ {Passed, Skipped:Ignored} ∧ SetUp/TearDown 스위트 0 ∧ Failed 스위트 0) 판정. **rc 0 = 초록 / 1 = 측정 무효(G가드) / 3 = 빨강**. 판정 불가(Inconclusive) 이름을 출력 |
+| `regress.sh compare <옛.xml> <새.xml>` | 새로 빨개짐 / 초록 복귀 / 계속 빨감 / 신설 결함 / **짝없는 소멸** + 판정 불가 전이·픽스처 실패 전이. 새 결과가 빨강이면 rc 3 |
+| `regress.sh selfcheck` | 가드·판정이 실제로 무는지. 2026-09-14 밤 기준 **✓ 66**(Unity가 도는 중이면 G6까지 ✓ 67 — R1/R2/R5 합성 대조 + 실측 교정 M5p·edit-full·play-full·ledgehang + 정규식 교차 판정기). 대조 수는 늘 수 있으니 숫자보다 **✗ 0·미확인 0**을 봐라 |
+| `nunit_verdict.py <xml>` | 규칙 1 판정 모듈(`regress.sh`·`baseline.py` 공유). 공유라 같이 틀릴 수 있어 selfcheck가 모듈 없는 정규식 판정기와 교차 대조한다 |
 | `renames.py --check` | 개명 대장. 소스 트리로 R1/R2/R3 재검증 |
 | `baseline.py [--check]` | `BASELINE.md` 재생성 / 자기검사 |
 | `Tools/FalsePassScan/falsepass.py --selftest` | 단언 없음(A) · 빈 컬렉션(B) 색출. **교정 먼저** |

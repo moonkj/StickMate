@@ -28,6 +28,17 @@
 #                              (2026-09-02: 하한 1390 vs 실제 1609 = 219건이 조용히 사라져도 통과).
 #  G10 세이브 격리 게이트 회계   : ★ 2026-09-03 신설. 게이트의 **최종** 회계를 러너 xml과 **독립적으로**
 #                              대조한다. 이게 없으면 게이트가 실행 도중에 죽어도 스위트가 초록이다.
+#  R1  결과 판정(초록/빨강)      : ★ 2026-09-14 신설(docs/TEAM.md 「픽스처 끝에서 난 실패는 실패 개수에 안 들어간다」).
+#                              초록 = failed==0 ∧ test-run result ∈ {Passed, Skipped:Ignored}
+#                                     ∧ site가 SetUp/TearDown인 test-suite 0 ∧ Failed로 시작하는 test-suite 0.
+#                              label로는 거르지 않는다(R2). 판정 코드는 docs/verify/nunit_verdict.py 하나다.
+#                              실측: mut-M5p.xml(SetUpFixture OneTimeTearDown 실패)이 failed=0·Unity rc 0·옛 report rc=0이었다.
+#  R5  판정 불가(Inconclusive) : report는 이름을 찍고, compare는 «초록 → 판정 불가» 등 전이를 따로 보인다.
+#
+#  ★ rc 계약(report · 전량 실행 · compare) — 2026-09-14부터:
+#      0 = 초록   1 = 측정 무효(G가드 — 초록/빨강을 말하지 않는다)   3 = 측정은 유효하지만 빨강(R1)
+#    옛 report는 테스트가 실패해도 rc=0이었다. 그래도 **rc만 보고 끝내지 마라** — 출력의 `✓ R1 초록` /
+#    `✗ R1 빨강` 줄과 판정 불가 이름 목록을 함께 읽는다(Unity 자신의 rc는 이 실패에서 0을 냈다).
 #
 # =============================================================================
 # ★★ 2026-09-03 G10 — 「게이트 생존이 실행 중 한 시점에서만 단언된다」
@@ -82,7 +93,10 @@
 # =============================================================================
 set -uo pipefail
 
-REPO=/Users/kjmoon/App/StickMate
+# ★ 2026-09-14 — 저장소 루트는 스크립트 위치에서 구한다(사용자명이 든 절대 경로를 박지 않는다).
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+[ -f "$REPO/docs/verify/regress.sh" ] || { echo "✗ 저장소 루트를 찾지 못했다 — REPO=$REPO" >&2; exit 1; }
+export REGRESS_REPO="$REPO"   # 아래 python 블록들이 이 값으로 docs/verify 모듈을 찾는다
 UNITY=/Applications/Unity/Hub/Editor/6000.0.82f1/Unity.app/Contents/MacOS/Unity
 OUTDIR="$REPO/docs/verify/runs"
 SRCROOT="$REPO/Assets/_Project/Scripts"
@@ -422,12 +436,21 @@ report() {   # $1=xml  $2=기대 최소 건수(선택)  $3=실행 시작 epoch(�
   if [ "$started" -gt 0 ] && [ "$mt" -lt "$started" ]; then
     die "G3: 결과 파일이 실행 시작($(date -r "$started" '+%H:%M:%S'))보다 오래됐다($(date -r "$mt" '+%H:%M:%S')) — 낡은 파일을 읽고 있다."
   fi
+  # ★ 2026-09-14 — rc 계약을 바꿨다: 0 = 초록 / 1 = 측정 무효(G가드) / 3 = 측정은 유효하지만 빨강(R1).
+  #   옛 report는 테스트가 실패해도 rc=0이었고, 픽스처 끝 실패(mut-M5p.xml)는 실패 목록에조차 안 떴다.
   python3 - "$xml" "$minc" "$prevn" "$prevwho" <<'PY'
 import sys, os, datetime
 import xml.etree.ElementTree as ET
+import os
+sys.path.insert(0, os.path.join(os.environ['REGRESS_REPO'], 'docs/verify'))
+import nunit_verdict as NV
 xml, minc = sys.argv[1], int(sys.argv[2])
 prevn, prevwho = int(sys.argv[3]), sys.argv[4]
-r = ET.parse(xml).getroot()
+try:
+    r = ET.parse(xml).getroot()
+except Exception as e:
+    print(f"✗ 결과 xml을 읽지 못했다 — {e}. 측정 무효.")
+    sys.exit(1)
 tcc = int(r.get('testcasecount') or 0)
 tot = int(r.get('total') or 0)
 fa  = int(r.get('failed') or 0)
@@ -437,6 +460,31 @@ pa  = int(r.get('passed') or 0)
 mt  = datetime.datetime.fromtimestamp(os.stat(xml).st_mtime).strftime('%m-%d %H:%M:%S')
 print(f"결과파일 {xml}  (mtime {mt})")
 print(f"  testcasecount={tcc} total={tot} passed={pa} failed={fa} skipped={sk} inconclusive={inc}")
+
+# ★ 2026-09-14 — 「부분 실행」 배너 (test-engineer 명세 docs/verify/PLAYMODE_RED7_FIX_SPEC.md §8 1안, 리더 채택).
+#   G5(tcc != total)는 **Unity 필터 실행을 못 본다** — mut-M5p.xml은 필터로 3건만 돌렸는데 tcc=3 total=3이다.
+#   서로 다른 자 둘로 잰다:
+#     (가) 기록된 사실 — nunit_verdict.run_scope(로그 명령줄 필터 인자 / regress.sh 사이드카). baseline.py 「현재」와 같은 판정.
+#     (나) 소스 리프 하한 — nunit_verdict.source_leaf_count(지금 트리의 [Test]/[UnityTest]/[TestCase] 계수).
+#   ★ 배너는 **판정 rc를 바꾸지 않는다**(부분 실행이 곧 실패는 아니다). 대신 «전량»이라고 말하지 못하게 한다.
+_scope, _scope_why = NV.run_scope(xml, r, NV.read_meta_file(os.path.splitext(xml)[0] + '.meta'))
+_plat = NV.xml_platform(r)
+_src = NV.source_leaf_count(os.path.join(os.environ['REGRESS_REPO'], 'Assets/_Project/Scripts/Tests'), _plat) if _plat else None
+if _src:
+    _m = f"≥{_src['lower_bound']}" if _src['unknown'] else f"{_src['lower_bound']}"
+    _srcdesc = (f"소스 리프 {_m}(정적 {_src['known']} + 전개 미확인 메서드 {len(_src['unknown'])}개, "
+                f"{_plat} 폴더 파일 {_src['files']}개)")
+else:
+    _m, _srcdesc = "?", f"소스 리프 미확인(xml에 platform 속성이 없다: {_plat})"
+if _scope == '부분':
+    print(f"\n★★ 부분 실행 {tot}/{_m} — 전량 아님 · 기록: {_scope_why}")
+elif _src and tot < _src['lower_bound']:
+    if _scope == '전량':
+        print(f"\n⚠⚠ 로그는 전량인데 실행 {tot} < {_srcdesc} — 실행 뒤 테스트가 늘었거나 계수 규칙이 틀렸다. "
+              "이 xml을 **지금 트리의 전량**이라고 말하지 마라.")
+    else:
+        print(f"\n★★ 부분 실행 {tot}/{_m} — 전량 아님 · 실행 수가 소스 리프 하한보다 적다(기록: {_scope} — {_scope_why})")
+print(f"  범위: {_scope} — {_scope_why} · {_srcdesc} · 실행 {tot}")
 bad = []
 if tcc != tot:
     bad.append(f"G5: testcasecount({tcc}) != total({tot}) — 부분 실행이다. '전량'이라고 말할 수 없다.")
@@ -458,9 +506,20 @@ if skips:
     print(f"\n  ── 건너뜀 {len(skips)}건 ──")
     for tc in skips:
         print(f"   · {tc.get('fullname')}")
+
+# ★ 2026-09-14 R1/R2/R5 — docs/TEAM.md 「픽스처 끝에서 난 실패는 실패 개수에 안 들어간다」.
+#   test-case만 세면 [OneTimeTearDown] 실패(site=TearDown)와 Inconclusive가 안 보인다.
+v = NV.judge_root(r)
+print(f"\n  test-run result={v['run_result']}")
+print()
+for ln in NV.format_lines(v):
+    print("  " + ln)
+
 for b in bad:
     print("\n✗ " + b)
-sys.exit(1 if bad else 0)
+if bad:
+    sys.exit(1)                       # 측정 무효가 먼저다 — 무효한 측정의 초록/빨강은 말하지 않는다
+sys.exit(0 if v['green'] else 3)
 PY
 }
 
@@ -476,7 +535,7 @@ import xml.etree.ElementTree as ET
 
 # ★ 개명 흡수(2026-09-03 신설). 등록·검증된 개명만 «같은 테스트»로 본다.
 #   등록되지 않은 이름 변경은 여전히 «삭제 1 + 신설 1»로 뜬다 — 그게 맞다.
-sys.path.insert(0, os.path.join('/Users/kjmoon/App/StickMate', 'docs/verify'))
+sys.path.insert(0, os.path.join(os.environ['REGRESS_REPO'], 'docs/verify'))
 try:
     import renames as _rn
     canon_full, _canon_short, _ok, _rej = _rn.load()
@@ -486,6 +545,10 @@ except Exception as e:                      # 대장이 깨져도 대조 자체�
     canon_full = lambda n: n
     _ok, _rej = [], []
 
+import os
+sys.path.insert(0, os.path.join(os.environ['REGRESS_REPO'], 'docs/verify'))
+import nunit_verdict as NV
+
 def load(p):
     r = ET.parse(p).getroot()
     d = {}
@@ -493,11 +556,13 @@ def load(p):
         fn = tc.get('fullname')
         if fn: d[canon_full(fn)] = tc.get('result')
     mt = datetime.datetime.fromtimestamp(os.stat(p).st_mtime).strftime('%m-%d %H:%M')
-    return d, mt, int(r.get('total') or 0)
-a, mta, ta = load(sys.argv[1])
-b, mtb, tb = load(sys.argv[2])
-print(f"옛: {os.path.basename(sys.argv[1])} ({mta})  {ta}건")
-print(f"새: {os.path.basename(sys.argv[2])} ({mtb})  {tb}건   Δ{tb - ta:+d}")
+    return d, mt, int(r.get('total') or 0), NV.judge_root(r)
+a, mta, ta, va = load(sys.argv[1])
+b, mtb, tb, vb = load(sys.argv[2])
+def verdict_word(v):
+    return "초록" if v['green'] else "★빨강"
+print(f"옛: {os.path.basename(sys.argv[1])} ({mta})  {ta}건  R1={verdict_word(va)} (run result={va['run_result']})")
+print(f"새: {os.path.basename(sys.argv[2])} ({mtb})  {tb}건   Δ{tb - ta:+d}  R1={verdict_word(vb)} (run result={vb['run_result']})")
 newred  = sorted(n for n in b if b[n] == 'Failed' and a.get(n) not in (None, 'Failed'))
 fixed   = sorted(n for n in a if a[n] == 'Failed' and b.get(n) == 'Passed')
 stayred = sorted(n for n in b if b[n] == 'Failed' and a.get(n) == 'Failed')
@@ -521,6 +586,32 @@ show("건너뜀 → 초록 (되살아난 검사)", skip2green)
 show("초록으로 돌아옴", fixed)
 show("계속 빨감(이전부터)", stayred)
 show("새로 생긴 테스트 중 빨감(신규 결함)", addred)
+
+# ★ 2026-09-14 R5 — Inconclusive(Assume 실패)는 failed=에 안 들어가서 위 어느 목록에도 안 떴다.
+#   실측: SettingsWindowReturnPathTests·TodoBoardDateNavigationTests 판정 불가 2건이 전량 요약에서 사라져 있었다.
+pass2inc = sorted(n for n in b if b[n] == 'Inconclusive' and a.get(n) == 'Passed')
+red2inc  = sorted(n for n in b if b[n] == 'Inconclusive' and a.get(n) == 'Failed')
+inc2pass = sorted(n for n in b if b[n] == 'Passed' and a.get(n) == 'Inconclusive')
+stayinc  = sorted(n for n in b if b[n] == 'Inconclusive' and a.get(n) == 'Inconclusive')
+addinc   = sorted(n for n in added if b[n] == 'Inconclusive')
+show("★★ 초록 → 판정 불가 (Assume 전제가 무너졌다 — 실패 0에 가려진다)", pass2inc)
+show("★ 빨강 → 판정 불가 (고쳐진 게 아니라 전제에서 멈췄다)", red2inc)
+show("판정 불가 → 초록", inc2pass)
+show("계속 판정 불가", stayinc)
+show("새로 생긴 테스트 중 판정 불가", addinc)
+
+# ★ 2026-09-14 R1/R2 — 픽스처 수준 실패([OneTimeSetUp]/[OneTimeTearDown], site=SetUp/TearDown).
+#   test-case 대조로는 구조적으로 안 보인다(mut-M5p.xml: failed=0인데 SetUpFixture가 TearDown에서 실패).
+def fixkeys(v):
+    return {f"{f['type']} {f['fullname']} @{f['site']}": f for f in v['fixture_failures']}
+fa_, fb_ = fixkeys(va), fixkeys(vb)
+show("★★ 새로 생긴 픽스처 수준 실패 (failed=에 안 잡힌다)", sorted(k for k in fb_ if k not in fa_))
+show("계속되는 픽스처 수준 실패", sorted(k for k in fb_ if k in fa_))
+show("사라진 픽스처 수준 실패", sorted(k for k in fa_ if k not in fb_))
+if not vb['green']:
+    print("\n✗ R1 — 새 결과는 초록이 아니다:")
+    for x in vb['reasons']:
+        print(f"   · {x}")
 
 # ★ 2026-09-03 신설 — 「사라졌다」의 대부분은 사라진 게 아니다.
 #   실측: PackPaletteGateTests의 [TestCase] **설명 문자열**이 한 글자 바뀌자
@@ -563,6 +654,10 @@ if gone_left:
 print(f"\n새로 생긴 테스트 총 {len(added)}건 / 사라진 테스트 총 {len(gone)}건")
 print(f"  사라진 {len(gone)}건 내역: 인자설명변경 {len(pairs_arg)} / 개명후보 {len(pairs_rename)} "
       f"/ **짝없는 소멸 {len(gone_left)}**   (등록된 개명 {len(_ok)}건은 애초에 여기 세지 않는다)")
+print(f"판정 불가: 옛 {len(va['inconclusive_cases'])}건 → 새 {len(vb['inconclusive_cases'])}건 · "
+      f"픽스처 수준 실패: 옛 {len(fa_)}건 → 새 {len(fb_)}건")
+# ★ 2026-09-14 — 새 결과가 R1 빨강이면 rc=3(옛 compare는 무엇이 빨개도 rc=0이었다).
+sys.exit(0 if vb['green'] else 3)
 PY
 }
 
@@ -570,32 +665,36 @@ PY
 selfcheck() {
   local tmp; tmp=$(mktemp -d)
   local rc=0
+  # ★ 2026-09-14 — 아래 합성 xml에 result="Passed"를 넣고, 거부 판정을 «rc≠0»에서 «rc=1(G가드)»로 좁혔다.
+  #   R1이 생긴 뒤로 result 속성이 없는 xml은 **R1 때문에** rc=3이 난다 — 그러면 G5/G4/G3/G9가 죽어도
+  #   이 대조들은 여전히 «거부했다»로 찍힌다(다른 절 덕에 빨개진 대조 = 죽은 대조).
+  g_expect_invalid() {   # $1=설명 $2=가드 이름 $3...=report 인자 → rc=1(측정 무효)이어야 ✓
+    local what="$1" g="$2" got; shift 2
+    ( report "$@" ) >/dev/null 2>&1; got=$?
+    if [ "$got" = 1 ]; then echo "  ✓ 거부했다($g, rc=1 측정 무효)"
+    elif [ "$got" = 0 ]; then echo "  ✗ 통과해 버렸다 — $g가 물지 않는다."; rc=1
+    else echo "  ✗ rc=$got — $g가 아니라 다른 이유(R1 등)로 빨개졌다. $g 생존을 증명하지 못한다."; rc=1; fi
+  }
   echo "── 음성 대조 1: 부분 실행 xml(tcc != total)을 report가 거부하는가"
   cat > "$tmp/partial.xml" <<'X'
-<test-run id="2" testcasecount="529" total="106" passed="103" failed="0" skipped="3" inconclusive="0"></test-run>
+<test-run id="2" testcasecount="529" result="Passed" total="106" passed="103" failed="0" skipped="3" inconclusive="0"></test-run>
 X
-  if ( report "$tmp/partial.xml" 0 0 ) >/dev/null 2>&1; then
-    echo "  ✗ 통과해 버렸다 — G5가 물지 않는다."; rc=1
-  else echo "  ✓ 거부했다(G5)"; fi
+  g_expect_invalid "부분 실행" G5 "$tmp/partial.xml" 0 0
 
   # ★ 하한 숫자를 **여기에 다시 베끼지 않는다**(CLAUDE.md: 테스트에 프로덕션 상수를 베끼지 마라).
   #   실제 상수를 참조한다 — 안 그러면 하한을 올릴 때 이 대조만 낡는다.
   echo "── 음성 대조 2: 건수 미달 xml을 report가 거부하는가(하한 $MIN_EDIT_CASES 참조)"
   cat > "$tmp/tiny.xml" <<'X'
-<test-run id="2" testcasecount="3" total="3" passed="3" failed="0" skipped="0" inconclusive="0"></test-run>
+<test-run id="2" testcasecount="3" result="Passed" total="3" passed="3" failed="0" skipped="0" inconclusive="0"></test-run>
 X
-  if ( report "$tmp/tiny.xml" "$MIN_EDIT_CASES" 0 ) >/dev/null 2>&1; then
-    echo "  ✗ 통과해 버렸다 — G4가 물지 않는다."; rc=1
-  else echo "  ✓ 거부했다(G4)"; fi
+  g_expect_invalid "건수 미달" G4 "$tmp/tiny.xml" "$MIN_EDIT_CASES" 0
 
   echo "── 음성 대조 3: 낡은 파일(실행 시작보다 오래됨)을 거부하는가"
   cat > "$tmp/old.xml" <<'X'
-<test-run id="2" testcasecount="1400" total="1400" passed="1400" failed="0" skipped="0" inconclusive="0"></test-run>
+<test-run id="2" testcasecount="1400" result="Passed" total="1400" passed="1400" failed="0" skipped="0" inconclusive="0"></test-run>
 X
   local future=$(( $(date +%s) + 3600 ))
-  if ( report "$tmp/old.xml" 0 "$future" ) >/dev/null 2>&1; then
-    echo "  ✗ 통과해 버렸다 — G3가 물지 않는다."; rc=1
-  else echo "  ✓ 거부했다(G3)"; fi
+  g_expect_invalid "낡은 파일" G3 "$tmp/old.xml" 0 "$future"
 
   echo "── 음성 대조 4: 결과 파일이 아예 없으면 거부하는가"
   if ( report "$tmp/does-not-exist.xml" 0 0 ) >/dev/null 2>&1; then
@@ -676,11 +775,9 @@ X
 
   echo "── 음성 대조 10: G9(직전 실행 대비 감소)가 무는가"
   cat > "$tmp/shrunk.xml" <<'X'
-<test-run id="2" testcasecount="1400" total="1400" passed="1400" failed="0" skipped="0" inconclusive="0"></test-run>
+<test-run id="2" testcasecount="1400" result="Passed" total="1400" passed="1400" failed="0" skipped="0" inconclusive="0"></test-run>
 X
-  if ( report "$tmp/shrunk.xml" 0 0 1609 "b2-bake_edit.xml" ) >/dev/null 2>&1; then
-    echo "  ✗ 통과해 버렸다 — 209건이 사라졌는데 G9가 물지 않는다."; rc=1
-  else echo "  ✓ 거부했다(G9)"; fi
+  g_expect_invalid "직전 대비 209건 감소" G9 "$tmp/shrunk.xml" 0 0 1609 "b2-bake_edit.xml"
 
   echo "── 음성 대조 11: ★ G4a가 낡은 하한을 신고하는가(2026-09-03 신설 — 실제로 하루 낡아 있었다)"
   local g4a
@@ -834,17 +931,220 @@ X
     echo "  ✓ 실제 기록 ${realok}/${realn}건이 G10을 통과했다(합성이 아니라 러너가 뱉은 줄로 교정)."
   fi
 
+  # ==========================================================================
+  # ★★ R1/R2/R5 대조 (2026-09-14 신설) — 결과 판정 (docs/TEAM.md 「픽스처 끝에서 난 실패는…」)
+  # ==========================================================================
+  # 옛 selfcheck의 합성 xml은 test-run에 result 속성조차 없었다 = 이 형태를 구조적으로 못 쟀다.
+  # ★ 합성본마다 규칙 1의 **절 하나만** 깬다 — 한 대조가 다른 절 덕분에 빨개져서 «물었다»로 보이지 않게.
+  # ★ rc만 보지 않는다 — 기대 rc **그리고** 그 절을 지목하는 사유 문자열이 출력에 있어야 ✓다
+  #   (TEAM.md: 「양성 대조가 '에러가 났다'만 보면 죽는다」).
+  r1_make() {   # $1=경로 $2=test-run 속성 $3=SetUpFixture 속성 $4=TestFixture 속성 $5 $6 $7=케이스 A/B/C 결과
+    cat > "$1" <<X
+<test-run id="2" testcasecount="3" total="3" $2>
+  <test-suite type="SetUpFixture" name="Probe.dll" fullname="ProbeIsolationFixture" $3>
+    <failure><message><![CDATA[TearDown : NUnit.Framework.AssertionException : 합성 탐침 — 픽스처 끝 단언 실패 <test-suite site="TearDown"> 모양 글자]]></message></failure>
+    <test-suite type="TestFixture" name="ProbeFixture" fullname="StickMate.Tests.Probe.ProbeFixture" $4>
+      <test-case name="A" fullname="StickMate.Tests.Probe.ProbeFixture.판정탐침_A" result="$5"><reason><message><![CDATA[합성 사유 A]]></message></reason></test-case>
+      <test-case name="B" fullname="StickMate.Tests.Probe.ProbeFixture.판정탐침_B" result="$6"><reason><message><![CDATA[합성 사유 B]]></message></reason></test-case>
+      <test-case name="C" fullname="StickMate.Tests.Probe.ProbeFixture.판정탐침_C" result="$7"><reason><message><![CDATA[합성 사유 C]]></message></reason></test-case>
+    </test-suite>
+  </test-suite>
+</test-run>
+X
+  }
+  r1_expect() {   # $1=설명 $2=xml $3=기대 rc $4..=출력에 반드시 있어야 할 문자열
+    local what="$1" x="$2" want="$3" o got miss=""; shift 3
+    o=$( report "$x" 0 0 2>&1 ); got=$?
+    for t in "$@"; do printf '%s\n' "$o" | grep -qF -- "$t" || miss="$miss [$t]"; done
+    if [ "$got" = "$want" ] && [ -z "$miss" ]; then
+      echo "  ✓ $what — rc=$got, 사유 문자열 확인"
+    else
+      echo "  ✗ $what — rc=$got(기대 $want), 출력에 없는 문자열:${miss:- 없음}"
+      printf '%s\n' "$o" | tail -12 | sed 's/^/      /'; rc=1
+    fi
+  }
+  local P3='passed="3" failed="0" inconclusive="0" skipped="0"'
+  r1_make "$tmp/r1_ok.xml"        "result=\"Passed\" $P3"        'result="Passed"' 'result="Passed"' Passed Passed Passed
+  r1_make "$tmp/r1_td.xml"        "result=\"Failed(Child)\" $P3" 'result="Failed" label="Error" site="TearDown"' 'result="Passed"' Passed Passed Passed
+  r1_make "$tmp/r1_tdign.xml"     'result="Failed(Child)" passed="2" failed="0" inconclusive="0" skipped="1"' \
+                                  'result="Failed" label="Ignored" site="TearDown"' 'result="Skipped" label="Ignored"' Passed Passed Skipped
+  r1_make "$tmp/r1_siteonly.xml"  "result=\"Passed\" $P3"        'result="Passed" site="SetUp"' 'result="Passed"' Passed Passed Passed
+  r1_make "$tmp/r1_runonly.xml"   "result=\"Failed(Child)\" $P3" 'result="Passed"' 'result="Passed"' Passed Passed Passed
+  r1_make "$tmp/r1_suiteonly.xml" "result=\"Passed\" $P3"        'result="Passed"' 'result="Failed" site="Child"' Passed Passed Passed
+  r1_make "$tmp/r1_inc.xml"       'result="Passed" passed="2" failed="0" inconclusive="1" skipped="0"' \
+                                  'result="Passed"' 'result="Passed"' Passed Inconclusive Passed
+  r1_make "$tmp/r1_fail.xml"      'result="Failed(Child)" passed="2" failed="1" inconclusive="0" skipped="0"' \
+                                  'result="Failed" site="Child"' 'result="Failed" site="Child"' Passed Failed Passed
+  r1_make "$tmp/r1_nores.xml"     "$P3"                          'result="Passed"' 'result="Passed"' Passed Passed Passed
+
+  echo "── R1 정상(음성) 대조: 규칙 1을 전부 지키는 xml은 초록·rc=0인가(이게 빨강이면 아래 탐지는 전부 무의미)"
+  r1_expect "정상 xml" "$tmp/r1_ok.xml" 0 "✓ R1 초록"
+  echo "── R1 탐지(양성) 대조 1: ★ 이번에 뚫려 있던 형태 — Failed(Child) + SetUpFixture site=TearDown + failed=0"
+  r1_expect "픽스처 끝 실패(label=Error)" "$tmp/r1_td.xml" 3 "✗ R1 빨강" "ProbeIsolationFixture" "site=TearDown"
+  echo "── R1 탐지(양성) 대조 2: ★ R2 — 같은 형태의 label=\"Ignored\" 변종(label로 거르면 놓친다)"
+  r1_expect "픽스처 끝 실패(label=Ignored)" "$tmp/r1_tdign.xml" 3 "✗ R1 빨강" "site=TearDown" "label=Ignored"
+  echo "── R1 탐지(양성) 대조 3: 절 3만 단독으로 — test-run은 Passed인데 스위트 site=SetUp"
+  r1_expect "site 절 단독" "$tmp/r1_siteonly.xml" 3 "site=SetUp"
+  echo "── R1 탐지(양성) 대조 4: 절 2만 단독으로 — 스위트는 멀쩡한데 test-run result=Failed(Child)"
+  r1_expect "run result 절 단독" "$tmp/r1_runonly.xml" 3 "test-run result=Failed(Child)"
+  echo "── R1 탐지(양성) 대조 5: 절 4만 단독으로 — test-run Passed인데 Failed 스위트 1개"
+  r1_expect "Failed 스위트 절 단독" "$tmp/r1_suiteonly.xml" 3 "Failed로 시작하는 test-suite 1개"
+  echo "── R1 탐지(양성) 대조 6: 평범한 테스트 실패도 이제 rc≠0인가(옛 report는 rc=0이었다)"
+  r1_expect "테스트 케이스 실패" "$tmp/r1_fail.xml" 3 "판정탐침_B" "failed=1"
+  echo "── R1 탐지(양성) 대조 7: test-run에 result 속성이 없으면 초록이라고 하지 않는가"
+  r1_expect "result 속성 부재" "$tmp/r1_nores.xml" 3 "result 속성이 없다"
+  echo "── R5 대조: 판정 불가(Inconclusive)는 **이름**이 찍히는가 — 규칙 1상 초록(rc=0)은 유지"
+  r1_expect "판정 불가 이름 출력" "$tmp/r1_inc.xml" 0 "판정 불가(Inconclusive) 1건" "판정탐침_B" "✓ R1 초록"
+
+  echo "── R5 compare 대조: «초록 → 판정 불가» · «빨강 → 판정 불가» · 새 픽스처 실패가 제 칸에 뜨고 rc=3인가"
+  r1_make "$tmp/cmp_old.xml" 'result="Failed(Child)" passed="2" failed="1" inconclusive="0" skipped="0"' \
+                             'result="Failed" site="Child"' 'result="Failed" site="Child"' Passed Failed Passed
+  r1_make "$tmp/cmp_new.xml" 'result="Failed(Child)" passed="1" failed="0" inconclusive="2" skipped="0"' \
+                             'result="Failed" label="Error" site="TearDown"' 'result="Passed"' Inconclusive Inconclusive Passed
+  local co cr cmiss=""
+  co=$( compare "$tmp/cmp_old.xml" "$tmp/cmp_new.xml" 2>&1 ); cr=$?
+  sect_has() { printf '%s\n' "$co" | grep -A1 -F -- "$1" | tail -1 | grep -qF -- "$2"; }
+  sect_has "초록 → 판정 불가 (" "판정탐침_A"               || cmiss="$cmiss [초록→판정불가:A]"
+  sect_has "빨강 → 판정 불가 (" "판정탐침_B"               || cmiss="$cmiss [빨강→판정불가:B]"
+  sect_has "새로 생긴 픽스처 수준 실패" "ProbeIsolationFixture" || cmiss="$cmiss [새 픽스처 실패]"
+  if [ "$cr" = 3 ] && [ -z "$cmiss" ]; then echo "  ✓ 세 전이가 제 칸에 떴고 rc=3"
+  else echo "  ✗ rc=$cr(기대 3), 제 칸에 안 뜬 것:${cmiss:- 없음}"; printf '%s\n' "$co" | tail -30 | sed 's/^/      /'; rc=1; fi
+  echo "── R5 compare 정상(음성) 대조: 같은 정상 xml끼리는 rc=0이고 전이 칸이 0건인가"
+  co=$( compare "$tmp/r1_ok.xml" "$tmp/r1_ok.xml" 2>&1 ); cr=$?
+  if [ "$cr" = 0 ] && printf '%s\n' "$co" | grep -qF "실패 0에 가려진다) 0건" \
+     && printf '%s\n' "$co" | grep -qF "새로 생긴 픽스처 수준 실패 (failed=에 안 잡힌다) 0건"; then
+    echo "  ✓ rc=0, 전이 0건"
+  else echo "  ✗ rc=$cr — 정상끼리 대조가 빨갛거나 칸이 안 찍혔다"; printf '%s\n' "$co" | tail -20 | sed 's/^/      /'; rc=1; fi
+
+  # ★ 실측 교정 — 러너가 실제로 뱉은 xml. 없으면 **미확인**이라고 쓴다(✓라고 쓰지 않는다).
+  echo "── R1 실측 교정: 실제 러너 xml로 맞춘다(TEAM.md 규칙 3)"
+  local rx_m5p="$REPO/Logs/coder-onbstore/mut-M5p.xml" rx_edit="$REPO/Logs/coder-onbstore/edit-full.xml"
+  local rx_play="$REPO/Logs/coder-onbstore/play-full.xml" rx_setup="$OUTDIR/ledgehang-GREEN_edit.xml"
+  if [ -f "$rx_m5p" ]; then r1_expect "실측 mut-M5p.xml(failed=0, Unity rc 0) → 빨강" "$rx_m5p" 3 "GlobalPlayModeTestIsolation" "site=TearDown"
+  else echo "  · mut-M5p.xml 없음 — 미확인. 이 교정 없이 낸 R1 초록은 믿지 마라."; fi
+  if [ -f "$rx_edit" ]; then r1_expect "실측 edit-full.xml(3141건, Skipped:Ignored) → 초록" "$rx_edit" 0 "✓ R1 초록"
+  else echo "  · edit-full.xml 없음 — 미확인."; fi
+  if [ -f "$rx_play" ]; then r1_expect "실측 play-full.xml → 빨강 + 판정 불가 2건 이름" "$rx_play" 3 "판정 불가(Inconclusive) 2건" \
+       "ClickingOutsideSettingsNeitherClosesItNorReturnsTheInfoWindow" "ClickingACalendarCellPicksTheDayInsteadOfDraggingTheWindow"
+  else echo "  · play-full.xml 없음 — 미확인."; fi
+  if [ -f "$rx_setup" ]; then r1_expect "실측 ledgehang-GREEN_edit.xml([OneTimeSetUp] 실패) → 빨강" "$rx_setup" 3 "site=SetUp"
+  else echo "  · ledgehang-GREEN_edit.xml 없음 — 미확인."; fi
+
+  # ==========================================================================
+  # ★★ 부분 실행 배너 대조 (2026-09-14 — docs/verify/PLAYMODE_RED7_FIX_SPEC.md §8 1안, 리더 채택)
+  # ==========================================================================
+  # G5는 필터 실행을 못 본다(mut-M5p.xml: tcc=3 total=3). 배너는 **rc를 바꾸지 않는다** — 그래서 rc와 함께
+  # «있어야 할 문구»와 «있으면 안 될 문구»를 둘 다 본다(배너가 늘 뜨거나 늘 안 뜨는 죽은 장치를 가른다).
+  b_expect() {   # $1=설명 $2=xml $3=기대 rc $4=있어야 할 문구(| 구분) $5=있으면 안 될 문구(| 구분, 빈 값 허용)
+    local what="$1" x="$2" want="$3" has="$4" hasnot="$5" o got miss="" t
+    o=$( report "$x" 0 0 2>&1 ); got=$?
+    local -a hs hn
+    IFS='|' read -r -a hs <<< "$has"
+    IFS='|' read -r -a hn <<< "$hasnot"
+    # ★ macOS /bin/bash 3.2 + set -u 에서 빈 배열 "${a[@]}"는 unbound 오류로 selfcheck 전체를 죽인다(2026-09-14 실측).
+    for t in ${hs[@]+"${hs[@]}"}; do [ -z "$t" ] || printf '%s\n' "$o" | grep -qF -- "$t" || miss="$miss [없음:$t]"; done
+    for t in ${hn[@]+"${hn[@]}"}; do [ -z "$t" ] || ! printf '%s\n' "$o" | grep -qF -- "$t" || miss="$miss [있으면 안 됨:$t]"; done
+    if [ "$got" = "$want" ] && [ -z "$miss" ]; then echo "  ✓ $what — rc=$got"
+    else echo "  ✗ $what — rc=$got(기대 $want)$miss"; printf '%s\n' "$o" | grep -E "범위|부분 실행|⚠⚠" | sed 's/^/      /'; rc=1; fi
+  }
+  b_make() {   # $1=경로 — platform=PlayMode, 3건 전부 통과(R1 초록)
+    cat > "$1" <<X
+<test-run id="2" testcasecount="3" total="3" result="Passed" passed="3" failed="0" inconclusive="0" skipped="0">
+  <test-suite type="TestSuite" name="StickMate" fullname="StickMate" testcasecount="3" total="3" result="Passed">
+    <properties><property name="platform" value="PlayMode" /></properties>
+    <test-case name="A" fullname="StickMate.Tests.Probe.배너탐침_A" result="Passed" />
+    <test-case name="B" fullname="StickMate.Tests.Probe.배너탐침_B" result="Passed" />
+    <test-case name="C" fullname="StickMate.Tests.Probe.배너탐침_C" result="Passed" />
+  </test-suite>
+</test-run>
+X
+  }
+  b_log() {   # $1=xml 경로 $2=필터 값(빈 값이면 필터 인자 없음) — Unity 로그 머리 모양 그대로(한 줄에 인자 하나)
+    {
+      echo "[Licensing::Module] 합성 머리말"; echo; echo "COMMAND LINE ARGUMENTS:"
+      echo "/Applications/Unity/Hub/Editor/6000.0.82f1/Unity.app/Contents/MacOS/Unity"
+      printf '%s\n' -batchmode -nographics -runTests -testPlatform PlayMode
+      if [ -n "$2" ]; then printf '%s\n' -testFilter "$2"; fi
+      printf '%s\n' -testResults "$1" -logFile "${1%.xml}.log"
+      echo "Successfully changed project path to: /probe"
+    } > "${1%.xml}.log"
+  }
+  b_make "$tmp/b_part.xml";    b_log "$tmp/b_part.xml" "^StickMate\\.Tests\\.Probe\\."
+  b_make "$tmp/b_short.xml"
+  b_make "$tmp/b_fulllog.xml"; b_log "$tmp/b_fulllog.xml" ""
+
+  echo "── 배너 탐지(양성) 1: 로그 명령줄에 -testFilter가 있으면 «부분 실행» — 그리고 R1 초록 rc=0은 그대로인가"
+  b_expect "필터 로그 + 초록 xml" "$tmp/b_part.xml" 0 "★★ 부분 실행 3/|로그 명령줄 -testFilter|✓ R1 초록" ""
+  echo "── 배너 탐지(양성) 2: 로그가 없어도 실행 수가 소스 리프 하한보다 적으면 «부분 실행»인가(둘째 자 단독)"
+  b_expect "로그 없음 + 3건" "$tmp/b_short.xml" 0 "★★ 부분 실행 3/|실행 수가 소스 리프 하한보다 적다" ""
+  echo "── 배너 모순 대조: 로그는 필터 없음(전량)인데 실행 수가 하한보다 적으면 «부분»이 아니라 «모순»으로 말하는가"
+  b_expect "전량 로그 + 3건" "$tmp/b_fulllog.xml" 0 "⚠⚠ 로그는 전량인데 실행 3" "★★ 부분 실행"
+  echo "── 배너 정상(음성) 대조: platform을 모르는 xml에 소스 하한을 들이대지 않는가(0이라고 하지 않는다)"
+  b_expect "platform 없음" "$tmp/r1_ok.xml" 0 "소스 리프 미확인" "★★ 부분 실행|⚠⚠"
+  echo "── 배너 실측 교정: 실제 전량 xml에는 배너가 없고, 실제 필터 xml에는 있는가"
+  if [ -f "$rx_play" ]; then b_expect "실측 play-full.xml(전량 783)" "$rx_play" 3 "범위: 전량|PlayMode 폴더 파일" "★★ 부분 실행|⚠⚠|파일 0개"
+  else echo "  · play-full.xml 없음 — 미확인."; fi
+  if [ -f "$rx_edit" ]; then b_expect "실측 edit-full.xml(전량 3141)" "$rx_edit" 0 "범위: 전량|EditMode 폴더 파일" "★★ 부분 실행|⚠⚠|파일 0개"
+  else echo "  · edit-full.xml 없음 — 미확인."; fi
+  if [ -f "$rx_m5p" ]; then b_expect "실측 mut-M5p.xml(필터 3건)" "$rx_m5p" 3 "★★ 부분 실행 3/|-testFilter" ""
+  else echo "  · mut-M5p.xml 없음 — 미확인."; fi
+
+  # ★ 교차 대조 — report·compare·baseline.py가 nunit_verdict 하나를 공유하므로 **같이 틀릴 수 있다.**
+  #   그 모듈을 import하지 않는 원시 정규식 판정기로 같은 파일을 다시 잰다(다른 방법으로 다시 잰다).
+  echo "── ★ R1 교차 대조: nunit_verdict(ElementTree)와 원시 정규식 판정기(모듈 미사용)가 같은 판정을 내는가"
+  local -a xfiles=( "$tmp"/r1_*.xml )
+  for real in "$rx_m5p" "$rx_edit" "$rx_play" "$rx_setup"; do [ -f "$real" ] && xfiles+=( "$real" ); done
+  if python3 - "${xfiles[@]}" <<'PY'
+import re, sys
+import os
+sys.path.insert(0, os.path.join(os.environ['REGRESS_REPO'], 'docs/verify'))
+import nunit_verdict as NV
+ATTR = re.compile(r'([\w-]+)="([^"]*)"')
+def raw_green(p):
+    s = open(p, 'rb').read().decode('utf-8', 'replace')
+    s = re.sub(r'<!\[CDATA\[.*?\]\]>', '', s, flags=re.S)   # 메시지·로그 안의 태그 모양 글자를 걷는다
+    m = re.search(r'<test-run\b([^>]*)>', s)
+    if not m:
+        return False
+    a = dict(ATTR.findall(m.group(1)))
+    failed = int(a.get('failed') or 0)
+    if failed != 0 or len(re.findall(r'<test-case\b[^>]*\sresult="Failed"', s)) != failed:
+        return False
+    if a.get('result') not in ('Passed', 'Skipped:Ignored'):
+        return False
+    for t in re.finditer(r'<test-suite\b([^>]*)>', s):
+        sa = dict(ATTR.findall(t.group(1)))
+        if sa.get('site') in ('SetUp', 'TearDown') or (sa.get('result') or '').startswith('Failed'):
+            return False
+    return True
+files = sys.argv[1:]
+bad = 0
+for p in files:
+    x, y = NV.judge(p)['green'], raw_green(p)
+    print(f"  {'✓' if x == y else '✗'} {p.rsplit('/', 1)[-1]}: nunit_verdict={'초록' if x else '빨강'} / 원시정규식={'초록' if y else '빨강'}")
+    bad += (x != y)
+greens = sum(1 for p in files if NV.judge(p)['green'])
+if len(files) < 9 or greens == 0 or greens == len(files):
+    print(f"  ✗ 대조가 공허하다 — 파일 {len(files)}개(최소 9) · 초록 {greens}개(초록과 빨강이 둘 다 있어야 한다)")
+    bad += 1
+sys.exit(1 if bad else 0)
+PY
+  then echo "  ✓ 두 판정기가 ${#xfiles[@]}개 파일에서 전부 일치(초록·빨강이 둘 다 섞인 표본)"
+  else echo "  ✗ 판정기 불일치 또는 대조 공허 — R1 판정을 믿지 마라."; rc=1; fi
+
   echo "── 양성 대조 C: 정상 xml은 통과하는가(이게 빨간불이면 위 대조는 전부 무의미)"
   local okn=$(( MIN_EDIT_CASES + 10 ))
   cat > "$tmp/ok.xml" <<X
-<test-run id="2" testcasecount="$okn" total="$okn" passed="$okn" failed="0" skipped="0" inconclusive="0"></test-run>
+<test-run id="2" testcasecount="$okn" result="Passed" total="$okn" passed="$okn" failed="0" skipped="0" inconclusive="0"></test-run>
 X
-  if ( report "$tmp/ok.xml" "$MIN_EDIT_CASES" 0 "$okn" "prev.xml" ) >/dev/null 2>&1; then
-    echo "  ✓ 통과했다(양성 대조)"
-  else echo "  ✗ 정상 파일을 거부했다 — 판독기가 고장났다."; rc=1; fi
+  local okrc
+  ( report "$tmp/ok.xml" "$MIN_EDIT_CASES" 0 "$okn" "prev.xml" ) >/dev/null 2>&1; okrc=$?
+  if [ "$okrc" = 0 ]; then
+    echo "  ✓ 통과했다(양성 대조, rc=0)"
+  else echo "  ✗ 정상 파일을 거부했다(rc=$okrc) — 판독기가 고장났다."; rc=1; fi
 
   rm -rf "$tmp"
-  [ "$rc" -eq 0 ] && echo "자기검사 통과 — 가드 10종(G10 포함) + 양성 대조 전부 제 일을 한다." || echo "자기검사 실패."
+  [ "$rc" -eq 0 ] && echo "자기검사 통과 — 가드 10종(G10 포함) + R1/R2/R5 결과 판정 + 양성 대조 전부 제 일을 한다." || echo "자기검사 실패."
   return $rc
 }
 
@@ -938,6 +1238,9 @@ run() {   # $1=edit|play  $2=라벨
     echo "started=$started"
     echo "finished=$(date +%s)"
     echo "unity_rc=$unity_rc"
+    # ★ 2026-09-14 — 실제로 넘긴 인자를 적는다. docs/verify/nunit_verdict.run_scope가 로그가 사라진 실행의
+    #   전량/부분을 이 줄로 가른다(필터 인자가 있으면 부분). 인자는 한 줄에 공백으로 잇는다(경로에 공백 없음).
+    echo "args=${args[*]}"
   } > "$OUTDIR/${label}_${mode}.meta"
 
   report "$xml" "$minc" "$started" "$prevn" "$prevwho"

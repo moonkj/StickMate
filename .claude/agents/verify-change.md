@@ -41,6 +41,8 @@ model: opus
 - 실제 사고 ①: `-runTests`에 **`-quit`을 같이 주면 테스트가 0건 돌고 종료코드 0**이 나온다.
   콤마 구분 필터도 같은 증상이다.
 - 실제 사고 ②: **이틀 전 결과 xml**이 남아 있어 그걸 새 결과로 읽었다.
+- 실제 사고(2026-09-14 추가): 픽스처 `OneTimeTearDown` 단언 실패가 **`failed=0`·종료코드 0**으로 나왔다. test-run
+  `result="Failed(Child)"`와 `test-suite@site="TearDown"`에만 남는다 → 판정에 둘 다 넣고 `mut-M5p.xml`로 판정기를 교정해라.
 - 실제 사고 ③: **하루 전 Player.log**를 현재 상태로 읽었다.
 - → 결과 파일은 **먼저 지우고**, 실행 시작 시각보다 **새 파일인지** 확인하고 읽어라.
   드라이버 로그(`/tmp/stickmate-run/`)와 사용자 인스턴스 로그(`~/Library/Logs/`)는

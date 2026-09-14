@@ -36,5 +36,7 @@ model: opus
   **"고쳤다"고 쉽게 쓰지 마라** — "이렇게 동작할 것으로 판단한다, 실기 미확인"이 정직하다.
 - `-runTests`에 **`-quit`을 같이 주지 마라**(0건 실행 + 종료코드 0). 콤마 구분 필터도 같다.
   결과 파일은 먼저 지우고 **mtime과 testcasecount**를 확인해라.
+  ★ `failed=0`·종료코드 0만으로 초록 판정 금지 — test-run `result`와 `test-suite@site="SetUp"|"TearDown"` 0건까지
+  본다(픽스처 `OneTimeTearDown` 실패가 개수에 안 잡힌다, `docs/TEAM.md` 2026-09-14 절).
 - **`driver.sh stop`과 전역 `Q`는 절대 금지** — 전역이라 사용자 인스턴스까지 죽는다.
 - 빌드는 리더가 한다. 완료 보고에 **"Windows 영향" / "macOS 영향"** 필수.

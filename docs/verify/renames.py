@@ -26,7 +26,10 @@ import re
 import sys
 import glob
 
-REPO = "/Users/kjmoon/App/StickMate"
+# ★ 2026-09-14 — 저장소 루트는 이 파일 위치(docs/verify/)에서 구한다(사용자명이 든 절대 경로를 박지 않는다).
+REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+if not os.path.isfile(os.path.join(REPO, "docs", "verify", "renames.py")):
+    raise SystemExit(f"✗ 저장소 루트를 찾지 못했다 — REPO={REPO}")
 TSV = os.path.join(REPO, "docs/verify/renames.tsv")
 TESTROOT = os.path.join(REPO, "Assets/_Project/Scripts/Tests")
 

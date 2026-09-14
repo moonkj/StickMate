@@ -261,6 +261,7 @@ DLC 무엇을 먼저 사는가)를 `docs/strategy/personas/`에 쓰라고 했다
 > ★★ **2026-09-02 밤 — 그 한 줄이 풀렸다.** 커밋 `7ed996d`(19:24)가 숨김 단축키 **⌃⌥⌘K**를
 > 양 플랫폼에 배선했고, 숨김은 **지속**되며(`StickmanAgent.cs:1250` — 사용자 축 독립)
 > **캐릭터와 창·클릭 차단막이 함께** 걷힌다(`SettingsWindow.cs:253-255` 캡션 원문).
+> 〔**R12-8 정정 (2026-09-14)**: 윗줄은 `7ed996d` 시점에만 참이었다. **`1f7e139`부터 사용자 숨김은 캐릭터만 가리고, 열린 창을 남기고, 그 동안 톱니가 선다** — `Core/StickmanAgent.cs:341` `HidesScreenSurfaces => _isSuspended && !IsUserHiddenOnly` · 캡션 `Interaction/SettingsWindow.cs:283-284`. 여섯 페르소나의 「통제권」은 **캐릭터 기준으로** 열려 있고, R5(화면공유)에는 **창 · 톱니가 공유 화면에 남는** 위험이 남는다(`R5_화면공유.md` A)〕
 > **R1~R5 다섯 + M2까지 여섯이 걸려 있던 그 한 줄이 오늘 열렸다.**
 > 남은 것은 **실기 검증 하나**다 → `CAPTURE_REQUESTS_R4.md` **P1**(1회차 최우선).
 
@@ -280,7 +281,7 @@ R1~R5와 M2가 공통으로 걸려 있던 항목은 **"지금 당장 숨기기"�
 | 전역 폴링이 K를 읽는다 | `AppControlDirector.cs` `IsKeyDown(GlobalKey.K)` |
 | **양 플랫폼** 키코드 | `MacWindowService.cs` `case GlobalKey.K: code = kVK_ANSI_K` / `Win32WindowService.cs` `case GlobalKey.K: letter = 'K'` |
 | 숨김이 **지속**된다 | `StickmanAgent.cs` `shouldSuspend = _fullscreenAutoHide \|\| _userHidden` (두 축 독립) |
-| 캡션이 정직해졌다 | `SettingsWindow.cs` `HideEscapeCaption` = *"캐릭터도 열린 창도 함께 사라져요. 다시 부르려면 ⌃⌥⌘K — 이 방법뿐입니다."* |
+| 캡션이 정직해졌다 | ~~`SettingsWindow.cs` `HideEscapeCaption` = *"캐릭터도 열린 창도 함께 사라져요. 다시 부르려면 ⌃⌥⌘K — 이 방법뿐입니다."*~~ 〔R12-8 정정: **현행이 아니다.** `1f7e139`부터 *"캐릭터만 사라져요. 이 창도 톱니도 남으니 옆의 [보이기]로 되돌립니다."*(`Interaction/SettingsWindow.cs:283-284`). 「이 방법뿐」은 거짓 — 설정창 [보이기] · 숨긴 동안 서는 톱니(`Interaction/InfoGearIconWidget.cs:933-934`)가 있다〕 |
 
 ★ **남은 제약 둘**: ① **실기 미검증**(P1) ② **현행 Windows 배포본(12:42)에는 이 코드가 없다**.
 개별 페르소나 문서(R3·R5)의 해당 항목은 이 상자를 기준으로 읽는다.

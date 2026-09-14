@@ -543,6 +543,46 @@ Windows 전용 파일에 고의 오류를 심어 **win만 빨갛고 osx는 초�
 ⇒ **양성 대조는 「고의로 심은 그 오류가 유일한 에러인가」까지 봐야 한다.** 에러 개수와 종류를 둘 다 봐라.
 ⇒ 미러에 `Library/` 심링크를 반드시 걸어라(안 걸면 이 형태에 그대로 빠진다).
 
+### ★ 거짓 통과 형태 — **픽스처 끝에서 난 실패는 실패 개수에 안 들어간다** (2026-09-14 coder 실측, qa-regression 전수 재판독)
+`[SetUpFixture]`의 `[OneTimeTearDown]` 단언이 실패했는데 **xml `failed="0"`, Unity `Exiting with code 0 (Ok)`,
+`docs/verify/regress.sh report` rc=0·실패 목록 없음**이었다(`Logs/coder-onbstore/mut-M5p.xml`). 흔적은 test-run
+`result="Failed(Child)"`와 그 스위트의 `result="Failed" site="TearDown"`, 그리고 로그 한 줄뿐이었다.
+NUnit은 **테스트 케이스만 센다** — 자식이 다 끝난 뒤 도는 픽스처 정리의 실패는 스위트에만 붙는다.
+일반 `[TestFixture]`의 `[OneTimeTearDown]`도 같다. (`[OneTimeSetUp]` 실패는 자식이 `site="Parent"`로 개수에
+들어가 드러난다 — EditMode 실측, PlayMode 미확인.) 보존 xml 고유 998개 재판독 결과 이 형태를 초록으로 읽고
+커밋한 라운드는 0건이었지만, **저장소 공식 판정 도구(`regress.sh report/compare/selfcheck`, `baseline.py`)가 이 형태를 전혀 못 봤다.**
+**규칙**
+1. **초록 = `failed==0` AND test-run `result` ∈ {`Passed`, `Skipped:Ignored`} AND `site`가 `SetUp`/`TearDown`인
+   `test-suite` 0개 AND `result`가 `Failed`로 시작하는 `test-suite` 0개.** 종료코드나 `failed=`만으로 판정하지 않는다.
+2. **`label`로 거르지 마라.** 합성 교정 xml에서 TearDown 실패가 `label="Ignored"`로 나왔다. `site`와 `result`로 본다.
+3. **양성 대조:** 판정기를 쓰기 전에 `mut-M5p.xml`을 넣어 빨강, 정상 xml(`Logs/coder-onbstore/edit-full.xml`)에서
+   초록이 나오는지 먼저 보인다. 교정이 깨지면 그 판정기가 낸 초록은 전부 폐기한다.
+4. **로그로 역추적하려고 NUnit `TearDown :` 접두어를 grep하지 마라 — Unity 로그에 안 찍힌다**(M5p.log 0건, 죽은 프로브).
+   픽스처 정리 단언에는 **단언 뒤에 성공 로그 한 줄**을 남긴다(`PlayModeSaveIsolationGateTests` 선례).
+5. 같은 가족: **`Assume` 실패(Inconclusive)도 `failed=`에 안 들어간다**(2026-09-14까지는 `regress.sh compare`에도 안 보였다 — 지금 판은 판정 불가 전이와 이름을 보여준다).
+   판정 불가 테스트는 **이름을** 보고에 적는다.
+
+### ★ 거짓 통과 형태 — **스위트 전역 격리가 프로덕션 기본을 바꾼다 / 되돌리지 않는다** (2026-09-14 ux-designer 적발, qa-regression 전수)
+`GlobalPlayModeTestIsolation`이 대기 톱니 게이트를 **스위트 전체에서** 우회했다(프로덕션 평상시에는 톱니가 없다, `0229f52`부터).
+그 결과 등급 1(게임 아닌 전체화면) 도달성 테스트 2건이 **실제로는 마우스 입구가 0인 상태**를 초록으로 통과시켰고(P1 회귀,
+공개 프리뷰 포함), 5건이 프로덕션에 없는 「톱니 상시」를 단언한 채 초록이었다. 반대 방향도 있었다 — EditMode 전역 격리는
+QA 해금을 끄는데 **PlayMode는 끄지 않아** PlayMode 전량이 「전 장비 보유·레벨 무시」 세계에서 돌았다(근거는 코드: `GlobalPlayModeTestIsolation`에 QA 해금 `SetTestOverride(false)` 없음 — ★ 처음 적은 로그 근거 「경고 1회 · 테스트 강제 OFF 0회」는 **죽은 프로브**였다: 경고는 스위치가 켜졌을 때만 찍히고(`EquipmentDebugUnlock.cs:96`) 「강제 OFF」 문자열은 구조적으로 로그에 나올 수 없으며, 같은 경고가 EditMode 로그에도 있어 두 모드를 가르지 못한다 — verify-change 3단계 적발).
+그리고 이 초록을 근거로 marketing이 홍보 문장을 「참」으로 판정했다 — **테스트의 전제를 읽지 않고 결과만 인용하면 거짓 통과가 문서로 번진다.**
+**규칙**
+1. 전역 격리(`[SetUpFixture]`)는 **프로덕션 기본으로 되돌리는 일**만 한다(경로 격리 · 정적 오버라이드 걷기 · QA 스위치 끄기).
+   기본을 **바꾸는** 우회(게이트 우회, 「봤음」 초기값)는 그것이 주제인 픽스처가 **명시적으로 켜고 끈다.**
+2. 우회된 세계에서 사용자에게 보이는 사실(입구·도달성·가시성)을 단언하면 그 세계를 **테스트 이름과 전제 단언에 적는다**.
+3. 우회가 있는 게이트는 **우회를 끈 대조 테스트**가 반드시 따로 있어야 한다(선례: `RightClickFanRuntimeTests`, `StandbyGearVisibilityTests`).
+4. 두 전역 격리(EditMode/PlayMode)의 되돌림 목록을 **서로 대조**한다. 한쪽에만 있는 것은 빠진 것이다.
+5. 테스트 결과를 문서·홍보·출시 판단의 근거로 인용할 때는 **그 테스트가 어떤 세계에서 도는지**(전역 격리·우회·해금)를 함께 적는다.
+
+### ★ 상시 백테스팅 공백 — **PlayMode 전량 6일 17시간·커밋 88개 동안 0회** (2026-09-14 적발, 리더 책임)
+마지막 전량(09-08 01:02 `part2-final`)의 빨강 3건이 BASELINE에도 Tasklist에도 안 올라갔고, `BASELINE.md`는
+09-05 이후 미갱신이었다. 각 라운드가 **자기 영역 묶음만** 돌리고 커밋했다. 그 사이 새로 깨진 PlayMode 테스트
+3건 + 판정 불가 1건이 아무에게도 안 보였다(원인은 P0와 무관한 09-08~09-09 커밋).
+⇒ **리더가 `Assets/`를 건드리는 커밋을 낼 때, 그 커밋 묶음의 검증 단계 중 한 번은 PlayMode 전량을 돌린다.**
+빨강은 이유와 함께 `Tasklist.md`에 이름으로 등재하고, 알려진 빨강이면 알려진 빨강이라고 적는다.
+
 ## ★★ 사용자 상시 지시 (2026-09-03) — 마케팅·상품전략 상시 가동 + 완료 즉시 보고
 
 ### 1. 마케팅 · 상품전략은 **따로 지시가 없어도 계속 투입한다**
@@ -571,6 +611,12 @@ Windows 전용 파일에 고의 오류를 심어 **win만 빨갛고 osx는 초�
 같은 세션 형제 에이전트의 `zsh -c`가 그 문자열을 **자기 명령줄에 포함**해 매칭된다
 (`debugger` 실측: 히트 5건 중 **4건이 셸**이었다).
 ⇒ **락이 비었는데 「사용 중」으로 읽고 라운드가 헛되이 기다린다.** 그리고 그 출력은 「정말로 잡혀 있다」와 똑같이 생겼다.
+
+★★ **정정 2 — `Temp/UnityLockfile` 존재도 「잡혀 있음」의 증거가 아니다** (2026-09-14 coder 실측): **컴파일 에러로 끝난 배치모드 Unity는
+보유자 없는 `Temp/UnityLockfile`을 남긴다**(보유 프로세스 0, Unity 프로세스 0). 파일 존재만 보는 가드가 이것을 「잡힘」으로 읽고
+러너 스크립트를 멈췄고, 리더는 그 멈춤을 「실행이 1분 반 만에 끝났다」로만 봤다. 다음 정상 실행이 파일을 치운다.
+⇒ **잠금 판정 = 그 파일의 보유자(`lsof Temp/UnityLockfile`)가 있거나, 아래 바이너리 경로 프로세스가 있을 때만 「잡힘」.**
+파일만 있고 둘 다 없으면 「죽은 잠금」 — **지우지 말고 기록**하고 진행한다(지우는 것은 리더 판단).
 
 **올바른 판정 — 바이너리 경로까지 본다:**
 ```bash
@@ -678,9 +724,10 @@ Fatal Error! It looks like another Unity instance is running   ← 실제로는 
 
 **정본 (3회차):**
 ```bash
-# 둘 다 본다. 하나라도 있으면 잡혀 있는 것이다.
-ls Temp/UnityLockfile 2>/dev/null                                   # ★ 기동 형태 무관
+# ★ 2026-09-14 4회차 정정: 파일 「존재」가 아니라 「보유자」를 본다(위 「정정 2」 — 컴파일 에러로 끝난 Unity가 죽은 잠금을 남긴다).
+lsof Temp/UnityLockfile 2>/dev/null                                 # 보유 프로세스가 있으면 잡혀 있다(기동 형태 무관)
 ps -ax | grep "Unity.app/Contents/MacOS/Unity" | grep -v grep       # -batchmode 요구하지 않는다
+# 둘 중 하나라도 있으면 잡혀 있다. 파일만 있고 둘 다 없으면 「죽은 잠금」 — 지우지 말고 기록하고 진행.
 ```
 ★★ **그리고 판정은 프로브가 아니라 산출물로 한다** — **결과 xml이 실제로 생성됐는지 먼저 보라.**
 Unity는 락 충돌에서 **`Fatal Error`를 찍고도 종료코드 0을 낸다.** 종료코드도, 프로브도 이 실패를 못 잡는다.
