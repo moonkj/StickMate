@@ -1753,8 +1753,10 @@ namespace StickMate.Tests.EditMode
                 StripLineComments(ReadSource(neutral)),
                 "확정 규칙이 중립 위치에 없습니다 — 두 Enforcer가 각자 판정하면 언젠가 갈라집니다.");
 
+            // ★ 2026-09-14 (X2c) — Enforcer는 규칙을 신호 객체(FullScreenFitLatchSignal.Evaluate) 너머로 부른다.
+            //   그 객체가 규칙을 그대로 쓰는지는 DisplayChangeRenderHoldTests가 네 조합 전부를 실행해 잠근다.
             AssertBothContain(MacEnforcerPath, WinEnforcerPath,
-                "OverlayBoundsFitPolicy.ShouldLatchFitApplied(",
+                "_fullScreenFitLatch." + nameof(FullScreenFitLatchSignal.Evaluate) + "(within, wroteThisTick)",
                 "이 플랫폼은 아직 '기하가 맞으면 즉시 확정'입니다 — 같은 틱에 요청한 " +
                 "Screen.SetResolution이 아직 적용되지 않은 값으로 확정하게 됩니다.");
 
@@ -4633,7 +4635,6 @@ namespace StickMate.Tests.EditMode
                              "." + nameof(DisplayChangeHoldDriver.OnLibraryMonitorChanged) + "(",
                              "OnMonitorChanged += ",
                              "." + nameof(DisplayChangeHoldDriver.ShouldDeferFit),
-                             "." + nameof(DisplayChangeHoldDriver.Arm) + "()",
                              "." + nameof(DisplayChangeHoldDriver.Tick) + "(",
                              nameof(FramePacing) + "." + nameof(FramePacing.SetDisplayChangeHold),
                              nameof(DisplayChangeHoldDriver.Hooks.ForceRefreshOsMonitors) + " = RefreshOsMonitorList",
@@ -4643,6 +4644,30 @@ namespace StickMate.Tests.EditMode
                     StringAssert.Contains(needle, code,
                         $"{label} Enforcer에 화면 변경 유예 배선 '{needle}'이 없습니다 — 한쪽 플랫폼만 완화가 걸립니다.");
                 }
+
+                // ★ X2c 잠금(verify-change 2차) — 무장 메서드는 없다(DisplayChangeRenderHoldTests가 리플렉션·실행으로 잠근다).
+                //   남은 우회로는 Enforcer 쪽 세 가지다: (1) 확정 판정을 두 곳 이상에서 부른다(틱 자리에서 상수 인자로),
+                //   (2) 규칙을 신호 객체 없이 직접 불러 확정과 무장을 다시 가른다, (3) 구동기에 다른 신호 인스턴스를 넘긴다.
+                string evaluate = "." + nameof(FullScreenFitLatchSignal.Evaluate) + "(";
+                string latchDecision = "bool ok = _fullScreenFitLatch" + evaluate + "within, wroteThisTick);";
+                Assert.AreEqual(1, CountOccurrences(code, latchDecision),
+                    $"{label}: 적합 틱의 확정 판정 줄('{latchDecision}')이 정확히 한 번이 아닙니다(니들이 썩었거나 판정이 옮겨졌다).");
+                Assert.AreEqual(1, CountOccurrences(code, evaluate),
+                    $"{label}: 확정 판정('{evaluate}')이 적합 틱 밖에서도 불립니다 — 상수 인자로 부르면 기동 첫 프레임부터 유예가 무장됩니다(X2c).");
+                int decisionAt = code.IndexOf(latchDecision, StringComparison.Ordinal);
+                string afterDecision = code.Substring(decisionAt, Math.Min(240, code.Length - decisionAt));
+                StringAssert.Contains("if (ok)", afterDecision, $"{label}: 확정 판정 결과가 곧바로 확정 블록을 열지 않습니다.");
+                StringAssert.Contains("_fullScreenBoundsApplied = true;", afterDecision,
+                    $"{label}: 확정 판정과 적합 완료 플래그가 떨어져 있습니다 — 무장과 적합 확정이 다른 사건이 됩니다.");
+                Assert.AreEqual(0, CountOccurrences(code, nameof(OverlayBoundsFitPolicy.ShouldLatchFitApplied) + "("),
+                    $"{label}: 확정 규칙을 신호 객체 없이 직접 부릅니다 — 확정은 서는데 유예는 무장되지 않거나 그 반대가 됩니다.");
+                Assert.AreEqual(1, CountOccurrences(code, "new " + nameof(FullScreenFitLatchSignal) + "("),
+                    $"{label}: 확정 신호 인스턴스가 하나가 아닙니다 — 구동기가 다른 인스턴스로 무장될 수 있습니다.");
+                int driverAt = code.IndexOf("new " + nameof(DisplayChangeHoldDriver) + "(", StringComparison.Ordinal);
+                int driverEnd = code.IndexOf(nameof(DisplayChangeHoldPolicy.ReadDisabledFromEnvironment) + "()", driverAt, StringComparison.Ordinal);
+                Assert.Greater(driverEnd, driverAt, $"{label}: 구동기 생성식의 끝을 찾지 못했습니다.");
+                StringAssert.Contains("_fullScreenFitLatch,", code.Substring(driverAt, driverEnd - driverAt),
+                    $"{label}: 구동기에 적합 틱과 같은 확정 신호가 넘어가지 않습니다.");
 
                 // 원칙 2 — 유예 틱은 클릭 관통·투명·항상위·히트테스트 상태를 건드리지 않는다.
                 int at = code.IndexOf("private void TickDisplayChangeHold()", StringComparison.Ordinal);
@@ -4658,19 +4683,112 @@ namespace StickMate.Tests.EditMode
                 }
             }
 
-            // R-2b — 렌더 간격을 쓰는 곳은 FramePacing 한 곳뿐이다(유예는 그 계산의 입력).
-            int writes = 0;
-            var writers = new List<string>();
-            foreach (string file in Directory.GetFiles(PlatformRoot, "*.cs", SearchOption.AllDirectories))
+        }
+
+        private const string RenderFrameIntervalName = nameof(UnityEngine.Rendering.OnDemandRendering.renderFrameInterval);
+
+        /// <summary>대입·복합 대입·후위 증감. <c>==</c>·<c>=&gt;</c>·<c>&gt;=</c>·<c>!=</c>는 아니다. 앞뒤가 식별자 문자면 다른 이름이다.</summary>
+        private static readonly Regex RenderFrameIntervalWrite = new Regex(
+            @"(?<![\w@])@?" + RenderFrameIntervalName + @"(?!\w)\s*(?:=(?![=>])|\+=|-=|\*=|/=|%=|&=|\|=|\^=|<<=|>>=|\?\?=|\+\+|--)",
+            RegexOptions.CultureInvariant);
+
+        /// <summary>전위 증감(<c>++X.renderFrameInterval</c>) — 사이의 공백·한정자를 허용한다.</summary>
+        private static readonly Regex RenderFrameIntervalPrefixStep = new Regex(
+            @"(?:\+\+|--)\s*(?:@?\w+\s*\.\s*)*@?" + RenderFrameIntervalName + @"(?!\w)",
+            RegexOptions.CultureInvariant);
+
+        /// <summary>
+        /// 소스 한 파일의 렌더 간격 <b>쓰기</b> 수. 주석·문자열을 먼저 지우고(<see cref="SourceTextScanner"/>) 이름 기준으로 센다 —
+        /// 완전 한정 이름·<c>using</c> 별칭·<c>using static</c> 어느 표기든 끝은 이 속성 이름이다. 평문 문자열 리터럴이
+        /// 정확히 그 이름이면 리플렉션 쓰기 우회로 보고 함께 센다.
+        /// </summary>
+        private static int CountRenderFrameIntervalWrites(string source)
+        {
+            var literals = new List<string>();
+            string code = SourceTextScanner.BlankCommentsAndStrings(source, literals);
+            int n = RenderFrameIntervalWrite.Matches(code).Count + RenderFrameIntervalPrefixStep.Matches(code).Count;
+            foreach (string literal in literals)
             {
-                int n = CountOccurrences(StripLineComments(File.ReadAllText(file)), "OnDemandRendering.renderFrameInterval = ");
-                if (n <= 0) continue;
-                writes += n;
-                writers.Add(Path.GetFileName(file));
+                if (literal == RenderFrameIntervalName) n++;
             }
-            Assert.AreEqual(1, writes,
-                $"렌더 간격 대입이 {writes}곳입니다({string.Join(", ", writers)}) — 두 곳이 쓰면 해제 뒤 억제값이 다음 등급 전환까지 남습니다(R-2b).");
-            CollectionAssert.AreEqual(new[] { "FramePacing.cs" }, writers);
+            return n;
+        }
+
+        /// <summary>
+        /// ★ 2026-09-14 (R-2b, verify-change 2차로 범위 확대) — <b>렌더 간격을 쓰는 곳은 Assets 전체에서 FramePacing 한 곳뿐</b>이다.
+        /// 유예는 그 계산의 입력일 뿐이다. 다른 곳이 쓰면 유예 해제 뒤 억제값(또는 그 코드의 값)이 다음 등급 전환까지 남는다.
+        /// <para>1차 감사는 <c>Platform/</c> 아래만, 한 가지 표기만 셌다 — Platform 밖의 쓰기와 공백·줄바꿈·별칭·복합 대입 표기가
+        /// 전부 빠져나갔다. 탐지기 자체의 양성·음성 표본은 바로 아래 테스트가 잠근다.</para>
+        /// </summary>
+        [Test]
+        public void 렌더_간격을_쓰는_곳은_Assets_전체에서_FramePacing_한_곳뿐이다()
+        {
+            IReadOnlyList<string> scanned = SourceTextScanner.ProductionSourceFilesUnderAssets();
+            string framePacingFile = nameof(FramePacing) + ".cs";
+            string selfFile = Path.GetFileName(SelfSourcePath);
+            bool sawFramePacing = false, sawSelf = false, sawOutsidePlatform = false;
+            string platformPrefix = PlatformRoot.Replace('\\', '/') + "/";
+            var writers = new List<string>();
+            foreach (string file in scanned)
+            {
+                string name = Path.GetFileName(file);
+                sawFramePacing |= name == framePacingFile;
+                sawSelf |= name == selfFile;
+                sawOutsidePlatform |= !file.Replace('\\', '/').StartsWith(platformPrefix, StringComparison.Ordinal);
+                int n = CountRenderFrameIntervalWrites(File.ReadAllText(file));
+                for (int k = 0; k < n; k++) writers.Add(name);
+            }
+            Assert.IsTrue(sawFramePacing, $"스캔 대상에 {framePacingFile}가 없습니다 — 경로 판정이 죽어 아래 단언이 공허합니다.");
+            Assert.IsTrue(sawOutsidePlatform, "스캔 대상이 Platform/ 밖을 보지 않습니다 — 범위 확대가 공허합니다.");
+            Assert.IsFalse(sawSelf, "테스트 파일이 프로덕션 스캔에 들어왔습니다 — 탐지기 표본이 거짓 빨강을 냅니다.");
+            CollectionAssert.AreEqual(new[] { framePacingFile }, writers,
+                $"렌더 간격 쓰기가 {writers.Count}곳입니다({string.Join(", ", writers)}) — 두 곳이 쓰면 해제 뒤 억제값이 다음 등급 전환까지 남습니다(R-2b). " +
+                "간격을 바꿔야 하면 FramePacing의 입력(계획·유예)을 늘리세요.");
+        }
+
+        [Test]
+        public void 렌더_간격_쓰기_탐지기는_표기_변형을_잡고_읽기_문자열_주석은_거른다()
+        {
+            string[] writes =
+            {
+                "OnDemandRendering.renderFrameInterval = 2;",
+                "UnityEngine.Rendering.OnDemandRendering\n        .renderFrameInterval\n        =  3;",
+                "ODR . renderFrameInterval+=1;",
+                "OnDemandRendering.renderFrameInterval ??= 1;",
+                "OnDemandRendering.renderFrameInterval >>= 1;",
+                "++OnDemandRendering.renderFrameInterval;",
+                "OnDemandRendering.renderFrameInterval--;",
+                "OnDemandRendering.@renderFrameInterval = 4;",
+                "typeof(OnDemandRendering).GetProperty(\"renderFrameInterval\").SetValue(null, 2);",
+                "var s = $\"{(OnDemandRendering.renderFrameInterval = 5)}\";",
+                "char q = '\"'; OnDemandRendering.renderFrameInterval = 6;",
+            };
+            foreach (string snippet in writes)
+            {
+                Assert.AreEqual(1, CountRenderFrameIntervalWrites(snippet), $"쓰기를 놓쳤습니다: «{snippet}»");
+            }
+
+            string[] notWrites =
+            {
+                "int saved = OnDemandRendering.renderFrameInterval;",
+                "if (OnDemandRendering.renderFrameInterval == 1) { }",
+                "if (OnDemandRendering.renderFrameInterval >= 1 && OnDemandRendering.renderFrameInterval != 3) { }",
+                "Debug.Log($\"renderFrameInterval={OnDemandRendering.renderFrameInterval}\");",
+                "Debug.Log($\"renderFrameInterval = {x}\");",
+                "// OnDemandRendering.renderFrameInterval = 5;",
+                "/* OnDemandRendering.renderFrameInterval = 5; */",
+                "var s = @\"OnDemandRendering.renderFrameInterval = 5\";",
+                "var s = \"escaped \\\" OnDemandRendering.renderFrameInterval = 5\";",
+                "var s = $\"{(flag ? \"renderFrameInterval = 1\" : \"b\")}\";",
+                "var s = \"renderFrameInterval is 2\";",
+                "int renderFrameIntervalCount = 2; int RenderFrameInterval = 3;",
+                "char q = '\"'; int y = OnDemandRendering.renderFrameInterval;",
+                "int Plan => renderFrameInterval;",
+            };
+            foreach (string snippet in notWrites)
+            {
+                Assert.AreEqual(0, CountRenderFrameIntervalWrites(snippet), $"쓰기가 아닌데 셌습니다: «{snippet}»");
+            }
         }
 
         // ============================================================================

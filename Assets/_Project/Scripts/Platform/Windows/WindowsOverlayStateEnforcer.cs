@@ -733,12 +733,13 @@ namespace StickMate.Platform.Windows
             //   안이므로 `needsResize`/`needsMove`가 둘 다 false여서 **대입을 한 줄도 하지 않는다**.
             //   즉 OS 표면 재생성 횟수는 그대로다(늘어나는 것은 되읽기 두 번뿐).
             bool wroteThisTick = calledSetResolution || needsResize || needsMove;
-            bool ok = OverlayBoundsFitPolicy.ShouldLatchFitApplied(within, wroteThisTick);
+            // ★ 2026-09-14 (verify-change 2차 X2c) — 확정 판정은 신호 객체가 한다(규칙은 ShouldLatchFitApplied 그대로).
+            //   참이면 그 객체가 화면 변경 유예를 무장한다 — 무장 메서드는 따로 없다. 옛 `DisplayChangeHold.Arm();` 한 줄은
+            //   매 프레임 틱으로 옮겨도 전량 초록이었다. 이제 무장을 옮기려면 이 판정(within·wroteThisTick)을 옮겨야 한다.
+            bool ok = _fullScreenFitLatch.Evaluate(within, wroteThisTick);
             if (ok)
             {
                 _fullScreenBoundsApplied = true;
-                // ★ 2026-09-14 화면 변경 유예 무장 — 첫 적합 확정 전(기동 중)의 모니터 신호는 무시한다(기동 흰 배경 구간 보호).
-                DisplayChangeHold.Arm();
 
                 // 같은 프레임에 좌표계를 갱신한다(폴링 대기 없음). 창이 방금 다른 크기/원점이 됐는데
                 // ScreenCoordinateConverter가 최대 0.5초 동안 옛 원점/배율을 들고 있으면, 그 사이의
@@ -956,6 +957,9 @@ namespace StickMate.Platform.Windows
         // ★ 2026-09-14 화면 변경 유예(완화 1안) 배선 — 판정·순서는 플랫폼 중립 DisplayChangeHoldDriver.
         //   여기서는 신호를 넘기고 사실 조회 훅을 주입할 뿐이다. 클릭 관통·투명·항상위는 건드리지 않는다(원칙 2).
         // ============================================================================
+        // ★ 2026-09-14 (verify-change 2차 X2c) — 적합 확정 판정 객체. 유예 구동기의 무장 원천과 <b>같은 인스턴스</b>여야 한다
+        //   (PlatformParityAuditTests가 인스턴스 1개·판정 호출 1곳을 잠근다).
+        private readonly FullScreenFitLatchSignal _fullScreenFitLatch = new FullScreenFitLatchSignal();
         private DisplayChangeHoldDriver _displayChangeHold;
         private UniWindowController _holdSubscribedController;
         private UniWindowController.OnMonitorChangedDelegate _onLibraryMonitorChanged;
@@ -972,6 +976,7 @@ namespace StickMate.Platform.Windows
                 EffectiveRenderFrameInterval = () => FramePacing.EffectiveRenderFrameInterval,
                 MonitorCount = UniWindowController.GetMonitorCount,
             },
+            _fullScreenFitLatch,
             DisplayChangeHoldPolicy.ReadDisabledFromEnvironment());
 
         private void TickDisplayChangeHold()

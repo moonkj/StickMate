@@ -59,10 +59,57 @@
 디스크 파일 0개. (`ReservedBarRevealPolicyTests.자동숨김이_꺼져_있으면_시스템도_디스크도_건드리지_않는다`,
 `네거티브컨트롤_흔적이_없으면_복구는_일어나지_않는다`)
 
-### 2-2. 종료 (`Application.quitting`)
+### 2-2. 종료 — 입구 둘, 순서 하나 (`Application.quitting` / Windows `WM_ENDSESSION`)
 
 우리가 바꿨으면 원래 값으로 되돌리고 흔적을 닫는다. 이미 원래 값이면(사용자가 그 사이 직접 바꿨다면)
 **시스템에 쓰지 않고** 흔적만 닫는다.
+
+★ 2026-09-14 — 이 원복은 **두 입구**에서 온다. 둘 다 `Platform/AppShutdownSequence.cs`의 같은 순서
+(`Order`: **① 작업표시줄 원복 → ② 동결 워치독 정지 → ③ 정상 종료 표지**)를 돈다.
+
+| 입구 | 언제 | 누가 부르나 | 워치독 합류 대기 |
+|---|---|---|---|
+| `Application.quitting` | 앱이 스스로 끝날 때(트레이 「종료」·단축키·설정창) | `AppShutdownSequence.EnsureQuitHookInstalled()`가 **한 번만** 건 구독 | 최대 1초 |
+| `WM_ENDSESSION`(wParam=TRUE) | Windows 로그오프·시스템 종료·재시작 | 우리 **숨은 호스트 창**의 프로시저가 **동기로** `AppShutdownSequence.Run(SessionEnding)` | 0(신호만) |
+
+**왜 두 번째 입구가 필요한가.** Windows는 `WM_ENDSESSION` 처리가 끝나면 언제든 프로세스를 끊는다
+(MS 문서: *"the session can end any time after all applications have returned from processing this message"*).
+Unity가 그 전에 `Application.quitting`을 부르는지는 **실기 미확인**이다. 부르지 않으면 매일 밤 PC를 끄는 사용자의
+작업표시줄이 자동 숨김이 풀린 채로 남고, **StickMate를 다시 켜야** 2-3 (b)의 복구로 돌아온다 — "실행 중에만"이라는
+승인 조건이 평범한 종료 경로에서 깨진다.
+
+- `wParam=FALSE`(다른 앱이 종료를 막아 **취소**됨)에서는 아무것도 하지 않는다 — 세션이 계속되는데 원복하면 실행 중에
+  자동 숨김이 돌아온다.
+- `WM_QUERYENDSESSION`은 건드리지 않는다(DefWindowProc = 종료 허용). 우리는 종료를 막지 않는다.
+- 두 입구가 모두 와도(세션 종료 뒤 quitting) **시스템에 두 번 쓰지 않는다** — 원복은 "이번 실행이 바꿨는가" 상태로 멱등이다.
+- 셸(탐색기)이 먼저 끝나 원복이 반영되지 않으면 **흔적을 닫지 않는다** — 다음 실행이 먼저 갚는다(2-3 (b)).
+
+**수신 창 — 누가 `WM_ENDSESSION`을 받나.** Unity 창은 서브클래싱하지 않는다. 받는 것은
+`Platform/Windows/WindowsSystemTrayIcon.cs`의 **숨은 호스트 창**(부모 없는 최상위 `WS_POPUP`, `WS_VISIBLE` 없음)이다.
+
+| 트레이 | 수신 창 |
+|---|---|
+| 켜짐(기본) | 트레이 아이콘의 호스트 창이 그대로 받는다 |
+| 끔(`STICKMATE_NO_TRAY_ICON`) | **아이콘 없는 숨은 창만** 세운다 — 이번 실행이 자동 숨김을 실제로 바꿨거나, 정상 종료 표지가 켜져 있을 때 (`SessionEndPolicy.NeedsReceiverWithoutTray`). 둘 다 아니면 창도 만들지 않는다 |
+
+숨은 창을 세워도 원칙 3의 쓰기 형태(`ABM_SETSTATE`)는 한 줄도 늘지 않고, 트레이 예외 API
+(`SetForegroundWindow`/`PostMessage`/`DestroyWindow`)도 새로 부르지 않는다. 창 생성이 실패하면 수신자가 없고, 그때도
+흔적이 남아 다음 실행이 먼저 갚는다.
+
+**③ 정상 종료 표지는 무엇인가.** `persistentDataPath/FreezeForensics/session-exit-marker.txt` 한 줄(우리 파일)이다.
+다음 실행이 "실행 중"으로 남은 표지를 보면 직전 실행이 비정상으로 끝났다고 보고 `Player-prev.log`를 같은 폴더로
+**복사**해 둔다(원본은 읽기만, 상한 4MB 끝부분, 슬롯 3개 링, 알림 UI 없음 — `Platform/SessionExitMarker.cs`).
+표지를 이 순서 안에 두는 이유는 위와 같다 — quitting에만 찍으면 Windows 밤 종료가 매일 비정상으로 오판된다.
+
+**이 순서에 들어오지 않는 종료 정리.** 트레이 아이콘 제거, 작업표시줄 버튼 제거기·오디오·가상 데스크톱 탐침의 COM 해제,
+스팀 종료는 각자 `Application.quitting`에만 붙어 있고 세션 종료에서는 돌지 않는다 — 세션이 끝나면 그 상대(탐색기·스팀
+클라이언트)도 함께 끝나 남는 흔적이 없다. 진행 저장(`Interaction/CharacterProgressionDirector.OnApplicationQuit`)은
+세션 종료에서 돌아야 할 수 있어 **결정 미정**으로 러너에 건너뜀으로 띄워 두었다. 파일별 결정·사유는
+`SessionEndShutdownTests`의 종료 구독 대장이 잠근다(새 종료 훅이 생기면 빨개진다).
+
+(`세션_종료는_WM_ENDSESSION이고_wParam이_참일_때만이다`, `종료_순서는_작업표시줄_원복이_워치독_정지보다_먼저다`,
+`세션_종료_원복_뒤_quitting이_또_와도_시스템에_두_번_쓰지_않는다`, `셸이_먼저_끝나_원복이_반영되지_않으면_흔적을_열어_둔다`,
+`R6_두_종료_입구_모두_정상_종료_표지를_남겨_다음_실행이_비정상으로_오판하지_않는다`)
 
 ### 2-3. ★ 크래시 — 이 기능의 핵심
 

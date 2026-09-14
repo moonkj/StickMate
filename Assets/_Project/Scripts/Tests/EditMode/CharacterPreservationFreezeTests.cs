@@ -94,12 +94,10 @@ namespace StickMate.Tests.EditMode
 
             StartHold(1);
             Assert.IsTrue(CharacterPreservationFreeze.IsDisplayChangeHoldActive);
-            Assert.IsTrue(CharacterPreservationFreeze.BlocksNewDialogue);
             Assert.IsTrue(CharacterPreservationFreeze.BlocksNewSpectacle);
 
             ReleaseHold(1);
             Assert.IsFalse(CharacterPreservationFreeze.IsDisplayChangeHoldActive);
-            Assert.IsFalse(CharacterPreservationFreeze.BlocksNewDialogue);
             Assert.IsFalse(CharacterPreservationFreeze.BlocksNewSpectacle);
         }
 

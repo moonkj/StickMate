@@ -604,6 +604,19 @@ namespace StickMate.Tests.EditMode
         {
             return new[]
             {
+                // ★ 2026-09-14 dev-platform 등록 — 3차 라운드 종료 구독 대장이 드러낸 갭 1건(coder 소유 파일이라 미수정).
+                new IgnoreEntry
+                {
+                    File = "SessionEndShutdownTests.cs",
+                    Method = "갭추적_세션_종료에서_진행_저장이_도는지_결정되지_않았다",
+                    Kind = RatchetKind.자동,
+                    Why = "갭: Interaction/CharacterProgressionDirector.OnApplicationQuit(종료 직전 저장)이 Windows 로그오프·" +
+                          "시스템 종료에서 도는지 실기 미확인이고, WM_ENDSESSION 종료 순서에 들어 있지 않다 — 안 돌면 주기 저장 " +
+                          "사이의 진행이 날아간다. 리더 배정 대기(3차 커밋 뒤 coder 배정 예정). " +
+                          "★ 장치: 같은 파일의 종료 구독 대장에서 그 항목의 결정이 OpenGap이 아니게 되면(세션 종료 경로에 넣었거나 " +
+                          "넣지 않기로 사유와 함께 결정) Ignore <b>앞에서</b> Assert.Pass로 초록이 되고, 훅 자체가 사라지거나 " +
+                          "새 훅이 생기면 대장 테스트(종료_구독_대장은_프로덕션의_모든_종료_훅과_일치하고_결정마다_사유가_있다)가 빨개진다.",
+                },
                 // ★ 2026-09-08 coder-systems 등록 — 첫 유료 팩(pack.cyber) 착지 라운드가 낸 갭 2건.
                 new IgnoreEntry
                 {

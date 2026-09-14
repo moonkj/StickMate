@@ -25,8 +25,10 @@ namespace StickMate.Tests.EditMode
 
         private static DisplayChangeRenderHold Armed()
         {
-            var h = new DisplayChangeRenderHold(disabled: false);
-            h.Arm();
+            var latch = new FullScreenFitLatchSignal();
+            var h = new DisplayChangeRenderHold(disabled: false, armingLatch: latch);
+            Assert.IsTrue(latch.Evaluate(withinTolerance: true, wroteThisTick: false), "전제: 쓰기 없는 틱의 기하 일치는 확정이어야 한다.");
+            Assert.IsTrue(h.IsArmed, "전제: 확정 통지가 상태기계를 무장해야 한다(양성 대조).");
             return h;
         }
 
@@ -35,7 +37,7 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 무장_전에는_어떤_신호도_무시한다()
         {
-            var h = new DisplayChangeRenderHold(disabled: false);
+            var h = new DisplayChangeRenderHold(disabled: false, armingLatch: new FullScreenFitLatchSignal());
             Assert.AreEqual(DisplayChangeHoldEvent.None, h.OnLibraryMonitorChanged(0.0),
                 "라이브러리는 창을 붙잡는 순간에도 모니터 변경을 통지한다 — 기동 적합을 늦추면 흰 배경 구간이 길어진다.");
             Assert.AreEqual(DisplayChangeHoldEvent.None, h.OnTopologyTransition(TopologyForensicsTransition.ChangeDetected, 0.0));
@@ -45,8 +47,9 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 꺼져_있으면_무장해도_시작하지_않는다()
         {
-            var h = new DisplayChangeRenderHold(disabled: true);
-            h.Arm();
+            var latch = new FullScreenFitLatchSignal();
+            var h = new DisplayChangeRenderHold(disabled: true, armingLatch: latch);
+            Assert.IsTrue(latch.Evaluate(withinTolerance: true, wroteThisTick: false), "전제: 확정 자체는 선다.");
             Assert.IsFalse(h.IsArmed);
             Assert.AreEqual(DisplayChangeHoldEvent.None, h.OnLibraryMonitorChanged(0.0));
             Assert.AreEqual(DisplayChangeHoldEvent.None, h.OnTopologyTransition(TopologyForensicsTransition.ChangeDetected, 0.0));
@@ -267,8 +270,9 @@ namespace StickMate.Tests.EditMode
         public void 해제는_OS_모니터_목록_강제_갱신이_해제_게시보다_먼저다()
         {
             var fake = new FakeHooks();
-            var driver = new DisplayChangeHoldDriver(fake.Build(), disabled: false);
-            driver.Arm();
+            var latch = new FullScreenFitLatchSignal();
+            var driver = new DisplayChangeHoldDriver(fake.Build(), latch, disabled: false);
+            Assert.IsTrue(latch.Evaluate(withinTolerance: true, wroteThisTick: false), "전제: 첫 적합 확정.");
 
             driver.OnTopologyTransition(TopologyForensicsTransition.ChangeDetected, 0.0, 100);
             Assert.IsTrue(DisplayChangeHoldStatus.IsActive);
@@ -291,8 +295,9 @@ namespace StickMate.Tests.EditMode
         public void 끄기_스위치가_켜지면_구동기는_어떤_훅도_부르지_않는다()
         {
             var fake = new FakeHooks { FitPending = true };
-            var driver = new DisplayChangeHoldDriver(fake.Build(), disabled: true);
-            driver.Arm();
+            var latch = new FullScreenFitLatchSignal();
+            var driver = new DisplayChangeHoldDriver(fake.Build(), latch, disabled: true);
+            latch.Evaluate(withinTolerance: true, wroteThisTick: false);
             driver.OnLibraryMonitorChanged(0.0, 1);
             driver.OnTopologyTransition(TopologyForensicsTransition.ChangeDetected, 0.1, 2);
             for (double now = 0.0; now < Max * 2; now += 0.5) driver.Tick(now, 3);
@@ -301,6 +306,98 @@ namespace StickMate.Tests.EditMode
             Assert.IsFalse(driver.ShouldDeferFit);
             Assert.IsFalse(DisplayChangeHoldStatus.IsActive);
             Assert.AreEqual(0, DisplayChangeHoldStatus.EpisodeNumber);
+        }
+
+        // ------------------------------------------------------------------ 무장 자리 잠금 (verify-change 2차 X2c)
+
+        [Test]
+        public void X2c_적합_확정_통지_없이는_아무리_많은_틱과_신호에도_무장되지_않는다()
+        {
+            var fake = new FakeHooks();
+            var latch = new FullScreenFitLatchSignal();
+            var driver = new DisplayChangeHoldDriver(fake.Build(), latch, disabled: false);
+
+            // 기동 구간 흉내: 매 프레임 유예 틱 + 라이브러리의 부착 시점 모니터 통지 + 확정되지 못한 판정(쓰기 있던 틱 / 기하 불일치).
+            const int bootFrames = 600;
+            for (int frame = 1; frame <= bootFrames; frame++)
+            {
+                double now = frame * Step;
+                driver.Tick(now, frame);
+                Assert.IsFalse(latch.Evaluate(withinTolerance: true, wroteThisTick: true), "쓰기가 있던 틱은 확정이 아니다.");
+                Assert.IsFalse(latch.Evaluate(withinTolerance: false, wroteThisTick: false), "기하 불일치는 확정이 아니다.");
+                driver.OnLibraryMonitorChanged(now, frame);
+                driver.OnTopologyTransition(TopologyForensicsTransition.ChangeDetected, now, frame);
+            }
+            Assert.IsFalse(driver.State.IsArmed,
+                "적합 확정 전에 무장됐다 — 기동 중 라이브러리 통지로 유예가 걸려 기동 흰 배경 구간이 길어진다(X2c).");
+            Assert.IsFalse(driver.IsHolding);
+            CollectionAssert.IsEmpty(fake.Calls, "무장 전 신호가 렌더 입력·목록 갱신 훅을 불렀다.");
+            Assert.AreEqual(0, DisplayChangeHoldStatus.EpisodeNumber);
+            Assert.IsFalse(latch.HasLatchedOnce);
+
+            // 양성 대조 — 같은 구동기가 확정 한 번 뒤에는 같은 신호로 시작한다(위 부재 단언이 공허하지 않다).
+            Assert.IsTrue(latch.Evaluate(withinTolerance: true, wroteThisTick: false));
+            Assert.IsTrue(driver.State.IsArmed, "확정 통지가 무장하지 못했다.");
+            driver.OnLibraryMonitorChanged((bootFrames + 1) * Step, bootFrames + 1);
+            Assert.IsTrue(driver.IsHolding);
+            Assert.AreEqual(DisplayChangeHoldStartReason.LibraryMonitorChanged, DisplayChangeHoldStatus.StartReason);
+        }
+
+        [Test]
+        public void X2c_구동기가_확정보다_늦게_만들어져도_이미_선_확정으로_무장되고_확정이_없으면_무장되지_않는다()
+        {
+            var latched = new FullScreenFitLatchSignal();
+            Assert.IsTrue(latched.Evaluate(withinTolerance: true, wroteThisTick: false));
+            var late = new DisplayChangeHoldDriver(new FakeHooks().Build(), latched, disabled: false);
+            Assert.IsTrue(late.State.IsArmed, "Enforcer는 구동기를 지연 생성한다 — 이미 선 확정을 놓치면 영원히 무장되지 않는다.");
+
+            var none = new DisplayChangeHoldDriver(new FakeHooks().Build(), armingLatch: null, disabled: false);
+            none.OnLibraryMonitorChanged(0.0, 1);
+            Assert.IsFalse(none.State.IsArmed, "확정 원천이 없으면 무장할 길이 없어야 한다.");
+            Assert.IsFalse(none.IsHolding);
+        }
+
+        [Test]
+        public void X2c_확정_신호는_ShouldLatchFitApplied_규칙_그대로이고_설_때마다_통지한다()
+        {
+            var latch = new FullScreenFitLatchSignal();
+            int notified = 0;
+            latch.Latched += () => notified++;
+            foreach (bool within in new[] { false, true })
+            foreach (bool wrote in new[] { false, true })
+            {
+                int before = notified;
+                bool expected = OverlayBoundsFitPolicy.ShouldLatchFitApplied(within, wrote);
+                Assert.AreEqual(expected, latch.Evaluate(within, wrote), $"within={within}, wrote={wrote}");
+                Assert.AreEqual(expected ? before + 1 : before, notified, "통지는 확정이 설 때만 올라야 한다.");
+            }
+            Assert.AreEqual(1, latch.LatchCount);
+
+            latch.Latched += () => throw new System.InvalidOperationException("구독자 실패");
+            Assert.IsTrue(latch.Evaluate(withinTolerance: true, wroteThisTick: false), "구독자가 던져도 확정 판정은 그대로여야 한다.");
+        }
+
+        [Test]
+        public void X2c_구동기와_상태기계에는_무장_메서드가_없다()
+        {
+            const System.Reflection.BindingFlags all = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Static |
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.DeclaredOnly;
+            foreach (System.Type type in new[] { typeof(DisplayChangeHoldDriver), typeof(DisplayChangeRenderHold) })
+            {
+                var nonPrivateArmers = new List<string>();
+                int armedProperty = 0;
+                foreach (System.Reflection.MethodInfo m in type.GetMethods(all))
+                {
+                    if (m.Name == "get_" + nameof(DisplayChangeRenderHold.IsArmed)) { armedProperty++; continue; }
+                    if (m.IsPrivate) continue;
+                    if (m.Name.IndexOf("Arm", System.StringComparison.Ordinal) >= 0) nonPrivateArmers.Add(m.Name);
+                }
+                if (type == typeof(DisplayChangeRenderHold))
+                    Assert.AreEqual(1, armedProperty, "양성 대조: 리플렉션이 이 타입의 멤버를 실제로 보고 있어야 한다.");
+                CollectionAssert.IsEmpty(nonPrivateArmers,
+                    $"{type.Name}에 외부에서 부를 수 있는 무장 메서드가 생겼다 — 그 호출은 어디로든 옮길 수 있고, 옮겨도 초록이던 구멍(X2c)이 다시 열린다. " +
+                    $"무장은 {nameof(FullScreenFitLatchSignal)} 통지로만.");
+            }
         }
 
         // ------------------------------------------------------------------ FramePacing 우선순위 (R-2b)

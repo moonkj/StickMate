@@ -138,21 +138,45 @@ namespace StickMate.Platform
     /// 화면 변경 유예 상태기계. <b>메인 스레드 전용</b>, 시계는 호출자가 넘긴다(테스트가 시간을 손으로 흘린다).
     /// 참조 형식이다(readonly 필드 복사 함정 — <see cref="WallClockIntervalGate"/> 문서).
     ///
-    /// <para><b>무장</b>: 첫 전체화면 적합이 확정되기 전(<see cref="Arm"/> 전)에는 어떤 신호도 무시한다 — 라이브러리는
+    /// <para><b>무장</b>: 첫 전체화면 적합이 확정되기 전에는 어떤 신호도 무시한다 — 라이브러리는
     /// 창을 붙잡는 순간에도 모니터 변경을 통지하고, 기동 적합을 늦추면 기동 흰 배경 구간이 길어진다(09-07 버그 계열).</para>
+    ///
+    /// <para>★ 2026-09-14 (verify-change 2차 X2c) — <b>공개 무장 메서드가 없다.</b> 무장의 유일한 원천은 생성자에 넘긴
+    /// <see cref="FullScreenFitLatchSignal"/>의 확정 통지다. 옛 <c>Arm()</c>은 어디서나 부를 수 있어서, 호출 자리를 매 프레임
+    /// 틱으로 옮겨도 아무 테스트도 빨개지지 않았다.</para>
     /// </summary>
     public sealed class DisplayChangeRenderHold
     {
         private readonly bool _disabled;
         private bool _armed;
+        private FullScreenFitLatchSignal _armingLatch;
         private DisplayChangeHoldPhase _phase;
         private double _startedAt;
         private double _quietUntil = -1.0;
         private DisplayChangeHoldReleaseReason _quietCause;
 
-        public DisplayChangeRenderHold(bool disabled)
+        /// <param name="disabled">끄기 스위치 — 참이면 영원히 무장하지 않는다.</param>
+        /// <param name="armingLatch">무장의 <b>유일한</b> 원천. null이면 영원히 무장하지 않는다(= 유예 없음, 이전 동작).</param>
+        public DisplayChangeRenderHold(bool disabled, FullScreenFitLatchSignal armingLatch)
         {
             _disabled = disabled;
+            if (_disabled || armingLatch == null) return;
+            if (armingLatch.HasLatchedOnce)
+            {
+                _armed = true;   // 늦게 만들어진 경우(Enforcer의 지연 생성) — 확정은 이미 섰다.
+                return;
+            }
+            _armingLatch = armingLatch;
+            armingLatch.Latched += OnFitLatched;
+        }
+
+        private void OnFitLatched()
+        {
+            _armed = true;
+            // 무장은 되돌리지 않는다 — 구독을 더 들고 있을 이유가 없다(호출 목록은 올릴 때 복사되므로 여기서 떼도 안전하다).
+            if (_armingLatch == null) return;
+            _armingLatch.Latched -= OnFitLatched;
+            _armingLatch = null;
         }
 
         public bool IsDisabled => _disabled;
@@ -165,12 +189,6 @@ namespace StickMate.Platform
         public int EpisodeNumber { get; private set; }
         public DisplayChangeHoldStartReason StartReason { get; private set; }
         public DisplayChangeHoldReleaseReason LastReleaseReason { get; private set; }
-
-        /// <summary>첫 전체화면 적합 확정 때 부른다. 여러 번 불러도 같다.</summary>
-        public void Arm()
-        {
-            if (!_disabled) _armed = true;
-        }
 
         /// <summary>라이브러리 모니터 변경 통지(가장 이른 신호).</summary>
         public DisplayChangeHoldEvent OnLibraryMonitorChanged(double now)

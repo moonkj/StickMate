@@ -48,10 +48,14 @@ namespace StickMate.Platform
         private int _holdInterval;
         private bool _fitDeferredNoted;
 
-        public DisplayChangeHoldDriver(Hooks hooks, bool disabled)
+        /// <param name="hooks">플랫폼 사실 조회·실행 훅.</param>
+        /// <param name="armingLatch">★ 무장의 유일한 원천 — Enforcer의 적합 확정 판정 객체(<see cref="FullScreenFitLatchSignal"/>).
+        /// 이 구동기에는 무장 메서드가 없다(verify-change 2차 X2c: 호출 자리를 틱으로 옮겨도 초록이던 구멍).</param>
+        /// <param name="disabled">끄기 스위치.</param>
+        public DisplayChangeHoldDriver(Hooks hooks, FullScreenFitLatchSignal armingLatch, bool disabled)
         {
             _hooks = hooks ?? new Hooks();
-            _hold = new DisplayChangeRenderHold(disabled);
+            _hold = new DisplayChangeRenderHold(disabled, armingLatch);
         }
 
         public bool IsDisabled => _hold.IsDisabled;
@@ -60,8 +64,6 @@ namespace StickMate.Platform
         public bool ShouldDeferFit => _hold.ShouldDeferFit;
         /// <summary>진단/테스트용 상태기계.</summary>
         public DisplayChangeRenderHold State => _hold;
-
-        public void Arm() => _hold.Arm();
 
         public void OnLibraryMonitorChanged(double now, int frame) => Handle(_hold.OnLibraryMonitorChanged(now), now, frame);
 

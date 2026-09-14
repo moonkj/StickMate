@@ -600,12 +600,12 @@ namespace StickMate.Platform.MacOS
             // 비용: 확정이 한 틱 밀리면 그 틱은 이미 불감대 안이라 needsResize/needsMove가 둘 다
             // false여서 <b>대입을 한 줄도 하지 않는다</b> — OS 표면 재생성 횟수는 그대로다.
             bool wroteThisTick = calledSetResolution || needsResize || needsMove;
-            bool ok = OverlayBoundsFitPolicy.ShouldLatchFitApplied(within, wroteThisTick);
+            // ★ 2026-09-14 (verify-change 2차 X2c) — 확정 판정은 신호 객체가 한다(Windows판과 같은 자리·같은 형태).
+            //   참이면 그 객체가 화면 변경 유예를 무장한다 — 무장 메서드는 따로 없다.
+            bool ok = _fullScreenFitLatch.Evaluate(within, wroteThisTick);
             if (ok)
             {
                 _fullScreenBoundsApplied = true;
-                // ★ 2026-09-14 화면 변경 유예 무장 — 첫 적합 확정 전의 모니터 신호는 무시한다(Windows판과 같은 자리).
-                DisplayChangeHold.Arm();
 
                 // 같은 프레임에 좌표계를 갱신한다(폴링 대기 없음). 창이 방금 다른 크기/원점이 됐는데
                 // ScreenCoordinateConverter가 최대 한 폴링 주기 동안 옛 원점/배율을 들고 있으면, 그 사이의
@@ -866,6 +866,9 @@ namespace StickMate.Platform.MacOS
         // ★ 2026-09-14 화면 변경 유예(완화 1안) 배선 — Windows판과 같은 중립 구동기·같은 훅 형태.
         //   클릭 관통·투명·항상위는 건드리지 않는다(원칙 2).
         // ============================================================================
+        // ★ 2026-09-14 (verify-change 2차 X2c) — 적합 확정 판정 객체. 유예 구동기의 무장 원천과 <b>같은 인스턴스</b>여야 한다
+        //   (PlatformParityAuditTests가 인스턴스 1개·판정 호출 1곳을 잠근다 — Windows판과 같다).
+        private readonly FullScreenFitLatchSignal _fullScreenFitLatch = new FullScreenFitLatchSignal();
         private DisplayChangeHoldDriver _displayChangeHold;
         private UniWindowController _holdSubscribedController;
         private UniWindowController.OnMonitorChangedDelegate _onLibraryMonitorChanged;
@@ -882,6 +885,7 @@ namespace StickMate.Platform.MacOS
                 EffectiveRenderFrameInterval = () => FramePacing.EffectiveRenderFrameInterval,
                 MonitorCount = UniWindowController.GetMonitorCount,
             },
+            _fullScreenFitLatch,
             DisplayChangeHoldPolicy.ReadDisabledFromEnvironment());
 
         private void TickDisplayChangeHold()

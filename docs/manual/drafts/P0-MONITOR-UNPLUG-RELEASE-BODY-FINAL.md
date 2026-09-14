@@ -3,7 +3,7 @@
 **보고된 내용.** Windows에서 StickMate가 실행되는 동안 외장 모니터 케이블을 뽑았습니다.
 화면이 흰색으로 바뀌었고, 마우스와 키보드가 반응하지 않았습니다.
 PC를 다시 시작해야 했습니다.
-StickMate를 먼저 종료한 뒤 케이블을 뽑았을 때는 이 문제가 생기지 않았습니다.
+StickMate를 끈 상태에서 케이블을 뽑았을 때는 이 문제가 생기지 않았다고 보고되었습니다.
 
 **원인은 아직 확인 중입니다.** 이 빌드에는 이 문제에 대한 수정이 들어 있지 않습니다.
 
@@ -22,6 +22,7 @@ StickMate를 먼저 종료한 뒤 케이블을 뽑았을 때는 이 문제가 �
 
 아이콘을 찾을 수 없으면 `Ctrl` + `Alt` + `Windows 로고 키` + `Q`를 동시에 눌러 보십시오.
 그래도 종료되지 않으면 `Ctrl` + `Shift` + `Esc`로 작업 관리자를 열고 `StickMate`를 선택해 **작업 끝내기**를 누릅니다.
+작업 관리자로 끝낸 경우에는 아래 「멈췄을 때 보고하는 법」의 **5단계(작업 표시줄 되돌리기)**도 해 주십시오.
 
 **이 문제가 어디까지 해당하는지**
 
@@ -85,14 +86,14 @@ StickMate는 켤 때마다 기록 파일 `Player.log`를 새로 씁니다.
 #### 5단계. StickMate를 한 번 켰다가 종료합니다 (작업 표시줄 되돌리기)
 
 작업 표시줄 **자동 숨기기**를 켜 두고 쓰던 분에게 필요한 단계입니다.
-**잘 모르겠으면 그냥 해 주십시오.** 자동 숨기기를 쓰지 않았다면 이 단계는 아무것도 바꾸지 않습니다.
+**잘 모르겠으면 그냥 해 주십시오.** 자동 숨기기를 쓰지 않았다면 이 단계로 작업 표시줄 설정은 바뀌지 않습니다.
 
 1. StickMate를 켭니다. StickMate가 켜져 있는 동안에는 모니터 케이블을 꽂거나 뽑지 마십시오.
    StickMate가 켜져 있는 동안 작업 표시줄이 계속 보이는 것은 정상입니다.
 2. StickMate 아이콘을 오른쪽 클릭하고, 메뉴 맨 아래의 `StickMate 종료`를 클릭합니다.
 
 **왜 필요한가요?** StickMate는 실행되는 동안 작업 표시줄 자동 숨기기를 잠시 끄고, 종료할 때 원래 설정으로 되돌리도록 만들어져 있습니다.
-PC가 멈추면 이 되돌리기가 실행되지 못합니다. StickMate를 한 번 켰다가 종료하면 이 되돌리기가 마저 실행됩니다.
+PC가 멈추면 이 되돌리기가 실행되지 못합니다. StickMate를 한 번 켰다가 종료하면 이 되돌리기가 마저 실행되도록 만들어져 있습니다.
 그래도 돌아오지 않으면 작업 표시줄 빈 곳을 오른쪽 클릭 → **작업 표시줄 설정**에서 자동 숨기기 항목을 직접 바꿀 수 있습니다.
 
 ---
@@ -102,7 +103,7 @@ PC가 멈추면 이 되돌리기가 실행되지 못합니다. StickMate를 한 
 **What was reported.** On Windows, an external monitor cable was unplugged while StickMate was running.
 The screen turned white, and the mouse and keyboard stopped responding.
 The PC had to be restarted.
-When StickMate was quit first and the cable was unplugged after that, the problem did not occur.
+It was also reported that the problem did not occur when the cable was unplugged while StickMate was not running.
 
 **The cause is still under investigation.** This build does not contain a fix for this problem.
 
@@ -122,6 +123,7 @@ When StickMate was quit first and the cable was unplugged after that, the proble
 
 If you cannot find the icon, try pressing `Ctrl` + `Alt` + `Windows logo key` + `Q` at the same time.
 If StickMate still does not quit, press `Ctrl` + `Shift` + `Esc` to open Task Manager, select `StickMate`, and click **End task**.
+If you ended it from Task Manager, also do **Step 5 (restore the taskbar)** of "How to report a freeze" below.
 
 **What we know about the scope**
 
@@ -183,14 +185,14 @@ Open a [new GitHub issue](https://github.com/moonkj/StickMate/issues/new) and wr
 #### Step 5. Start StickMate once, then quit it (restore the taskbar)
 
 This step is needed if you use taskbar **auto-hide**.
-**If you are not sure, do this step anyway.** If you do not use auto-hide, this step changes nothing.
+**If you are not sure, do this step anyway.** If you do not use auto-hide, this step does not change your taskbar setting.
 
 1. Start StickMate. While StickMate is running, do not plug in or unplug any monitor cable.
    While StickMate is running, it is normal that the taskbar stays visible.
 2. Right-click the StickMate icon, and click the item at the bottom of the menu: `StickMate 종료` (Quit StickMate).
 
 **Why is this needed?** StickMate is designed to turn off taskbar auto-hide while it runs, and to restore your original setting when it quits.
-When the PC freezes, this restore cannot run. When you start StickMate once and then quit it, the restore runs.
+When the PC freezes, this restore cannot run. StickMate is designed so that starting it once and then quitting it runs this restore.
 If the taskbar still does not go back, right-click an empty area of the taskbar → **Taskbar settings**, and change the auto-hide option yourself.
 
 ---

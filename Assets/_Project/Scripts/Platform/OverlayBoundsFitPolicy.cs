@@ -239,4 +239,50 @@ namespace StickMate.Platform
 
         private static float Abs(float v) => v < 0f ? -v : v;
     }
+
+    /// <summary>
+    /// ★ 2026-09-14 (verify-change 2차 X2c) — 전체화면 적합 <b>확정 판정과 확정 통지를 한 몸으로</b> 묶는다.
+    ///
+    /// <para><b>왜 생겼나.</b> 화면 변경 유예(<see cref="DisplayChangeRenderHold"/>)는 첫 전체화면 적합이 확정된 <b>뒤</b>에만
+    /// 무장해야 한다 — UniWinC는 창을 붙잡는 순간에도 <c>OnMonitorChanged</c>를 스스로 올리고
+    /// (<c>UniWindowController.UpdateTargetWindow</c>), 기동 적합을 늦추면 기동 흰 배경 구간이 길어진다. 2차 구현은 두
+    /// Enforcer가 확정 블록 안에서 <c>Arm()</c>을 부르게 했는데, 그 한 줄을 매 프레임 틱으로 옮겨도(=기동 첫 프레임부터
+    /// 무장) 두 플랫폼 전량이 초록이었다 — 감사가 호출 문자열의 <b>존재</b>만 봤기 때문이다.</para>
+    ///
+    /// <para><b>구조로 잠근다.</b> 이제 <c>Arm()</c>은 어디에도 없다. 무장의 유일한 원천은 이 객체의 <see cref="Latched"/>이고,
+    /// 그것을 올리는 유일한 길은 <see cref="Evaluate"/>에 <b>되읽은 기하 판정</b>과 <b>이번 틱 쓰기 여부</b>를 넘겨
+    /// <see cref="OverlayBoundsFitPolicy.ShouldLatchFitApplied"/>가 참을 내는 것이다. 두 값은 적합 틱의 지역 변수라 유예 틱
+    /// 자리에는 존재하지 않는다 — 무장을 옮기려면 확정 판정 자체를 옮겨야 하고, 그러면 적합 확정도 함께 틀어진다.</para>
+    ///
+    /// <para>메인 스레드 전용. UnityEngine 의존 없음(EditMode가 실행해 잠근다 — <c>DisplayChangeRenderHoldTests</c>).</para>
+    /// </summary>
+    public sealed class FullScreenFitLatchSignal
+    {
+        /// <summary>확정이 한 번이라도 섰는가. 디스플레이 변경으로 재적합이 다시 열려도 참으로 남는다.</summary>
+        public bool HasLatchedOnce { get; private set; }
+
+        /// <summary>확정이 선 횟수(진단용).</summary>
+        public int LatchCount { get; private set; }
+
+        /// <summary>확정이 설 때마다 올린다. 구독자가 던져도 확정 판정은 그대로 돌려준다(무장 실패가 적합을 되돌리지 않는다).</summary>
+        public event System.Action Latched;
+
+        /// <summary>
+        /// 이번 틱의 확정 판정. 규칙은 <see cref="OverlayBoundsFitPolicy.ShouldLatchFitApplied"/> 그대로이고,
+        /// 참이면 <see cref="Latched"/>를 올린 뒤 참을 돌려준다.
+        /// </summary>
+        public bool Evaluate(bool withinTolerance, bool wroteThisTick)
+        {
+            if (!OverlayBoundsFitPolicy.ShouldLatchFitApplied(withinTolerance, wroteThisTick)) return false;
+            HasLatchedOnce = true;
+            LatchCount++;
+            System.Action handlers = Latched;
+            if (handlers != null)
+            {
+                try { handlers(); }
+                catch (System.Exception) { /* 무장 실패가 적합 확정을 되돌리지 않는다. */ }
+            }
+            return true;
+        }
+    }
 }

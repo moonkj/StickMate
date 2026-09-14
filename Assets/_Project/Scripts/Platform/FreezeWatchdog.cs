@@ -253,8 +253,12 @@ namespace StickMate.Platform
 
                 FreezeForensicsLog.Activate(directory, header);
                 FreezeWatchdog.Start();
-                // ★ 2026-09-14 (R-1) — 종료 순서는 중립 한 곳(AppShutdownSequence: 작업표시줄 원복 먼저, 워치독 정지 나중).
+                // ★ 2026-09-14 (R-1) — 종료 순서는 중립 한 곳(AppShutdownSequence: 작업표시줄 원복 → 워치독 정지 → 정상 종료 표지).
                 AppShutdownSequence.EnsureQuitHookInstalled();
+
+                // ★ 2026-09-14 (3차 D, R-6) — 직전 실행이 정상 종료 표지 없이 끝났으면 Player-prev.log를 우리 폴더로 복사해 둔다
+                //   (사용자가 앱을 한 번 더 켜면 Unity가 그 로그를 밀어내 사라진다). 원본은 읽기만 한다. 알림 UI 없음.
+                RecordPreviousSessionVerdict(directory, pid);
 
                 Debug.Log($"{FreezeForensicsPolicy.LogTag} 활성 — 폴더 {directory} " +
                     $"(파일은 첫 사건 때 생깁니다, 슬롯 {FreezeForensicsPolicy.SlotCount}개 링). " +
@@ -268,5 +272,28 @@ namespace StickMate.Platform
             }
         }
 
+        private static void RecordPreviousSessionVerdict(string directory, int pid)
+        {
+            string consoleLog = null;
+            try { consoleLog = Application.consoleLogPath; } catch (Exception) { }
+            string previousLog = string.IsNullOrEmpty(consoleLog)
+                ? null
+                : Path.Combine(Path.GetDirectoryName(consoleLog) ?? string.Empty, SessionExitMarkerPolicy.PreviousPlayerLogFileName);
+
+            SessionExitMarker.StartupResult r = SessionExitMarker.RunStartup(directory, pid, previousLog,
+                SessionExitMarker.IsSameApplicationProcessAlive);
+
+            if (r.CopiedFileName != null)
+            {
+                Debug.Log($"{FreezeForensicsPolicy.LogTag} 직전 실행 판정={r.Verdict} — 정상 종료 표지 없이 끝났습니다" +
+                    "(크래시·강제 종료·전원 차단·PC 정지 중 하나). " +
+                    $"{SessionExitMarkerPolicy.PreviousPlayerLogFileName} {(r.Truncated ? $"끝 {r.CopiedBytes}바이트" : $"전체 {r.CopiedBytes}바이트")}를 " +
+                    $"{r.CopiedFileName}로 복사했습니다(원본 {r.SourceBytes}바이트는 그대로).");
+            }
+            else
+            {
+                Debug.Log($"{FreezeForensicsPolicy.LogTag} 직전 실행 판정={r.Verdict}" + (r.Note != null ? $" ({r.Note})" : "") + ".");
+            }
+        }
     }
 }

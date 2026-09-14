@@ -68,6 +68,8 @@ namespace StickMate.Core
     /// <summary>
     /// docs/UX_FLOW.md 16절-15 "모든 방해성/스펙터클 이벤트는 서로 상호 배제 락이 필요하다"의 구현체.
     /// 한 번에 하나의 스펙터클/개입 이벤트만 활성화되도록 강제하는 전역 단일 소유자 락.
+    /// ★ 2026-09-14 — 화면 변경 유예(<see cref="CharacterPreservationFreeze.BlocksNewSpectacle"/>) 중에는 락이 비어 있어도
+    /// <b>새 획득</b>을 거절한다. 이미 쥔 주인의 재진입과 해제는 막지 않는다(진행 중 연출을 끊지 않는다).
     /// StickmanEventBus와 같은 이유(24시간 상주 앱, 레이어 간 결합 최소화, 씬 생명주기와 무관한 정적
     /// 상태)로 정적 클래스로 구현한다.
     ///
@@ -86,7 +88,8 @@ namespace StickMate.Core
         public static SpectacleEventKind ActiveKind => _activeKind;
         public static object CurrentOwner => _owner;
 
-        /// <summary>이미 다른 소유자가 점유 중이면 false. 같은 owner가 다시 요청하면(재진입) true.</summary>
+        /// <summary>이미 다른 소유자가 점유 중이면 false. 같은 owner가 다시 요청하면(재진입) true.
+        /// 락이 비어 있어도 화면 변경 유예 중이면 새 획득은 false(재진입은 true).</summary>
         public static bool TryAcquire(SpectacleEventKind kind, object owner)
         {
             if (owner == null) return false;
