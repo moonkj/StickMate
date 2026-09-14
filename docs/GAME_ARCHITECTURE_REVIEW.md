@@ -750,7 +750,7 @@ States/ArcheryState  마지막 발은 항상 정중앙 = 명중률 33.3% 구조 
 **사용자의 실제 세이브 파일을 직접 열어 확인했다**(추정 아님):
 
 ```
-/Users/kjmoon/Library/Application Support/DefaultCompany/StickMate/stickmate_character.json
+~/Library/Application Support/DefaultCompany/StickMate/stickmate_character.json
   mtime 2026-09-02 14:58 (이 검토 중에도 60초마다 다시 쓰이고 있다 = 앱이 지금 돌고 있다)
   "version": 9          ← v10을 쓰는 빌드가 아직 없다
   "battleWins": 0       ← ★ 아래 7-1-d

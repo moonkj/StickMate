@@ -242,6 +242,21 @@ namespace StickMate.Core
             HidesScreenSurfaces, _fullscreenPanelRetreat, IsUserSummonGrantActive);
 
         /// <summary>
+        /// ★★ 2026-09-14 — <b>지금 사용자가 표면을 불러도 억제되는가</b>(E-1). 캐릭터 우클릭 게이트의 <b>열기 판정</b> 전용.
+        ///
+        /// <para>인자 셋은 바로 위 <see cref="ArePanelsSuppressed"/>와 <b>같은 순서·같은 필드</b>다 — 규칙 본문은
+        /// <see cref="Platform.UserSurfaceSummonPolicy.BlocksUserSummon"/>에 있고 여기서는 배선만 한다
+        /// (축 3 필드가 private이라 판정을 에이전트 쪽에 둔다). 등급 2(전체화면 게임)·다른 가상 데스크톱에서만 참이고,
+        /// <b>허가 없는 등급 1에서는 거짓</b>이다 — 그래서 우클릭이 허가 발급까지 닿는다.</para>
+        ///
+        /// <para>★ <b>표면을 걷을지 묻는 소비자는 이 값을 읽지 마라</b> — 그쪽은 <see cref="ArePanelsSuppressed"/>다.
+        /// 이 값으로 바꾸면 등급 1 진입 순간 이미 떠 있던 창·부채꼴이 회수되지 않는다(원칙 2 회귀,
+        /// <c>docs/ux/SETTINGS_ENTRY_NARROW_WIDTH.md</c> §16-2b B2).</para>
+        /// </summary>
+        public bool IsUserSummonBlocked => Platform.UserSurfaceSummonPolicy.BlocksUserSummon(
+            HidesScreenSurfaces, _fullscreenPanelRetreat, IsUserSummonGrantActive);
+
+        /// <summary>
         /// ★★ 2026-09-06 — <b>지금 남의 전체화면 앱이 떠 있는가</b>(등급 1 이상). 리더 판정으로 신설된
         /// <b>자동 발동 억제 전용</b> 창구다. 읽는 곳은 지금 <c>Core/AudioReactiveDanceGate</c> 하나뿐이다.
         ///
@@ -359,9 +374,11 @@ namespace StickMate.Core
         /// 반환값은 <b>허가가 실제로 났는가</b>.
         ///
         /// <para><b>부르는 곳은 「명시적 사용자 행위」의 진입점뿐이다</b> — 톱니 클릭
-        /// (<c>InfoGearIconWidget.ActivateClick</c>)과 설정창의 <b>사용자 열기</b>
-        /// (<c>SettingsWindow.Open</c>). 자동 복귀·리마인더·연출 같은 <b>사용자가 부르지 않은</b>
-        /// 경로에서 이 함수를 부르면 안 된다 — 그 순간 이 장치는 원칙 2의 구멍이 된다.</para>
+        /// (<c>InfoGearIconWidget.ActivateClick</c>), 설정창의 <b>사용자 열기</b>(<c>SettingsWindow.Open</c>),
+        /// 캐릭터 우클릭(<c>AppControlDirector.TickRightClickFan</c>), 정보창의 <b>사용자 열기</b>
+        /// (<c>CharacterInfoWindow.Open</c> — 2026-09-14 E-2). 자동 복귀(<c>CharacterInfoWindow.ReopenFromSheet</c> 포함)·
+        /// 리마인더·연출 같은 <b>사용자가 부르지 않은</b> 경로에서 이 함수를 부르면 안 된다 — 그 순간 이 장치는
+        /// 원칙 2의 구멍이 된다.</para>
         ///
         /// <para>허가 여부의 판정은 <see cref="Platform.UserSurfaceSummonPolicy.CanGrant"/>가 한다:
         /// 등급 2에서는 절대 나지 않고(게임 위 / 사용자가 직접 숨긴 상태), 등급 1이 <b>이미</b> 켜져

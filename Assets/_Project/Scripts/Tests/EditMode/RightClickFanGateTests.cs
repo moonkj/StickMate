@@ -99,11 +99,68 @@ namespace StickMate.Tests.EditMode
                 "커서 항을 없애도 결과가 한 행도 안 바뀝니다 — 그 항이 실제로는 아무 일도 하지 않는다는 뜻입니다.");
         }
 
+        // ==================================================================
+        // ★★ 2026-09-14 — E-1: 넷째 항은 「허가를 받아도 억제되는가」
+        //    (docs/ux/SETTINGS_ENTRY_NARROW_WIDTH.md §16-2 · §16-2b · §16-4 T-1)
+        // ==================================================================
+        //
+        // 옛 F18(F18_전체화면_억제_중에는_어떤_조합도_열지_않는다)은 넷째 항 입력을 「지금 억제 중인가」로 두고
+        // 그 16행이 전부 닫히는 것을 «원칙 2 정면 위반» 메시지로 정답화했다. 그런데 그 입력은 허가 없는 등급 1에서
+        // 참이고 허가는 게이트 뒤에서 나므로, 그 테스트는 «등급 1 마우스 입구 0»이라는 P1 결함을 초록으로 잠그고 있었다.
+        // 이제 넷째 항 입력은 UserSurfaceSummonPolicy.BlocksUserSummon에서 파생하고, 기대값은 아래 상수 표다
+        // (정책 함수로 기대값을 만들지 않는다 — 생성기와 검사기가 같이 틀리는 형태를 피한다).
+
+        /// <summary>(s, r, g) 8행의 인덱스 — s가 최상위 비트. s = HidesScreenSurfaces · r = 등급 1 이상(축 3) · g = 사용자 소환 임대.</summary>
+        private static int SummonRow(bool s, bool r, bool g) => (s ? 4 : 0) | (r ? 2 : 0) | (g ? 1 : 0);
+
+        /// <summary>★ 기대값 상수 표 — <c>BlocksUserSummon</c>. 인덱스 0..7 = (s,r,g) FFF FFT FTF FTT TFF TFT TTF TTT.
+        /// 등급 2(전체화면 게임)·다른 가상 데스크톱(s = 참)에서만 막는다.</summary>
+        private static readonly bool[] ExpectedBlocksUserSummon = { false, false, false, false, true, true, true, true };
+
+        /// <summary>★ 대조용 상수 표 — <c>SuppressesPanels</c>(닫기 판정). 무허가 등급 1(FTF)에서 <b>참</b>인 것이 옛 게이트의
+        /// 순환이었다. 이 표는 닫기 소비자의 계약이라 E-1이 한 칸도 바꾸지 않는다(§16-2b B2).</summary>
+        private static readonly bool[] ExpectedSuppressesPanels = { false, false, true, false, true, true, true, true };
+
         [Test]
-        public void F18_전체화면_억제_중에는_어떤_조합도_열지_않는다()
+        public void 정책_BlocksUserSummon_진리표_8행이_상수_표와_같다()
+        {
+            int blockedRows = 0;
+            int differsFromClosingRule = 0;
+
+            for (int row = 0; row < 8; row++)
+            {
+                bool s = Bit(row, 2), r = Bit(row, 1), g = Bit(row, 0);
+                Assert.AreEqual(row, SummonRow(s, r, g), "행 인덱스 조립이 틀렸습니다 — 아래 표 대조가 엉뚱한 칸을 봅니다.");
+
+                bool blocks = UserSurfaceSummonPolicy.BlocksUserSummon(s, r, g);
+                Assert.AreEqual(ExpectedBlocksUserSummon[row], blocks,
+                    $"BlocksUserSummon(s={s}, r={r}, g={g})가 상수 표와 다릅니다 — " +
+                    (ExpectedBlocksUserSummon[row]
+                        ? "★ 등급 2(전체화면 게임)·다른 가상 데스크톱에서 사용자 소환이 뚫립니다(원칙 2 정면 위반)."
+                        : "★ 허가를 받으면 풀리는 상태를 막습니다 — 등급 1 마우스 입구가 다시 0이 됩니다(P1 회귀)."));
+
+                bool closes = UserSurfaceSummonPolicy.SuppressesPanels(s, r, g);
+                Assert.AreEqual(ExpectedSuppressesPanels[row], closes,
+                    $"SuppressesPanels(s={s}, r={r}, g={g})가 상수 표와 다릅니다 — 닫기 판정이 바뀌면 등급 1 진입 회수(B2)나 " +
+                    "등급 2 포함관계가 흔들립니다.");
+
+                if (blocks) blockedRows++;
+                if (blocks != closes) differsFromClosingRule++;
+            }
+
+            Assert.AreEqual(4, blockedRows, "막는 행이 정확히 4개(s = 참 전부)여야 합니다.");
+            // ★ 음성 대조 — 열기 판정과 닫기 판정은 정확히 한 칸(무허가 등급 1)에서만 갈린다.
+            //   0이면 열기 판정이 옛 게이트 입력과 같아진 것이고(E-1 되돌림), 2 이상이면 닫기 판정까지 흔들린 것이다.
+            Assert.AreEqual(1, differsFromClosingRule,
+                "열기 판정과 닫기 판정이 갈리는 칸이 정확히 1개(s=거짓, r=참, g=거짓)여야 합니다 — " +
+                "0이면 게이트가 다시 「지금 억제 중인가」를 묻고 있습니다(P1 회귀).");
+        }
+
+        [Test]
+        public void F18_사용자_소환이_막힌_상태에서는_어떤_조합도_열지_않는다()
         {
             int checkedRows = 0;
-            int flipped = 0;
+            int openWhenUnblocked = 0;
 
             for (int row = 0; row < 16; row++)
             {
@@ -114,17 +171,125 @@ namespace StickMate.Tests.EditMode
 
                 checkedRows++;
                 Assert.IsFalse(AppControlDirector.RightClickFanGatePolicy.ShouldOpenFan(
-                        cursorOver, rising, swallowAllows, panelsSuppressed: true, primaryButtonHeld: primaryHeld),
-                    $"전체화면 억제 중인데 열립니다(행 {row:00}) — 원칙 2 정면 위반입니다.");
+                        cursorOver, rising, swallowAllows, userSummonBlocked: true, primaryButtonHeld: primaryHeld),
+                    $"사용자 소환이 막힌 상태(등급 2 전체화면 게임 · 다른 가상 데스크톱)인데 열립니다(행 {row:00}) — " +
+                    "원칙 2 정면 위반입니다.");
 
-                bool suppressedOff = AppControlDirector.RightClickFanGatePolicy.ShouldOpenFan(
-                    cursorOver, rising, swallowAllows, panelsSuppressed: false, primaryButtonHeld: primaryHeld);
-                if (suppressedOff) flipped++;
+                if (AppControlDirector.RightClickFanGatePolicy.ShouldOpenFan(
+                        cursorOver, rising, swallowAllows, userSummonBlocked: false, primaryButtonHeld: primaryHeld))
+                    openWhenUnblocked++;
             }
 
             Assert.AreEqual(16, checkedRows);
-            // ★ 양성 대조 — 억제를 풀면 실제로 열리는 행이 있다(빈 조건이 아니다).
-            Assert.Greater(flipped, 0, "억제를 풀어도 열리는 행이 하나도 없습니다 — 측정기가 죽었습니다.");
+            // ★ 양성 대조 — 막힘을 풀면 정확히 한 조합(나머지 네 항이 전부 원하는 값)이 열린다.
+            Assert.AreEqual(1, openWhenUnblocked,
+                "막힘을 풀었을 때 열리는 조합이 정확히 1개여야 합니다 — 0이면 측정기가 죽었습니다.");
+        }
+
+        [Test]
+        public void F18b_등급1_체류_무허가에서도_우클릭은_연다()
+        {
+            // ★ 정책과 게이트를 <b>합성해서</b> 재는 EditMode 테스트다(§16-4 T-1 c).
+            //   입력은 정책 함수에서 파생하고, 기대값은 «연다»라는 상수다.
+            bool blocked = UserSurfaceSummonPolicy.BlocksUserSummon(
+                characterSuspended: false, panelRetreatActive: true, userSummonGranted: false);
+            Assert.IsTrue(AppControlDirector.RightClickFanGatePolicy.ShouldOpenFan(
+                    cursorOverCharacter: true, secondaryRisingEdge: true, swallowAllowsOpen: true,
+                    userSummonBlocked: blocked, primaryButtonHeld: false),
+                "★ 게임이 아닌 전체화면 앱(등급 1) 체류 중, 허가가 아직 없는 상태에서 캐릭터 우클릭이 닫혔습니다 — " +
+                "허가는 게이트를 통과한 뒤에야 나므로 이 조합이 닫히면 등급 1 마우스 입구가 0입니다(P1, §15-1).");
+
+            // ★ 음성 대조 — 옛 게이트 입력(닫기 판정)을 넣으면 같은 조합이 실제로 닫힌다. 이 단언이 없으면
+            //   위 «연다»가 «게이트가 넷째 항을 아예 안 본다»와 구별되지 않는다.
+            bool oldInput = UserSurfaceSummonPolicy.SuppressesPanels(false, true, false);
+            Assert.IsFalse(AppControlDirector.RightClickFanGatePolicy.ShouldOpenFan(true, true, true, oldInput, false),
+                "옛 입력(SuppressesPanels)으로도 열립니다 — 게이트 넷째 항이 아무 일도 하지 않거나 이 대조가 결함을 재현하지 못합니다.");
+        }
+
+        [Test]
+        public void F18c_원칙2_경계_s가_참이면_r과_g가_무엇이든_합성_게이트가_닫힌다()
+        {
+            int closedRows = 0;
+            int openRows = 0;
+
+            for (int row = 0; row < 8; row++)
+            {
+                bool s = Bit(row, 2), r = Bit(row, 1), g = Bit(row, 0);
+                bool open = AppControlDirector.RightClickFanGatePolicy.ShouldOpenFan(
+                    true, true, true, UserSurfaceSummonPolicy.BlocksUserSummon(s, r, g), false);
+
+                if (s)
+                {
+                    Assert.IsFalse(open,
+                        $"★ s=참(등급 2 전체화면 게임 · 다른 가상 데스크톱)인데 r={r}, g={g}에서 캐릭터 우클릭이 열립니다 — " +
+                        "원칙 2 정면 위반입니다(§16-2b B7 · B8).");
+                    closedRows++;
+                }
+                else
+                {
+                    Assert.IsTrue(open,
+                        $"s=거짓인데 r={r}, g={g}에서 캐릭터 우클릭이 닫힙니다 — §16-2b B1 · B3의 입구가 사라집니다.");
+                    openRows++;
+                }
+            }
+
+            Assert.AreEqual(4, closedRows, "s=참인 행이 4개여야 합니다.");
+            Assert.AreEqual(4, openRows, "s=거짓인 행이 4개여야 합니다.");
+        }
+
+        [Test]
+        public void F18d_게이트_호출부는_열기_판정을_넘기고_닫기_판정을_넘기지_않는다()
+        {
+            // ★ 변이 M1(호출부만 옛 값으로 되돌림)은 위 순수 판정 테스트로는 안 보인다 — 호출부를 소스로 잰다.
+            string director = StripComments(ReadSource("Interaction", "AppControlDirector.cs"));
+            string call = CallArgumentsOrFail(director,
+                nameof(AppControlDirector.RightClickFanGatePolicy) + "." +
+                nameof(AppControlDirector.RightClickFanGatePolicy.ShouldOpenFan) + "(");
+
+            // 존재 대조 — 같은 인자 목록에서 실재하는 이름을 먼저 찾는다(절단기 생존).
+            StringAssert.Contains(nameof(AppControlDirector.RightClickFanGatePolicy.SwallowAllowsOpen), call,
+                "게이트 호출 인자에서 삼킴 판정조차 못 찾았습니다 — 호출 절단이 틀렸습니다(아래 «없음» 판정 무효).");
+
+            string openNeedle = "." + nameof(StickmanAgent.IsUserSummonBlocked);
+            StringAssert.Contains(openNeedle, call,
+                $"★ 게이트 호출부가 열기 판정({openNeedle})을 넘기지 않습니다:\n  {call.Trim()}");
+            Assert.AreEqual(-1, call.IndexOf("." + nameof(StickmanAgent.ArePanelsSuppressed), System.StringComparison.Ordinal),
+                "★ 게이트 호출부가 다시 닫기 판정(ArePanelsSuppressed)을 넘깁니다 — 허가 없는 등급 1에서 참이라 " +
+                "허가 발급에 닿지 못합니다(P1 회귀, 변이 M1).");
+            Assert.AreEqual(-1, call.IndexOf("." + nameof(StickmanAgent.HidesScreenSurfaces), System.StringComparison.Ordinal),
+                "게이트 호출부가 결과값(HidesScreenSurfaces)을 직접 넘깁니다 — 지금 값은 같아도 두 정책 중 하나가 바뀌는 날 " +
+                "게이트만 옛 규칙에 남습니다(§16-2 「파생식으로 두는 이유」).");
+        }
+
+        [Test]
+        public void F18e_닫기_소비자는_열기_판정을_읽지_않는다()
+        {
+            // ★ 변이 M5 — 닫기 소비자 하나를 열기 판정으로 바꾸면 등급 1 진입 순간의 회수가 사라진다(§16-2b B2).
+            string[][] consumers =
+            {
+                new[] { "Interaction", "GearRadialMenuWidget.cs" },
+                new[] { "Interaction", "CharacterInfoWindow.cs" },
+                new[] { "Interaction", "SettingsWindow.cs" },
+                new[] { "Interaction", "PopoverPanel.cs" },
+                new[] { "Interaction", "TodoPostItWidget.cs" },
+            };
+            string closeNeedle = "." + nameof(StickmanAgent.ArePanelsSuppressed);
+            string openNeedle = "." + nameof(StickmanAgent.IsUserSummonBlocked);
+
+            foreach (string[] parts in consumers)
+            {
+                string src = StripComments(ReadSource(parts));
+                StringAssert.Contains(closeNeedle, src,
+                    $"{parts[1]}이 닫기 판정({closeNeedle})을 읽지 않습니다 — 아래 «열기 판정을 안 읽는다»가 " +
+                    "«아무것도 안 읽는다»와 구별되지 않습니다.");
+                Assert.AreEqual(-1, src.IndexOf(openNeedle, System.StringComparison.Ordinal),
+                    $"★ {parts[1]}(닫기 소비자)이 열기 판정({openNeedle})을 읽습니다 — 등급 1 진입 순간 이미 떠 있던 표면이 " +
+                    "회수되지 않습니다(원칙 2 회귀, §16-2b B2 · 변이 M5).");
+            }
+
+            // ★ 양성 대조 — 같은 니들이 실재하는 자리(게이트 호출부)에서는 실제로 잡힌다(니들 생존).
+            Assert.Greater(CountOccurrences(StripComments(ReadSource("Interaction", "AppControlDirector.cs")), openNeedle), 0,
+                "열기 판정 니들을 게이트 호출부에서도 못 찾았습니다 — 니들이 죽었습니다.");
         }
 
         [Test]
@@ -133,14 +298,14 @@ namespace StickMate.Tests.EditMode
             for (int row = 0; row < 8; row++)
             {
                 Assert.IsFalse(AppControlDirector.RightClickFanGatePolicy.ShouldOpenFan(
-                        Bit(row, 0), Bit(row, 1), Bit(row, 2), panelsSuppressed: false, primaryButtonHeld: true),
+                        Bit(row, 0), Bit(row, 1), Bit(row, 2), userSummonBlocked: false, primaryButtonHeld: true),
                     "좌버튼으로 잡고 있는 중에 부채꼴이 열립니다 — 던지려던 동작을 메뉴가 가로챕니다.");
             }
 
             // ★ 양성 대조 — 손을 떼면 같은 조합이 열린다.
             Assert.IsTrue(AppControlDirector.RightClickFanGatePolicy.ShouldOpenFan(
                 cursorOverCharacter: true, secondaryRisingEdge: true, swallowAllowsOpen: true,
-                panelsSuppressed: false, primaryButtonHeld: false));
+                userSummonBlocked: false, primaryButtonHeld: false));
         }
 
         // ==================================================================
@@ -413,14 +578,17 @@ namespace StickMate.Tests.EditMode
         }
 
         [Test]
-        public void F20c_허가_발급_지점은_세_곳이다()
+        public void F20c_허가_발급_지점은_네_곳이다()
         {
             string needle = nameof(StickmanAgent.TryGrantUserSummon);
+            // ★ 2026-09-14 (E-2) — 정보창 사용자 열기가 넷째 발급 지점이 됐다
+            //   (등급 1에서 단축키로 연 정보창이 그 프레임에 닫히던 옛 Ignore 갭).
             string[][] issuers =
             {
                 new[] { "Interaction", "InfoGearIconWidget.cs" },
                 new[] { "Interaction", "SettingsWindow.cs" },
                 new[] { "Interaction", "AppControlDirector.cs" },
+                new[] { "Interaction", "CharacterInfoWindow.cs" },
             };
 
             int found = 0;
@@ -431,7 +599,7 @@ namespace StickMate.Tests.EditMode
             }
 
             Assert.AreEqual(issuers.Length, found,
-                $"허가 발급 지점이 {found}곳입니다 — 톱니 클릭 · 설정창 열기 · 캐릭터 우클릭 세 곳이어야 합니다. " +
+                $"허가 발급 지점이 {found}곳입니다 — 톱니 클릭 · 설정창 열기 · 캐릭터 우클릭 · 정보창 열기 네 곳이어야 합니다. " +
                 "하나라도 빠지면 그 진입점은 등급 1(전체화면 앱 위)에서 통째로 죽습니다.");
 
             // ★ 음성 대조 — 존재하지 않는 심볼로 같은 스캐너를 돌리면 0곳이어야 한다(프로브 생존).
@@ -441,6 +609,96 @@ namespace StickMate.Tests.EditMode
                 if (CountOccurrences(StripComments(ReadSource(parts)), "ZzzNotARealSymbolQqq(") > 0) ghosts++;
             }
             Assert.AreEqual(0, ghosts, "가짜 심볼이 검출됐습니다 — 이 감사 전체가 무효입니다.");
+        }
+
+        [Test]
+        public void F20e_설정창_자동_복귀는_비허가_진입점으로만_정보창을_연다()
+        {
+            // ★ 2026-09-14 (E-2 · §16-2b B5) — 정보창 사용자 열기가 허가를 내게 되면서, 설정창 닫힘 자동 복귀가 같은 진입점을
+            //   쓰면 «우리가 스스로에게 발급하는 면제»가 된다. 런타임 관측은 PanelsOnlyTierMouseEntryTests의 B5가 한다.
+            string settings = StripComments(ReadSource("Interaction", "SettingsWindow.cs"));
+            string body = MethodBodyOrFail(settings, "private void RestoreInfoWindowIfNeeded(");
+
+            // 존재 대조 — 같은 본문에서 억제 가드를 실제로 찾는다(절단기 생존).
+            StringAssert.Contains("." + nameof(StickmanAgent.ArePanelsSuppressed), body,
+                "자동 복귀 본문에서 억제 가드를 못 찾았습니다 — 본문 절단이 틀렸거나 가드가 사라졌습니다(아래 판정 무효).");
+
+            string reopen = "." + nameof(CharacterInfoWindow.ReopenFromSheet) + "(";
+            StringAssert.Contains(reopen, body,
+                $"★ 설정창 자동 복귀가 비허가 진입점({reopen})으로 정보창을 열지 않습니다:\n{body}");
+
+            string userOpen = "." + nameof(CharacterInfoWindow.Open) + "(";
+            Assert.AreEqual(-1, body.IndexOf(userOpen, System.StringComparison.Ordinal),
+                "★ 설정창 자동 복귀가 정보창 사용자 열기(Open)를 부릅니다 — 그 진입점은 등급 1 허가를 내므로 " +
+                "«우리가 스스로에게 발급하는 면제»가 됩니다(§16-2b B5).");
+            Assert.AreEqual(-1, body.IndexOf(nameof(StickmanAgent.TryGrantUserSummon), System.StringComparison.Ordinal),
+                "★ 설정창 자동 복귀 본문이 허가를 직접 냅니다(§16-2b B5 위반).");
+        }
+
+        /// <summary>
+        /// <paramref name="openIndex"/>의 여는 괄호와 짝인 닫는 괄호 위치. 문자열·문자 리터럴 안의 괄호는 세지 않는다.
+        /// <para>한계: 보간 구멍 안에 또 따옴표가 든 문자열은 다루지 않는다 — 그런 본문을 자르게 되면 아래 <c>Assert.Fail</c>이나
+        /// 호출부의 존재 대조가 먼저 빨개진다(조용히 틀린 본문을 돌려주지 않는다).</para>
+        /// </summary>
+        private static int MatchingCloseOrFail(string src, int openIndex, char open, char close, string what)
+        {
+            int depth = 0;
+            for (int i = openIndex; i < src.Length; i++)
+            {
+                char c = src[i];
+                if (c == '"')
+                {
+                    bool verbatim = i > 0 && src[i - 1] == '@';
+                    i++;
+                    while (i < src.Length)
+                    {
+                        if (!verbatim && src[i] == '\\') { i += 2; continue; }
+                        if (src[i] == '"')
+                        {
+                            if (verbatim && i + 1 < src.Length && src[i + 1] == '"') { i += 2; continue; }
+                            break;
+                        }
+                        i++;
+                    }
+                    continue;
+                }
+                if (c == '\'')
+                {
+                    i++;
+                    while (i < src.Length && src[i] != '\'')
+                    {
+                        if (src[i] == '\\') i++;
+                        i++;
+                    }
+                    continue;
+                }
+                if (c == open) depth++;
+                else if (c == close && --depth == 0) return i;
+            }
+            Assert.Fail($"{what}의 짝 괄호를 찾지 못했습니다 — 절단기가 본문을 자르지 못했습니다(아래 판정 무효).");
+            return -1;
+        }
+
+        /// <summary>호출 <paramref name="head"/>(여는 괄호까지 포함)의 인자 목록 텍스트. 호출이 정확히 한 곳이어야 한다.</summary>
+        private static string CallArgumentsOrFail(string src, string head)
+        {
+            Assert.AreEqual(1, CountOccurrences(src, head),
+                $"호출 '{head}'가 정확히 한 곳이 아닙니다 — 절단 대상이 없거나 모호합니다.");
+            int open = src.IndexOf(head, System.StringComparison.Ordinal) + head.Length - 1;
+            int close = MatchingCloseOrFail(src, open, '(', ')', head);
+            return src.Substring(open + 1, close - open - 1);
+        }
+
+        /// <summary>메서드 <paramref name="signature"/>의 본문 텍스트(중괄호 안). 선언이 정확히 한 곳이어야 한다.</summary>
+        private static string MethodBodyOrFail(string src, string signature)
+        {
+            Assert.AreEqual(1, CountOccurrences(src, signature),
+                $"선언 '{signature}'가 정확히 한 곳이 아닙니다 — 이름이 바뀌었거나 겹칩니다.");
+            int sig = src.IndexOf(signature, System.StringComparison.Ordinal);
+            int open = src.IndexOf('{', sig);
+            Assert.Greater(open, sig, $"'{signature}' 뒤에서 본문 시작 중괄호를 못 찾았습니다.");
+            int close = MatchingCloseOrFail(src, open, '{', '}', signature);
+            return src.Substring(open + 1, close - open - 1);
         }
 
         [Test]

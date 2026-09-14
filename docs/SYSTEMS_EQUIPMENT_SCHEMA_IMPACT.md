@@ -598,7 +598,7 @@ Platform/Windows/WindowsVirtualDesktopProbe.cs ← 사실 조회만
 ## 12. 재현
 
 ```bash
-cd /Users/kjmoon/App/StickMate
+cd "$(git rev-parse --show-toplevel)"
 
 # §1 경계 — 세이브에 색이 없다 (부재 단언 + 양성 대조)
 grep -n "Color\|color" Assets/_Project/Scripts/Core/CharacterSaveStore.cs

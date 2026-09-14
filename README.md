@@ -53,7 +53,7 @@ MAC/Windows 바탕화면(그리고 iPad/iPhone 홈 화면 - 추후 검토 예정
 ## 빌드/실행 방법
 
 1. Unity Hub 설치 후 **Unity 6000.0.82f1 (6 LTS)** 에디터 설치(모듈: macOS/Windows Build Support, 모바일 타깃 시 iOS Build Support 추가).
-2. Unity Hub → Add project from disk → 이 리포 루트(`/Users/kjmoon/App/StickMate`) 선택 → 열면 자동 임포트/컴파일.
+2. Unity Hub → Add project from disk → 이 리포 루트(`<프로젝트 경로>`) 선택 → 열면 자동 임포트/컴파일.
 3. `Assets/_Project/Scenes/Main.unity`를 열고 Play를 누르면 `Assets/_Project/Prefabs/Stickman.prefab`(플레이스홀더 스프라이트 리그)이 실제로 낙하→접지→자율 배회하는 모습을 볼 수 있다. 아트 에셋은 아직 없어 흰 사각형/원 스프라이트로만 구성돼 있다 — 프리팹/씬은 `Assets/Editor/SceneBootstrapper.cs`(메뉴: `StickMate/Build All` 또는 `Rebuild All`)로 재생성 가능(기존 에셋이 있으면 기본적으로 건드리지 않음).
 
 ## 구현 현황
@@ -91,10 +91,10 @@ MAC/Windows 바탕화면(그리고 iPad/iPhone 홈 화면 - 추후 검토 예정
 
 ```bash
 /Applications/Unity/Hub/Editor/6000.0.82f1/Unity.app/Contents/MacOS/Unity \
-  -batchmode -nographics -projectPath /Users/kjmoon/App/StickMate \
+  -batchmode -nographics -projectPath "$(git rev-parse --show-toplevel)" \
   -runTests -testPlatform EditMode \
-  -testResults /Users/kjmoon/App/StickMate/testresults.xml \
-  -logFile /Users/kjmoon/App/StickMate/testresults.log
+  -testResults "$(git rev-parse --show-toplevel)/testresults.xml" \
+  -logFile "$(git rev-parse --show-toplevel)/testresults.log"
 ```
 
 (`-testPlatform PlayMode`로 바꾸면 씬 스모크/랙돌 복귀 테스트 실행.) 최근 확인 기준 EditMode 13/13, PlayMode 2/2(각각 다회 반복으로 재현성 확인), 컴파일 에러/경고 0건.

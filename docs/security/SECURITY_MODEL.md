@@ -78,7 +78,7 @@ Analytics를 전부 `m_Enabled: 0`으로 꺼 두었고, 같은 스태프가 *"�
 **(a) 세이브 경로가 Player.log에 그대로 찍힌다** — 리더의 브리핑대로였다. 실측 확인:
 ```
 Player.log: [성장] 준비 완료 — 스틱메이트 Lv.4 (145/429 XP). 저장 파일=불러옴
-            (/Users/kjmoon/Library/Application Support/DefaultCompany/StickMate/stickmate_character.json).
+            (/Users/<이름>/Library/Application Support/DefaultCompany/StickMate/stickmate_character.json).
 출처: Interaction/CharacterProgressionDirector.cs:82
 ```
 (양성 대조: 같은 grep이 그 로그에서 `/Users/` 4건, `StickMate` 5건을 찾는다 — 탐지력 있음.)

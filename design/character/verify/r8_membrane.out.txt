@@ -222,7 +222,7 @@
  1.00            5.605       6.605  +17.8% |    4.878   5.878  +20.5%
 
 
-### H. 본체 LineRenderer 실측 — /Users/kjmoon/App/StickMate/Assets/_Project/Prefabs/Stickman.prefab
+### H. 본체 LineRenderer 실측 — <프로젝트 경로>/Assets/_Project/Prefabs/Stickman.prefab
   LeftLeg        sortingOrder= 0 loop=0 points=5
   LeftLegLower   sortingOrder= 0 loop=0 points=5
   RightLeg       sortingOrder= 0 loop=0 points=5

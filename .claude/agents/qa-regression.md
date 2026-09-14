@@ -34,7 +34,7 @@ model: opus
 | 도구 | 하는 일 |
 |---|---|
 | `regress.sh <edit\|play> <라벨>` | 전량 실행. 가드 G1~G9 + G4a. **Unity 종료코드로 판정하지 마라** — 실패 0에도 2가 나오고, 픽스처 TearDown 실패에도 0이 나온다 |
-| `regress.sh report <xml>` | 2026-09-14부터 `nunit_verdict.py` 규칙 1(failed==0 ∧ test-run result ∈ {Passed, Skipped:Ignored} ∧ SetUp/TearDown 스위트 0 ∧ Failed 스위트 0) 판정. **rc 0 = 초록 / 1 = 측정 무효(G가드) / 3 = 빨강**. 판정 불가(Inconclusive) 이름을 출력 |
+| `regress.sh report <xml>` | 2026-09-14부터 `nunit_verdict.py` 규칙 1(failed==0 ∧ test-run result ∈ {Passed, Skipped:Ignored} ∧ SetUp/TearDown 스위트 0 ∧ Failed 스위트 0 ∧ failed 속성 = Failed 케이스 수(다섯째 절 — TEAM.md 네 절보다 엄격)) 판정. **rc 0 = 초록 / 1 = 측정 무효(G가드) / 3 = 빨강**. 판정 불가(Inconclusive) 이름을 출력 |
 | `regress.sh compare <옛.xml> <새.xml>` | 새로 빨개짐 / 초록 복귀 / 계속 빨감 / 신설 결함 / **짝없는 소멸** + 판정 불가 전이·픽스처 실패 전이. 새 결과가 빨강이면 rc 3 |
 | `regress.sh selfcheck` | 가드·판정이 실제로 무는지. 2026-09-14 밤 기준 **✓ 66**(Unity가 도는 중이면 G6까지 ✓ 67 — R1/R2/R5 합성 대조 + 실측 교정 M5p·edit-full·play-full·ledgehang + 정규식 교차 판정기). 대조 수는 늘 수 있으니 숫자보다 **✗ 0·미확인 0**을 봐라 |
 | `nunit_verdict.py <xml>` | 규칙 1 판정 모듈(`regress.sh`·`baseline.py` 공유). 공유라 같이 틀릴 수 있어 selfcheck가 모듈 없는 정규식 판정기와 교차 대조한다 |

@@ -343,7 +343,7 @@ namespace StickMate.Core
         /// 단축키는 없지만 <b>사용자가 직접 부르는</b> 행동. 상태 슬롯에 그 자리를 적는다.
         ///
         /// <para>★ 2026-09-05 신설. 종전에는 행동의 상태 슬롯이 「단축키가 있다」와
-        /// 「가끔 알아서 뜬다」 <b>둘뿐</b>이라, 톱니 메뉴로만 부르는 것을 적을 칸이 없었다.
+        /// 「가끔 알아서 뜬다」 <b>둘뿐</b>이라, 메뉴(캐릭터 우클릭 → 부채꼴)로만 부르는 것을 적을 칸이 없었다.
         /// 그 빈칸이 집중 모드 카드에 <b>개발 게이트 뒤의 조합</b>을 싣게 만든 자리다.
         /// 표기만 지우고 <see cref="AutoOnlyStatus"/>로 내리면 이번엔 「스스로 뜬다」는
         /// 반대 방향의 거짓이 된다 — 집중 세션은 스스로 시작하지 않는다
@@ -357,10 +357,13 @@ namespace StickMate.Core
         /// <summary>단축키가 없는 행동(자율 발동 전용)의 상태 슬롯 문구.</summary>
         public const string AutoOnlyStatus = "가끔 알아서";
 
-        /// <summary>톱니 메뉴에서만 부르는 행동의 상태 슬롯 문구.
-        /// 슬롯 폭 96pt · 캡션 10pt에서 6글자 ≈ 63pt라, 기존 최장 문구
-        /// (<c>Ctrl+Alt+Win+A</c> ≈ 77pt)보다 짧아 새 폭 위험을 만들지 않는다.</summary>
-        public const string MenuOnlyStatus = "톱니 메뉴에서";
+        /// <summary>메뉴(캐릭터 우클릭 → 부채꼴)에서만 부르는 행동의 상태 슬롯 문구.
+        /// 슬롯 폭 96pt · 캡션 10pt에서 한글 6자 + 공백 1 ≈ 63pt라, 기존 최장 문구
+        /// (<c>Ctrl+Alt+Win+A</c> ≈ 77pt)보다 짧아 새 폭 위험을 만들지 않는다.
+        /// <para>★ 2026-09-14 — 옛 문구 「톱니 메뉴에서」는 톱니가 평상시 숨김이 된 뒤(2026-09-06) 평소 내내 거짓이었다
+        /// (design-narrative <c>docs/narrative/ENTRY_WORDING_AUDIT_2026-09-14.md</c> V1). 새 문구는 글자 수가 같아
+        /// 폭이 같다(같은 문서의 두 폭 모형 N 63.0 / C 73.5). 식별자 <c>MenuOnlyStatus</c>는 바꾸지 않는다(니들 보호).</para></summary>
+        public const string MenuOnlyStatus = "캐릭터 우클릭";
 
         public string DisplayName => _displayName;
 

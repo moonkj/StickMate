@@ -860,14 +860,14 @@ Direct3D: detected that vsync is broken (it does not limit frame rate properly).
 ```bat
 @echo off
 set STICKMATE_VSYNC=1
-start "" "C:\Users\kjmoon\Downloads\StickMate-Windows-20260902b\Windows\StickMate.exe"
+start "" "%USERPROFILE%\Downloads\StickMate-Windows-20260902b\Windows\StickMate.exe"
 ```
 
 **회차 C — 절반 주사율 (`vsync2.bat`)**
 ```bat
 @echo off
 set STICKMATE_VSYNC=2
-start "" "C:\Users\kjmoon\Downloads\StickMate-Windows-20260902b\Windows\StickMate.exe"
+start "" "%USERPROFILE%\Downloads\StickMate-Windows-20260902b\Windows\StickMate.exe"
 ```
 
 **회차 A — 기준선 (`vsync0.bat`)**. 그냥 평소처럼 더블클릭해도 같지만, 세 회차를 같은
@@ -875,7 +875,7 @@ start "" "C:\Users\kjmoon\Downloads\StickMate-Windows-20260902b\Windows\StickMat
 ```bat
 @echo off
 set STICKMATE_VSYNC=0
-start "" "C:\Users\kjmoon\Downloads\StickMate-Windows-20260902b\Windows\StickMate.exe"
+start "" "%USERPROFILE%\Downloads\StickMate-Windows-20260902b\Windows\StickMate.exe"
 ```
 
 > ★ **경로는 다음 빌드에서 바뀐다.** 새 빌드를 받으면 폴더 이름(`...-20260902b`)이 달라지므로

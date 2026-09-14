@@ -748,7 +748,7 @@ persona-newcomer 실기: 20pt 머리 영역 5색 → "때 묻은 것"으로 먼�
 # 10. 재현
 
 ```bash
-cd /Users/kjmoon/App/StickMate
+cd "$(git rev-parse --show-toplevel)"
 python3 design/systems/grade_signal_r14.py > design/systems/grade_signal_r14.out.txt
 # [0] 교정 43/43 → [1] 기하 → [2] 두께·배율 → [3] 시각각 → [4] 대역 분리 → [5] 슬롯 내 중복
 # → [6] 가격↔등급 → [7] 팩 칩 → [8] 곡선 → [9] 잠김 비율 → [10] 낱말 폭 → [11] 응시 예산

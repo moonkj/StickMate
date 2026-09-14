@@ -52,7 +52,7 @@
 ### 1-1. 결정적 실측 — 사용자의 세이브 파일은 **이미 v10 · 14필드**다
 
 ```
-/Users/kjmoon/Library/Application Support/Vibelab/StickMate/stickmate_character.json
+~/Library/Application Support/Vibelab/StickMate/stickmate_character.json
     mtime 2026-09-05 22:05        (이 문서를 쓰기 2분 전)
     "version": 10
     v10 게임화 14필드 존재 : 14 / 14

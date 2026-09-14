@@ -116,5 +116,28 @@ namespace StickMate.Platform
         public static bool SuppressesPanels(bool characterSuspended, bool panelRetreatActive,
             bool userSummonGranted)
             => characterSuspended || (panelRetreatActive && !userSummonGranted);
+
+        /// <summary>
+        /// ★★ 2026-09-14 — <b>허가를 받아도 표면이 억제되는가</b>(= 사용자가 지금 불러도 소용없는가).
+        /// <b>「열기 판정」 전용</b>이다 — 캐릭터 우클릭 게이트의 넷째 항(<c>AppControlDirector.RightClickFanGatePolicy</c>).
+        ///
+        /// <para><b>왜 필요한가</b>: 옛 게이트는 <see cref="SuppressesPanels"/>(= 「지금 억제 중인가」)를 넷째 항으로 썼다.
+        /// 허가가 없는 등급 1에서 그 값은 참이고, 허가는 게이트를 <b>통과한 뒤에야</b> 난다 — 「허가를 받으려면 이미 허가가
+        /// 있어야 한다」는 순환이라, 게임이 아닌 전체화면 앱 위에서 캐릭터 우클릭이 조용히 아무 일도 하지 않았다(P1,
+        /// <c>docs/ux/SETTINGS_ENTRY_NARROW_WIDTH.md</c> §15-16, <c>docs/UX_RIGHTCLICK_FAN_MENU.md</c> 「§10-1 #3 정정」).</para>
+        ///
+        /// <para><b>식</b>: 지금 허가를 낼 수 있다면 난 것으로 치고 <see cref="SuppressesPanels"/>를 다시 묻는다.
+        /// 진리표로는 <paramref name="characterSuspended"/>와 같다 — 등급 2(전체화면 게임)·다른 가상 데스크톱에서만 참.
+        /// 그래도 그 인자를 직접 쓰지 않는 이유: 두 정책(<see cref="CanGrant"/> · <see cref="SuppressesPanels"/>) 중 하나가
+        /// 바뀌는 날 게이트가 <b>자동으로 따라 움직여야</b> 한다. 직접 쓰면 기준과 대상이 갈라진다.</para>
+        ///
+        /// <para>★ <b>닫기 소비자에게 쓰지 마라.</b> 표면을 걷을지는 여전히 <see cref="SuppressesPanels"/>
+        /// (<c>StickmanAgent.ArePanelsSuppressed</c>)가 정한다. 이 값으로 바꾸면 등급 1 <b>진입 순간의 회수</b>가 사라진다
+        /// (원칙 2 회귀, 같은 문서 §16-2b B2).</para>
+        /// </summary>
+        public static bool BlocksUserSummon(bool characterSuspended, bool panelRetreatActive,
+            bool userSummonGranted)
+            => SuppressesPanels(characterSuspended, panelRetreatActive,
+                userSummonGranted || CanGrant(characterSuspended, panelRetreatActive));
     }
 }

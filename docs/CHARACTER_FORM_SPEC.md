@@ -20,7 +20,7 @@
 
 ## 1. 참고 이미지 — 리더가 볼 수 없으므로 글로 옮긴다
 
-`/Users/kjmoon/.claude/uploads/bf3ed972-.../` 33장 중 **14장이 Alan Becker(@alanbecker) 유튜브 쇼츠 캡처**다.
+`~/.claude/uploads/bf3ed972-.../` 33장 중 **14장이 Alan Becker(@alanbecker) 유튜브 쇼츠 캡처**다.
 나머지는 문서 사진/무관한 게임 스샷이다. 등장 인물(색 = 정체성):
 
 | 파일 | 장면 | 인물 |

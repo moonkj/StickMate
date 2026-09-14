@@ -30,7 +30,8 @@
 #                              대조한다. 이게 없으면 게이트가 실행 도중에 죽어도 스위트가 초록이다.
 #  R1  결과 판정(초록/빨강)      : ★ 2026-09-14 신설(docs/TEAM.md 「픽스처 끝에서 난 실패는 실패 개수에 안 들어간다」).
 #                              초록 = failed==0 ∧ test-run result ∈ {Passed, Skipped:Ignored}
-#                                     ∧ site가 SetUp/TearDown인 test-suite 0 ∧ Failed로 시작하는 test-suite 0.
+#                                     ∧ site가 SetUp/TearDown인 test-suite 0 ∧ Failed로 시작하는 test-suite 0
+#                                     ∧ failed 속성 == result="Failed" test-case 수(다섯째 절 — TEAM.md 네 절보다 엄격).
 #                              label로는 거르지 않는다(R2). 판정 코드는 docs/verify/nunit_verdict.py 하나다.
 #                              실측: mut-M5p.xml(SetUpFixture OneTimeTearDown 실패)이 failed=0·Unity rc 0·옛 report rc=0이었다.
 #  R5  판정 불가(Inconclusive) : report는 이름을 찍고, compare는 «초록 → 판정 불가» 등 전이를 따로 보인다.
@@ -1075,6 +1076,20 @@ X
 
   echo "── 배너 탐지(양성) 1: 로그 명령줄에 -testFilter가 있으면 «부분 실행» — 그리고 R1 초록 rc=0은 그대로인가"
   b_expect "필터 로그 + 초록 xml" "$tmp/b_part.xml" 0 "★★ 부분 실행 3/|로그 명령줄 -testFilter|✓ R1 초록" ""
+  # ★ 2026-09-14 후속 ② — 필터 인자가 명령줄 **뒤쪽(13번째)**에 있는 로그. 위 대조는 7번째, 실측 M5p는 9번째라
+  #   «앞 N개 인자만 읽는» 결함(verify-change 생존 결함 mB)이 실측 M5p 한 파일에만 기대어 잡혔다.
+  b_log_late() {   # $1=xml 경로 — 인자 12개를 먼저 두고 -testFilter를 13번째에 둔다
+    {
+      echo "[Licensing::Module] 합성 머리말"; echo; echo "COMMAND LINE ARGUMENTS:"
+      echo "/Applications/Unity/Hub/Editor/6000.0.82f1/Unity.app/Contents/MacOS/Unity"
+      printf '%s\n' -batchmode -nographics -projectPath /probe -runTests -testPlatform PlayMode \
+        -testResults "$1" -logFile "${1%.xml}.log" -testFilter "^StickMate\\.Tests\\.Probe\\.Late\\."
+      echo "Successfully changed project path to: /probe"
+    } > "${1%.xml}.log"
+  }
+  b_make "$tmp/b_late.xml"; b_log_late "$tmp/b_late.xml"
+  echo "── 배너 탐지(양성) 1b: 필터 인자가 명령줄 뒤쪽(13번째)에 있어도 «부분 실행»인가(앞 N개만 읽는 결함 대조)"
+  b_expect "뒤쪽 필터 로그 + 초록 xml" "$tmp/b_late.xml" 0 "★★ 부분 실행 3/|로그 명령줄 -testFilter ^StickMate" ""
   echo "── 배너 탐지(양성) 2: 로그가 없어도 실행 수가 소스 리프 하한보다 적으면 «부분 실행»인가(둘째 자 단독)"
   b_expect "로그 없음 + 3건" "$tmp/b_short.xml" 0 "★★ 부분 실행 3/|실행 수가 소스 리프 하한보다 적다" ""
   echo "── 배너 모순 대조: 로그는 필터 없음(전량)인데 실행 수가 하한보다 적으면 «부분»이 아니라 «모순»으로 말하는가"

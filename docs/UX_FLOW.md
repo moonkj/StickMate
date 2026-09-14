@@ -1936,7 +1936,7 @@ Test Engineer는 Phase 2 "텍스트-액션 싱크 회귀 테스트"(Tasklist Pha
 
 ## 33. 캐릭터 정보창 리디자인 — 외부 핸드오프(8 카테고리 × 4아이템 = 32종) 번역
 
-**출처**: `/Users/kjmoon/Downloads/design_handoff_character_sheet/` (README.md hifi 스펙 + `data/items.json` + `data/unlocks.json` + `data/icon-paths.json`).
+**출처**: `~/Downloads/design_handoff_character_sheet/` (README.md hifi 스펙 + `data/items.json` + `data/unlocks.json` + `data/icon-paths.json`).
 **리더 확정 전제**(이 절은 그 위에서만 설계한다):
 - 콘텐츠를 스펙대로 **32종 전량 확장**한다. 아이템명·요구 레벨·설명문은 `items.json`/`unlocks.json` 그대로 채택하며 **바꾸지 않는다**.
 - 색상 팔레트를 이 핸드오프 것으로 **완전히 교체**한다(32절까지 쓰던 푸른 회색 게임창 팔레트 폐기).
@@ -3500,8 +3500,9 @@ v7 추가 필드(초안)
 
 > ★ **2026-09-02 정정 — "0건"은 이제 참이 아니다.** 아래 grep 결과는 2026-08-31 시점의 사실이다.
 > 그 뒤 `Interaction/GearRadialMenuWidget.cs`에 **부채꼴 최초 1회 안내가 실제로 출하됐다**
-> (`OnboardingHintSeconds = 4.5f` :217 / `OnboardingHintText` :220 / `OnboardingSeenKey` :232 /
-> `TryStartOnboardingHint()` :531 / `ApplyOnboardingHint()` :1005), 잠금 테스트도 2건 있다
+> (`OnboardingHintSeconds = 4.5f` :364 / `OnboardingHintText` :367 / 「봤음」 저장 = `GearMenuOnboardingSeenStore.Current` 경계,
+> 키는 `PlayerPrefsGearMenuOnboardingSeenStore.Key` / `TryStartOnboardingHint()` :917 / `ApplyOnboardingHint()` :1604 —
+> ★ 2026-09-14 `36e0a5e` 기준으로 갱신: 옛 위젯 상수 `OnboardingSeenKey`는 저장소 경계로 옮겨졌고 키 값은 불변), 잠금 테스트도 2건 있다
 > (`Tests/PlayMode/GearMenuOnboardingHintTests.cs`).
 > **즉 온보딩은 "0건"이 아니라 "⑦의 마지막 조각 하나만 이미 있다".** §51-0에 실물 인용표가 있다.
 
@@ -3667,7 +3668,7 @@ Director가 대사를 미리 지어 넣는 경로는 **컴파일 단계에서 �
 | 트리거 | 시간이 아니라 **행동**. 예: 캐릭터를 처음 드래그 → *"던질 수도 있어요"* / 창을 3개 이상 띄운 첫날 → *"창이 많으면 더 높이 올라가요"* |
 | 억제 | 집중 모드 중 / 스펙터클 중 / Suspended 중에는 절대 뜨지 않는다 |
 | 끄기 | [일반] 탭 토글 1개 + 팁 자체의 `[✕]`. **한 번 본 팁은 다시 안 뜬다** |
-| **★ 2026-09-02 정정** | 위 칸에 *"(v7에 비트마스크 1필드)"* 라고 적혀 있었다. **낡았다** — 현재 스키마는 v9이고 리더 판정으로 **이 기능 때문에 스키마를 올리지 않는다.** 비트마스크도 `PlayerPrefs`로 간다(35-2-6 ②). 이미 같은 선례가 출하돼 있다: `GearRadialMenuWidget.OnboardingSeenKey`("StickMate.GearMenu.OnboardingSeen.v1")와 그 선언부의 근거 문단 |
+| **★ 2026-09-02 정정** | 위 칸에 *"(v7에 비트마스크 1필드)"* 라고 적혀 있었다. **낡았다** — 현재 스키마는 v9이고 리더 판정으로 **이 기능 때문에 스키마를 올리지 않는다.** 비트마스크도 `PlayerPrefs`로 간다(35-2-6 ②). 이미 같은 선례가 출하돼 있다: `PlayerPrefsGearMenuOnboardingSeenStore.Key`("StickMate.GearMenu.OnboardingSeen.v1")와 그 클래스 문서의 근거 문단(★ 2026-09-14 `36e0a5e` — 옛 위치 `GearRadialMenuWidget.OnboardingSeenKey`에서 저장소 경계로 이동, 키 값 불변) |
 
 #### 35-2-5. 역할 규정 + 우선순위
 
@@ -3719,7 +3720,7 @@ Director가 대사를 미리 지어 넣는 경로는 **컴파일 단계에서 �
 |---|---|
 | **어디에** | `PlayerPrefs` **새 키**. 세이브(`CharacterSaveStore`)는 **건드리지 않는다** |
 | **왜** | `CurrentVersion`을 올리면 **하위 호환 테스트 1건이 의무로 따라붙고**(CLAUDE.md), 다운그레이드 방어(`NewerVersionFileDetected`)까지 흔든다. **온보딩을 봤다는 사실 하나 때문에 치를 값이 아니다** — 유실돼도 최악이 "온보딩이 한 번 더 뜬다"이고 **사용자 데이터가 아니다** |
-| **선례** | `GearRadialMenuWidget.OnboardingSeenKey`(`"StickMate.GearMenu.OnboardingSeen.v1"`)와 그 선언부의 근거 문단. **똑같은 논거로 똑같은 결정을 이미 한 번 했다** |
+| **선례** | `PlayerPrefsGearMenuOnboardingSeenStore.Key`(`"StickMate.GearMenu.OnboardingSeen.v1"`)와 그 클래스 문서의 근거 문단(★ 2026-09-14 `36e0a5e` — 옛 위치 `GearRadialMenuWidget.OnboardingSeenKey`, 키 값 불변). **똑같은 논거로 똑같은 결정을 이미 한 번 했다** |
 | **무엇을** | 불리언 하나로는 부족하다 — **작은 정수 2개**(`Stage` 0~3 / `Attempts`). 근거·기록 시점·복구 규칙은 **§51-6-4**에 있다(숫자는 저기 한 곳에만 둔다) |
 | **판정식** | 35-2-5의 트리거 행 참조 — `진행도 미완` **AND** `!LoadedFromFile` **AND** `!NewerVersionFileDetected` |
 
@@ -10793,10 +10794,12 @@ TickAutoCollapse() 의 기존 가드에 한 항을 더한다:
 
 - 현재 `AutoCollapseIdleSeconds`를 **직접 단언하는 테스트는 0건**(`Tests/` 전수 grep). 그래서 이 변경은
   조용히 통과할 수 있다 — **그게 위험이다.** 새 가드 자체의 테스트 1건이 반드시 필요하다.
-- **부채꼴을 열고 시간에 의존하는 모든 PlayMode 테스트**는 setup에서
-  `GearRadialMenuWidget.MarkOnboardingHintSeenForTests()`를 부르지 않으면 예산이 6.56 → 10.85초로
-  바뀐다. `GearMenuOnboardingHintTests`는 이미 부르고 있지만 **`InfoGearRadialMenuTests` /
-  `GearMenuHoverLabelTests` / `PopoverIdleAutoCloseTests`는 확인이 필요하다.**
+- **부채꼴을 열고 시간에 의존하는 모든 PlayMode 테스트**는 「봤음」이 거짓인 저장소에서 돌면 예산이 6.56 → 10.85초로
+  바뀐다.
+  - ★ 2026-09-14 `36e0a5e` 기준 사실: 이 문단이 원래 가리키던 훅 `GearRadialMenuWidget.MarkOnboardingHintSeenForTests()`는 **삭제됐다.**
+  - 지금은 `GlobalPlayModeTestIsolation`이 스위트 전역으로 `InMemoryGearMenuOnboardingSeenStore(seen: true)`를 `GearMenuOnboardingSeenStore.UseForTesting`으로 주입한다(`GlobalPlayModeTestIsolation.cs:108-109`). 그래서 **기본은 「봤음」 세계**이고, 개별 픽스처가 따로 부를 것은 없다.
+  - 안내를 재는 `GearMenuOnboardingHintTests`만 자기 초기값의 저장소를 주입하고 `RestoreForTesting`으로 되돌린다(`:59-72`).
+  - 위 세 파일(`InfoGearRadialMenuTests` / `GearMenuHoverLabelTests` / `PopoverIdleAutoCloseTests`)의 **개별 확인 요구는 전역 주입으로 대체됐다.**
 - 벽시계 예산 규칙(CLAUDE.md)에 따라 **프레임 수가 아니라 초로** 잰다.
 
 ---
@@ -12589,14 +12592,16 @@ E1a "아직 살 수 있는 게 없어요"
 
 | 파일:줄 | 이미 있는 것 |
 |---|---|
-| `Interaction/GearRadialMenuWidget.cs:217` | `public const float OnboardingHintSeconds = 4.5f;` |
-| `Interaction/GearRadialMenuWidget.cs:220` | `public const string OnboardingHintText = "커서를 올리면 각 버튼 이름이 보여요";` |
-| `Interaction/GearRadialMenuWidget.cs:232` | `private const string OnboardingSeenKey = "StickMate.GearMenu.OnboardingSeen.v1";` |
-| `Interaction/GearRadialMenuWidget.cs:384` | `public static bool OnboardingHintSeen => PlayerPrefs.GetInt(OnboardingSeenKey, 0) == 1;` |
-| `Interaction/GearRadialMenuWidget.cs:387/394` | `ResetOnboardingHintForTests()` / `MarkOnboardingHintSeenForTests()` |
-| `Interaction/GearRadialMenuWidget.cs:522` | `Expand()` 안에서 `TryStartOnboardingHint();` |
-| `Interaction/GearRadialMenuWidget.cs:531~540` | **`PlayerPrefs.SetInt`을 "뜨는 순간" 쓴다** (아래 51-6-4에서 이 관례를 판정한다) |
-| `Interaction/GearRadialMenuWidget.cs:1005` | `ApplyOnboardingHint()` — 호버가 시작되면 즉시 물러난다 |
+| `Interaction/GearRadialMenuWidget.cs:364` | `public const float OnboardingHintSeconds = 4.5f;` |
+| `Interaction/GearRadialMenuWidget.cs:367` | `public const string OnboardingHintText = "커서를 올리면 각 버튼 이름이 보여요";` |
+| `Interaction/PlayerPrefsGearMenuOnboardingSeenStore.cs:38` | `public const string Key = "StickMate.GearMenu.OnboardingSeen.v1";` — ★ 옛 위젯 상수 `OnboardingSeenKey`(`:232`)가 옮겨 온 자리. **키 값 불변** |
+| `Interaction/GearRadialMenuWidget.cs:653` | `public static bool OnboardingHintSeen => GearMenuOnboardingSeenStore.Current.IsSeen;` (실제 저장소 판정은 `PlayerPrefsGearMenuOnboardingSeenStore.cs:71-79` — `GetInt(Key) == SeenValue`) |
+| `Interaction/GearMenuOnboardingSeenStore.cs:32/42` | 테스트 주입 `UseForTesting(IGearMenuOnboardingSeenStore)` / `RestoreForTesting(...)` + `InMemoryGearMenuOnboardingSeenStore(seen)`. ★ 옛 훅 `ResetOnboardingHintForTests()` / `MarkOnboardingHintSeenForTests()`는 **삭제됐다** |
+| `Interaction/GearRadialMenuWidget.cs:838` | `Expand()` 안에서 `TryStartOnboardingHint();` |
+| `Interaction/GearRadialMenuWidget.cs:917~924` | **「봤음」을 "뜨는 순간" 쓴다** — `GearMenuOnboardingSeenStore.Current.MarkSeen()`. 실제 저장소는 `SetInt` + `Save`(`PlayerPrefsGearMenuOnboardingSeenStore.cs:81-87`) (아래 51-6-4에서 이 관례를 판정한다) |
+| `Interaction/GearRadialMenuWidget.cs:1604` | `ApplyOnboardingHint()` — 호버가 시작되면 즉시 물러난다 |
+
+> ★ 2026-09-14 — 위 표의 줄 번호와 이름은 `36e0a5e`(「봤음」 저장소 경계 도입) 기준으로 **사실만** 갱신했다. 표가 말하는 동작(최초 1회 · 뜨는 순간 기록 · 키 값)은 바뀌지 않았다.
 | `Tests/PlayMode/GearMenuOnboardingHintTests.cs` | 최초 1회 노출 / 재노출 없음 두 건이 이미 잠겨 있다 |
 | `docs/UX_FLOW.md §48-1` | **「톱니 안내 비행」** — 점 하나가 캐릭터에서 톱니로 날아가는 4단계 6.55초 설계 |
 | `docs/UX_FLOW.md §48-3` | 부채꼴 자동 접힘 6.0초를 **안내가 떠 있는 동안 멈춘다**(확정) |
@@ -12635,7 +12640,7 @@ E1a "아직 살 수 있는 게 없어요"
 1. **(가) 기각 — 화자가 갈린다.** 알약은 **무인칭 UI 목소리**이고 캐릭터 대사는 1인칭이다.
    섞으면 §48-1-5 ③이 금지한 "캡션의 1인칭화"가 된다.
 2. **(나) 기각 — `Seen`을 대신 기록하면 그 사용자는 알약을 평생 못 본다.**
-   `OnboardingSeenKey`는 **평생 1회**다(`:534`). *실제로 화면에 뜬 적이 한 번도 없는데* 본 것으로
+   「봤음」 기록(`GearMenuOnboardingSeenStore.Current.MarkSeen()`, 키 `PlayerPrefsGearMenuOnboardingSeenStore.Key`)은 **평생 1회**다(`GearRadialMenuWidget.cs:922-923` — 2026-09-14 `36e0a5e` 기준. 옛 인용은 `OnboardingSeenKey` `:534`). *실제로 화면에 뜬 적이 한 번도 없는데* 본 것으로
    처리하는 것은, 이 저장소가 아홉 번 당한 **"실패한 측정과 성공한 측정이 똑같이 생겼다"** 의 UX판이다.
    그리고 §48-3-2가 측정한 바로 그 장면 — *"처음 보는 **무라벨 검은 원 4개** … **민지는 실제로 놓쳤다**"* —
    이 스크립트 열림에서 **9~11초 동안** 벌어진다. **알약이 가장 필요한 순간이 정확히 여기다.**
@@ -13194,17 +13199,19 @@ P1  = (P0+P2)/2 + c·n̂ = (863.9, 252.4)
 
 ### 51-6-4. ★★ (d) 앱이 죽으면 — **불리언 하나로는 부족하다** (리더 질문 ③에 대한 답)
 
-**먼저 기존 관례를 소스에서 확인했다** (`GearRadialMenuWidget.cs:531~537`):
+**먼저 기존 관례를 소스에서 확인했다** (`GearRadialMenuWidget.cs:917~924`, ★ 2026-09-14 `36e0a5e` 기준으로 인용 갱신 — 옛 인용은 `:531~537`의 `PlayerPrefs.SetInt(OnboardingSeenKey, 1)` 두 줄):
 
 ```
 private void TryStartOnboardingHint()
 {
-    if (_onboardingHint == null || OnboardingHintSeen) return;
-    PlayerPrefs.SetInt(OnboardingSeenKey, 1);      // ← 뜨는 순간 쓴다
-    PlayerPrefs.Save();
-    ...
-}
+    if (_onboardingHint == null) return;
+    IGearMenuOnboardingSeenStore seenStore = GearMenuOnboardingSeenStore.Current;
+    if (seenStore.IsSeen) return;
+    seenStore.MarkSeen();                          // ← 뜨는 순간 쓴다
+    ...                                            //   (실제 저장소: SetInt(Key) + Save —
+}                                                  //    PlayerPrefsGearMenuOnboardingSeenStore.cs:81-87)
 ```
+기록 시점(뜨는 순간)과 키 값은 옛 코드와 같다 — 바뀐 것은 **저장 자리가 저장소 경계 뒤로 옮겨진 것**뿐이다.
 주석의 근거도 정확하다: *"'끝까지 읽었는가'를 조건으로 삼으면 반드시 그 경로가 생긴다."*
 
 > ### 판정: **그 근거는 옳고, 전제는 이번에 성립하지 않는다.** §48-1-6과 같은 결론이다.
@@ -13304,7 +13311,7 @@ Attempts ≥ 3 이고 Stage < 2      → Stage = 3 (포기)    ★ §48-1-6의 3
 | **7** | **`Collider2D`를 시간 구간으로 끈다** | `_clickTarget` | **필요.** `ApplySuspendHide`가 이미 같은 스위치를 쓴다 — 새 개념이 아니다. 다만 **되켜지는 경로 3개**(정상 도착 / 사용자 중단 / 전체화면 중단) 전부에 있어야 한다 |
 | **8** | ★ **매뉴얼 1장에 첫 실행 예외 한 줄** | `docs/manual/01-where-to-click.md` | **필요.** 지금 문서는 톱니가 **항상** 우상단에 있다고 그림으로 말한다. 첫 실행 15.6초는 아니다 |
 | **9** | **진행도 저장** | `game-architect` | §35-2-6 ②로 **판정 완료**(PlayerPrefs 새 키, 세이브 v9 불변). 무엇을 저장하는가는 §51-6-4 |
-| **10** | ★ **테스트 리셋/스킵 API** | `Tests/PlayMode/` | **필요.** 첫 실행 경로가 생기면 PlayMode 테스트가 20초짜리 연출을 의도치 않게 트리거한다. `GearRadialMenuWidget.MarkOnboardingHintSeenForTests()`와 **같은 형태**의 창구가 온보딩에도 있어야 한다 |
+| **10** | ★ **테스트 리셋/스킵 API** | `Tests/PlayMode/` | **필요.** 첫 실행 경로가 생기면 PlayMode 테스트가 20초짜리 연출을 의도치 않게 트리거한다. 부채꼴 안내의 「봤음」 저장소 주입 경계 — `GearMenuOnboardingSeenStore.UseForTesting(IGearMenuOnboardingSeenStore)` / `RestoreForTesting` + `InMemoryGearMenuOnboardingSeenStore` — 와 **같은 형태**의 창구가 온보딩에도 있어야 한다(★ 2026-09-14 `36e0a5e` 기준 인용 갱신 — 옛 인용 `GearRadialMenuWidget.MarkOnboardingHintSeenForTests()`는 그 커밋에서 삭제됐다) |
 | **11** | ★ **부채꼴 앵커 동결(51-2-7) 별건 제안** | `Interaction/GearRadialMenuWidget.cs` | **하지 않음.** 캐릭터 구속이 5.000초로 줄어 **이 변경의 동기가 대부분 사라졌다**(초고 12.011초일 때는 유효한 제안이었다). §32-1을 뒤집는 변경이므로 **보류가 맞다** |
 | **12** | ★ **동시 진행 충돌** | `Interaction/TodoPostItWidget.cs` · `InfoGearIconWidget.cs` · `SettingsWindow.cs` · `UiLayoutModel.cs` | 뒤 세 파일은 **이 라운드 중에 다른 라운드가 이미 잡고 있었다**(` M`). 51-9의 처방은 첫 파일을 건드린다 — **리더가 순서를 정해 주기 바란다** |
 
@@ -13720,7 +13727,8 @@ s_face   = 51-2-6 사다리가 정한 부호
 **필요한 코드 변경 — `GearRadialMenuWidget`에 가드 2항**
 
 ```
-① TryStartOnboardingHint()   : 스크립트 열림이면 PlayerPrefs를 쓰지 않고 그대로 반환
+① TryStartOnboardingHint()   : 스크립트 열림이면 「봤음」 저장소(MarkSeen)에 쓰지 않고 그대로 반환
+                               (2026-09-14 36e0a5e 기준 표현 — 옛 문구 "PlayerPrefs를 쓰지 않고")
 ② TickAutoCollapse()의 가드   : || 온보딩 대사가 화면에 있음        ← _idleTimer를 0으로
 ```
 

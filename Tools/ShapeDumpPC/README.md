@@ -9,7 +9,7 @@
 ## 사용법
 
 ```bash
-cd /Users/kjmoon/App/StickMate
+cd "$(git rev-parse --show-toplevel)"
 git show 7ab0468^:Assets/_Project/Scripts/Interaction/AccessoryShapeBuilder.cs \
   > Tools/ShapeDumpPC/AccessoryShapeBuilder.PARENT.cs
 

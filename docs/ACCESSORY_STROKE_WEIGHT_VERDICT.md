@@ -55,7 +55,7 @@
 
 ## 2. 참고 이미지 실측과 비교하면 **20~35% 모자란다**
 
-`/Users/kjmoon/.claude/uploads/…`의 Alan Becker 계열 이미지에서 **머리띠·손목띠를 착용한 캐릭터**를
+`~/.claude/uploads/…`의 Alan Becker 계열 이미지에서 **머리띠·손목띠를 착용한 캐릭터**를
 픽셀로 쟀다(색 마스크 + 반복 침식으로 최대 내접원 = 획 반폭). 상세는
 `docs/EQUIPMENT_SHAPE_SPEC_FXPET.md` 6절.
 

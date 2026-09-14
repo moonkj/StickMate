@@ -796,14 +796,19 @@ namespace StickMate.Interaction
 
             /// <summary>
             /// 다섯 항의 곱. 항이 다섯이라 <b>2⁵ = 32행 전수</b>를 EditMode가 루프로 돌 수 있다.
-            /// <para>순서는 docs/UX_RIGHTCLICK_FAN_MENU.md §10-1 #3 그대로다.</para>
+            /// <para>순서는 docs/UX_RIGHTCLICK_FAN_MENU.md §10-1 #3(2026-09-14 정정본) 그대로다.</para>
+            /// <para>★★ 2026-09-14 (E-1) — 넷째 항이 옛 「지금 억제 중인가」에서 <paramref name="userSummonBlocked"/>
+            /// (「허가를 받아도 억제되는가」)로 바뀌었다. 옛 항은 허가 없는 등급 1에서 참이라 허가 발급(아래
+            /// <c>TickRightClickFan</c>의 6번)에 닿기 전에 막았다 — 게임이 아닌 전체화면 앱 위에서 캐릭터 우클릭이 조용히
+            /// 아무 일도 안 하는 P1이었다. 호출부는 <c>StickmanAgent.IsUserSummonBlocked</c>를 넘긴다.
+            /// 등급 2(전체화면 게임)에서는 그 값이 참이라 <b>계속 닫힌다</b> — 원칙 2의 범위는 한 비트도 넓어지지 않았다.</para>
             /// </summary>
             public static bool ShouldOpenFan(bool cursorOverCharacter, bool secondaryRisingEdge,
-                bool swallowAllowsOpen, bool panelsSuppressed, bool primaryButtonHeld)
+                bool swallowAllowsOpen, bool userSummonBlocked, bool primaryButtonHeld)
                 => cursorOverCharacter
                 && secondaryRisingEdge
                 && swallowAllowsOpen
-                && !panelsSuppressed
+                && !userSummonBlocked
                 && !primaryButtonHeld;
         }
 
@@ -851,10 +856,13 @@ namespace StickMate.Interaction
             bool queried = TryReadPointerSwallowed(out bool swallowed);
 
             // ── 게이트 0~2 (§10-4) ──────────────────────────────────────────────
+            // ★ 넷째 인자는 <b>열기 판정</b>(IsUserSummonBlocked)이다 — 닫기 판정으로 되돌리지 마라.
+            //   그 값은 허가 없는 등급 1에서 참이라 아래 6번 허가에 영영 닿지 못한다(2026-09-14 P1, E-1).
+            //   닫기 소비자(부채꼴 자동 접힘 등)는 반대로 닫기 판정을 그대로 읽어야 한다(§16-2b B2).
             if (!RightClickFanGatePolicy.ShouldOpenFan(
                     IsCursorOverCharacter(), true,
                     RightClickFanGatePolicy.SwallowAllowsOpen(queried, swallowed),
-                    _agent.ArePanelsSuppressed, primaryHeld))
+                    _agent.IsUserSummonBlocked, primaryHeld))
             {
                 return;
             }

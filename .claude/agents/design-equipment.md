@@ -49,7 +49,7 @@ model: opus
 2. **규칙 검산**: 모든 변 ≥ 1.0W, 잉크 사각형 ≥ 1.5W, 보조색 아이템당 정확히 1개,
    도형 2~4개, 자기교차 없음, 쌍별 실루엣 차 하한.
    → `design/equipment/verify/verify.py`가 이걸 자동으로 본다. **네 좌표로 반드시 돌려라.**
-3. **참고 이미지를 직접 측정해라.** Alan Becker 스틱맨 계열이 `/Users/kjmoon/.claude/uploads/`에 있다.
+3. **참고 이미지를 직접 측정해라.** Alan Becker 스틱맨 계열이 `~/.claude/uploads/`에 있다.
    가져올 것은 **형태가 아니라 만드는 방식**이다(입체·감쌈·뒤로 뻗음·점으로 수렴하는 끝·선 위계).
    ★ 남의 저작물이므로 **형태를 그대로 옮기지 마라.**
 4. **숫자로 사양을 내라.** `Rig` 상대값(`HeadRadius`, `HeadCenterY`, `ShoulderY`, `TorsoLength`)으로.

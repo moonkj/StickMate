@@ -154,7 +154,7 @@ R4의 이 문장은 **거짓이었다.** 등급 1(패널 회수)이 켜져 있�
 | 자동 접힘 | 같은 파일 `AutoCollapseIdleSeconds` | **6.0초** |
 | ★ 4번째 멈춤 조건 신설 | `TickAutoCollapse` — `if (_onboardingHintTimer >= 0f) { _idleTimer = 0f; return; }` | 안내 중에는 시계가 **0으로 되돌아간다** |
 | 안내 문구(1줄) | `OnboardingHintText` | `"커서를 올리면 각 버튼 이름이 보여요"` |
-| 「봤다」 기록 위치 | `OnboardingSeenKey` = `StickMate.GearMenu.OnboardingSeen.v1` (**`PlayerPrefs`**) | ★ 4-2절 |
+| 「봤다」 기록 위치 | `OnboardingSeenKey` = `StickMate.GearMenu.OnboardingSeen.v1` (**`PlayerPrefs`**) 〔R12-9: 옛 상수 이름 — `36e0a5e`부터 `Interaction/PlayerPrefsGearMenuOnboardingSeenStore.cs:38` `Key`(HEAD `6173b6e`). 키 이름 · 값 형식 불변〕 | ★ 4-2절 |
 
 ★ **소재 판정: 이건 스토어 문구가 아니다.** *"처음 한 번 안내가 뜹니다"*는 팔리는 문장이 아니다.
 이 항목의 값은 **첫 실행 캡처(P7 / `B-1`)가 이제 정직해졌다**는 것이고,
@@ -261,6 +261,7 @@ python3: dll.count("놔줘 놔줘".encode("utf-16-le"))
 
 온보딩 안내는 세이브 파일이 아니라 **`PlayerPrefs`**에 기록된다
 (`GearRadialMenuWidget.OnboardingSeenKey` = `StickMate.GearMenu.OnboardingSeen.v1`).
+〔R12-9 (2026-09-14): 옛 상수 이름이다. `36e0a5e`부터 `Interaction/PlayerPrefsGearMenuOnboardingSeenStore.cs:38` `Key`(HEAD `6173b6e` 실측), 기록은 저장소 `MarkSeen`(`:81-86`)이 한다 — 키 이름 · 값 형식 · 「뜨는 순간 기록」 시점 불변〕
 
 **이 개발 머신 실측(읽기 전용):**
 ```
@@ -329,13 +330,14 @@ R4에서 이 문장의 상태는 *"지금은 참, 그러나 무방비"*였다. *
 **실측(읽기 전용, 이 개발 머신):**
 ```
 ~/Library/Preferences/unity.Vibelab.StickMate.plist
-  "unity.cloud_userid"            = 378d7a810b6914e7fa49f27ba7917b02;
-  "unity_connect.installation_id" = "d1329428-d2b9-14ea-d918-1baa1247e46b";
+  "unity.cloud_userid"            = <값 생략>;
+  "unity_connect.installation_id" = "<값 생략>";
   "unity_connect.session_id"      = ...;
   "unity_connect.mega_session_id" = ...;
   "unity.player_session_count"    = 330;
 ```
 `unity.DefaultCompany.StickMate.plist`(구경로)에도 **같은 키가 전부 있고 `cloud_userid`는 동일 값**이다.
+〔**R12-9 security 치환 (2026-09-14)**: 위 블록의 `unity.cloud_userid` · `unity_connect.installation_id` **값**을 `<값 생략>`으로 바꿨다(`CAPTURE_PROTOCOL.md` 2-3 R5 macOS 절차 1번 「식별자 값은 이름만 적는다」 규칙). 이 식별자들은 `1f7e139`(09-05)에 기재됐고 그 규칙보다 먼저 들어왔다. **판정의 뜻 — 이 기기에 Unity 식별자 키가 존재한다 — 은 키 이름으로 그대로 성립한다.** 「구경로도 동일 값」은 marketing이 09-05에 비교한 결과이고, 이번에 다시 재지 않았다. ★ **git 이력에는 값이 남아 있다**(공개 저장소) — 이력 정리는 사용자 판단 사안이라 하지 않았다. 개발 맥 plist 키도 건드리지 않았다〕
 
 | 항목 | 상태 |
 |---|---|

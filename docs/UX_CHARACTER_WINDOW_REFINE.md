@@ -1263,7 +1263,7 @@ CharacterStatReadout.ItemStatNone                            // §8-2의 고정 
 **권위를 갖는 것은 「심볼 이름」이다. 줄 번호는 참고다.** 손으로 옮겨 적지 말고
 `grep -n '<심볼>'`로 다시 찾을 것(대소문자 사고 방지 — `TEAM.md` 12번째 형태).
 
-경로 접두사는 전부 `/Users/kjmoon/App/StickMate/Assets/_Project/Scripts/`.
+경로 접두사는 전부 `<프로젝트 경로>/Assets/_Project/Scripts/`.
 
 ### 12-1. 능력치 게이지 (§3) — `Interaction/CharacterInfoWindow.Stats.cs` ※ 지금 미편집 파일
 

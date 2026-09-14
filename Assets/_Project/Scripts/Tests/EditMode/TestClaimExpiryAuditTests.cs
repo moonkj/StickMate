@@ -838,21 +838,6 @@ namespace StickMate.Tests.EditMode
                 },
                 new IgnoreEntry
                 {
-                    File = "FullscreenPanelRetreatTests.cs",
-                    Method = "미해결_등급1에서_정보창_단축키_경로는_아직_허가를_받지_못한다",
-                    Kind = RatchetKind.자동,
-                    Why = "2026-09-03 dev-platform 등록(등급 1 도달성 R1-I 라운드). 갭 자체: 등급 1 체류 중 " +
-                          "정보창 전역 단축키로 정보창을 열면 그 프레임에 다시 닫힌다 — " +
-                          "CharacterInfoWindow.Open이 StickmanAgent.TryGrantUserSummon을 부르지 않기 때문이다. " +
-                          "★ 역방향 장치는 <b>같은 메서드 안</b>에 있다: 그 파일에서 그 식별자가 발견되면 " +
-                          "Ignore 앞에서 Assert.Fail이 먼저 터져 '갭이 닫혔으니 실측으로 승격하라'고 말한다. " +
-                          "니들은 nameof로 프로덕션 멤버에서 가져오므로, 멤버 이름이 바뀌면 문자열이 조용히 " +
-                          "썩는 대신 <b>컴파일이 깨진다</b>. 그리고 같은 메서드가 부재 판정 앞에 " +
-                          "<b>양성 대조</b>(실재하는 이름을 같은 스캐너로 찾아낸다)를 두어, " +
-                          "'0건'이 '고쳐졌다'인지 '스캐너가 죽었다'인지를 가른다.",
-                },
-                new IgnoreEntry
-                {
                     File = "TodoPostItReservedTopBarTests.cs",
                     Method = "발산_구간에서도_카드가_톱니를_덮지_않는다_상단_도킹",
                     Kind = RatchetKind.자동,

@@ -554,6 +554,7 @@ NUnit은 **테스트 케이스만 센다** — 자식이 다 끝난 뒤 도는 �
 **규칙**
 1. **초록 = `failed==0` AND test-run `result` ∈ {`Passed`, `Skipped:Ignored`} AND `site`가 `SetUp`/`TearDown`인
    `test-suite` 0개 AND `result`가 `Failed`로 시작하는 `test-suite` 0개.** 종료코드나 `failed=`만으로 판정하지 않는다.
+   ★ 판정 모듈 `docs/verify/nunit_verdict.py`는 여기에 **다섯째 절을 더 건다** — test-run `failed` 속성이 `result="Failed"` test-case 수와 다르면 빨강(xml이 잘렸거나 손으로 만든 것, 더 엄격한 쪽).
 2. **`label`로 거르지 마라.** 합성 교정 xml에서 TearDown 실패가 `label="Ignored"`로 나왔다. `site`와 `result`로 본다.
 3. **양성 대조:** 판정기를 쓰기 전에 `mut-M5p.xml`을 넣어 빨강, 정상 xml(`Logs/coder-onbstore/edit-full.xml`)에서
    초록이 나오는지 먼저 보인다. 교정이 깨지면 그 판정기가 낸 초록은 전부 폐기한다.
@@ -582,6 +583,15 @@ QA 해금을 끄는데 **PlayMode는 끄지 않아** PlayMode 전량이 「전 �
 3건 + 판정 불가 1건이 아무에게도 안 보였다(원인은 P0와 무관한 09-08~09-09 커밋).
 ⇒ **리더가 `Assets/`를 건드리는 커밋을 낼 때, 그 커밋 묶음의 검증 단계 중 한 번은 PlayMode 전량을 돌린다.**
 빨강은 이유와 함께 `Tasklist.md`에 이름으로 등재하고, 알려진 빨강이면 알려진 빨강이라고 적는다.
+
+### ★ 공개 저장소 규칙 — 사용자명·기기 정보를 새로 싣지 않는다 / 남의 scratchpad에 쓰지 않는다 (2026-09-14 security 전수 점검)
+이 저장소는 **PUBLIC**이다. 비밀값은 0건이었지만 사용자명이 든 절대 경로가 추적 파일 92개, Unity 기기 식별자 값·호스트명·사설 IP가
+문서·로그에, 개발 맥 PDB 경로가 공개 Windows zip의 DLL에 실려 나갔다(전부 이미 공개 — 이력 재작성은 하지 않기로 결정).
+1. 문서·스크립트·로그 인용에 **`/Users/<이름>`·`C:\Users\<이름>`·호스트명·IP·식별자 값을 새로 쓰지 않는다.** 스크립트는
+   `git rev-parse --show-toplevel` 또는 파일 위치 기준, 문서는 `<프로젝트 경로>`·`%USERPROFILE%`·`~/`. 식별자는 키 **이름**만.
+2. 검색에 사용자명이 필요하면 실행 시점 `id -un`으로만 얻고, 보고·파일에 옮기지 않는다.
+3. **scratchpad는 리더가 브리프에 적어 준 절대 경로만 쓴다** — `ls -d …/*/scratchpad | head -1` 같은 글롭 선택 금지(다른 세션 디렉터리에 쓴 사고 1건).
+4. `Tasklist.md`를 통째로 다시 쓰는 치환(`perl -i`, `sed -i`)은 리더 기록과 겹쳐 유실 위험이 있다 — 리더가 직접 하거나 리더 승인 시점에만.
 
 ## ★★ 사용자 상시 지시 (2026-09-03) — 마케팅·상품전략 상시 가동 + 완료 즉시 보고
 

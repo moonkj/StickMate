@@ -152,7 +152,8 @@
         `FreezeForensics/`(멈춤 원장 · `session-exit-marker.txt` · `previous-abnormal-player-NN.log`, `Platform/FreezeForensicsPolicy.cs:45` · `Platform/SessionExitMarker.cs:53,63`).
         ★ **Windows는 Unity `Player.log` · `Player-prev.log`도 이 폴더에 있다**(`Platform/Windows/WindowsCompositionProbe.cs:34`) — 폴더와 함께 옮겨진다.
         **멈춤 조사용 로그 회수(`docs/verify/WINDOWS_CHECK_SESSION.md` H-3)가 남아 있으면 그것부터 끝낸다.** macOS 로그는 `~/Library/Logs/Vibelab/StickMate/`라 이 폴더 밖이다
-      - **① 모든 인스턴스를 앱 안에서 종료** — Windows 트레이 메뉴 「StickMate 종료」(`Platform/SystemTrayPresencePolicy.cs:182`) 또는 톱니 부채꼴 「앱 종료」(`Interaction/GearRadialMenuWidget.cs:479`).
+      - **① 모든 인스턴스를 앱 안에서 종료** — Windows 트레이 메뉴 「StickMate 종료」(`Platform/SystemTrayPresencePolicy.cs:182`) 또는 캐릭터 우클릭 부채꼴 「앱 종료」(`Interaction/GearRadialMenuWidget.cs:472`, HEAD `6173b6e`).
+        〔R12-9: 옛 명칭 「톱니 부채꼴」 · 줄 `:479`는 낡았다. `0229f52`부터 평소 부채꼴은 **캐릭터 우클릭**으로 편다(`Interaction/AppControlDirector.cs:892`). ★ **수정 E-1 전에는 게임이 아닌 전체화면 앱이 떠 있으면 우클릭이 부채꼴을 열지 않는다**(`:854-857` 게이트가 허가 `:886`보다 앞) — 이때는 전체화면 앱을 먼저 닫고 우클릭하거나 Windows 트레이 「StickMate 종료」를 쓴다〕
         ★ `driver.sh stop` · 전역 `Q` 금지(0절 4번). 확인은 **읽기만**: macOS `pgrep -x StickMate` / Windows `Get-Process StickMate -ErrorAction SilentlyContinue` → **0줄**
         (macOS에서 `-f`를 쓰지 마라 — 프로젝트 경로에 `StickMate`가 든 Unity 러너까지 걸린다).
         ★ 하나라도 살아 있으면 안 된다 — 세이브는 인스턴스끼리 공유하고, 저장은 **폴더가 없으면 다시 만든다**(`Core/CharacterSaveStore.cs:652,1637`).
@@ -192,8 +193,9 @@
           ★ 둘 다 `False`면 경로를 잘못 본 것이다 — 「흔적 없음」 하나만 보고 통과시키지 마라
         ★ 여기서 「복사」가 아니라 「옮기기」를 쓰는 것은 일부러다(같은 문서 S-7-6 1번은 사용자 이전 안내라 「복사」다) — 원래 경로가 **비어야** 첫 실행이 되고, 이름 바꾸기는 형제 폴더로 복구 지점을 남긴다
 - [ ] ★★ **R5 — 「첫 실행」은 저장 폴더만 옮겨서는 안 된다.** 온보딩 안내 「봤음」 기록은
-      **`PlayerPrefs`**에 있다(`GearRadialMenuWidget`의 `OnboardingSeenKey` =
-      `StickMate.GearMenu.OnboardingSeen.v1`). 이 머신 실측: **이미 `= 1`로 기록돼 있다.**
+      **`PlayerPrefs`**에 있다(`Interaction/PlayerPrefsGearMenuOnboardingSeenStore.cs:38` `Key` =
+      `StickMate.GearMenu.OnboardingSeen.v1`).
+      〔R12-9 (2026-09-14, HEAD `6173b6e` 실측): `36e0a5e`에서 위젯의 옛 상수 `OnboardingSeenKey`가 **저장소 경계로 옮겨졌다.** 키 이름 · 값 형식은 불변이다(coder 골든 파일 · verify-change 확인) — 아래 절차의 키 이름은 그대로 쓴다〕 이 머신 실측: **이미 `= 1`로 기록돼 있다.**
       〔★★ **R12 (2026-09-14) 전면 교체** — R5~R11의 *"`unity.Vibelab.StickMate.plist`를 `.bak`으로 옮긴다"*는 **폐기.**
       이유 셋: ① 빌드된 앱이 읽는 파일이 **그게 아니다**(아래 (가)) ② plist 파일을 직접 옮기는 것은 **Apple이 경고한 형태**다(아래 (나))
       ③ 안내는 **뜨는 순간** 기록돼 **테이크마다 다시 소모된다**(아래 (다)). 발견: `test-engineer`(`docs/verify/RESERVED_BAR_OWNER_TOKEN_TEST_SPEC.md` G-1, 리더가 이 맥에서 두 파일 실재 확인)〕
@@ -237,12 +239,14 @@
           **최종 판정은 테이크 안에서 알약이 눈에 보이고 로그가 1줄인가**로 한다(아래 (다))
         - `defaults import`가 도메인을 **통째로 바꾸는지 합치는지 미확인**(`defaults help`: *"writes the plist at path to domain"*뿐) → **평상시 되돌리기에 쓰지 않는다.** 비상 복구는 리더 승인 뒤
       - **(다) ★ 테이크마다 다시 비운다 — 안내는 뜨는 순간 기록된다**
-        - `GearRadialMenuWidget.cs:929-938` — *"본 사실은 뜨는 순간 기록한다"*. 부채꼴을 **처음 펼치는 순간** 알약이 뜨고 **그 자리에서** `SetInt(…, 1)` + `Save()`
+        - `Interaction/GearRadialMenuWidget.cs:917-925` — 위젯 주석 「뜨는 그 순간 기록한다」. 부채꼴을 **처음 펼치는 순간** 알약이 뜨고 **그 자리에서** 기록한다: `TryStartOnboardingHint` `:917` → `MarkSeen()` 호출 `:923` → 저장소 `Interaction/PlayerPrefsGearMenuOnboardingSeenStore.cs:81-86`(`SetInt(Key, SeenValue)` `:84` + `Save()` `:86`). 〔R12-9: `36e0a5e`에서 쓰기가 위젯에서 저장소 `MarkSeen`으로 옮겨졌다 — 형식 · 시점 불변. 줄은 HEAD `6173b6e` 실측〕
         - ⇒ 2-4 「최소 3테이크」를 **한 번 비우고** 찍으면 **2·3테이크는 알약 없는 화면**이다. 첫 테이크가 만든 캐릭터도 남는다.
           **테이크마다** 2-3 ①(종료) → (Windows 자동 숨김 기계면 촬영 폴더 흔적 ⑤-2) → 촬영 폴더를 `capture-shot-<시각>`으로 치움(⑤-3) → 아래 절차 2·3번 → ④ 를 다시 돈다
-        - **판정은 눈 + 로그 둘 다**(2-5): 테이크마다 **알약이 화면에 보이고** `[부채꼴] 최초 1회 안내를 띄웁니다`(`:940`)가 **정확히 1줄.**
+        - **판정은 눈 + 로그 둘 다**(2-5): 테이크마다 **알약이 화면에 보이고** `[부채꼴] 최초 1회 안내를 띄웁니다`(`GearRadialMenuWidget.cs:925` @`6173b6e` — 이 문장 바이트는 `7900ad0`과 같다)가 **정확히 1줄.**
           둘 중 하나라도 아니면 첫 실행 테이크가 아니다 → 폐기. 〔눈은 「비우기가 실제로 반영됐는가」(위 (나) 미확인)의 대조이고, 로그는 눈이 놓친 두 번 발동·0회를 잡는다〕
           ★ 부채꼴을 **펼치기 전에는** 알약이 원래 없다 — 「켰는데 안내가 없다」만으로 절차 실패를 판정하지 않는다
+          ★ 〔R12-9, HEAD `6173b6e`〕 **부채꼴은 캐릭터 우클릭으로 편다**(옛 「톱니 부채꼴」 아님 — `0229f52`부터 평소 톱니 없음). 우클릭 경로도 알약을 띄운다: `AppControlDirector.cs:892` `ExpandOrReanchor` → `GearRadialMenuWidget.cs:895` `Expand` → `:838` `TryStartOnboardingHint`
+          ★★ **함정(수정 E-1 전) — 게임이 아닌 전체화면 앱이 떠 있는 동안 찍으면 알약이 0줄이 된다.** 그 상태에서는 우클릭 게이트(`AppControlDirector.cs:854-857`)가 허가 발급(`:886`)보다 먼저 막아 부채꼴이 **열리지 않고**, 알약은 `Expand` 안에서만 뜨기 때문이다. 이 0줄은 **비우기 실패가 아니라 P1 회귀**다 — 「0줄 = 폐기」로 읽고 절차 2·3번을 반복해도 계속 0줄이다. ⇒ **첫 실행 테이크는 전체화면 앱을 모두 닫은 화면에서 찍는다.** 0줄이 나오면 폐기하기 전에 전체화면 앱 여부부터 본다(`docs/ux/SETTINGS_ENTRY_NARROW_WIDTH.md` §15-1)
           ★★ **「촬영 전에 한 번 펼쳐 알약이 뜨는지 먼저 본다」는 하지 않는다** — 그 확인이 기록을 소모해 **바로 다음 녹화가 알약 없는 화면**이 된다.
           확인은 **녹화가 이미 돌고 있는 테이크 안에서** 한다. 미리 보고 싶으면 본 뒤 절차 2·3번을 다시 돈다
       - **macOS 절차** (2-3 ① 종료 · `pgrep -x StickMate` 0줄 뒤)
@@ -258,7 +262,8 @@
            **그리고** `defaults read-type com.Vibelab.StickMate UnityGraphicsQuality` → **성공**(도메인은 살아 있다).
            ★ 둘 다 실패면 **도메인 이름을 잘못 친 것이다** — 「없음」 하나만 보고 통과시키지 마라
         4. **촬영 뒤**: 마지막 테이크가 알약을 띄웠으면 앱이 이미 다시 써 두었다 → `defaults read com.Vibelab.StickMate StickMate.GearMenu.OnboardingSeen.v1` → `1`.
-           **없으면** 사용자 폴더를 되돌린(⑤-4) 뒤 앱을 한 번 켜 부채꼴을 한 번 펼치고(로그 1줄) 앱 안에서 종료한다.
+           **없으면** 사용자 폴더를 되돌린(⑤-4) 뒤 앱을 한 번 켜 **캐릭터를 우클릭해** 부채꼴을 한 번 펼치고(로그 1줄) 앱 안에서 종료한다.
+           〔R12-9: 옛 「부채꼴을 펼치고」는 입구가 적혀 있지 않았다. **전체화면 앱이 없는 화면에서** 우클릭한다 — 수정 E-1 전에는 전체화면 앱 중 우클릭이 열리지 않아 기록이 채워지지 않는다(위 (다) 함정)〕
            ★ **손으로 `defaults write`하지 않는다** — Unity가 쓰는 값 형식을 1차 문서로 확인하지 못했다
         5. **대조**: `com.Vibelab.StickMate`의 키 이름 목록이 1번 기록과 **같다.**
            다르면 **`defaults import`로 덮지 말고** 리더에게(import 의미 미확인)
@@ -318,7 +323,7 @@
 | `[화면클램프]` | **0건** | 나왔다면 캐릭터가 화면 밖으로 나가려 해 되돌려진 것 = 구도 실패. **이 로그는 진단 스위치와 무관하게 항상 남는다**(`StickConfig.cs:1534`) — 릴리즈 빌드에서도 검수가 된다 |
 | 프레임 등급 | 구간 내내 **Active**(`renderFrameInterval == 1`) | 위 문단 |
 | 연출 태그 | 해당 태그가 **정확히 1회**(`[활쏘기]` / `[윈도우크래시]` / `[그라피티]` …) | 두 번 발동하면 잘린 극이 찍힌다 |
-| 〔R12〕 첫 실행 컷만 — `[부채꼴] 최초 1회 안내를 띄웁니다` | **테이크마다 정확히 1줄** | `GearRadialMenuWidget.cs:929-940` — 뜨는 순간 기록돼 **다음 테이크에서는 안 뜬다**(2-3 R5 (다)). 0줄 = 알약 없는 「첫 실행」 = 거짓 소재 |
+| 〔R12〕 첫 실행 컷만 — `[부채꼴] 최초 1회 안내를 띄웁니다` | **테이크마다 정확히 1줄** | `GearRadialMenuWidget.cs:917-925`(`MarkSeen()` 호출 `:923` → 저장소 `PlayerPrefsGearMenuOnboardingSeenStore.cs:81-86` · 로그 `:925`, HEAD `6173b6e`) — 뜨는 순간 기록돼 **다음 테이크에서는 안 뜬다**(2-3 R5 (다)). 0줄 = 알약 없는 「첫 실행」 = 거짓 소재. ★ 〔R12-9〕 **0줄이면 폐기하기 전에 전체화면 앱이 떠 있었는지 먼저 본다** — 수정 E-1 전에는 게임이 아닌 전체화면 앱 중 캐릭터 우클릭이 부채꼴을 열지 않아 알약도 0줄이 된다(2-3 R5 (다) 경고) |
 | 예외 | **0건** | — |
 
 ★ **이 검수기에는 양성 대조를 반드시 붙인다.** 일부러 화면 끝으로 밀어 `[화면클램프]`가 찍힌

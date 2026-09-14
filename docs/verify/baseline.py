@@ -351,7 +351,7 @@ def render(rows, dmap):
     # ★ 2026-09-14 — 「R1」 칸과 「판정 불가」 칸을 추가했다. 「실패」 칸(test-case failed=)이 0이어도
     #   R1이 빨강일 수 있다 — 픽스처 끝 실패는 failed=에 안 들어간다(docs/TEAM.md 같은 이름의 절).
     L.append("**R1** = 결과 판정(`docs/verify/nunit_verdict.py`): 초록 = failed==0 ∧ test-run result ∈ {Passed, Skipped:Ignored} "
-             "∧ site가 SetUp/TearDown인 스위트 0 ∧ Failed 스위트 0. **「실패」 칸이 0이어도 R1이 빨강일 수 있다.** "
+             "∧ site가 SetUp/TearDown인 스위트 0 ∧ Failed 스위트 0 ∧ failed 속성 = Failed 케이스 수. **「실패」 칸이 0이어도 R1이 빨강일 수 있다.** "
              "`★픽스처` 로 시작하는 실패 이름은 테스트가 아니라 픽스처의 [OneTimeSetUp]/[OneTimeTearDown]이다.")
     L.append("")
     # ★ 2026-09-14 — 「범위」 칸. 「현재」는 가장 최근 **전량** 실행만이다(collect 위 문단).

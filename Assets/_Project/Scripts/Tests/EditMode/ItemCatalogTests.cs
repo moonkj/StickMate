@@ -413,7 +413,7 @@ namespace StickMate.Tests.EditMode
         /// (사용자 지시로 부채꼴 ④[행동]의 [말 걸기] 타일과 전역 단축키 B를 함께 폐지 —
         /// <c>Interaction/AppControlDirector.cs</c>의 「말 걸기 폐지」 절). 그래서 이 항목은
         /// <b>「가끔 알아서」</b>여야 한다: 유휴/보행 확률 발화는 출하 기본값에서 살아 있으므로
-        /// (idle 0.28 / walk 0.14) 「톱니 메뉴에서」로 내리면 <b>반대 방향의 거짓</b>이 된다.</para>
+        /// (idle 0.28 / walk 0.14) 「캐릭터 우클릭」으로 내리면 <b>반대 방향의 거짓</b>이 된다.</para>
         /// </summary>
         [Test]
         public void 개발_게이트_뒤의_행동은_카드에_조합키를_광고하지_않는다()
@@ -440,7 +440,7 @@ namespace StickMate.Tests.EditMode
             // 셋의 처지가 서로 다르다 — 같은 문구로 덮으면 반대 방향의 거짓이 생긴다.
             Assert.AreEqual(ItemCatalogEntry.MenuOnlyStatus,
                 FindById("action.focus_watch").ResolveStatusSlot(config),
-                "집중 모드는 스스로 뜨지 않습니다 — 톱니 → 부채꼴에서 사용자가 시작합니다. " +
+                "집중 모드는 스스로 뜨지 않습니다 — 캐릭터 우클릭 → 부채꼴에서 사용자가 시작합니다. " +
                 "자율 발동 문구로 내리면 '가끔 알아서 뜬다'는 새 거짓이 됩니다.");
             Assert.AreEqual(ItemCatalogEntry.AutoOnlyStatus,
                 FindById("action.todo_reminder").ResolveStatusSlot(config),
@@ -458,7 +458,7 @@ namespace StickMate.Tests.EditMode
                 "<b>사용자에게</b> 먼저 물어야 합니다.");
             Assert.AreEqual(ItemCatalogEntry.AutoOnlyStatus, chatter,
                 "「혼잣말」은 유휴/보행 중 확률로 <b>스스로</b> 뜹니다(출하 기본값 idle 0.28 / " +
-                "walk 0.14) — 강제 경로만 사라졌지 기능이 사라진 것이 아닙니다. 「톱니 메뉴에서」로 " +
+                "walk 0.14) — 강제 경로만 사라졌지 기능이 사라진 것이 아닙니다. 「캐릭터 우클릭」으로 " +
                 "내리면 없는 진입점을 가르치게 되고, 카드를 지우면 있는 기능을 없다고 말하게 됩니다.");
         }
 

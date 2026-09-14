@@ -31,7 +31,7 @@
 
 ### 1-1. 참고 이미지 재실측 (색 마스크 + 정확 EDT, scipy 없이 Felzenszwalb 1D 분리 변환 자작)
 
-`/Users/kjmoon/.claude/uploads/bf3ed972-ae20-4c9c-abed-8d989e6b94d7/2ecda686-image.jpg`
+`~/.claude/uploads/bf3ed972-ae20-4c9c-abed-8d989e6b94d7/2ecda686-image.jpg`
 — **직립·측면·걷기**. `CHARACTER_FORM_SPEC` 1절이 "두께 측정에 가장 좋은 프레임"으로 지목한 그 컷.
 (★ 앉거나 웅크린 컷은 단축되므로 쓰지 않았다. 이 함정에 팀이 실제로 세 번 빠졌다.)
 

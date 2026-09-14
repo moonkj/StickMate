@@ -916,9 +916,34 @@ namespace StickMate.Interaction
             else Open(source);
         }
 
-        public void Open(string source)
+        /// <summary>
+        /// ★★ 2026-09-14 (E-2) — <b>사용자가 연다</b>: 부채꼴 [캐릭터] · 전역 단축키(<c>AppControlDirector.ToggleCharacterInfo</c>) ·
+        /// <see cref="Toggle"/>. 등급 1(게임이 아닌 전체화면 앱) 체류 중이면 허가를 받아, 이 창이 열리자마자 자기
+        /// <c>Update</c>에서 닫히는 루프를 연다 — <see cref="SettingsWindow"/>의 사용자 열기와 같은 형태다.
+        /// <para>이 허가가 없던 동안 등급 1에서 단축키로 연 정보창은 그 프레임에 닫혔다(옛 Ignore 갭,
+        /// <c>docs/ux/SETTINGS_ENTRY_NARROW_WIDTH.md</c> §16-2 E-2).</para>
+        /// </summary>
+        public void Open(string source) => Open(source, userInitiated: true);
+
+        /// <summary>
+        /// ★★ 2026-09-14 (E-2) — <b>우리가 되돌린다</b>: 설정창이 닫힐 때 「열기 전에 보던 정보창」으로 복귀하는 자동 경로
+        /// (<c>SettingsWindow.RestoreInfoWindowIfNeeded</c>) 전용. <b>허가를 내지 않는다</b>.
+        /// <para>사용자의 <b>새</b> 행위가 아니므로, 여기서 허가를 내면 「우리가 스스로에게 발급하는 면제」가 되어 원칙 2의 구멍이
+        /// 열린다(같은 문서 §16-2b B5). 지금은 호출부의 억제 가드가 등급 1 진입 순간을 막아 주지만, 가드에 기대지 않고
+        /// <b>진입점에서</b> 끊는다. 이미 살아 있는 임대는 톱니 위젯의 갱신으로 이어진다.</para>
+        /// <para><c>public</c>인 이유: PlayMode 테스트 어셈블리는 <c>InternalsVisibleTo</c> 대상이 아니다 — 이 진입점이 허가를
+        /// 내지 않는다는 사실을 PlayMode가 직접 잰다(<c>PanelsOnlyTierMouseEntryTests</c> B5).</para>
+        /// </summary>
+        public void ReopenFromSheet(string source) => Open(source, userInitiated: false);
+
+        private void Open(string source, bool userInitiated)
         {
             if (_open) return;
+
+            // ★ 열기 <b>전에</b> 허가를 받는다. 이 창의 Update는 첫 프레임에 ArePanelsSuppressed를 보고 닫으므로,
+            //   허가가 늦으면 "열렸다가 같은 프레임에 닫힌" 로그 두 줄만 남는다(SettingsWindow의 사용자 열기와 같은 순서).
+            if (userInitiated && _agent != null) _agent.TryGrantUserSummon($"정보창 열기({source})");
+
             _open = true;
             CloseOverlappingSurfaces($"캐릭터 창 열림({source})");
             // ★ 2026-09-07 — 옛 <c>ResetPanelToCenter()</c> 자리다. 옮긴 적이 없으면 이 함수가

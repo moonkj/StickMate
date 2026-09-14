@@ -16,7 +16,11 @@ NUnit 결과 xml 판정기 — `docs/verify/regress.sh`(report · compare)와 `d
                AND test-run result ∈ {Passed, Skipped:Ignored}
                AND site가 SetUp/TearDown인 test-suite 0개
                AND result가 Failed로 시작하는 test-suite 0개
+               AND test-run failed 속성 == result="Failed"인 test-case 수   ← ★ 다섯째 절(아래)
          종료코드나 failed= 하나로 판정하지 않는다.
+         ★ 다섯째 절은 docs/TEAM.md 규칙 1의 네 절보다 **엄격한 쪽**이다(2026-09-14 문서화, 코드는 처음부터 있었다).
+           둘이 어긋나면 xml이 잘렸거나 손으로 만든 것이라 네 절이 다 맞아도 초록이라고 말하지 않는다.
+           정규식 교차 판정기(regress.sh selfcheck)도 같은 절을 건다.
 규칙 2 — **label로 거르지 않는다.** label은 출력만 한다.
          (합성 교정본에서 TearDown 실패가 label="Ignored"로 나왔다 — label="Error"만 찾으면 놓친다.)
 규칙 5 — Inconclusive(Assume 실패)는 failed=에 안 들어간다 → **이름을 반드시 돌려준다.**

@@ -270,7 +270,7 @@ namespace StickMate.Interaction
         /// <list type="number">
         ///   <item><b>"열린 창도 함께 사라져요"</b> — 이제 사라지지 않는다. 사용자 명시 숨김은
         ///     캐릭터만 가린다(<c>StickmanAgent.HidesScreenSurfaces</c>, 사용자 확정 <i>"캐릭만 가리고"</i>).</item>
-        ///   <item><b>"이 방법뿐입니다"</b> — 톱니도 이 창도 남으므로 마우스 경로가 살아 있다.</item>
+        ///   <item><b>"이 방법뿐입니다"</b> — 이 창은 남고 (숨긴 동안) 대기 톱니가 뜨므로 마우스 경로가 살아 있다.</item>
         /// </list>
         /// <b>유일성 주장을 다시 쓰지 마라.</b> 그 형태가 이번 신고에서 실제로 무너졌다 —
         /// 사용자는 <i>"전부 다 없어져버려서 다시 나오게 할 방법이 없어"</i>라고 신고했고, 경고는
@@ -279,9 +279,14 @@ namespace StickMate.Interaction
         ///
         /// <para><b>단축키는 여기 적지 않는다</b>: 같은 행의 <c>hotkey:</c> 칩이 이미 보여 준다
         /// (한 정보를 두 번 적으면 옮기는 날 한쪽만 낡는다).</para>
+        ///
+        /// <para>★ 2026-09-14 — 옛 캡션 「이 창도 톱니도 남으니」는 톱니가 <b>이미 떠 있다</b>는 전제였다. 톱니가 평상시 숨김이 된 뒤
+        /// (2026-09-06) [숨기기]를 누르면 톱니는 <b>남는</b> 것이 아니라 <b>나타난다</b>. 새 캡션은 누른 뒤의 상태를 그대로 적는다
+        /// (design-narrative <c>docs/narrative/ENTRY_WORDING_AUDIT_2026-09-14.md</c> V2). 위치(「오른쪽 위」)는 적지 않는다 —
+        /// 톱니를 옮겨 둔 사용자에게도 참이어야 한다.</para>
         /// </summary>
         private const string HideEscapeCaption =
-            "캐릭터만 사라져요. 이 창도 톱니도 남으니 옆의 [보이기]로 되돌립니다.";
+            "캐릭터만 사라져요. 이 창은 남고 톱니가 떠요. 옆의 [보이기]로 되돌립니다.";
 
         // ★ 2026-09-03 — 여기 있던 <c>_manualHideToggle</c>(숨김 상태를 <b>표시</b>하던 토글)을 지웠다.
         //   같은 상태를 조작하는 컨트롤이 둘이면 사용자가 <b>둘의 관계</b>부터 풀어야 하고, 그 오독이
@@ -709,7 +714,11 @@ namespace StickMate.Interaction
 
             if (_infoWindow == null) _infoWindow = GetComponent<CharacterInfoWindow>();
             if (_infoWindow == null || _infoWindow.IsOpen) return;
-            _infoWindow.Open($"설정창 닫힘({source}) — 열기 전에 보던 창으로 복귀");
+            // ★★ 2026-09-14 (E-2) — <b>비허가 진입점</b>으로 연다. 정보창의 사용자 열기(Open)는 이제 등급 1 허가를 내는데,
+            //   이 복귀는 사용자의 새 행위가 아니다(docs/ux/SETTINGS_ENTRY_NARROW_WIDTH.md §16-2b B5 — 우리가 스스로에게
+            //   발급하는 면제 금지). 위 억제 가드가 등급 1 진입 순간을 이미 막고 있지만, 가드가 바뀌는 날 구멍이 조용히
+            //   열리지 않게 호출부에서도 끊는다. 이미 살아 있는 임대는 톱니 위젯의 갱신으로 이어진다.
+            _infoWindow.ReopenFromSheet($"설정창 닫힘({source}) — 열기 전에 보던 창으로 복귀");
         }
 
         /// <summary>
@@ -1526,9 +1535,12 @@ namespace StickMate.Interaction
             //     이라 살아 있는 행 하나를 그 안에 넣으면 "안 켜지는 탭"이라는 그 탭의 유일한 약속이 깨진다.
             //   ★ 새 컨트롤은 0개다 — 위 [숨기기][보이기] 행과 <b>완전히 같은 부품</b>(AddButtons)이다.
             _gearHomeGate = new SettingsRowGate("아직 옮긴 적이 없어요.");
+            //   ★ 2026-09-14 — 캡션이 「드래그해서 옮긴 자리를…」에서 바뀌었다. 이 행은 톱니가 없는 평소에 가장 많이 읽히는데
+            //     옛 문장은 «무엇의» 자리인지 화면에 대상이 없었다(design-narrative ENTRY_WORDING_AUDIT_2026-09-14 V4).
+            //     「옮긴 적」 정보는 게이트 문구(아직 옮긴 적이 없어요)가 이미 말한다.
             _gearHomeButton = screenUi.AddButtons("general.gearHome", "톱니 위치", new[] { "처음 자리로" },
                 _ => OnGearHomeClicked(),
-                caption: "드래그해서 옮긴 자리를 화면 오른쪽 위로 되돌립니다.", gate: _gearHomeGate)[0];
+                caption: "캐릭터를 숨긴 동안 뜨는 톱니를 화면 오른쪽 위로 되돌립니다.", gate: _gearHomeGate)[0];
 
             y = screenUi.Finish(y);
 

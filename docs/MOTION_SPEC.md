@@ -663,7 +663,7 @@ DROP_DECIDE → DROP_STEP → CLIMB_DONE → DROP_DECIDE → DROP_STEP → CLIMB
 
 ## 7. 참고 이미지 기록 — **리더는 이 이미지를 볼 수 없다**(API 거부)
 
-`/Users/kjmoon/.claude/uploads/bf3ed972-ae20-4c9c-abed-8d989e6b94d7/` 중 4장을 직접 확인했다.
+`~/.claude/uploads/bf3ed972-ae20-4c9c-abed-8d989e6b94d7/` 중 4장을 직접 확인했다.
 전부 **YouTube Shorts / @alanbecker** 캡처다(스마트폰 화면 통째 캡처라 상하단에 UI가 들어 있다).
 
 ### 7-1. `5a31dd2c-image.png` — "Workout" (21:17)
