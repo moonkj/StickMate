@@ -184,6 +184,17 @@ namespace StickMate.Core
         public bool IsSuspended => _isSuspended;
 
         /// <summary>
+        /// ★ 2026-09-14 — 화면 변경 유예 동안의 <b>보존 동결</b> 중인가(<see cref="CharacterPreservationFreeze"/>).
+        /// 상태 Tick·전신 물리·절대 기한·잡담 쿨다운·발판 폴링이 멈춰 있다.
+        /// <para>★ <see cref="IsSuspended"/>와 <b>다른 정지</b>다 — 렌더러·진행 중 연출·떠 있는 말풍선·UI 표면은 그대로다.
+        /// 이 값을 <see cref="IsSuspended"/> / <see cref="HidesScreenSurfaces"/> / <see cref="ArePanelsSuppressed"/>에
+        /// 얹지 마라: 얹으면 모니터를 뺄 때마다 UI 숨김·항상위 워치독 보류·연출 취소가 함께 켜진다.</para>
+        /// </summary>
+        public bool IsPreservationFrozen => _preservationFreeze.IsFrozen;
+
+        private readonly PreservationFreezeLatch _preservationFreeze = new PreservationFreezeLatch();
+
+        /// <summary>
         /// ★ <b>화면에 고정된 표면</b>(창·패널·팝오버·부채꼴·포스트잇·화면 오버레이)과 그
         /// <b>클릭 차단막</b>을 지금 걷어야 하는가. <b>등급 1 소비자가 읽는 유일한 창구</b>다.
         ///
@@ -564,7 +575,7 @@ namespace StickMate.Core
         /// </summary>
         public void ReportExternalImpact(float impulseMagnitude)
         {
-            if (_isSuspended || _machine == null || _config == null) return;
+            if (_isSuspended || _preservationFreeze.IsFrozen || _machine == null || _config == null) return;
             RagdollImpactResolver.TryApplyImpact(_blackboard, impulseMagnitude);
         }
 
@@ -579,7 +590,7 @@ namespace StickMate.Core
         /// <param name="hitDirection">캐릭터가 밀려나는 방향(월드, 정규화 불필요).</param>
         public void ReportExternalImpact(float impulseMagnitude, Vector2 hitDirection)
         {
-            if (_isSuspended || _machine == null || _config == null) return;
+            if (_isSuspended || _preservationFreeze.IsFrozen || _machine == null || _config == null) return;
             RagdollImpactResolver.TryApplyImpact(_blackboard, impulseMagnitude, hitDirection);
         }
 
@@ -591,7 +602,7 @@ namespace StickMate.Core
         /// </summary>
         public void ReportCollisionImpact(Collision2D collision, float impulseMagnitude)
         {
-            if (_isSuspended || _machine == null || _config == null) return;
+            if (_isSuspended || _preservationFreeze.IsFrozen || _machine == null || _config == null) return;
             RagdollImpactResolver.TryApplyCollisionImpact(_blackboard, collision, impulseMagnitude);
         }
 
@@ -919,7 +930,7 @@ namespace StickMate.Core
         //   SetBodiesSimulated(false)로 물리 자체가 멎어 있어 속도를 쓰는 것 자체가 무의미하다.
         private void FixedUpdate()
         {
-            if (_isSuspended || _blackboard == null) return;
+            if (_isSuspended || _preservationFreeze.IsFrozen || _blackboard == null) return;
             _blackboard.TickStepOffCarry();
         }
 
@@ -945,8 +956,16 @@ namespace StickMate.Core
 
             float dt = Time.deltaTime;
 
+            // ★ 2026-09-14 보존 동결(Core/CharacterPreservationFreeze) — 가장자리를 전체화면 판정보다 <b>먼저</b> 확정한다.
+            //   같은 프레임에 Suspend/Resume이 돌면 그 둘이 이 값을 보고 물리·절대 기한을 서로 되살리지 않는다.
+            bool thawedThisFrame = TickPreservationFreeze();
+
             TickFullscreenSuspend(dt);
             if (_isSuspended) return; // Suspended 동안 Tick 자체를 건너뛰어 상태/파라미터/물리를 그대로 보존.
+
+            // 동결 중에는 발판 폴링·배회·상태 Tick·안전망·포즈·화면 클램프를 전부 건너뛴다(렌더러는 그대로).
+            // 해제 프레임도 건너뛴다 — 그 프레임 dt에는 재적합(SetResolution) 스톨이 들어 있을 수 있다.
+            if (_preservationFreeze.IsFrozen || thawedThisFrame) return;
 
             _footholdPoller.Tick(dt);
 
@@ -1697,6 +1716,86 @@ namespace StickMate.Core
             return "두 축 모두 해제";
         }
 
+        // ============================================================================
+        // ★ 2026-09-14 보존 동결 — 화면 변경 유예 동안 캐릭터를 「그 자리 그대로」 멈춘다
+        // ============================================================================
+        // 전체화면 숨김(Suspend/Resume)과 물리·절대 기한을 공유한다. 둘 다 중첩 횟수 없는 bool이라, 한쪽이 풀릴 때
+        // 다른 쪽이 아직 잡고 있으면 풀지 않는다(design-narrative 조건 1).
+        //   동결 진입: 숨김 중이 아니면 기한 얼림 + 물리 정지.   숨김 진입: 기존 그대로(둘 다 멱등).
+        //   동결 해제: 숨김 중이 아니면 발판 재폴 → 기한 재기점 → 물리 재개.   숨김 해제: 동결 중이 아니면 같은 일.
+
+        /// <returns>이번 프레임에 동결이 풀렸는가(그 프레임은 Tick하지 않는다).</returns>
+        private bool TickPreservationFreeze()
+        {
+            PreservationFreezeEdge edge = _preservationFreeze.Step(
+                CharacterPreservationFreeze.IsDisplayChangeHoldActive, DisplayChangeHoldStatus.EpisodeNumber,
+                Time.unscaledTime, Time.frameCount);
+            switch (edge)
+            {
+                case PreservationFreezeEdge.Started:
+                    EnterPreservationFreeze();
+                    return false;
+                case PreservationFreezeEdge.Released:
+                    ExitPreservationFreeze();
+                    return true;
+                case PreservationFreezeEdge.Continued:
+                    Debug.Log($"[보존동결] 유지 — 유예 해제와 새 유예 #{_preservationFreeze.Episode} 시작이 한 번의 읽기 사이에 " +
+                        $"끝났습니다. 동결을 풀지 않고 이어 갑니다(발판 재폴은 최종 해제 때 한 번). frame={Time.frameCount}");
+                    return false;
+                default:
+                    return false;
+            }
+        }
+
+        private void EnterPreservationFreeze()
+        {
+            // 숨김이 이미 얼려 두었으면 건드리지 않는다 — 풀 때도 남은 쪽이 푼다.
+            if (!_isSuspended)
+            {
+                _blackboard?.SuspendAbsoluteTimeWindows();
+                SetBodiesSimulated(false);
+            }
+
+            Debug.Log($"[보존동결] 시작 — 화면 변경 유예 #{_preservationFreeze.Episode}(사유={DisplayChangeHoldStatus.StartReason}, " +
+                $"유예 시작frame={DisplayChangeHoldStatus.StartedAtFrame}), 상태={(_machine != null ? _machine.CurrentStateId.ToString() : "?")}. " +
+                "멈춤: 상태 Tick·전신 물리·절대 기한·말풍선 수명·잡담 쿨다운·발판 폴링·새 연출·새 대사. " +
+                "유지: 렌더러·진행 중 연출·떠 있는 말풍선·UI 표면(전체화면 숨김과 다른 정지 — IsSuspended 무변경). " +
+                (_isSuspended ? "지금 전체화면 숨김 중이라 물리·기한은 그쪽이 이미 얼려 두었습니다. " : string.Empty) +
+                $"frame={Time.frameCount}");
+        }
+
+        private void ExitPreservationFreeze()
+        {
+            // 잡담 쿨다운은 동결 길이만큼 민다 — 이미 지난 기한은 그대로(해제 뒤 몰아서 추첨하지 않는다, 조건 7).
+            float chatterShift = 0f;
+            if (_blackboard != null)
+            {
+                float before = _blackboard.NextChatterAllowedUnscaledTime;
+                _blackboard.NextChatterAllowedUnscaledTime = CharacterPreservationFreeze.RebaseDeadline(
+                    before, _preservationFreeze.FrozenAtUnscaledTime, Time.unscaledTime);
+                chatterShift = _blackboard.NextChatterAllowedUnscaledTime - before;
+            }
+
+            int footholds = -1;
+            if (!_isSuspended)
+            {
+                // ★ 순서가 계약이다: 발판 재폴 → 기한 재기점 → 물리 재개. 해제가 게시된 시점에 OS 모니터 목록은
+                //   이미 최신이다(DisplayChangeHoldStatus 보증 1) — 그래서 첫 물리 스텝이 새 발판을 본다.
+                _footholdPoller.PollImmediately();
+                footholds = _footholdPoller.CachedFootholds.Count;
+                _blackboard?.ResumeAbsoluteTimeWindows();
+                SetBodiesSimulated(true);
+            }
+
+            Debug.Log($"[보존동결] 해제 — 화면 변경 유예 #{_preservationFreeze.Episode}(해제 사유={DisplayChangeHoldStatus.LastReleaseReason}), " +
+                $"동결 {_preservationFreeze.LastFrozenSeconds:F2}초/{_preservationFreeze.LastFrozenFrames}프레임, " +
+                $"상태={(_machine != null ? _machine.CurrentStateId.ToString() : "?")}. " +
+                (_isSuspended
+                    ? "전체화면 숨김 중이라 발판 재폴·물리 재개는 숨김이 풀릴 때 합니다. "
+                    : $"발판 즉시 재폴({footholds}개) → 절대 기한 재기점 → 물리 재개, 이 프레임은 Tick하지 않습니다. ") +
+                $"잡담 쿨다운 +{chatterShift:F2}초. frame={Time.frameCount}");
+        }
+
         private void Suspend(string reason)
         {
             _isSuspended = true;
@@ -1781,8 +1880,13 @@ namespace StickMate.Core
             // Suspend()에서 얼려 둔 절대 기한을 **지금**을 기준으로 다시 세운다(그 주석 참고) —
             // 숨어 있던 시간만큼 창이 뒤로 밀린다. 물리를 켜기 전에 해야 첫 FixedUpdate가 이미
             // 재기점된 창을 본다.
-            _blackboard?.ResumeAbsoluteTimeWindows();
-            SetBodiesSimulated(true);
+            // ★ 2026-09-14 — 화면 변경 유예의 보존 동결이 아직 잡고 있으면 풀지 않는다(동결 해제가 같은 일을 한다).
+            bool stillFrozen = _preservationFreeze.IsFrozen;
+            if (!stillFrozen)
+            {
+                _blackboard?.ResumeAbsoluteTimeWindows();
+                SetBodiesSimulated(true);
+            }
             // BUG-P5-M1 대응(Major, docs/BUG_REPORT_PHASE5.md): 예전에는 여기서 무조건
             // SetRenderersEnabled(true)를 호출해, 가출(RunawayState) Hidden 페이즈 중 전체화면 Suspend/
             // Resume이 왕복하면 아직 발견되지 않은 캐릭터가 강제로 다시 보이게 되는 버그가 있었다.
@@ -1804,14 +1908,15 @@ namespace StickMate.Core
             // 또 원인 불명 신고가 된다.
             // 사유가 비어 있는 경로는 하나뿐이다 — 테스트가 _isSuspended를 리플렉션으로 직접 주입한 경우
             // (Tests/PlayMode/FullscreenSuspendUiHidingTests). 그 사실을 그대로 적는다.
-            Debug.Log($"[숨김] 해제 — 물리를 재개했습니다(직전 사유: {reason ?? "미기록 — 외부 주입"}). " +
+            Debug.Log($"[숨김] 해제 — {(stillFrozen ? "화면 변경 유예의 보존 동결 중이라 물리·발판 재폴은 동결 해제 때 합니다" : "물리를 재개했습니다")}(직전 사유: {reason ?? "미기록 — 외부 주입"}). " +
                 (hiddenByRunaway
                     ? "단, 지금은 가출(Runaway) 은신 중이라 캐릭터는 일부러 계속 숨겨둡니다(클릭해 찾으면 나타납니다)."
                     : "캐릭터를 다시 보이게 했습니다."));
             // Minor m4 대응(docs/BUG_REPORT_PHASE1.md): Suspended 동안 FootholdPoller.Tick()도 함께
             // 건너뛰어(Update() 조기 return) 캐시가 오래됐을 수 있다 — 재개 즉시 최신 발판으로 갱신해
             // 다음 폴링 주기(최대 footholdPollInterval)까지 스테일 캐시로 서 있는 것처럼 보이지 않게 한다.
-            _footholdPoller.PollImmediately();
+            // 보존 동결 중이면 동결 해제가 최신 모니터 목록으로 한 번 다시 읽는다(여기서 읽으면 폴링 정지가 깨진다).
+            if (!stillFrozen) _footholdPoller.PollImmediately();
         }
 
         // BUG-P1-M6 대응(Major): 루트 하나의 Rigidbody2D만 토글하던 것을 전신(Phase 2 다중 파츠 Active

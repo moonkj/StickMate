@@ -477,7 +477,6 @@ namespace StickMate.Platform
             return -1;
         }
 
-        /// <summary>사람이 읽는 한 줄(전이 순간에만 조립 — 폴링 경로에서 문자열을 만들지 않는다).</summary>
         /// <summary>
         /// ★ 2026-09-14 (debugger 확정 결함 D1 후속) — <c>[표시모니터]</c> 줄을 <b>근거나 사유가 바뀔 때만</b> 찍는다.
         /// <para>예전 규칙은 <c>source == 직전 &amp;&amp; extra == null</c>일 때만 억제했다. 그래서 폴백 사유

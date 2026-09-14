@@ -89,6 +89,13 @@ namespace StickMate.Tests.EditMode
             }
         }
 
+        [Test]
+        public void 상태기계들은_참조_형식이라_readonly_복사_함정이_없다()
+        {
+            Assert.IsFalse(typeof(FreezeWatchdogTracker).IsValueType,
+                "struct로 되돌리면 readonly 필드에 담는 순간 복사본에 상태가 쌓여 정지를 영원히 못 본다(verify-change V1과 같은 함정).");
+        }
+
         // ------------------------------------------------------------------ 하트비트
 
         [Test]
@@ -134,6 +141,45 @@ namespace StickMate.Tests.EditMode
             Assert.IsFalse(FreezeForensicsPolicy.ShouldWriteHeartbeat(t0New + interval * 0.5, t0New, t0New, window, interval));
         }
 
+        // ------------------------------------------------------------------ 보존 규칙 (verify-change (4))
+
+        [Test]
+        public void 적합_쓰기만_사건_창_밖에서_맥락으로_가고_나머지는_언제나_즉시다()
+        {
+            var fitKinds = new[]
+            {
+                FreezeForensicsEvent.SetResolution, FreezeForensicsEvent.WindowResize,
+                FreezeForensicsEvent.WindowMove, FreezeForensicsEvent.TransparencyReassign,
+            };
+            foreach (FreezeForensicsEvent kind in Enum.GetValues(typeof(FreezeForensicsEvent)))
+            {
+                bool isFit = Array.IndexOf(fitKinds, kind) >= 0;
+                Assert.AreEqual(isFit ? ForensicsRetention.ContextOnly : ForensicsRetention.Immediate,
+                    FreezeForensicsPolicy.ClassifyRetention(kind, incidentWindowOpen: false), $"{kind} (창 밖)");
+                Assert.AreEqual(ForensicsRetention.Immediate,
+                    FreezeForensicsPolicy.ClassifyRetention(kind, incidentWindowOpen: true), $"{kind} (창 안)");
+            }
+        }
+
+        [Test]
+        public void 사건을_여는_기록은_변화감지_정지_유예시작_셋이다()
+        {
+            foreach (FreezeForensicsEvent kind in Enum.GetValues(typeof(FreezeForensicsEvent)))
+            {
+                bool expected = kind == FreezeForensicsEvent.TopologyChangeDetected
+                    || kind == FreezeForensicsEvent.MainThreadStall
+                    || kind == FreezeForensicsEvent.RenderHoldStarted;
+                Assert.AreEqual(expected, FreezeForensicsPolicy.OpensIncident(kind), kind.ToString());
+            }
+        }
+
+        [Test]
+        public void 사건_창과_하트비트_창은_같은_길이다()
+        {
+            Assert.AreEqual(FreezeForensicsPolicy.HeartbeatWindowSeconds, FreezeForensicsPolicy.IncidentWindowSeconds,
+                "둘이 갈라지면 워치독 파일에는 하트비트가 있는데 메인 파일의 적합 줄은 맥락으로만 남는 구간이 생긴다.");
+        }
+
         // ------------------------------------------------------------------ 분류·형식·슬롯
 
         [Test]
@@ -149,7 +195,6 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 토폴로지_분류는_실제_감시기의_상태_전이와_맞물린다()
         {
-            // 규칙이 감시기와 따로 놀면 원장이 "변화 감지"를 한 번도 못 찍는다 — 진짜 감시기로 확인한다.
             var watcher = new DisplayTopologyWatcher();
             var a = DisplayTopologySignature.Create(2, new UnityEngine.Rect(0, 0, 2560, 1600), new UnityEngine.Vector2(4480, 1600), 1f);
             var b = DisplayTopologySignature.Create(1, new UnityEngine.Rect(0, 0, 1920, 1080), new UnityEngine.Vector2(1920, 1080), 1f);
@@ -180,10 +225,11 @@ namespace StickMate.Tests.EditMode
             var when = new DateTime(2026, 9, 14, 10, 15, 3, 250, DateTimeKind.Utc);
             var r = new FreezeForensicsRecord(FreezeForensicsEvent.WindowResize, when, 12.5, 700, 2,
                 1.5f, -3f, 2560f, 1600f, "첫줄\r\n둘째\t셋째");
-            string line = FreezeForensicsPolicy.FormatLine(r);
+            string line = FreezeForensicsPolicy.FormatLine(r, 4321);
             StringAssert.DoesNotContain("\n", line);
             StringAssert.DoesNotContain("\r", line);
             StringAssert.StartsWith("2026-09-14T10:15:03.250Z | " + nameof(FreezeForensicsEvent.WindowResize), line);
+            StringAssert.Contains("pid=4321", line);
             StringAssert.Contains("rt=12.500", line);
             StringAssert.Contains("frame=700", line);
             StringAssert.Contains("monitors=2", line);
@@ -194,6 +240,7 @@ namespace StickMate.Tests.EditMode
 
             var unknown = new FreezeForensicsRecord(FreezeForensicsEvent.Heartbeat, when, -1.0, -1, -1, null);
             string u = FreezeForensicsPolicy.FormatLine(unknown);
+            StringAssert.Contains("pid=?", u);
             StringAssert.Contains("rt=?", u);
             StringAssert.Contains("frame=?", u);
             StringAssert.Contains("monitors=?", u);
@@ -237,6 +284,25 @@ namespace StickMate.Tests.EditMode
                 new[] { t.AddHours(2), t.AddHours(3), t.AddHours(1) }, new[] { false, false, true }),
                 "제외한 슬롯(2)을 건너뛰면 다음으로 오래된 0번이 골라져야 한다.");
             Assert.AreEqual(-1, FreezeForensicsPolicy.ChooseSlot(new[] { true }, new[] { t }, new[] { true }));
+        }
+
+        [Test]
+        public void 가장_오래된_슬롯을_고르므로_방금_쓰인_다른_인스턴스의_슬롯은_고르지_않는다()
+        {
+            // R-7 — 따로 "살아 있는 슬롯 보호" 규칙을 두지 않는 근거를 실행으로 잠근다.
+            var now = new DateTime(2026, 9, 14, 12, 0, 0, DateTimeKind.Utc);
+            var allExist = new[] { true, true, true };
+            var times = new[] { now.AddSeconds(-1), now.AddDays(-1), now.AddDays(-2) };   // 0번 = 다른 인스턴스가 방금 씀
+            Assert.AreNotEqual(0, FreezeForensicsPolicy.ChooseSlot(allExist, times, null));
+            Assert.AreNotEqual(0, FreezeForensicsPolicy.ChooseSlot(allExist, times, new[] { false, false, true }),
+                "이번 세션 슬롯을 제외해도 방금 쓰인 슬롯보다 오래된 것이 먼저다.");
+        }
+
+        [Test]
+        public void 채널마다_파일_이름이_갈린다()
+        {
+            Assert.AreNotEqual(FreezeForensicsPolicy.SlotFileName(FreezeForensicsChannel.Main, 3),
+                FreezeForensicsPolicy.SlotFileName(FreezeForensicsChannel.Watchdog, 3));
         }
 
         [Test]

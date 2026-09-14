@@ -175,6 +175,8 @@ namespace StickMate.Platform
             _presentBaselineRenderedFrame = 0;
             _interactionHoldUntil = float.NegativeInfinity;
             for (int i = 0; i < TierSeconds.Length; i++) TierSeconds[i] = 0f;
+            _displayChangeHold = false;
+            _intervalWithoutPlan = 1;
             FrameTimeStats.ResetForTests();
             RenderDiagnostics.ResetForTests();
         }
@@ -252,6 +254,46 @@ namespace StickMate.Platform
         /// 즉 PlayMode 테스트가 Suspend/Resume을 왕복시켜도 <c>QualitySettings</c>를 건드리지 않는다 —
         /// 테스트 타이밍에 영향을 주지 않기 위한 의도적 설계다.</para>
         /// </summary>
+        // ============================================================================
+        // ★ 2026-09-14 — 화면 변경 유예(완화 1안)의 입력. 렌더 간격을 쓰는 곳은 이 파일의
+        //   ApplyEffectiveRenderFrameInterval 하나뿐이다(R-2b). 유예는 계획을 바꾸지 않고, 계획과 함께
+        //   "실제로 걸 간격"의 계산에 들어간다 — 그래서 유예 중 등급이 바뀌어도 해제 순간 그 새 등급 값으로
+        //   정확히 돌아간다(ApplyPlan은 같은 계획이면 즉시 반환하므로, 유예가 간격을 직접 쓰면 다음 등급
+        //   전환까지 억제값이 남는다).
+        // ============================================================================
+        private static bool _displayChangeHold;
+        private static int _intervalWithoutPlan = 1;
+
+        /// <summary>화면 변경 유예 중인가(진단/테스트).</summary>
+        internal static bool DisplayChangeHoldActive => _displayChangeHold;
+
+        /// <summary>지금 실제로 걸린 렌더 간격(진단/원장).</summary>
+        internal static int EffectiveRenderFrameInterval => OnDemandRendering.renderFrameInterval;
+
+        /// <summary>화면 변경 유예 시작/해제. 같은 값이면 아무 일도 없다.</summary>
+        internal static void SetDisplayChangeHold(bool holding)
+        {
+            if (_displayChangeHold == holding) return;
+            // 계획이 아직 없으면(적응형 꺼짐 등) 유예 전 값을 기억해 해제 때 그대로 돌려놓는다.
+            if (holding && !_planValid) _intervalWithoutPlan = Mathf.Max(1, OnDemandRendering.renderFrameInterval);
+            _displayChangeHold = holding;
+            ApplyEffectiveRenderFrameInterval();
+        }
+
+        /// <summary>렌더 간격을 실제로 쓰는 <b>유일한</b> 지점.</summary>
+        private static void ApplyEffectiveRenderFrameInterval()
+        {
+            int tierInterval = _planValid ? _currentPlan.RenderFrameInterval : _intervalWithoutPlan;
+            int effective = DisplayChangeHoldPolicy.ResolveRenderFrameInterval(tierInterval, _displayChangeHold);
+            if (OnDemandRendering.renderFrameInterval != effective)
+            {
+                OnDemandRendering.renderFrameInterval = effective;
+            }
+        }
+
+        /// <summary>테스트 전용 — 등급 계획을 직접 적용한다(유예와의 우선순위 검증용).</summary>
+        internal static void ApplyPlanForTesting(FramePacingPlan plan) => ApplyPlan(plan);
+
         internal static void SetSuspended(bool suspended)
         {
             // 페이싱을 아직(혹은 전혀) 적용하지 않았으면 손대지 않는다 — 에디터/테스트 무영향 보장.
@@ -669,10 +711,9 @@ namespace StickMate.Platform
 
             if (QualitySettings.vSyncCount != plan.VSyncCount) QualitySettings.vSyncCount = plan.VSyncCount;
             if (Application.targetFrameRate != plan.TargetFrameRate) Application.targetFrameRate = plan.TargetFrameRate;
-            if (OnDemandRendering.renderFrameInterval != plan.RenderFrameInterval)
-            {
-                OnDemandRendering.renderFrameInterval = plan.RenderFrameInterval;
-            }
+            // ★ 2026-09-14 — 렌더 간격은 아래 한 함수만 쓴다(화면 변경 유예가 그 계산의 입력이다, R-2b).
+            //   유예가 없으면 결과는 예전 줄과 한 글자도 다르지 않다(= plan.RenderFrameInterval).
+            ApplyEffectiveRenderFrameInterval();
 
             _transitionCount++;
             if (_transitionCount <= VerboseTransitionLogLimit)

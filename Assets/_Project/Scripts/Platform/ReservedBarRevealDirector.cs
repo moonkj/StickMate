@@ -234,13 +234,24 @@ namespace StickMate.Platform
         }
 
         /// <summary>
-        /// 종료 경로. <c>Application.quitting</c>에서 불린다.
+        /// 종료 경로(정상 종료). <see cref="RunShutdown(AppShutdownTrigger)"/>와 같다.
+        /// </summary>
+        public static void RunShutdown() => RunShutdown(AppShutdownTrigger.ApplicationQuitting);
+
+        /// <summary>
+        /// 종료 경로. <see cref="AppShutdownSequence"/>가 <b>맨 먼저</b> 부른다 — <c>Application.quitting</c>(정상 종료)과
+        /// ★ 2026-09-14부터 Windows 세션 종료(<c>WM_ENDSESSION</c>, 트레이 호스트 창의 프로시저에서 동기 호출) 두 경로다.
+        /// 세션 종료는 처리 직후 프로세스가 끊기므로 이 메서드가 동기로 끝나야 원복이 남는다.
+        ///
+        /// <para><b>멱등이다.</b> 한 번 원복에 성공하면 <see cref="ChangedThisSession"/>이 false가 되어 두 번째 호출은
+        /// 시스템에도 디스크에도 쓰지 않는다(세션 종료 뒤 quitting이 또 오는 경우). 원복에 실패하면(셸이 먼저 끝나
+        /// 요청이 반영되지 않는 등) 흔적을 열어 둔 채 남겨 다음 실행이 먼저 갚는다 — 기존 설계 그대로다.</para>
         ///
         /// <para><b>이 경로는 크래시/강제 종료에서 돌지 않는다.</b> 그것이 이 기능의 전제이고,
         /// 그래서 <see cref="ReservedBarRestoreLedger"/>가 있다 — 여기가 안 돌아도 다음 실행이 갚는다.
-        /// 이 메서드는 "정상 종료일 때 더 빨리, 조용히 갚는" 최적 경로일 뿐 유일한 보증이 아니다.</para>
+        /// 이 메서드는 "종료일 때 더 빨리, 조용히 갚는" 최적 경로일 뿐 유일한 보증이 아니다.</para>
         /// </summary>
-        public static void RunShutdown()
+        public static void RunShutdown(AppShutdownTrigger trigger)
         {
             IReservedBarAutoHideControl control = _control;
             bool available = control != null;
@@ -267,13 +278,13 @@ namespace StickMate.Platform
             if (systemOk)
             {
                 Debug.Log($"{LogTag} ★ {ReservedBarRevealPolicy.Describe(plan.Reason)} " +
-                    $"복원값={ReservedBarRevealPolicy.DescribeAutoHide(OriginalAutoHide)}.");
+                    $"복원값={ReservedBarRevealPolicy.DescribeAutoHide(OriginalAutoHide)}." + DescribeTrigger(trigger));
                 ChangedThisSession = false;
             }
             else
             {
                 Debug.LogWarning($"{LogTag} 종료 시 원복에 실패했습니다 — 흔적을 열어 둔 채로 남깁니다. " +
-                    "다음 실행이 시작하자마자 되돌립니다.");
+                    "다음 실행이 시작하자마자 되돌립니다." + DescribeTrigger(trigger));
             }
         }
 
@@ -295,8 +306,16 @@ namespace StickMate.Platform
 
             // MonoBehaviour의 OnApplicationQuit과 같은 시점에 불리면서 씬 오브젝트를 하나도 만들지
             // 않는다 — 이 기능은 씬 배선에 의존할 이유가 없고, 의존하면 씬이 바뀔 때 조용히 죽는다.
-            Application.quitting += RunShutdown;
+            // ★ 2026-09-14 (R-1) — 직접 quitting에 붙지 않고 종료 순서 한 곳(AppShutdownSequence)에 합류한다.
+            //   그 순서의 맨 앞이 이 원복이고, Windows 세션 종료(WM_ENDSESSION)도 같은 순서를 동기로 부른다.
+            AppShutdownSequence.EnsureQuitHookInstalled();
         }
+
+        /// <summary>종료 로그 꼬리표. 정상 종료는 빈 문자열(기존 문구 그대로), 세션 종료만 경로를 밝힌다.</summary>
+        private static string DescribeTrigger(AppShutdownTrigger trigger)
+            => trigger == AppShutdownTrigger.SessionEnding
+                ? " (경로: OS 세션 종료 WM_ENDSESSION — 이 직후 프로세스가 끝납니다)"
+                : string.Empty;
 
         private static string DescribeLedger(ReservedBarLedgerState state)
         {

@@ -112,6 +112,15 @@ namespace StickMate.Interaction
                 return;
             }
 
+            // ★ 2026-09-14 보존 동결 — 화면 변경 유예 중에는 드래그 전이를 미룬다(상태 Tick이 멈춰 커서를 못 따라온다).
+            //   클릭 관통·히트테스트는 건드리지 않으므로(원칙 2) 사용자에게는 유예 동안 «안 잡힌다»로 보인다.
+            if (_player.IsPreservationFrozen || CharacterPreservationFreeze.BlocksNewSpectacle)
+            {
+                Debug.Log("[DragThrowController] [2/6] 드래그 진입 보류 — 화면 변경 유예(보존 동결) 중이라 전이를 미룹니다. " +
+                    "유예가 끝나면 다시 잡을 수 있습니다(클릭 관통·히트테스트 무변경).");
+                return;
+            }
+
             if (!SpectacleEventLock.TryAcquire(SpectacleEventKind.DragAndThrow, this))
             {
                 Debug.Log($"[DragThrowController] [2/6] 드래그 진입 실패 — SpectacleEventLock을 " +

@@ -246,6 +246,9 @@ namespace StickMate.Platform.Windows
             // 양 플랫폼 공용 FramePacing.ResolveCharacterIdle 한 곳에만 있다).
             EnsureAgentResolved();
             FramePacing.Tick(FramePacing.ResolveCharacterIdle(_agent));
+            // ★ 2026-09-14 화면 변경 유예 — 부착·컨트롤러 조기 반환보다 <b>앞</b>이다. 모니터가 빠지는 순간 창
+            //   크기가 (0,0)으로 읽히거나 컨트롤러가 사라져도 벽시계 상한 해제(R-2a)는 반드시 돈다.
+            TickDisplayChangeHold();
 
             // ★ 2026-09-03 (사용자 확정 "실행시 시스템 트레이에 표시되어야함") — 트레이 아이콘.
             //   <b>이 자리가 중요하다.</b> 아래 `if (_controller == null) return;`와 부착 판정
@@ -550,6 +553,13 @@ namespace StickMate.Platform.Windows
         {
             if (_fullScreenBoundsApplied || _fullScreenApplyAttempts >= MaxFullScreenApplyAttempts) return;
             if (_boundsOscillation.IsOscillating) return;   // 아래 진동 가드가 이미 멈춘 상태.
+            // ★ 2026-09-14 화면 변경 유예 — 조용한 구간에는 SetResolution·리사이즈·이동을 보류한다. 타이머와 시도 횟수를
+            //   소모하지 않고 돌아가므로, 유예가 끝나면 재적합은 예전과 같은 순서·같은 상한으로 돈다.
+            if (DisplayChangeHold.ShouldDeferFit)
+            {
+                DisplayChangeHold.NotifyFitDeferred(Time.frameCount);
+                return;
+            }
 
             _fullScreenTimer += Time.unscaledDeltaTime;
             if (_fullScreenTimer < ReapplyIntervalSeconds) return;
@@ -727,6 +737,8 @@ namespace StickMate.Platform.Windows
             if (ok)
             {
                 _fullScreenBoundsApplied = true;
+                // ★ 2026-09-14 화면 변경 유예 무장 — 첫 적합 확정 전(기동 중)의 모니터 신호는 무시한다(기동 흰 배경 구간 보호).
+                DisplayChangeHold.Arm();
 
                 // 같은 프레임에 좌표계를 갱신한다(폴링 대기 없음). 창이 방금 다른 크기/원점이 됐는데
                 // ScreenCoordinateConverter가 최대 0.5초 동안 옛 원점/배율을 들고 있으면, 그 사이의
@@ -804,6 +816,10 @@ namespace StickMate.Platform.Windows
             bool topologySettled = _topologyWatcher.Observe(topologySample, sampleDelta);
             FreezeForensics.ObserveTopologyTransition(wasSettling, _topologyWatcher.IsSettling, topologySettled,
                 topologySample, "Windows");
+            // ★ 2026-09-14 화면 변경 유예 — 같은 분류를 유예 상태기계에 넘긴다(감시기 판정은 무변경).
+            DisplayChangeHold.OnTopologyTransition(
+                FreezeForensicsPolicy.ClassifyTopologyTransition(wasSettling, _topologyWatcher.IsSettling, topologySettled),
+                Time.unscaledTimeAsDouble, Time.frameCount);
             if (!topologySettled) return;
 
             _fullScreenBoundsApplied = false;
@@ -930,10 +946,84 @@ namespace StickMate.Platform.Windows
         /// 불리므로, 매번 열거하면 24시간 상주 앱에서 순수 낭비다.</summary>
         private readonly List<OsMonitorFact> _osMonitors = new List<OsMonitorFact>(8);
         // ★ 2026-09-14 (debugger D1) — 누적 타이머(`+= Time.unscaledDeltaTime`)를 벽시계 문으로 바꿨다.
-        //   이 함수는 0.25초/0.5초 게이트 뒤에서만 불려 한 번에 한 프레임 dt만 쌓였고, "1초마다"가 실제로는
-        //   15~30초마다였다(WallClockIntervalGate 문서). 첫 호출은 여전히 즉시 1회다.
-        private WallClockIntervalGate _osMonitorRefreshGate;
+        //   이 함수는 토폴로지 표본(0.25초)·재적합(0.5초) 게이트 뒤에서만 불려 한 번에 한 프레임 dt만 쌓였고,
+        //   "1초마다"가 실제로는 평상시 약 15초·재적합 중 약 30초마다였다(루프 60Hz 기준, WallClockIntervalGate 문서).
+        //   첫 호출은 여전히 즉시 1회다. 참조 형식이라 readonly여도 복사 함정이 없다.
+        private readonly WallClockIntervalGate _osMonitorRefreshGate = new WallClockIntervalGate();
         private const float OsMonitorRefreshIntervalSeconds = 1f;
+
+        // ============================================================================
+        // ★ 2026-09-14 화면 변경 유예(완화 1안) 배선 — 판정·순서는 플랫폼 중립 DisplayChangeHoldDriver.
+        //   여기서는 신호를 넘기고 사실 조회 훅을 주입할 뿐이다. 클릭 관통·투명·항상위는 건드리지 않는다(원칙 2).
+        // ============================================================================
+        private DisplayChangeHoldDriver _displayChangeHold;
+        private UniWindowController _holdSubscribedController;
+        private UniWindowController.OnMonitorChangedDelegate _onLibraryMonitorChanged;
+
+        private DisplayChangeHoldDriver DisplayChangeHold => _displayChangeHold ??= new DisplayChangeHoldDriver(
+            new DisplayChangeHoldDriver.Hooks
+            {
+                PlatformTag = "Windows",
+                IsFitPending = IsFullScreenFitPending,
+                ForceRefreshOsMonitors = RefreshOsMonitorList,
+                SetRenderHold = FramePacing.SetDisplayChangeHold,
+                ActualRenderedFrames = () => RenderDiagnostics.ActualRenderedFrameCount,
+                RenderedFrameCount = () => Time.renderedFrameCount,
+                EffectiveRenderFrameInterval = () => FramePacing.EffectiveRenderFrameInterval,
+                MonitorCount = UniWindowController.GetMonitorCount,
+            },
+            DisplayChangeHoldPolicy.ReadDisabledFromEnvironment());
+
+        private void TickDisplayChangeHold()
+        {
+            DisplayChangeHoldDriver hold = DisplayChangeHold;
+            if (hold.IsDisabled) return;   // 끄기 스위치 — 구독·렌더 입력·재적합 보류·원장 줄 전부 없음(이전 동작).
+            if (_controller != null && !ReferenceEquals(_holdSubscribedController, _controller))
+            {
+                _onLibraryMonitorChanged ??= OnLibraryMonitorChanged;
+                if (!ReferenceEquals(_holdSubscribedController, null))
+                    _holdSubscribedController.OnMonitorChanged -= _onLibraryMonitorChanged;
+                _controller.OnMonitorChanged += _onLibraryMonitorChanged;
+                _holdSubscribedController = _controller;
+            }
+            hold.Tick(Time.unscaledTimeAsDouble, Time.frameCount);
+        }
+
+        private void OnLibraryMonitorChanged()
+            => DisplayChangeHold.OnLibraryMonitorChanged(Time.unscaledTimeAsDouble, Time.frameCount);
+
+        /// <summary>전체화면 재적합이 아직 끝나지 않았는가(유예의 재적합 단계가 끝나는 조건).</summary>
+        private bool IsFullScreenFitPending()
+            => !_fullScreenBoundsApplied && _fullScreenApplyAttempts < MaxFullScreenApplyAttempts
+               && !_boundsOscillation.IsOscillating;
+
+        /// <summary>
+        /// OS 모니터 목록을 열거해 <c>OverlayMonitorDirectory</c>에 게시한다. 평소에는 벽시계 문(1초) 뒤에서 불리고,
+        /// 화면 변경 유예 해제 <b>직전</b>에는 문을 우회해 한 번 불린다(재개 순서 계약 — DisplayChangeHoldStatus 문서).
+        /// </summary>
+        private void RefreshOsMonitorList()
+        {
+            if (OsMonitorEnumerator == null) return;
+            try
+            {
+                if (OsMonitorEnumerator(_osMonitors))
+                {
+                    // 설정 UI가 보는 목록과 <b>같은 관측</b>을 쓴다. 여기서 갈라지면
+                    // "설정에는 2번인데 창은 1번에 뜬다"가 된다.
+                    OverlayMonitorDirectory.Publish(_osMonitors);
+                }
+                else
+                {
+                    _osMonitors.Clear();
+                }
+            }
+            catch (System.Exception e)
+            {
+                _osMonitors.Clear();
+                Debug.LogWarning($"[표시모니터] OS 모니터 열거 실패 — {e.GetType().Name}: {e.Message}. " +
+                    "이번 판정은 폴백(창이 놓인 자리)으로 갑니다.");
+            }
+        }
         private OverlayMonitorChoiceSource _lastChoiceSource = (OverlayMonitorChoiceSource)(-1);
         /// <summary>직전에 찍은 폴백 사유(null = 사유 없음). <see cref="LogChoiceOnce"/>의 중복 억제 입력.</summary>
         private string _lastChoiceExtra;
@@ -948,28 +1038,7 @@ namespace StickMate.Platform.Windows
 
             if (_osMonitorRefreshGate.TryConsume(Time.unscaledTime, OsMonitorRefreshIntervalSeconds))
             {
-                if (OsMonitorEnumerator != null)
-                {
-                    try
-                    {
-                        if (OsMonitorEnumerator(_osMonitors))
-                        {
-                            // 설정 UI가 보는 목록과 <b>같은 관측</b>을 쓴다. 여기서 갈라지면
-                            // "설정에는 2번인데 창은 1번에 뜬다"가 된다.
-                            OverlayMonitorDirectory.Publish(_osMonitors);
-                        }
-                        else
-                        {
-                            _osMonitors.Clear();
-                        }
-                    }
-                    catch (System.Exception e)
-                    {
-                        _osMonitors.Clear();
-                        Debug.LogWarning($"[표시모니터] OS 모니터 열거 실패 — {e.GetType().Name}: {e.Message}. " +
-                            "이번 판정은 폴백(창이 놓인 자리)으로 갑니다.");
-                    }
-                }
+                RefreshOsMonitorList();
             }
 
             _libraryRects.Clear();

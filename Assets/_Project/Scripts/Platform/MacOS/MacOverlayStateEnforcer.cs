@@ -243,6 +243,9 @@ namespace StickMate.Platform.MacOS
             // 양 플랫폼 공용 FramePacing.ResolveCharacterIdle 한 곳에만 있다).
             if (_agent == null) _agent = UnityEngine.Object.FindAnyObjectByType<Core.StickmanAgent>();
             FramePacing.Tick(FramePacing.ResolveCharacterIdle(_agent));
+            // ★ 2026-09-14 화면 변경 유예 — Windows판과 같은 자리(부착·컨트롤러 조기 반환보다 앞). 벽시계 상한
+            //   해제(R-2a)는 창 부착 여부와 무관하게 반드시 돈다.
+            TickDisplayChangeHold();
 
             if (_controller == null)
             {
@@ -402,6 +405,12 @@ namespace StickMate.Platform.MacOS
         {
             if (_fullScreenBoundsApplied || _fullScreenApplyAttempts >= MaxFullScreenApplyAttempts) return;
             if (_boundsOscillation.IsOscillating) return;   // 아래 진동 가드가 이미 멈춘 상태.
+            // ★ 2026-09-14 화면 변경 유예 — 조용한 구간에는 재적합을 보류한다(타이머·시도 횟수 미소모, Windows판과 같은 자리).
+            if (DisplayChangeHold.ShouldDeferFit)
+            {
+                DisplayChangeHold.NotifyFitDeferred(Time.frameCount);
+                return;
+            }
 
             _timerFullScreen += Time.unscaledDeltaTime;
             if (_timerFullScreen < ReapplyIntervalSeconds) return;
@@ -595,6 +604,8 @@ namespace StickMate.Platform.MacOS
             if (ok)
             {
                 _fullScreenBoundsApplied = true;
+                // ★ 2026-09-14 화면 변경 유예 무장 — 첫 적합 확정 전의 모니터 신호는 무시한다(Windows판과 같은 자리).
+                DisplayChangeHold.Arm();
 
                 // 같은 프레임에 좌표계를 갱신한다(폴링 대기 없음). 창이 방금 다른 크기/원점이 됐는데
                 // ScreenCoordinateConverter가 최대 한 폴링 주기 동안 옛 원점/배율을 들고 있으면, 그 사이의
@@ -668,6 +679,10 @@ namespace StickMate.Platform.MacOS
             bool topologySettled = _topologyWatcher.Observe(topologySample, sampleDelta);
             FreezeForensics.ObserveTopologyTransition(wasSettling, _topologyWatcher.IsSettling, topologySettled,
                 topologySample, "macOS");
+            // ★ 2026-09-14 화면 변경 유예 — 같은 분류를 유예 상태기계에 넘긴다(감시기 판정은 무변경, Windows판과 같은 자리).
+            DisplayChangeHold.OnTopologyTransition(
+                FreezeForensicsPolicy.ClassifyTopologyTransition(wasSettling, _topologyWatcher.IsSettling, topologySettled),
+                Time.unscaledTimeAsDouble, Time.frameCount);
             if (!topologySettled) return;
 
             _fullScreenBoundsApplied = false;
@@ -815,8 +830,10 @@ namespace StickMate.Platform.MacOS
         private readonly System.Collections.Generic.List<Rect> _libraryRects =
             new System.Collections.Generic.List<Rect>(8);
         // ★ 2026-09-14 (debugger D1) — 누적 타이머를 벽시계 문으로 바꿨다(Windows판과 같은 결함·같은 수정).
-        //   이 함수는 0.25초/0.5초 게이트 뒤에서만 불려 "1초마다"가 실제로는 15~30초마다였다. 첫 호출은 즉시 1회.
-        private WallClockIntervalGate _osMonitorRefreshGate;
+        //   ★ macOS 수치 정정(verify-change (3)): 이 파일의 토폴로지 표본은 0.1초(TopologySampleIntervalSeconds)라
+        //   옛 주기는 평상시 약 6초였다(루프 60Hz 기준 — 호출 초당 10회 x 1/60초). 재적합 진행 중에는 표본이 멈추고
+        //   0.5초 게이트만 남아 약 30초였다. 첫 호출은 즉시 1회. 참조 형식이라 readonly여도 복사 함정이 없다.
+        private readonly WallClockIntervalGate _osMonitorRefreshGate = new WallClockIntervalGate();
 
         /// <summary>직전에 <b>목표로 삼은</b> 라이브러리 모니터 인덱스(-1 = 아직 없음).
         /// 사용자가 표시 모니터를 바꾼 순간을 잡는 유일한 신호다.</summary>
@@ -844,6 +861,71 @@ namespace StickMate.Platform.MacOS
         }
 
         private const float OsMonitorRefreshIntervalSeconds = 1f;
+
+        // ============================================================================
+        // ★ 2026-09-14 화면 변경 유예(완화 1안) 배선 — Windows판과 같은 중립 구동기·같은 훅 형태.
+        //   클릭 관통·투명·항상위는 건드리지 않는다(원칙 2).
+        // ============================================================================
+        private DisplayChangeHoldDriver _displayChangeHold;
+        private UniWindowController _holdSubscribedController;
+        private UniWindowController.OnMonitorChangedDelegate _onLibraryMonitorChanged;
+
+        private DisplayChangeHoldDriver DisplayChangeHold => _displayChangeHold ??= new DisplayChangeHoldDriver(
+            new DisplayChangeHoldDriver.Hooks
+            {
+                PlatformTag = "macOS",
+                IsFitPending = IsFullScreenFitPending,
+                ForceRefreshOsMonitors = RefreshOsMonitorList,
+                SetRenderHold = FramePacing.SetDisplayChangeHold,
+                ActualRenderedFrames = () => RenderDiagnostics.ActualRenderedFrameCount,
+                RenderedFrameCount = () => Time.renderedFrameCount,
+                EffectiveRenderFrameInterval = () => FramePacing.EffectiveRenderFrameInterval,
+                MonitorCount = UniWindowController.GetMonitorCount,
+            },
+            DisplayChangeHoldPolicy.ReadDisabledFromEnvironment());
+
+        private void TickDisplayChangeHold()
+        {
+            DisplayChangeHoldDriver hold = DisplayChangeHold;
+            if (hold.IsDisabled) return;   // 끄기 스위치 — 구독·렌더 입력·재적합 보류·원장 줄 전부 없음(이전 동작).
+            if (_controller != null && !ReferenceEquals(_holdSubscribedController, _controller))
+            {
+                _onLibraryMonitorChanged ??= OnLibraryMonitorChanged;
+                if (!ReferenceEquals(_holdSubscribedController, null))
+                    _holdSubscribedController.OnMonitorChanged -= _onLibraryMonitorChanged;
+                _controller.OnMonitorChanged += _onLibraryMonitorChanged;
+                _holdSubscribedController = _controller;
+            }
+            hold.Tick(Time.unscaledTimeAsDouble, Time.frameCount);
+        }
+
+        private void OnLibraryMonitorChanged()
+            => DisplayChangeHold.OnLibraryMonitorChanged(Time.unscaledTimeAsDouble, Time.frameCount);
+
+        /// <summary>전체화면 재적합이 아직 끝나지 않았는가(유예의 재적합 단계가 끝나는 조건).</summary>
+        private bool IsFullScreenFitPending()
+            => !_fullScreenBoundsApplied && _fullScreenApplyAttempts < MaxFullScreenApplyAttempts
+               && !_boundsOscillation.IsOscillating;
+
+        /// <summary>
+        /// OS 디스플레이 목록을 열거해 <c>OverlayMonitorDirectory</c>에 게시한다. 평소에는 벽시계 문(1초) 뒤에서,
+        /// 화면 변경 유예 해제 <b>직전</b>에는 문을 우회해 한 번 불린다(재개 순서 계약 — DisplayChangeHoldStatus 문서).
+        /// </summary>
+        private void RefreshOsMonitorList()
+        {
+            if (OsMonitorEnumerator == null) return;
+            try
+            {
+                if (OsMonitorEnumerator(_osMonitors)) OverlayMonitorDirectory.Publish(_osMonitors);
+                else _osMonitors.Clear();
+            }
+            catch (System.Exception e)
+            {
+                _osMonitors.Clear();
+                Debug.LogWarning($"[표시모니터] OS 디스플레이 열거 실패 — {e.GetType().Name}: {e.Message}. " +
+                    "이번 판정은 폴백으로 갑니다.");
+            }
+        }
         private OverlayMonitorChoiceSource _lastChoiceSource = (OverlayMonitorChoiceSource)(-1);
         /// <summary>직전에 찍은 폴백 사유(null = 사유 없음). <see cref="LogChoiceOnce"/>의 중복 억제 입력.</summary>
         private string _lastChoiceExtra;
@@ -865,20 +947,7 @@ namespace StickMate.Platform.MacOS
 
             if (_osMonitorRefreshGate.TryConsume(Time.unscaledTime, OsMonitorRefreshIntervalSeconds))
             {
-                if (OsMonitorEnumerator != null)
-                {
-                    try
-                    {
-                        if (OsMonitorEnumerator(_osMonitors)) OverlayMonitorDirectory.Publish(_osMonitors);
-                        else _osMonitors.Clear();
-                    }
-                    catch (System.Exception e)
-                    {
-                        _osMonitors.Clear();
-                        Debug.LogWarning($"[표시모니터] OS 디스플레이 열거 실패 — {e.GetType().Name}: {e.Message}. " +
-                            "이번 판정은 폴백으로 갑니다.");
-                    }
-                }
+                RefreshOsMonitorList();
             }
 
             _libraryRects.Clear();

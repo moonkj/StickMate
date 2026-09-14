@@ -4604,6 +4604,75 @@ namespace StickMate.Tests.EditMode
                 "지문에 넣지 않고 <지금까지 본 최악>만 갱신하면 전이가 단조라 로그가 폭주하지 않는다).");
         }
 
+        /// <summary>
+        /// ★ 2026-09-14 — <b>화면 변경 유예</b>(멀티모니터 분리 PC 정지 완화 1안)가 두 플랫폼에 <b>같은 중립 구동기</b>로
+        /// 배선돼 있는가. 판정·재개 순서는 <c>DisplayChangeHoldDriver</c>(Platform/ 바로 아래)에 있고, 플랫폼 파일은 신호를
+        /// 넘기고 사실 조회 훅(모니터 목록 강제 갱신 등)을 주입할 뿐이다. 신고 플랫폼은 Windows지만 같은 재적합 구조가
+        /// macOS에도 있어 한쪽만 배선하면 "한쪽만 고침" 사고가 된다.
+        /// <para>동작 검증(상한·재개 순서·FramePacing 우선순위)은 <c>DisplayChangeRenderHoldTests</c>가 실행으로 한다.
+        /// 이 항목은 <b>배선과 금지선</b>을 소스로 본다 — Windows 파일은 이 머신 타깃에서 컴파일되지 않는다.</para>
+        /// </summary>
+        [Test]
+        public void 화면변경_유예가_두_플랫폼에_같은_중립_구동기로_배선돼_있다()
+        {
+            string driverPath = Path.Combine(PlatformRoot, "DisplayChangeHoldDriver.cs");
+            string holdPath = Path.Combine(PlatformRoot, "DisplayChangeRenderHold.cs");
+            foreach (string neutral in new[] { driverPath, holdPath })
+            {
+                StringAssert.DoesNotContain("#if UNITY_STANDALONE", ReadSource(neutral),
+                    $"중립 파일({Path.GetFileName(neutral)})에 플랫폼 분기가 들어왔습니다 — 반대편 플랫폼이 부를 수 없게 됩니다.");
+            }
+
+            foreach ((string label, string path) in new[] { ("Windows", WinEnforcerPath), ("macOS", MacEnforcerPath) })
+            {
+                string code = StripLineComments(ReadSource(path));
+                foreach (string needle in new[]
+                         {
+                             "new " + nameof(DisplayChangeHoldDriver) + "(",
+                             "." + nameof(DisplayChangeHoldDriver.OnTopologyTransition) + "(",
+                             "." + nameof(DisplayChangeHoldDriver.OnLibraryMonitorChanged) + "(",
+                             "OnMonitorChanged += ",
+                             "." + nameof(DisplayChangeHoldDriver.ShouldDeferFit),
+                             "." + nameof(DisplayChangeHoldDriver.Arm) + "()",
+                             "." + nameof(DisplayChangeHoldDriver.Tick) + "(",
+                             nameof(FramePacing) + "." + nameof(FramePacing.SetDisplayChangeHold),
+                             nameof(DisplayChangeHoldDriver.Hooks.ForceRefreshOsMonitors) + " = RefreshOsMonitorList",
+                             nameof(DisplayChangeHoldPolicy) + "." + nameof(DisplayChangeHoldPolicy.ReadDisabledFromEnvironment) + "()",
+                         })
+                {
+                    StringAssert.Contains(needle, code,
+                        $"{label} Enforcer에 화면 변경 유예 배선 '{needle}'이 없습니다 — 한쪽 플랫폼만 완화가 걸립니다.");
+                }
+
+                // 원칙 2 — 유예 틱은 클릭 관통·투명·항상위·히트테스트 상태를 건드리지 않는다.
+                int at = code.IndexOf("private void TickDisplayChangeHold()", StringComparison.Ordinal);
+                Assert.GreaterOrEqual(at, 0, $"{label}: 유예 틱 메서드를 찾지 못했습니다(니들이 썩었다).");
+                int end = code.IndexOf("\n        private ", at + 10, StringComparison.Ordinal);
+                string body = end > at ? code.Substring(at, end - at) : code.Substring(at);
+                StringAssert.Contains("." + nameof(DisplayChangeHoldDriver.Tick) + "(", body,
+                    $"{label}: 유예 틱 본문을 잘못 잘랐습니다(양성 대조 실패) — 아래 부재 검사가 공허합니다.");
+                foreach (string forbidden in new[] { "isClickThrough", "isTopmost", "isTransparent", "isHitTestEnabled" })
+                {
+                    StringAssert.DoesNotContain(forbidden, body,
+                        $"{label}: 화면 변경 유예가 창 상태('{forbidden}')를 건드립니다 — 원칙 2 금지선(리더 판정).");
+                }
+            }
+
+            // R-2b — 렌더 간격을 쓰는 곳은 FramePacing 한 곳뿐이다(유예는 그 계산의 입력).
+            int writes = 0;
+            var writers = new List<string>();
+            foreach (string file in Directory.GetFiles(PlatformRoot, "*.cs", SearchOption.AllDirectories))
+            {
+                int n = CountOccurrences(StripLineComments(File.ReadAllText(file)), "OnDemandRendering.renderFrameInterval = ");
+                if (n <= 0) continue;
+                writes += n;
+                writers.Add(Path.GetFileName(file));
+            }
+            Assert.AreEqual(1, writes,
+                $"렌더 간격 대입이 {writes}곳입니다({string.Join(", ", writers)}) — 두 곳이 쓰면 해제 뒤 억제값이 다음 등급 전환까지 남습니다(R-2b).");
+            CollectionAssert.AreEqual(new[] { "FramePacing.cs" }, writers);
+        }
+
         // ============================================================================
         // ★★ 감사 대장 — "갭"과 "결정"과 "역방향"을 뭉개지 못하게 하는 자물쇠 (2026-09-02 신설)
         // ============================================================================

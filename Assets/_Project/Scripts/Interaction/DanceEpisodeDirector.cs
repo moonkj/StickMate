@@ -168,6 +168,10 @@ namespace StickMate.Interaction
 
             if (!_windowOpen) return;
 
+            // ★ 2026-09-14 보존 동결 — 화면 변경 유예 중에는 휴지 타이머와 시작 시도를 멈춘다(전이 자체를 미룬다).
+            //   재시도 창(_retryDeadline)은 벽시계라 유예 중 만료될 수 있다 — 그러면 그 에피소드는 건너뛴다(대사 유실 아님).
+            if (_player.IsPreservationFrozen) return;
+
             if (_restRemaining > 0f)
             {
                 _restRemaining -= dt;

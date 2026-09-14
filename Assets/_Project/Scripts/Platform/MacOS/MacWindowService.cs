@@ -1165,8 +1165,10 @@ namespace StickMate.Platform.MacOS
         /// (메뉴바/Dock 두께가 정말 필요하면 그 값은 라이브러리의 <c>GetMonitorRect</c>가 주는
         /// <c>visibleFrame</c>과의 차로 이 계측 줄 안에서 그대로 읽힌다.)</para>
         ///
-        /// <para>비용: 프로세스 수명 동안 1회(기동 계측). 배열 1개 할당 + 디스플레이 수만큼의
-        /// <c>CGDisplayBounds</c>가 전부다.</para>
+        /// <para>비용: 호출 한 번에 배열 1개 할당 + 디스플레이 수만큼의 <c>CGDisplayBounds</c>가 전부다.
+        /// ★ 2026-09-14 정정(R-4, Windows판과 같은 문구 결함) — 예전 문구는 "프로세스 수명 동안 1회"였으나
+        /// 기동 계측 1회에 더해 <c>MacOverlayStateEnforcer</c>의 표시 모니터 선택이 <b>실제 시간 약 1초마다</b> 부른다
+        /// (D1 수정 전에는 누적 타이머 결함으로 약 6초마다였다).</para>
         /// </summary>
         public bool TryEnumerateOsMonitors(List<OsMonitorFact> into)
         {

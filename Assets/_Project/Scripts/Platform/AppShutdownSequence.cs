@@ -1,0 +1,133 @@
+using System;
+using System.Collections.Generic;
+using UnityEngine;
+
+namespace StickMate.Platform
+{
+    /// <summary>종료가 어디서 왔나.</summary>
+    public enum AppShutdownTrigger
+    {
+        /// <summary>Unity <c>Application.quitting</c>(정상 종료).</summary>
+        ApplicationQuitting = 0,
+        /// <summary>OS 세션 종료(로그오프·시스템 종료·재시작) — Windows <c>WM_ENDSESSION</c>(wParam=TRUE).</summary>
+        SessionEnding = 1,
+    }
+
+    /// <summary>종료 단계. <b>배열 순서가 곧 실행 순서다.</b></summary>
+    public enum AppShutdownStep
+    {
+        /// <summary>작업표시줄 자동 숨김 원복(원칙 3 승인 예외의 조건 — "종료 시 원복").</summary>
+        RestoreReservedBar = 0,
+        /// <summary>동결 워치독 스레드 정지.</summary>
+        StopFreezeWatchdog = 1,
+    }
+
+    /// <summary>
+    /// ★ 2026-09-14 — 종료 순서의 <b>단 한 곳</b>(플랫폼 중립).
+    ///
+    /// <para><b>왜 생겼나(persona-stress R-1).</b> 종료 훅이 파일마다 따로 <c>Application.quitting</c>에 붙어 있었고,
+    /// 동결 워치독 정지는 합류를 최대 1초 기다렸다. 실행 순서가 구독 순서라는 우연에 기대고 있었고, 무엇보다
+    /// Windows 세션 종료(<c>WM_ENDSESSION</c>)는 처리 직후 CSRSS가 프로세스를 끊는다 — 원복보다 워치독 대기가 먼저
+    /// 오면 원복이 누락된다. 그래서 순서를 <see cref="Order"/> 한 줄로 명시하고 두 경로(정상 종료 / 세션 종료)가
+    /// 같은 순서를 쓴다. <c>SessionEndShutdownTests</c>가 순서와 멱등을 실행으로 잠근다.</para>
+    ///
+    /// <para><b>멱등.</b> 두 경로가 모두 올 수 있다(세션 종료 뒤 Unity가 quitting까지 부르는 경우). 원복은
+    /// <c>ReservedBarRevealDirector</c>의 "이번 실행이 바꿨는가" 상태로 두 번째 호출이 시스템에 쓰지 않고, 워치독
+    /// 정지는 여러 번 불러도 안전하다.</para>
+    ///
+    /// <para><b>하지 않는 것.</b> "정상 종료 표식"은 두지 않았다(비정상 종료 뒤 <c>Player-prev.log</c> 회수는
+    /// 3차 라운드로 미뤘다). 표식을 두게 되면 <b>이 순서 안에</b> 두어야 한다 — quitting에만 찍으면 매일 밤 Windows
+    /// 종료가 비정상으로 오판된다(R-6).</para>
+    /// </summary>
+    public static class AppShutdownSequence
+    {
+        private static readonly AppShutdownStep[] s_order =
+        {
+            AppShutdownStep.RestoreReservedBar,   // ★ 맨 앞 — 세션 종료는 곧 강제 종료된다.
+            AppShutdownStep.StopFreezeWatchdog,
+        };
+
+        /// <summary>실행 순서(읽기 전용).</summary>
+        public static IReadOnlyList<AppShutdownStep> Order => s_order;
+
+        /// <summary>정상 종료에서 워치독 합류를 기다리는 최대 시간(ms). 종료 중 프레임이 멈춰 거짓 정지 줄이 찍히는 것을 막는다.</summary>
+        public const int QuitWatchdogJoinMilliseconds = 1000;
+
+        /// <summary>경로별 워치독 합류 대기. 세션 종료는 <b>기다리지 않는다</b>(신호만 보낸다) — 그 사이 프로세스가 끊긴다.</summary>
+        public static int WatchdogJoinMilliseconds(AppShutdownTrigger trigger)
+            => trigger == AppShutdownTrigger.SessionEnding ? 0 : QuitWatchdogJoinMilliseconds;
+
+        private static bool s_quitHookInstalled;
+
+        /// <summary>테스트 전용 — 단계 실행을 가로챈다(순서 검증용).</summary>
+        internal static Action<AppShutdownStep, AppShutdownTrigger> ExecutorOverrideForTesting;
+
+        /// <summary><c>Application.quitting</c>에 이 순서를 한 번만 건다. 여러 곳에서 불러도 안전하다.</summary>
+        public static void EnsureQuitHookInstalled()
+        {
+            if (s_quitHookInstalled) return;
+            s_quitHookInstalled = true;
+            Application.quitting += OnApplicationQuitting;
+        }
+
+        private static void OnApplicationQuitting() => Run(AppShutdownTrigger.ApplicationQuitting);
+
+        /// <summary>정해진 순서로 전 단계를 돈다. 한 단계가 던져도 다음 단계는 돈다(종료를 막지 않는다).</summary>
+        public static void Run(AppShutdownTrigger trigger)
+        {
+            foreach (AppShutdownStep step in s_order)
+            {
+                try
+                {
+                    Action<AppShutdownStep, AppShutdownTrigger> overrideExecutor = ExecutorOverrideForTesting;
+                    if (overrideExecutor != null) overrideExecutor(step, trigger);
+                    else Execute(step, trigger);
+                }
+                catch (Exception)
+                {
+                    // 한 단계의 실패가 다음 단계를 막지 않는다 — 특히 세션 종료는 곧 프로세스가 끊긴다.
+                }
+            }
+        }
+
+        private static void Execute(AppShutdownStep step, AppShutdownTrigger trigger)
+        {
+            switch (step)
+            {
+                case AppShutdownStep.RestoreReservedBar:
+                    ReservedBarRevealDirector.RunShutdown(trigger);
+                    break;
+                case AppShutdownStep.StopFreezeWatchdog:
+                    // 종료 중에는 프레임이 멈춘다 — 워치독을 세워 거짓 정지 줄을 막는다.
+                    FreezeWatchdog.Stop(WatchdogJoinMilliseconds(trigger));
+                    break;
+            }
+        }
+    }
+
+    /// <summary>
+    /// ★ 2026-09-14 — Windows 세션 종료 메시지 판정(순수 함수, 플랫폼 중립 위치 — 이 머신에서 실행해 검증한다).
+    /// 값은 <c>winuser.h</c> 고정 리터럴이다.
+    /// </summary>
+    public static class SessionEndPolicy
+    {
+        /// <summary><c>WM_QUERYENDSESSION</c> — 건드리지 않는다(DefWindowProc가 TRUE = 종료 허용).</summary>
+        public const uint WmQueryEndSession = 0x0011;
+
+        /// <summary><c>WM_ENDSESSION</c>.</summary>
+        public const uint WmEndSession = 0x0016;
+
+        /// <summary>
+        /// 지금 세션이 정말 끝나는가. <c>WM_ENDSESSION</c>의 wParam이 TRUE일 때만이다 — FALSE는 "종료가 취소됐다"는
+        /// 통지라 원복하면 안 된다(MS 문서: "If the session is being ended, this parameter is TRUE … Otherwise, it is FALSE").
+        /// </summary>
+        public static bool IsSessionEndingNow(uint message, long wParam) => message == WmEndSession && wParam != 0;
+
+        /// <summary>
+        /// 트레이를 끈 사용자에게 세션 종료 수신 창을 따로 세울 것인가. 이번 실행이 작업표시줄 자동 숨김을
+        /// <b>실제로 바꿨을 때만</b> — 바꾼 것이 없으면 되돌릴 것도 없으니 숨은 창도 만들지 않는다.
+        /// </summary>
+        public static bool NeedsReceiverWithoutTray(bool trayOptedOut, bool reservedBarChangedThisSession)
+            => trayOptedOut && reservedBarChangedThisSession;
+    }
+}

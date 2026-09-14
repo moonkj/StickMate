@@ -7,18 +7,21 @@ namespace StickMate.Platform
     ///
     /// <para><b>무엇이 틀렸었나.</b> 두 플랫폼 Enforcer의 OS 모니터 목록 갱신이
     /// <c>timer += Time.unscaledDeltaTime; if (timer &gt;= 1초) …</c>였다. 그런데 그 함수는 매 프레임이 아니라
-    /// <b>토폴로지 표본(0.25초)·재적합 시도(0.5초) 게이트 뒤</b>에서만 불린다. 한 번 불릴 때 더해지는 것은
-    /// <b>그 한 프레임의 dt</b>(약 1/60초)뿐이므로, "1초마다"는 실제로 <b>15~30초마다</b>였다.
+    /// <b>토폴로지 표본·재적합 시도 게이트 뒤</b>에서만 불린다. 한 번 불릴 때 더해지는 것은 <b>그 한 프레임의
+    /// dt</b>(루프 60Hz에서 약 1/60초)뿐이다. 그래서 "1초마다"가 실제로는 — Windows(표본 0.25초) 약 15초,
+    /// macOS(표본 0.1초) 약 6초, 재적합 진행 중(표본이 멈추고 0.5초 게이트만 남음) 두 플랫폼 모두 약 30초마다였다.
     /// 모니터를 떼면 OS 목록이 그만큼 낡은 채로 남아 선택 매핑이 실패하고 폴백 로그가 반복됐다.</para>
     ///
     /// <para><b>고친 형태.</b> 누적하지 않는다. 다음 갱신 시각을 기억하고 지금 시각과 비교한다 —
-    /// 호출이 드물어도 늦게 한 번 부르면 곧바로 참이 된다. 첫 호출은 즉시 참이다(예전 초기값
-    /// <c>PositiveInfinity</c>와 같은 의미).</para>
+    /// 호출이 드물어도 늦게 한 번 부르면 곧바로 참이 된다. 첫 호출은 즉시 참이다.</para>
     ///
-    /// <para>순수 로직이라 EditMode가 "0.25초 간격으로 불러도 1초마다 열린다"를 실행으로 검증한다
-    /// (<c>WallClockIntervalGateTests</c>).</para>
+    /// <para>★ <b>왜 class인가(verify-change 변이 V1, 2026-09-14).</b> 처음에는 struct였다. 그런데 필드에
+    /// <c>readonly</c> 한 단어만 붙이면 C#이 <b>호출마다 복사본</b>에 <see cref="TryConsume"/>를 불러
+    /// 상태가 저장되지 않고, 문이 <b>매 호출 열린다</b>(= 매번 모니터 열거). 컴파일 경고도 테스트 실패도
+    /// 없었다. 잠금으로 막는 대신 <b>함정 자체를 없앤다</b> — 참조 형식이면 readonly 필드여도 같은 객체를
+    /// 부른다. <c>WallClockIntervalGateTests</c>가 "readonly 필드에 담아도 닫힌다"를 실행으로 잠근다.</para>
     /// </summary>
-    public struct WallClockIntervalGate
+    public sealed class WallClockIntervalGate
     {
         private double _nextDueSeconds;
         private bool _armed;

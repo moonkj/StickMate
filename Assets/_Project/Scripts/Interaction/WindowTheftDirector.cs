@@ -215,6 +215,9 @@ namespace StickMate.Interaction
 
         private void TickAutoTrigger()
         {
+            // ★ 2026-09-14 보존 동결 — 화면 변경 유예 중에는 발동 타이머를 멈춘다(리셋하지 않는다). 해제 뒤 몰아서 추첨하지 않는다.
+            if (_player.IsPreservationFrozen) return;
+
             var current = _player.Blackboard.Machine.CurrentStateId;
             if (current != StickmanStateId.Idle && current != StickmanStateId.Walk) { _checkTimer = 0f; return; }
 

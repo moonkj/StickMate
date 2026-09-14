@@ -12,6 +12,12 @@ namespace StickMate.Tests.EditMode
         // 이 값들은 프로덕션 상수가 아니라 이 테스트가 고른 시나리오다(Enforcer의 게이트 주기 0.25/0.5초와 같은 형태).
         private const double Interval = 1.0;
 
+        /// <summary>Enforcer와 같은 형태 — 게이트를 <b>readonly 필드</b>에 담는다.</summary>
+        private sealed class ReadonlyHolder
+        {
+            public readonly WallClockIntervalGate Gate = new WallClockIntervalGate();
+        }
+
         [Test]
         public void 첫_호출은_즉시_열린다()
         {
@@ -19,6 +25,19 @@ namespace StickMate.Tests.EditMode
             Assert.IsFalse(g.IsArmed);
             Assert.IsTrue(g.TryConsume(123.0, Interval));
             Assert.IsTrue(g.IsArmed);
+        }
+
+        [Test]
+        public void readonly_필드에_담아도_문이_닫힌다()
+        {
+            // ★ verify-change 변이 V1 — struct였을 때 필드에 readonly만 붙이면 호출마다 복사본에 상태가 쌓여
+            //   문이 매 호출 열렸는데(= 매번 모니터 열거) 컴파일도 테스트도 초록이었다. 이 테스트가 그 함정을 문다.
+            var holder = new ReadonlyHolder();
+            Assert.IsTrue(holder.Gate.TryConsume(0.0, Interval));
+            Assert.IsFalse(holder.Gate.TryConsume(0.25, Interval), "readonly 필드를 거쳐 부르자 문이 다시 열렸다 = 복사 함정.");
+            Assert.IsFalse(holder.Gate.TryConsume(0.5, Interval));
+            Assert.IsTrue(holder.Gate.TryConsume(1.0, Interval));
+            Assert.IsFalse(typeof(WallClockIntervalGate).IsValueType, "값 형식으로 되돌리면 위 함정이 되살아난다.");
         }
 
         [TestCase(0.25)]

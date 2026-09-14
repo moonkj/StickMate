@@ -1635,8 +1635,10 @@ namespace StickMate.Platform.Windows
         /// <see cref="MonitorTopologyReport"/>에 있다(<c>FullscreenSuspendPolicy</c>가
         /// <c>Platform/MacOS/</c> 안에 있어 Windows가 부를 수 없었던 사고의 재발 방지 형태).
         ///
-        /// <para>비용: 프로세스 수명 동안 <b>1회</b>만 불린다(기동 계측). 모니터 수만큼의
-        /// <c>GetMonitorInfo</c> 한 번씩이 전부다.</para>
+        /// <para>비용: 호출 한 번에 모니터 수만큼의 <c>GetMonitorInfo</c>가 전부다. ★ 2026-09-14 정정(R-4) —
+        /// 예전 문구는 "프로세스 수명 동안 1회(기동 계측)"였으나 사실이 아니다. 기동 계측 1회에 더해
+        /// <c>WindowsOverlayStateEnforcer</c>의 표시 모니터 선택이 <b>실제 시간 약 1초마다</b> 부른다
+        /// (D1 수정 전에는 누적 타이머 결함으로 약 15초마다였다).</para>
         /// </summary>
         public bool TryEnumerateOsMonitors(List<OsMonitorFact> into)
         {

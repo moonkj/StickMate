@@ -58,6 +58,8 @@ namespace StickMate.Interaction
             using var __stall = global::StickMate.Platform.StallAttribution.Section(global::StickMate.Platform.StallSection.Directors);   // [스톨구간] 계측
             if (_player == null || _config == null) return;
             if (_player.IsSuspended) return;
+            // ★ 2026-09-14 보존 동결 — 화면 변경 유예 중에는 발동을 미룬다(IsSuspended와 다른 정지라 따로 본다).
+            if (_player.IsPreservationFrozen) return;
 
             var current = _player.Blackboard.Machine.CurrentStateId;
             if (current == StickmanStateId.Runaway) return; // 이미 진행 중.

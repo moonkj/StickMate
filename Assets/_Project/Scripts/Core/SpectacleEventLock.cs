@@ -91,6 +91,10 @@ namespace StickMate.Core
         {
             if (owner == null) return false;
             if (_owner != null && _owner != owner) return false;
+            // ★ 2026-09-14 — 화면 변경 유예(보존 동결) 중에는 <b>새</b> 연출을 시작하지 않는다. 상태 Tick이 멈춰
+            //   있어 시작해도 진행하지 못하고, 그 전이의 대사는 사용자가 못 본 행동에 붙는다(원칙 1).
+            //   이미 쥔 주인의 재진입은 막지 않는다 — 진행 중 연출을 끊지 않는 것이 이 동결의 계약이다.
+            if (_owner == null && CharacterPreservationFreeze.BlocksNewSpectacle) return false;
             _owner = owner;
             _activeKind = kind;
             return true;

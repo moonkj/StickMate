@@ -72,8 +72,13 @@ namespace StickMate.Platform
         /// <summary>프레임 단계 경계에서 부른다.</summary>
         public static void PublishPhase(MainThreadPhase phase) => Volatile.Write(ref s_mainPhase, (int)phase);
 
-        /// <summary>토폴로지 변화 감지(t0). 하트비트 창을 연다(다시 부르면 창이 새로 시작된다).</summary>
-        public static void MarkEpisodeStart() => Interlocked.Exchange(ref s_episodeStartTicks, Stopwatch.GetTimestamp());
+        /// <summary>토폴로지 변화 감지(t0). 하트비트 창과 원장의 사건 창을 함께 연다(다시 부르면 새로 시작된다).
+        /// 두 창이 갈라지면 워치독 파일에는 하트비트가 있는데 메인 파일에는 적합 줄이 맥락으로만 남는 구간이 생긴다.</summary>
+        public static void MarkEpisodeStart()
+        {
+            Interlocked.Exchange(ref s_episodeStartTicks, Stopwatch.GetTimestamp());
+            FreezeForensicsLog.OpenIncidentWindow();
+        }
 
         // ------------------------------------------------------------------------------------
         // 수명
@@ -169,7 +174,10 @@ namespace StickMate.Platform
                 " / 열린구간=" + DescribeOpenSection(StallAttribution.ProbeOpenSectionForWatchdog()) +
                 " / t0+" + (episodeStart >= 0.0 ? Seconds(now - episodeStart) + "초" : "없음") +
                 " / 기록스레드=워치독";
-            FreezeForensicsLog.Write(new FreezeForensicsRecord(kind, DateTime.UtcNow, mainRealtime, frame, -1, detail));
+            // ★ 워치독 채널 — 메인 채널과 파일·잠금이 따로다. 이 flush가 메인 스레드의 SetResolution 직전 기록을
+            //   기다리게 하지 않는다(FreezeForensicsLog 클래스 문서, verify-change (5)).
+            FreezeForensicsLog.Write(FreezeForensicsChannel.Watchdog,
+                new FreezeForensicsRecord(kind, DateTime.UtcNow, mainRealtime, frame, -1, detail));
         }
 
         private static string Seconds(double s) => s < 0.0 ? "?" : s.ToString("F1", CultureInfo.InvariantCulture);
@@ -245,7 +253,8 @@ namespace StickMate.Platform
 
                 FreezeForensicsLog.Activate(directory, header);
                 FreezeWatchdog.Start();
-                Application.quitting += OnQuitting;
+                // ★ 2026-09-14 (R-1) — 종료 순서는 중립 한 곳(AppShutdownSequence: 작업표시줄 원복 먼저, 워치독 정지 나중).
+                AppShutdownSequence.EnsureQuitHookInstalled();
 
                 Debug.Log($"{FreezeForensicsPolicy.LogTag} 활성 — 폴더 {directory} " +
                     $"(파일은 첫 사건 때 생깁니다, 슬롯 {FreezeForensicsPolicy.SlotCount}개 링). " +
@@ -259,10 +268,5 @@ namespace StickMate.Platform
             }
         }
 
-        private static void OnQuitting()
-        {
-            // 종료 중에는 프레임이 멈춘다 — 먼저 워치독을 세워 거짓 정지 줄을 막는다.
-            FreezeWatchdog.Stop(1000);
-        }
     }
 }

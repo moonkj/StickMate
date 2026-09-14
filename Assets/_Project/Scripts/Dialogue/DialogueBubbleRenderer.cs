@@ -868,7 +868,90 @@ namespace StickMate.Dialogue
         /// <para>★ 교체 경로의 발화 자격(<see cref="DialogueBudget.CanReplaceVisible"/>)을 검증하려면
         /// <b>노출 시계가 리셋됐는가</b>를 봐야 하는데, 텍스트만으로는 "같은 글자로 교체됐다"와
         /// "교체되지 않았다"가 구분되지 않는다.</para></summary>
-        public float VisibleSeconds => IsBubbleVisible ? Time.unscaledTime - _shownAtUnscaledTime : 0f;
+        public float VisibleSeconds => IsBubbleVisible ? VisibleElapsedSeconds() : 0f;
+
+        /// <summary>보존 동결로 수명 시계를 붙잡은 시각(<c>Time.unscaledTime</c>). 음수 = 붙잡지 않음.</summary>
+        private float _lifetimeClockHeldSince = -1f;
+
+        /// <summary>노출 경과(초). 동결 중에는 붙잡은 시각에서 멈춰 있다.</summary>
+        private float VisibleElapsedSeconds()
+            => (_lifetimeClockHeldSince >= 0f ? _lifetimeClockHeldSince : Time.unscaledTime) - _shownAtUnscaledTime;
+
+        /// <summary>테스트/진단용 — 지금 알파(0~1).</summary>
+        public float CurrentAlpha => _alpha;
+
+        /// <summary>테스트/진단용 — 팝인 경과(초).</summary>
+        public float PopElapsedSeconds => _popElapsed;
+
+        /// <summary>테스트/진단용 — 페이드아웃 중인가.</summary>
+        public bool IsFadingOut => _fadingOut;
+
+        /// <summary>테스트/진단용 — 보존 동결로 이 말풍선의 시계가 붙잡혀 있는가.</summary>
+        public bool IsLifetimeClockHeld => _lifetimeClockHeldSince >= 0f;
+
+        /// <summary>보존 동결 진입 순간 즉시 제거한 말풍선 수(페이드아웃 중 / 한 번도 그려지지 않음).</summary>
+        public int PreservationFreezeRemovalCount { get; private set; }
+
+        /// <summary>보존 동결 중 들어와 버린 대사 수(대기열·재발화 없음).</summary>
+        public int PreservationFreezeDroppedDialogueCount { get; private set; }
+
+        /// <summary>동결 중 버린 대사의 로그 머리. 테스트는 이 상수를 참조한다.</summary>
+        public const string PreservationFreezeDropLogTag = "[말풍선] 발화 보류 — 화면 변경 유예";
+
+        /// <summary>
+        /// ★ 2026-09-14 — 보존 동결(<c>Core/CharacterPreservationFreeze</c>) 동안 이 말풍선의 시계(노출 경과·팝인·
+        /// 페이드인·페이드아웃·쪽 보간)를 붙잡는다. 반환값 = 이번 프레임에 붙잡혀 있는가.
+        /// <para>동결 길이는 여기서 직접 잰다 — 에이전트 래치와 한두 프레임 어긋나도 이 말풍선이 멈춘 만큼만 민다.
+        /// 해제 사유와 무관하게 조기 종료하지 않고 남은 수명을 이어 간다(design-narrative 조건 3·8).</para>
+        /// </summary>
+        private bool TickLifetimeClockHold()
+        {
+            if (IsPreservationFreezeActive())
+            {
+                if (_lifetimeClockHeldSince < 0f)
+                {
+                    _lifetimeClockHeldSince = Time.unscaledTime;
+                    OnPreservationFreezeEntered();
+                }
+                return true;
+            }
+
+            if (_lifetimeClockHeldSince < 0f) return false;
+            float held = Time.unscaledTime - _lifetimeClockHeldSince;
+            _shownAtUnscaledTime += held;
+            _lifetimeClockHeldSince = -1f;
+            if (IsBubbleVisible)
+            {
+                Debug.Log($"[말풍선] 보존 동결 해제 — \"{_activeText}\" 수명 시계를 {held:F2}초 뒤로 밀어 남은 수명을 " +
+                    $"이어 갑니다(조기 종료 없음), 노출 {VisibleElapsedSeconds():F2}초, frame={Time.frameCount}");
+            }
+            return false;
+        }
+
+        /// <summary>계약 값과 에이전트 래치 중 하나라도 참이면 동결로 본다 — 계약이 먼저 켜진 프레임도 붙잡고,
+        /// 해제는 에이전트가 실제로 풀린 프레임에 맞춘다.</summary>
+        private bool IsPreservationFreezeActive()
+            => StickMate.Core.CharacterPreservationFreeze.IsDisplayChangeHoldActive
+               || (_agent != null && _agent.IsPreservationFrozen);
+
+        /// <summary>
+        /// 동결 진입 순간(design-narrative 조건 4): 페이드아웃 중이던 말풍선과 한 번도 그려지지 않은(알파 0) 말풍선은
+        /// 붙잡지 않고 즉시 제거한다 — 붙잡으면 유예가 끝난 뒤 이미 끝났어야 할 글자가 튀어나온다.
+        /// </summary>
+        private void OnPreservationFreezeEntered()
+        {
+            if (!IsBubbleVisible) return;
+            if (_fadingOut || _alpha <= 0f)
+            {
+                PreservationFreezeRemovalCount++;
+                HideImmediateInternal(_fadingOut
+                    ? "화면 변경 유예 진입 — 페이드아웃 중이던 말풍선은 붙잡지 않고 즉시 제거(보존 동결)"
+                    : "화면 변경 유예 진입 — 한 번도 그려지지 않은 말풍선은 붙잡지 않고 즉시 제거(보존 동결)");
+                return;
+            }
+            Debug.Log($"[말풍선] 보존 동결 — \"{_activeText}\"를 숨기지 않고 수명·팝인·페이드 시계만 멈춥니다" +
+                $"(노출 {VisibleElapsedSeconds():F2}초, 알파 {_alpha:F2}에서 정지), frame={Time.frameCount}");
+        }
 
         /// <summary>마지막으로 "강제 인터럽트에 의한 즉시 제거"가 일어난 Time.frameCount(없으면 -1).</summary>
         public int LastImmediateRemovalFrame { get; private set; } = -1;
@@ -998,6 +1081,16 @@ namespace StickMate.Dialogue
             if (!IsMine(intent)) return;
             if (!StickMate.Core.AppSettingsModel.ResolveDialogueBubbleEnabled(_config)) return;
 
+            // ★ 2026-09-14 보존 동결 — 입구(디렉터·스펙터클 락)에서 전이를 미뤘는데도 새어 들어온 대사는 버린다.
+            //   대기열에 넣지 않고 해제 뒤 재발화하지 않는다: 행동을 미루고, 대사는 미루지 않는다(design-narrative 조건 6).
+            if (IsPreservationFreezeActive())
+            {
+                PreservationFreezeDroppedDialogueCount++;
+                Debug.Log($"{PreservationFreezeDropLogTag} ({intent.StateId}) \"{intent.Text}\" — 보존 동결 중 전이에서 나온 " +
+                    $"대사라 버립니다(대기열·재발화 없음, 원칙 1). frame={Time.frameCount}");
+                return;
+            }
+
             // ★★ 2026-09-02 — 교체 경로의 발화 자격(DialogueBudget.CanReplaceVisible 문서에 실기 로그).
             //   여기가 이 결함이 살아 있던 자리다: 최소 노출 보호는 **만료** 경로에만 있었고 이
             //   **교체** 경로에는 한 줄도 없어서, 방금 뜬 글자가 다음 프레임에 지워질 수 있었다
@@ -1112,6 +1205,12 @@ namespace StickMate.Dialogue
             //   잘리는 것은 **계획이 외부 사건으로 깨진 소수 경우**뿐이다.
             if (intent.Kind == DialogueKind.Narrative)
             {
+                // ★ 2026-09-14 보존 동결 — 페이드는 멈춰 있으므로 상태 종료 컷은 페이드 없이 즉시 지운다(취소는 항상 이긴다).
+                if (IsPreservationFreezeActive())
+                {
+                    HideImmediateInternal($"상태 종료 컷 ({intent.StateId}) — 화면 변경 유예(보존 동결) 중이라 페이드 없이 즉시 제거");
+                    return;
+                }
                 Debug.Log($"[말풍선] 즉시 컷 ({intent.StateId}) \"{_activeText}\" — 종류=서술, " +
                           $"컷사유=상태종료, 노출 {(Time.unscaledTime - _shownAtUnscaledTime):F2}초, " +
                           $"frame={Time.frameCount}");
@@ -1147,14 +1246,25 @@ namespace StickMate.Dialogue
                 HideImmediateInternal("전체화면 감지(Suspended)");
                 return;
             }
+
+            // ★ 2026-09-14 보존 동결 — 위 전체화면 숨김보다 <b>뒤</b>다(숨김이 이긴다).
+            bool clockHeld = TickLifetimeClockHold();
             if (!IsBubbleVisible) return;
 
             // 배율은 실행 중에 바뀔 수 있다(창을 다른 배율의 모니터로 옮기거나, 시작 직후
             // MacOverlayStateEnforcer가 창을 화면 전체로 넓히는 시점). 보이는 동안만 매 프레임 추종한다.
             ApplyCanvasScaleFactor();
 
+            if (clockHeld)
+            {
+                // 수명·팝인·페이드인·페이드아웃·쪽 보간은 멈추고, 배율·머리 추종 배치만 계속한다 —
+                // 유예 중 창 재적합으로 머리의 화면 좌표가 바뀌어도 글자가 머리에 붙어 있어야 한다.
+                UpdatePlacement();
+                return;
+            }
+
             float dt = Time.unscaledDeltaTime;
-            float elapsed = Time.unscaledTime - _shownAtUnscaledTime;
+            float elapsed = VisibleElapsedSeconds();
             _popElapsed += dt; // 팝인(등장 스케일 바운스) 진행 — PopScale() 참고.
 
             if (!_fadingOut)
@@ -1341,8 +1451,9 @@ namespace StickMate.Dialogue
             }
             else
             {
-                _sideBlend = Mathf.MoveTowards(_sideBlend, placement.SideSign,
-                    Time.unscaledDeltaTime * SideFlipSpeed);
+                // 보존 동결 중에는 쪽 보간도 멈춘다(말풍선 시계 다섯 개 중 하나 — design-narrative 조건 2).
+                float flipDt = _lifetimeClockHeldSince >= 0f ? 0f : Time.unscaledDeltaTime;
+                _sideBlend = Mathf.MoveTowards(_sideBlend, placement.SideSign, flipDt * SideFlipSpeed);
             }
 
             // ★ 기울기의 부호는 **놓인 쪽의 거울상**이다(위 "글자 기울기" 블록 참고).
