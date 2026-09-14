@@ -326,8 +326,38 @@ namespace StickMate.Tests.EditMode
             @"\.\s*@?(?:Attributes|IsReadOnly|LastWriteTime(?:Utc)?|CreationTime(?:Utc)?|LastAccessTime(?:Utc)?)\s*(?:=(?![=>])|\|=|&=|\^=)",
             RegexOptions.CultureInvariant);
 
-        /// <summary>파일 핸들을 여는 <c>FileStream</c> 생성. ★ 5차(verify-change 4차 N4): <c>(FileAccess)1</c> 캐스트로 <c>"FileAccess.Read,"</c> 계수를 비껴간 두 번째 핸들을 개수로 막는다.</summary>
-        private static readonly Regex FileStreamConstruction = new Regex(@"(?<![\w@])new\s+FileStream\s*\(", RegexOptions.CultureInvariant);
+        /// <summary>
+        /// 파일 핸들을 여는 <c>FileStream</c> 생성. ★ 5차(verify-change 4차 N4): <c>(FileAccess)1</c> 캐스트로 <c>"FileAccess.Read,"</c> 계수를 비껴간 두 번째 핸들을 개수로 막는다.
+        /// ★ 5-b(verify-change 5차 S4): 한정 이름(<c>new System.IO.FileStream(</c>·<c>new global::System.IO.FileStream(</c>·<c>new IO.FileStream(</c>)도 센다 — 5차 식은 <c>new</c> 바로 뒤 <c>FileStream</c>만 봤다.
+        /// </summary>
+        private static readonly Regex FileStreamConstruction = new Regex(@"(?<![\w@])new\s+(?:@?\w+\s*(?:\.|::)\s*)*@?FileStream\s*\(", RegexOptions.CultureInvariant);
+
+        /// <summary>
+        /// ★ 5-b(verify-change 5차 S4) — 타깃 형식 <c>new(</c>. 5차에 <c>FileStream extra = new(…)</c>로 다섯 번째 핸들이 계수를 비껴갔다. 만들어지는 형식이 앞서 선언한 변수·인자·반환
+        /// 형식에서 오면 글자로 FileStream 문맥인지 가를 수 없어 <b>문맥과 무관하게</b> 표지 코드에서 0건을 요구한다(대가는 감사 문서).
+        /// </summary>
+        private static readonly Regex TargetTypedNew = new Regex(@"(?<![\w@])new\s*\(", RegexOptions.CultureInvariant);
+
+        /// <summary>
+        /// 원칙 3 금지 형태(글자). ★ 5-b(verify-change 5차 S4): 비교는 <see cref="SpacedForm"/>로 토막 사이 공백·줄바꿈을 허용한다 — 5차 글자 비교는 <c>File . Copy(</c>를 못 봤다.
+        /// </summary>
+        private static readonly string[] ForbiddenForms =
+        {
+            "File.Delete(", "File.Move(", "File.Replace(", "File.Copy(", "Directory.Delete(", "Directory.Move(", ".MoveTo(", ".Delete(",
+            "FileMode.Truncate", "FileMode.Append", "FileMode.OpenOrCreate",
+            "SetAttributes", "SetLastWriteTime", "SetCreationTime", "SetLastAccessTime", "SetAccessControl", "FileShare.None",
+        };
+
+        /// <summary>
+        /// ★ 5-b — 글자 형태를 "토막 사이 공백 허용" 식으로 바꾼다. 식별자 토막(<c>[A-Za-z0-9_]+</c>)과 기호 한 글자씩을 <c>\s*</c>로 잇는다.
+        /// 앞뒤 경계는 두지 않는다 — 5차 글자 비교(부분 일치)와 같은 범위에서 공백만 넓힌다.
+        /// </summary>
+        private static Regex SpacedForm(string literal)
+        {
+            var parts = new List<string>();
+            foreach (Match token in Regex.Matches(literal, @"[A-Za-z0-9_]+|[^A-Za-z0-9_\s]")) parts.Add(Regex.Escape(token.Value));
+            return new Regex(string.Join(@"\s*", parts), RegexOptions.CultureInvariant);
+        }
 
         /// <summary>
         /// <c>FileStream</c>이 아닌 열기·통째 읽기/쓰기·암호화 형태 — 공유 모드를 코드가 정하지 못하거나(<c>File.ReadAllText</c>는 <c>FileShare.Read</c>로 열어
@@ -346,18 +376,29 @@ namespace StickMate.Tests.EditMode
         /// <para><b>★ 텍스트 감사의 원리적 한계(리더 판정 2026-09-14: 쫓지 않는다 — C# 파서를 들여오지 않는다).</b> 유니코드 이스케이프 식별자
         /// (<c>File.SetAttributes(…)</c> — 컴파일러에게는 같은 이름, 글자 비교에게는 다른 글자), 계산된 이름의 리플렉션
         /// (<c>typeof(File).GetMethod("Set" + "Attributes")</c>), <c>dynamic</c>·표현식 트리. 일부러 꼬아야만 생기는 형태다.</para>
+        /// <para><b>★ 5-b — S4 뒤에도 남는 형태(글자로 원리상 못 잡거나 일부러 넣지 않았다).</b> 5-b는 타깃 형식 <c>new(</c>·한정 이름 <c>FileStream</c> 생성·금지 형태의 토막 사이 공백을
+        /// 더했다(교정: <see cref="원칙3_소스_감사_탐지식은_타깃_형식_new와_한정_이름과_공백_낀_금지_형태를_잡고_비슷한_무해_입력은_잡지_않는다"/>). 여전히 못 보는 것:
+        /// 형식 별칭(<c>using FS = System.IO.FileStream;</c> 뒤 <c>new FS(…)</c>, <c>using F = System.IO.File;</c> 뒤 <c>F.Copy(…)</c>) ·
+        /// <c>using static System.IO.File;</c> 뒤의 맨 <c>Copy(…)</c>·<c>Delete(…)</c> · 리플렉션 생성(<c>Activator.CreateInstance(typeof(FileStream), …)</c>) ·
+        /// 다른 API가 여는 핸들(<c>FileInfo.Create()</c>·<c>FileInfo.CopyTo(…)</c>·<c>FileInfo.Replace(…)</c>, P/Invoke <c>CreateFile</c>, <c>SafeFileHandle</c>) ·
+        /// 열거형 캐스트(<c>(FileShare)0</c>·<c>(FileMode)6</c> — N4의 <c>(FileAccess)1</c>과 같은 부류, 여는 곳이 <c>FileStream</c>이면 생성 수 계수가 대신 막는다).
+        /// <c>.CopyTo(</c>·<c>.Replace(</c>·<c>.Create(</c>는 <c>Stream.CopyTo</c>(새 핸들을 열지 않는다)·<c>string.Replace</c> 등과 글자로 구별되지 않아 넣지 않았다.
+        /// <b>타깃 형식 <c>new(</c>는 문맥과 무관하게 0건을 요구한다</b> — 만들어지는 형식이 앞서 선언한 변수·인자·반환 형식에서 오면 FileStream 문맥인지 글자로 가를 수 없다.
+        /// 대가: FileStream이 아닌 타깃 형식 생성이나 제네릭 제약 <c>where T : new()</c>도 빨개진다(조용한 초록보다 시끄러운 빨강 쪽 — 명시 형식으로 고쳐 쓰면 된다).</para>
         /// </summary>
         [Test]
         public void 원칙3_소스_감사_표지_코드는_삭제_이동_속성변경_독점열기_없이_원본을_읽기_전용으로만_연다()
         {
             string code = SourceTextScanner.BlankCommentsAndStrings(MarkerSource(), null, blankInterpolationHoles: true);
 
-            foreach (string forbidden in new[] { "File.Delete(", "File.Move(", "File.Replace(", "File.Copy(", "Directory.Delete(",
-                         "Directory.Move(", ".MoveTo(", ".Delete(", "FileMode.Truncate", "FileMode.Append", "FileMode.OpenOrCreate",
-                         "SetAttributes", "SetLastWriteTime", "SetCreationTime", "SetLastAccessTime", "SetAccessControl", "FileShare.None" })
+            foreach (string forbidden in ForbiddenForms)
             {
-                StringAssert.DoesNotContain(forbidden, code, $"표지 코드에 '{forbidden}'가 있다 — 원칙 3(유저 자산 불변) 감사 대상.");
+                Assert.AreEqual(0, SpacedForm(forbidden).Matches(code).Count,
+                    $"표지 코드에 '{forbidden}'(토막 사이 공백 무관)가 있다 — 원칙 3(유저 자산 불변) 감사 대상.");
             }
+            Assert.AreEqual(0, TargetTypedNew.Matches(code).Count,
+                "표지 코드에 타깃 형식 new(가 있다 — 만들어지는 형식을 글자로 알 수 없어 아래 FileStream 생성 수 계수를 비껴간다(S4). " +
+                "명시 형식(new FileStream(…))으로 써라.");
             Assert.AreEqual(0, FileMetadataSetter.Matches(code).Count,
                 "표지 코드에 파일 속성·시각 세터가 있다(예: FileInfo.Attributes |= …) — 원본 속성을 바꾸면 원칙 3 위반이고, ReadOnly·Hidden 밖의 속성은 이 러너의 실행 테스트가 못 본다(N3).");
             Assert.AreEqual(0, ExtraOpenForms.Matches(code).Count,
@@ -394,6 +435,49 @@ namespace StickMate.Tests.EditMode
             Assert.AreEqual(4, FileMetadataSetter.Matches(code).Count, "세터 넷(N3 원형 |= · IsReadOnly = · 줄바꿈 낀 LastWriteTimeUtc = · 붙여 쓴 CreationTime=)만 잡아야 한다.");
             Assert.AreEqual(1, FileStreamConstruction.Matches(code).Count, "N4 원형의 FileStream 생성 하나를 잡아야 한다.");
             Assert.AreEqual(3, ExtraOpenForms.Matches(code).Count, "File.OpenRead · new StreamReader · 공백 낀 File.ReadAllText 셋만 잡아야 한다(FileMode.Open·File.Exists는 아니다).");
+            Assert.AreEqual(0, TargetTypedNew.Matches(code).Count, "위 합성 입력에는 타깃 형식 new(가 없다(음성 대조).");
+        }
+
+        /// <summary>
+        /// ★ 5-b 교정(verify-change 5차 S4) — 5차 탐지식을 비껴간 세 형태를 합성 입력으로 잡고(빨강 쪽), 이름이 비슷한 무해 입력은 잡지 않는다(초록 쪽).
+        /// (1) 타깃 형식 <c>new(</c> — S4 원형(<c>FileStream extra = new(…)</c>)·using 선언·앞서 선언한 변수에 대입·반환. (2) 한정 이름 <c>FileStream</c> 생성.
+        /// (3) 금지 형태의 토막 사이 공백·줄바꿈(<c>File . Copy(</c>) — 목록의 <b>모든</b> 형태를 같은 규칙으로 벌려 본다.
+        /// </summary>
+        [Test]
+        public void 원칙3_소스_감사_탐지식은_타깃_형식_new와_한정_이름과_공백_낀_금지_형태를_잡고_비슷한_무해_입력은_잡지_않는다()
+        {
+            string snippet =
+                "using (FileStream extra = new(fullSource, FileMode.Open, (FileAccess)1, FileShare.ReadWrite)) { }\n" +   // S4 원형
+                "using FileStream b = new (p, FileMode.Open);\n" +
+                "c = new(p, FileMode.Open);\n" +
+                "return new(p, FileMode.Open);\n" +
+                "var d = new System.IO.FileStream(p, FileMode.Open);\n" +
+                "var e = new global::System.IO.FileStream(p, FileMode.Open);\n" +
+                "var f = new IO . FileStream (p, FileMode.Open);\n" +
+                // 무해 — 이름이 비슷하거나 new 뒤에 다른 것이 온다.
+                "var g = new FileStreamOptions(); var h = new MyFileStream(p); var j = new byte[4]; var k = new[] { 1 }; renew(p); var m = anew (p);\n" +
+                "// FileStream q = new(p);\n" +
+                "Log(\"new System.IO.FileStream(p)\");\n";
+            string code = SourceTextScanner.BlankCommentsAndStrings(snippet, null, blankInterpolationHoles: true);
+
+            Assert.AreEqual(4, TargetTypedNew.Matches(code).Count, "타깃 형식 new( 넷(S4 원형·using 선언·대입·반환)만 잡아야 한다 — 주석 속 것과 renew(·anew (는 아니다.");
+            Assert.AreEqual(3, FileStreamConstruction.Matches(code).Count,
+                "한정 이름 FileStream 생성 셋(System.IO · global:: · 공백 낀 IO .)만 잡아야 한다 — FileStreamOptions·MyFileStream·문자열 속 것은 아니다.");
+
+            Assert.AreEqual(1, SpacedForm("File.Copy(").Matches(SourceTextScanner.BlankCommentsAndStrings("File . Copy (a, b);\n", null, blankInterpolationHoles: true)).Count,
+                "S4 원형 — 점 주변 공백 낀 File . Copy(를 잡아야 한다.");
+            foreach (string forbidden in ForbiddenForms)
+            {
+                var tokens = new List<string>();
+                foreach (Match token in Regex.Matches(forbidden, @"[A-Za-z0-9_]+|[^A-Za-z0-9_\s]")) tokens.Add(token.Value);
+                string spaced = string.Join(" \n\t ", tokens);
+                Regex form = SpacedForm(forbidden);
+                Assert.IsTrue(form.IsMatch(SourceTextScanner.BlankCommentsAndStrings(forbidden + "\n", null, blankInterpolationHoles: true)), $"붙여 쓴 '{forbidden}'를 못 잡는다.");
+                Assert.IsTrue(form.IsMatch(SourceTextScanner.BlankCommentsAndStrings(spaced + "\n", null, blankInterpolationHoles: true)), $"토막 사이 공백·줄바꿈을 낀 '{forbidden}'를 못 잡는다.");
+                Assert.IsFalse(form.IsMatch(SourceTextScanner.BlankCommentsAndStrings("// " + spaced.Replace("\n", " ") + "\nLog(\"" + forbidden + "\");\n", null, blankInterpolationHoles: true)),
+                    $"주석·문자열 속 '{forbidden}'를 잡았다(음성 대조).");
+            }
+            Assert.IsFalse(SpacedForm("File.Copy(").IsMatch("FileCopy(a, b); File.CopyTo(a); File.Exists(a);"), "이름이 비슷한 무해 입력(FileCopy( · File.CopyTo( · File.Exists()을 잡았다.");
         }
 
         [Test]

@@ -243,9 +243,15 @@ namespace StickMate.Platform
         /// ★ 2026-09-14부터 Windows 세션 종료(<c>WM_ENDSESSION</c>, 트레이 호스트 창의 프로시저에서 동기 호출) 두 경로다.
         /// 세션 종료는 처리 직후 프로세스가 끊기므로 이 메서드가 동기로 끝나야 원복이 남는다.
         ///
-        /// <para><b>멱등이다.</b> 한 번 원복에 성공하면 <see cref="ChangedThisSession"/>이 false가 되어 두 번째 호출은
+        /// <para><b>멱등이다(차례로 불릴 때).</b> 한 번 원복에 성공하면 <see cref="ChangedThisSession"/>이 false가 되어 두 번째 호출은
         /// 시스템에도 디스크에도 쓰지 않는다(세션 종료 뒤 quitting이 또 오는 경우). 원복에 실패하면(셸이 먼저 끝나
         /// 요청이 반영되지 않는 등) 흔적을 열어 둔 채 남겨 다음 실행이 먼저 갚는다 — 기존 설계 그대로다.</para>
+        ///
+        /// <para><b>★ 5-b — 중첩(같은 스레드에서 이 메서드 안으로 다시 들어올 때).</b> 시스템 조회·쓰기(셸 동기 호출)가 돌아오기를 기다리는 사이
+        /// 다른 종료 순서가 끼어들 수 있다(실재 미확인 — <see cref="AppShutdownSequence"/> 클래스 문서). 끼어든 호출은 <see cref="ChangedThisSession"/>이
+        /// 아직 참이라 원복을 끝까지 한다 — <b>바깥 쓰기가 아직 돌아오지 않았어도 같은 값을 한 번 더 쓴다</b>(<c>WM_ENDSESSION</c> 반환 전 원복 완료가
+        /// 중복 쓰기 회피보다 우선이다, <c>docs/TASKBAR_REVEAL.md</c> §2-2). 바깥 쓰기가 돌아왔을 때 끼어든 호출이 이미 원복을 마쳤으면 바깥은 흔적을
+        /// 다시 쓰지 않고 로그도 남기지 않는다. 바깥 <b>조회</b> 안에서 끼어들면 바깥은 조회 뒤 <see cref="ChangedThisSession"/>이 거짓인 것을 보고 쓰지 않는다.</para>
         ///
         /// <para><b>이 경로는 크래시/강제 종료에서 돌지 않는다.</b> 그것이 이 기능의 전제이고,
         /// 그래서 <see cref="ReservedBarRestoreLedger"/>가 있다 — 여기가 안 돌아도 다음 실행이 갚는다.
@@ -272,6 +278,11 @@ namespace StickMate.Platform
 
             bool systemOk = true;
             if (plan.WriteSystem) systemOk = control.TrySetAutoHide(plan.SystemAutoHideValue);
+
+            // ★ 5-b 재진입 — 이 쓰기가 돌아오기를 기다리는 사이 같은 스레드에 끼어든 다른 종료 순서가 원복을 이미 마쳤다(ChangedThisSession이 거짓).
+            //   흔적을 다시 쓰지 않고, 그 결과와 어긋나는 로그(이 쓰기가 실패로 돌아왔다면 "흔적을 열어 둔다")도 남기지 않는다.
+            //   끼어든 쪽의 흔적 닫기가 실패했다면 흔적은 열린 채 남고 다음 실행이 "이미 원래 값"으로 읽어 닫는다(기존 복구 경로).
+            if (plan.WriteSystem && !ChangedThisSession) return;
 
             if (plan.CloseTrace && systemOk) ReservedBarRestoreLedger.Close(OriginalAutoHide, tag);
 

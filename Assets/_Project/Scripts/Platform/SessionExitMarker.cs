@@ -45,8 +45,11 @@ namespace StickMate.Platform
     /// — 어느 단계에서인지는 표지로 가를 수 없다.</para>
     ///
     /// <para><b>한 실행에 한 번 끝낸다(5차).</b> 세션 종료 처리 뒤 앱 종료 요청으로 종료 순서가 한 번 더 돌 때, 이번 실행이 정상 종료 표지를 이미 썼으면
-    /// 두 번째 순서는 표지 두 단계를 건너뛴다(<see cref="CleanExitWrittenThisRun"/> → <see cref="AppShutdownSequence.ShouldRunStep"/>). 4차까지는 두 번째 순서가
-    /// "정상 종료"를 "종료 시작"으로 덮어써, 그 틈에 끊기면 판정이 원복 도중 끊김과 구별되지 않았다.</para>
+    /// 두 번째 순서는 표지 두 단계를 건너뛴다(<see cref="CleanExitWrittenThisRun"/> → <see cref="AppShutdownSequence.ShouldRunStep"/>; ★ 5-c: 진행 저장 단계도 건너뛴다 —
+    /// 표지가 선 뒤에 저장이 돌다 끊기면 표지가 저장보다 앞서 거짓말한다). 4차까지는 두 번째 순서가
+    /// "정상 종료"를 "종료 시작"으로 덮어써, 그 틈에 끊기면 판정이 원복 도중 끊김과 구별되지 않았다.
+    /// ★ 5-b: 종료 순서는 이 기록을 순서 시작이 아니라 <b>각 표지 단계 직전에</b> 읽는다 — 한 순서가 기다리는 사이 끼어든 순서가 먼저 표지를 쓰면
+    /// 재개된 순서가 그 줄(<c>trigger=</c>)을 덮지 않는다. 진행 저장이 도는 중에는 정상 종료 표지를 쓰지 않는다(<see cref="AppShutdownSequence"/> 문서).</para>
     ///
     /// <para><b>원칙 3.</b> 원본(<c>Player-prev.log</c>)은 읽기만 하고, 남의 읽기·쓰기·이름 바꾸기를 막지 않는 공유 모드(<c>FileShare.ReadWrite | FileShare.Delete</c>)로 연다 —
     /// ★ 5차 정정: 이 공유 모드가 실제로 막지 않는지 이 개발 머신(Unity Mono)이 <b>실행으로 확인하는 것은 열기(읽기·쓰기) 축뿐</b>이고, 이름 바꾸기·삭제 축은
@@ -175,8 +178,10 @@ namespace StickMate.Platform
 
         /// <summary>
         /// ★ 5차 — 이번 실행(마지막 기동 표지 이후)이 정상 종료 표지를 <b>디스크에 실제로 썼는가</b>. 종료 순서가 두 번 돌 때(세션 종료 처리 →
-        /// 앱 종료 요청 → quitting) 두 번째 순서가 표지 두 단계를 건너뛰는 근거다(<see cref="AppShutdownSequence.ShouldRunStep"/>).
-        /// 쓰기에 실패했으면 거짓으로 남아 두 번째 순서가 다시 쓴다. 기동(<see cref="RunStartup(string,int,string,Func{int,bool})"/>)이 거짓으로 되돌린다.
+        /// 앱 종료 요청 → quitting) 두 번째 순서가 표지 두 단계와 ★ 5-c 진행 저장 단계를 건너뛰는 근거다(<see cref="AppShutdownSequence.ShouldRunStep"/>).
+        /// 쓰기에 실패했으면 거짓으로 남아 두 번째 순서가 진행 저장과 표지를 다시 돈다. 기동(<see cref="RunStartup(string,int,string,Func{int,bool})"/>)이 거짓으로 되돌린다.
+        /// ★ 5-b(verify-change 5차 생존 변이 S1): "쓰기가 돌아온 뒤에만"은 <c>SessionEndShutdownTests.S1_…</c>가 표지 자리에 같은 이름의 폴더를 세워
+        /// 쓰기를 <b>실제로 실패</b>시켜 잠근다 — 5차에는 이 기록을 쓰기 앞으로 옮겨도 전량 초록이었다.
         /// </summary>
         public static bool CleanExitWrittenThisRun
         {
