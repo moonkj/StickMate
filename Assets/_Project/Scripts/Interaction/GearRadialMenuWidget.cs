@@ -354,24 +354,17 @@ namespace StickMate.Interaction
         //
         // ★ <b>반복 노출 금지</b>가 이 기능의 절반이다. 이미 아는 사용자에게 또 뜨면 그게 방해다
         //   (원칙 2). 그래서 "봤다"는 사실은 <b>디스크에</b> 남고, 뜨는 그 순간 기록한다.
+        //
+        // ★ 2026-09-14 — 「봤음」은 GearMenuOnboardingSeenStore.Current 경계로만 읽고 쓴다. 저장 자리(키 이름·
+        //   값 형식)와 「왜 세이브 파일이 아닌가」 근거는 PlayerPrefsGearMenuOnboardingSeenStore로 옮겼다.
+        //   이 위젯이 설정 저장소를 직접 부르던 동안에는 PlayMode 테스트가 부채꼴을 여는 것만으로 개발자
+        //   기계의 실제 설정 저장소에 1이 적혔다.
 
         /// <summary>안내 알약이 화면에 머무는 시간(초) — 35-2-4의 4.5초.</summary>
         public const float OnboardingHintSeconds = 4.5f;
 
         /// <summary>한 줄이다. 두 줄이 필요하면 그건 안내가 아니라 설명서다.</summary>
         public const string OnboardingHintText = "커서를 올리면 각 버튼 이름이 보여요";
-
-        /// <summary>
-        /// "이 안내를 이미 봤다"의 저장 자리.
-        ///
-        /// <para>★ <b>왜 세이브 파일(CharacterSaveStore)이 아닌가</b>: 그쪽에 필드를 하나 더하려면
-        /// 스키마 버전을 올리고 마이그레이션을 붙여야 하는데, 2026-09-01 현재 그 파일은 다른 작업자가
-        /// 다운그레이드 방어(J1)를 들여다보는 중이다. <b>안내를 한 번 봤다</b>는 사실 하나 때문에
-        /// 세이브 스키마를 흔드는 것은 위험 대비 이득이 맞지 않는다. 저장되는 것은 부울 하나뿐이고
-        /// 유실돼도 최악이 "안내가 한 번 더 뜬다"이다(사용자 데이터가 아니다).
-        /// 리더가 옳다고 판단하면 훗날 세이브 파일로 옮긴다 — 교차 레이어 로그에 남겨 두었다.</para>
-        /// </summary>
-        private const string OnboardingSeenKey = "StickMate.GearMenu.OnboardingSeen.v1";
 
         /// <summary>세로 일렬 폴백 간격. 라벨이 사라져 "지름 + 라벨 간격 + 라벨 높이"라는 하한 계산식이
         /// 함께 사라졌으므로 <b>52pt 고정</b>이다(36-3-3).</summary>
@@ -652,22 +645,12 @@ namespace StickMate.Interaction
             => _onboardingHint != null && _onboardingHintAlpha > 0.5f && _onboardingHintText != null
                 ? _onboardingHintText.text : string.Empty;
 
-        /// <summary>이 컴퓨터에서 안내를 이미 본 적이 있는가(디스크 기록).</summary>
-        public static bool OnboardingHintSeen => PlayerPrefs.GetInt(OnboardingSeenKey, 0) == 1;
-
-        /// <summary>테스트 전용 — "처음 쓰는 사용자"로 되돌린다. 제품 경로에는 지우는 코드가 없다.</summary>
-        public static void ResetOnboardingHintForTests()
-        {
-            PlayerPrefs.DeleteKey(OnboardingSeenKey);
-            PlayerPrefs.Save();
-        }
-
-        /// <summary>테스트 전용 — "이미 본 사용자"로 만든다.</summary>
-        public static void MarkOnboardingHintSeenForTests()
-        {
-            PlayerPrefs.SetInt(OnboardingSeenKey, 1);
-            PlayerPrefs.Save();
-        }
+        /// <summary>이 컴퓨터에서 안내를 이미 본 적이 있는가 — <see cref="GearMenuOnboardingSeenStore.Current"/>를 읽는다
+        /// (출하본은 디스크 기록, 테스트 스위트는 메모리 저장소).
+        /// <para>★ 2026-09-14 — 옛 테스트 훅(「처음 쓰는 사용자로 되돌리기」·「이미 본 사용자로 만들기」)은 지웠다. 둘 다
+        /// 실제 설정 저장소를 지우거나 썼다. 테스트는 원하는 초기값으로 <see cref="InMemoryGearMenuOnboardingSeenStore"/>를
+        /// 만들어 <see cref="GearMenuOnboardingSeenStore.UseForTesting"/>로 넣는다.</para></summary>
+        public static bool OnboardingHintSeen => GearMenuOnboardingSeenStore.Current.IsSeen;
 
         /// <summary>호버 이름표의 화면 사각형(Unity 스크린 픽셀). 안 보이면 빈 사각형.</summary>
         public Rect HoverLabelScreenRect
@@ -933,9 +916,11 @@ namespace StickMate.Interaction
         /// </summary>
         private void TryStartOnboardingHint()
         {
-            if (_onboardingHint == null || OnboardingHintSeen) return;
-            PlayerPrefs.SetInt(OnboardingSeenKey, 1);
-            PlayerPrefs.Save();
+            // 알약이 없으면 저장소를 읽지도 않는다(옛 단락 평가 순서 그대로).
+            if (_onboardingHint == null) return;
+            IGearMenuOnboardingSeenStore seenStore = GearMenuOnboardingSeenStore.Current;
+            if (seenStore.IsSeen) return;
+            seenStore.MarkSeen();
             _onboardingHintTimer = 0f;
             Debug.Log($"[부채꼴] 최초 1회 안내를 띄웁니다({OnboardingHintSeconds:F1}초) — \"{OnboardingHintText}\". " +
                 "36-4가 상시 라벨을 지우면서 약속한 대가(35-2 온보딩)의 지급이고, 이 컴퓨터에서 다시는 뜨지 않습니다.");

@@ -1,0 +1,18 @@
+# 톱니 부채꼴 「최초 1회 안내 봤음」 — 실제 설정 저장소(PlayerPrefs) 하위 호환 골든
+#
+# ★ 이 파일은 프로덕션 상수의 사본이 아니라 「동결」이다. 여기를 고쳐서 초록을 만들지 마라.
+#   2026-09-01부터 출하된 빌드가 사용자 기계에 이미 이 이름·이 형식으로 값을 남겼다.
+#     macOS   — 앱 번들 ID 도메인 plist (이 맥 실측: com.Vibelab.StickMate, 에디터는 unity.Vibelab.StickMate — 추정 등급)
+#     Windows — HKCU\Software\Vibelab\StickMate 의 값. 값 이름 = 키 + Unity가 키에서 만드는 _h<해시> 꼬리
+#   키 이름이나 값이 바뀌면
+#     (1) 이미 안내를 본 사용자에게 안내가 다시 뜬다(원칙 2)
+#     (2) 촬영 절차(docs/marketing/CAPTURE_PROTOCOL.md)가 키를 못 찾는다
+#   정말 바꿔야 한다면 옛 키를 읽어 옮기는 이전 코드와 그 테스트가 먼저다 — 리더 판정 사안이다.
+#
+# 이 값들의 출처: 2026-09-01 GearRadialMenuWidget 원 구현
+#   PlayerPrefs.GetInt(key, 0) == 1 로 읽고 PlayerPrefs.SetInt(key, 1) + PlayerPrefs.Save() 로 썼다.
+# 대조처: Tests/EditMode 의 GearMenuOnboardingSeenStoreTests
+key=StickMate.GearMenu.OnboardingSeen.v1
+type=int
+seen=1
+unset=0

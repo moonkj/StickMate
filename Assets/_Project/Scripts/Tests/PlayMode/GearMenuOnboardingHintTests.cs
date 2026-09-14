@@ -26,6 +26,17 @@ namespace StickMate.Tests.PlayMode
     ///     반복 노출 금지가 이 기능의 나머지 절반이다.
     ///  ③ <b>안내가 떠 있는 동안에는 자동 접힘이 돌지 않는다</b>(2026-09-03 추가).
     ///     ①과 ②만 잠그면 "떴다"와 "읽을 수 있었다"가 갈라진 채로 초록이 된다 — 실제로 그랬다.
+    ///
+    /// ============================================================================
+    /// ★ 2026-09-14 — 실제 설정 저장소를 더 이상 만지지 않는다
+    /// ============================================================================
+    /// 옛 판은 <c>[OneTimeSetUp]</c>에서 실제 PlayerPrefs 값을 기억하고 <c>[OneTimeTearDown]</c>에서 되돌렸다.
+    /// 그 복원은 <b>이 픽스처 하나만</b> 감쌌는데 실제 쓰기는 프로덕션 <c>Expand()</c>에서 났다 — 부채꼴을 여는
+    /// 다른 픽스처가 먼저 돌며 1을 적으면 여기서는 그 <b>오염된 값</b>을 원래 값으로 기억해 되돌렸다.
+    /// 이제 스위트 전체가 메모리 저장소 위에서 돌고(Tests/PlayMode/GlobalPlayModeTestIsolation), 이 픽스처는
+    /// 테스트마다 <b>자기 저장소</b>를 새로 넣어 초기값을 정하고 끝나면 스위트 저장소로 되돌린다.
+    /// 그리고 위젯이 <b>그 저장소를 실제로 거쳤는지</b>를 저장소의 계수로 함께 잰다 — 거치지 않았다면
+    /// ①②의 초록은 다른 자리의 값을 잰 것이다.
     /// </summary>
     public sealed class GearMenuOnboardingHintTests
     {
@@ -33,20 +44,21 @@ namespace StickMate.Tests.PlayMode
 
         private GearRadialMenuWidget _fan;
         private InfoGearIconWidget _gear;
-        private bool _seenBefore;
 
-        [OneTimeSetUp]
-        public void RememberUserState()
-        {
-            // 이 컴퓨터의 실제 상태를 되돌려 준다 — 테스트가 사용자의 "이미 봤다"를 지우면 안 된다.
-            _seenBefore = GearRadialMenuWidget.OnboardingHintSeen;
-        }
+        private InMemoryGearMenuOnboardingSeenStore _store;
+        private IGearMenuOnboardingSeenStore _suiteStore;
+        private bool _storeInjected;
 
-        [OneTimeTearDown]
-        public void RestoreUserState()
+        /// <summary>이 테스트만의 「봤음」 저장소를 넣는다. 스위트 격리가 없으면 멈춘다 — 끝나고 되돌릴 자리가
+        /// 실제 설정 저장소가 되고, 다음 픽스처부터 위젯이 개발자 기계의 값을 읽고 쓰기 때문이다.</summary>
+        private void UseFreshSeenStore(bool seen)
         {
-            if (_seenBefore) GearRadialMenuWidget.MarkOnboardingHintSeenForTests();
-            else GearRadialMenuWidget.ResetOnboardingHintForTests();
+            Assert.IsTrue(GearMenuOnboardingSeenStore.IsOverriddenForTesting,
+                $"{LogPrefix} 스위트 격리가 「봤음」 메모리 저장소를 넣지 않았습니다 — 이대로 진행하면 위젯이 " +
+                "개발자 기계의 실제 설정 저장소를 읽고 씁니다(GlobalPlayModeTestIsolation을 확인하세요).");
+            _store = new InMemoryGearMenuOnboardingSeenStore(seen);
+            _suiteStore = GearMenuOnboardingSeenStore.UseForTesting(_store);
+            _storeInjected = true;
         }
 
         [UnityTearDown]
@@ -56,6 +68,11 @@ namespace StickMate.Tests.PlayMode
             if (_fan != null && _fan.IsVisible) _fan.Collapse(GearMenuCollapseMode.User, "테스트 정리");
             _fan = null;
             _gear = null;
+
+            if (_storeInjected) GearMenuOnboardingSeenStore.RestoreForTesting(_suiteStore);
+            _storeInjected = false;
+            _store = null;
+            _suiteStore = null;
             yield return null;
         }
 
@@ -89,7 +106,7 @@ namespace StickMate.Tests.PlayMode
         [Timeout(120000)]
         public IEnumerator TheHintAppearsOnTheVeryFirstExpandAndThenTimesOut()
         {
-            GearRadialMenuWidget.ResetOnboardingHintForTests();
+            UseFreshSeenStore(seen: false);
             yield return LoadScene();
             yield return ExpandFan();
 
@@ -98,6 +115,9 @@ namespace StickMate.Tests.PlayMode
                 "35-2 온보딩)가 여전히 미지급입니다.");
             Assert.IsTrue(GearRadialMenuWidget.OnboardingHintSeen,
                 $"{LogPrefix} 안내는 떴는데 \"봤다\"가 기록되지 않았습니다 — 다음 실행에 또 뜹니다.");
+            Assert.AreEqual(1, _store.WriteCount,
+                $"{LogPrefix} 안내가 떴는데 이 테스트가 넣은 저장소의 「봤음」 쓰기가 {_store.WriteCount}회입니다" +
+                "(기대 1) — 위젯이 경계를 거치지 않고 다른 자리(실제 설정 저장소 등)에 적었거나 여러 번 적었습니다.");
             Assert.IsEmpty(_fan.VisibleHoverLabel,
                 $"{LogPrefix} 안내와 호버 이름표가 동시에 보입니다(\"{_fan.VisibleHoverLabel}\") — " +
                 "화면에 글자는 한 번에 하나뿐이라는 규칙이 깨졌습니다.");
@@ -117,13 +137,22 @@ namespace StickMate.Tests.PlayMode
         [Timeout(120000)]
         public IEnumerator TheHintNeverComesBackOnceSeen()
         {
-            GearRadialMenuWidget.MarkOnboardingHintSeenForTests();
+            UseFreshSeenStore(seen: true);
             yield return LoadScene();
             yield return ExpandFan();
 
             Assert.IsEmpty(_fan.VisibleOnboardingHint,
                 $"{LogPrefix} 이미 본 사용자에게 안내가 또 떴습니다(\"{_fan.VisibleOnboardingHint}\") — " +
                 "반복 노출은 안내가 아니라 방해입니다(원칙 2).");
+
+            // ★ 거짓 통과 대조 — 「안 떴다」의 이유가 이 테스트가 넣은 「봤음」이어야 한다. 위젯이 이 저장소를
+            //   한 번도 읽지 않았다면 위 초록은 다른 자리의 값(예: 이미 1이 적힌 실제 설정 저장소)을 잰 것이다.
+            Assert.GreaterOrEqual(_store.ReadCount, 1,
+                $"{LogPrefix} 위젯이 이 테스트가 넣은 「봤음」 저장소를 한 번도 읽지 않았습니다 — 안내가 안 뜬 " +
+                "이유가 「이미 봤음」이 아니라 다른 자리의 값이거나 안내 오브젝트 부재일 수 있어, 이 테스트가 " +
+                "아무것도 재지 않았습니다.");
+            Assert.AreEqual(0, _store.WriteCount,
+                $"{LogPrefix} 이미 본 사용자인데 「봤음」을 다시 적었습니다({_store.WriteCount}회).");
 
             // 접었다 다시 펴도 같다.
             _fan.Collapse(GearMenuCollapseMode.User, "테스트");
@@ -175,7 +204,7 @@ namespace StickMate.Tests.PlayMode
                 $"안내({GearRadialMenuWidget.OnboardingHintSeconds:F2}초)보다 길어졌습니다 — " +
                 "관문 A가 더 이상 수정 전/후를 구분하지 못합니다. 이 테스트를 다시 설계해야 합니다.");
 
-            GearRadialMenuWidget.ResetOnboardingHintForTests();
+            UseFreshSeenStore(seen: false);
             yield return LoadScene();
 
             // 부채꼴은 우상단에 편다. 커서는 그 반대편 구석에 세워 둔다 — 자동 접힘을 재려면
