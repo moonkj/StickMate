@@ -411,7 +411,15 @@ namespace StickMate.Interaction
             // 정보창/설정창과 달리 <b>복귀하면 다시 나타난다</b>. 저 둘은 "사용자가 연 창"이라 전체화면을
             // 끄자마자 튀어나오면 그 자체가 방해지만, 이 카드는 할 일이 있는 동안 늘 떠 있는 상시
             // HUD다(톱니 아이콘이 복귀하는 것과 같은 판단).
-            if (_agent != null && _agent.ArePanelsSuppressed)
+            //
+            // ★★ 2026-09-15 (N-20) — 창구가 <c>ArePanelsSuppressed</c> 단독에서 <c>SuppressesUnsummonedSurfaces</c>로 바뀌었다.
+            //    옛 값은 사용자 허가(임대)를 받으면 등급 1에서도 거짓이라, 사용자가 정보창 · 부채꼴 · 설정창을 연 동안
+            //    이 카드와 차단막이 <b>남의 임대에 편승해</b> 발표 화면 위로 되살아났다(할 일 문구 + 그 사각형의 클릭).
+            //    이 카드는 사용자가 부른 적이 없다 — 이 파일에서 허가를 내는 경로는 0이다. 새 값은 옛 값을 항상 포함하므로
+            //    예전에 걷히던 경우는 전부 그대로 걷힌다. 복귀: 전체화면이 끝나고 <b>사용자 창도 전부 닫힌 뒤</b>
+            //    (임대 만료, 최대 UserSurfaceSummonPolicy.LeaseSeconds) 돌아온다.
+            if (_agent != null && UserSurfaceSummonPolicy.SuppressesUnsummonedSurfaces(
+                    _agent.ArePanelsSuppressed, _agent.IsUserSummonGrantActive))
             {
                 if (!_hiddenForFullscreen) EnterFullscreenHiding();
                 return;

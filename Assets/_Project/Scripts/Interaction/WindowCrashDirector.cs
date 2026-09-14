@@ -164,7 +164,11 @@ namespace StickMate.Interaction
             // ★★★ 2026-09-03 — <c>|| IsSuspended</c>가 붙었다. 두 값은 더 이상 포함관계가 아니다
             //    (사용자 명시 숨김 단독은 표면을 걷지 않는다). 이 오버레이는 <b>캐릭터가 창을 깬</b>
             //    결과물이라 캐릭터가 사라지면 근거를 잃는다 — 원인 없는 금이 화면에 3초 남는다.
-            if (_player.ArePanelsSuppressed || _player.IsSuspended) { CancelOverlay(); return; }
+            // ★★ 2026-09-15 (N-20) — 표면 축이 <c>ArePanelsSuppressed</c> 단독에서 <c>SuppressesUnsummonedSurfaces</c>로 바뀌었다.
+            //    옛 값은 사용자 허가(임대)를 받으면 등급 1에서도 거짓이라, 사용자가 창을 연 동안 사용자가 부르지 않은 이
+            //    오버레이가 발표 화면 위에 남았다. 새 값은 옛 값을 항상 포함한다. 캐릭터 축은 호출 밖에 그대로 둔다.
+            if (UserSurfaceSummonPolicy.SuppressesUnsummonedSurfaces(_player.ArePanelsSuppressed, _player.IsUserSummonGrantActive)
+                || _player.IsSuspended) { CancelOverlay(); return; }
 
             var footholds = _player.Blackboard.FootholdPoller != null ? _player.Blackboard.FootholdPoller.CachedFootholds : null;
             bool stillOpen = false;

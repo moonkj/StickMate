@@ -50,7 +50,12 @@ namespace StickMate.Interaction
             //    리마인더는 <b>캐릭터가 종이를 꺼내 말을 거는</b> 연출이라, 그 상태에서 발동하면
             //    보이지 않는 캐릭터가 말을 건다(원칙 1 — 행동-텍스트 싱크가 화면과 어긋난다).
             //    표면 축과 캐릭터 축을 <b>둘 다</b> 본다.
-            if (_player.ArePanelsSuppressed || _player.IsSuspended) return;
+            // ★★ 2026-09-15 (N-20) — 표면 축이 <c>ArePanelsSuppressed</c> 단독에서 <c>SuppressesUnsummonedSurfaces</c>로 바뀌었다.
+            //    옛 값은 사용자 허가(임대)를 받으면 등급 1에서도 거짓이라, 사용자가 창을 연 동안 이 밀어내기가 그 허가에
+            //    편승해 발표 화면 위에서 발동했다. 새 값은 옛 값을 항상 포함한다(넓히기만 한 변경). 캐릭터 축은 호출 밖에 그대로 둔다.
+            if (global::StickMate.Platform.UserSurfaceSummonPolicy.SuppressesUnsummonedSurfaces(
+                    _player.ArePanelsSuppressed, _player.IsUserSummonGrantActive)
+                || _player.IsSuspended) return;
 
             var current = _player.Blackboard.Machine.CurrentStateId;
             if (current != StickmanStateId.Idle && current != StickmanStateId.Walk) { _checkTimer = 0f; return; }

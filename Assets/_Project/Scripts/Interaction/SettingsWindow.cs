@@ -166,7 +166,11 @@ namespace StickMate.Interaction
             if (_agent == null) { _reopenArmed = false; return; }
             // 등급 1(게임이 아닌 전체화면 앱)에서도 되돌리지 않는다 — 우리가 빼앗은 이유가 아직
             // 그대로 있는데 돌려주면 같은 프레임에 다시 빼앗게 된다(무한 왕복).
-            if (_agent.ArePanelsSuppressed) return;                    // 아직 전체화면 — 원칙 2.
+            // ★★ 2026-09-15 (N-20 · 적발 ③) — 이 재오픈은 사용자가 부르지 않은 자동 표면이다. 옛 값(ArePanelsSuppressed)은
+            //    사용자 허가가 나면 등급 1에서도 거짓이라, 등급 2→1 복귀 뒤 유예 안에 사용자가 캐릭터를 우클릭하거나 정보창을
+            //    열면 이 예약이 그 허가에 편승해 설정창을 띄우고 사용자의 부채꼴 · 정보창을 걷었다. 사용자 창이 떠 있는 동안은 기다린다.
+            if (UserSurfaceSummonPolicy.SuppressesUnsummonedSurfaces(
+                    _agent.ArePanelsSuppressed, _agent.IsUserSummonGrantActive)) return;   // 아직 전체화면이거나 사용자 창이 떠 있다 — 원칙 2.
 
             _reopenArmed = false;
             float away = Time.unscaledTime - _suspendClosedAt;

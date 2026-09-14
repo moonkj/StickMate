@@ -170,6 +170,7 @@ namespace StickMate.Tests.PlayMode
             Assert.IsNotNull(PanelRetreatField, $"{LogPrefix} StickmanAgent._fullscreenPanelRetreat를 찾지 못했습니다.");
             Assert.IsNotNull(VirtualDesktopField, $"{LogPrefix} StickmanAgent._offCurrentVirtualDesktop를 찾지 못했습니다 — L6 주입이 아무 일도 안 합니다.");
             Assert.IsNotNull(ApplyDecisionMethod, $"{LogPrefix} StickmanAgent.ApplySuspendDecision()을 찾지 못했습니다.");
+            Assert.IsNotNull(ResetStatusMethod, $"{LogPrefix} DisplayChangeHoldStatus.ResetForTesting()을 찾지 못했습니다 — 아래 ResetHold()가 조용히 아무것도 안 해 화면 변경 유예가 테스트 사이로 샙니다(verify-change E-4 D1).");
 
             ResetHold();
             SceneManager.LoadScene("Main", LoadSceneMode.Single);

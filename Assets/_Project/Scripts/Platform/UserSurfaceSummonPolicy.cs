@@ -45,6 +45,11 @@ namespace StickMate.Platform
     /// 만료된 임대는 갱신으로 살아나지 않는다). 새 허가는 <see cref="CanGrant"/>를 통과한
     /// <b>명시적 사용자 행위</b>로만 난다.</para>
     ///
+    /// <para>★★ 2026-09-15 (N-20) — <b>임대만으로는 위 문단의 약속이 절반만 지켜졌다.</b> 임대는 사용자 창이 <b>닫힌 뒤</b>의
+    /// 누수를 막았지만, 사용자 창이 <b>떠 있는 동안</b>에는 자동 표면(리마인더 · 크랙 · 포스트잇 · 설정창 자동 재오픈)이
+    /// <see cref="SuppressesPanels"/>를 읽어 그 임대에 편승했다. 그래서 자동 표면은 허가에 대해 억제만 넓히는
+    /// <see cref="SuppressesUnsummonedSurfaces"/>를 읽는다.</para>
+    ///
     /// ============================================================================
     /// 이 파일이 <c>Platform/</c> <b>바로 아래</b> 있는 이유
     /// ============================================================================
@@ -118,6 +123,49 @@ namespace StickMate.Platform
             => characterSuspended || (panelRetreatActive && !userSummonGranted);
 
         /// <summary>
+        /// ★★ 2026-09-15 (N-20) — <b>사용자가 부르지 않은 자동 표면을 지금 억제해야 하는가.</b>
+        /// 대상: 할 일 메모 카드와 그 클릭 차단막 · 할 일 리마인더 · 창 크랙 오버레이 · 설정창 자동 재오픈.
+        /// 설계 정본: <c>docs/systems/AUTO_SURFACE_LEASE_AXIS.md</c>.
+        ///
+        /// <para>★ <b>불변식 — 사용자 허가(임대)는 사용자가 부르지 않은 표면을 절대 드러내지 않는다.</b>
+        /// 즉 이 값은 모든 입력에서 <see cref="SuppressesPanels"/>를 포함하고(<paramref name="panelsSuppressed"/>가 참이면 참),
+        /// <paramref name="userSummonGranted"/>에 대해 단조 증가다(허가가 거짓에서 참으로 가도 억제가 풀리는 칸이 없다).</para>
+        ///
+        /// <para><b>왜 필요한가</b>: <see cref="SuppressesPanels"/>는 s ∨ (r ∧ ¬g)라서, 등급 1(r)에서 사용자가 연 창이 임대(g)를
+        /// 갱신하는 동안 거짓이다. 그 값을 읽던 자동 표면 4곳이 <b>남의 임대에 편승해</b> 발표 화면 위로 되살아났다
+        /// (메모 카드 차단막은 그 사각형의 클릭까지 먹었다 — 원칙 2). 갱신자는 누가 창을 열었는지 묻지 않으므로,
+        /// 표면 쪽이 «나는 사용자가 부른 적이 없다»를 스스로 판정해야 한다.</para>
+        ///
+        /// <para><b>진리표</b> — 인덱스 = s·4 + r·2 + g. 인자는 <b>같은 프레임의</b> <c>StickmanAgent.ArePanelsSuppressed</c>와
+        /// <c>StickmanAgent.IsUserSummonGrantActive</c>다(둘 다 <c>Time.unscaledTime</c>을 읽어 한 프레임 안에서 값이 같다).
+        /// <code>
+        ///   (s,r,g)                        FFF FFT FTF FTT TFF TFT TTF TTT
+        ///   SuppressesPanels (P)            F   F   T   F   T   T   T   T
+        ///   SuppressesUnsummonedSurfaces    F   T   T   T   T   T   T   T
+        /// </code>
+        /// P와 갈리는 칸은 정확히 둘이다 — <b>FTT</b>(결함 칸: 등급 1에서 사용자 창이 열린 동안)와 <b>FFT</b>(이력 칸).</para>
+        ///
+        /// <para>★ <b>FFT 칸은 의도다</b>: 등급 1에서 연 사용자 창이 아직 떠 있는데 전체화면 앱은 사라진 상태다. 자동 표면은
+        /// 사용자 창이 닫힐 때까지(+ <see cref="LeaseSeconds"/>) 기다린다. 그래서 설정창 자동 재오픈이 사용자의 정보창을
+        /// 빼앗지 않고, Windows에서 우리 창을 만지는 동안 등급이 None으로 떨어지는 경우(가설 H1)에도 자동 표면이 새지 않는다.
+        /// 대가는 그 사이 메모 카드 복귀 · 리마인더 · 크랙이 늦어지는 것뿐이다(억제를 <b>더하는</b> 방향).
+        /// 평상시 데스크톱(g 거짓)에서는 <see cref="SuppressesPanels"/>와 같다 — 허가는 <see cref="CanGrant"/>상 등급 1이 이미
+        /// 켜져 있을 때만 나고, 갱신(<see cref="RenewedLeaseUntil"/>)은 만료된 임대를 되살리지 않는다.</para>
+        ///
+        /// <para>★ <b>순수 s ∨ r이 아닌 이유</b>: r(<c>StickmanAgent</c>의 등급 1 필드)은 private이고, 공개 값 {s, g, P}로는 복원할 수
+        /// 없다(g가 참이면 P = s). 에이전트 파일을 열지 않고 소비자 호출부에서 조립할 수 있는 인자는 이 둘뿐이다.</para>
+        ///
+        /// <para>★ <b>소비자 호출형은 하나다</b>: <c>UserSurfaceSummonPolicy.SuppressesUnsummonedSurfaces(agent.ArePanelsSuppressed,
+        /// agent.IsUserSummonGrantActive)</c>. 첫 인자를 <c>HidesScreenSurfaces</c> · <c>IsUserSummonBlocked</c>로 바꾸면 등급 1 억제가
+        /// 통째로 사라진다(그 둘은 등급 2에서만 참). 캐릭터 축이 필요한 소비자(리마인더 · 크랙)는 이 호출 <b>밖</b>에
+        /// <c>|| IsSuspended</c>를 붙인다. ★ <b>사용자가 여는 표면</b>(정보창 · 부채꼴 · 팝오버 · 설정창 닫기 · 시트 복귀)은 이 값을
+        /// <b>읽지 않는다</b> — 허가가 참이면 이 값도 참이라, 읽는 순간 사용자 창이 스스로 닫혀 등급 1 입구가 다시 사라진다.
+        /// 분류는 <c>Tests/EditMode/UnsummonedSurfaceAxisTests</c>가 소스 전수 스캔으로 잠근다.</para>
+        /// </summary>
+        public static bool SuppressesUnsummonedSurfaces(bool panelsSuppressed, bool userSummonGranted)
+            => panelsSuppressed || userSummonGranted;
+
+        /// <summary>
         /// ★★ 2026-09-14 — <b>허가를 받아도 표면이 억제되는가</b>(= 사용자가 지금 불러도 소용없는가).
         /// <b>「열기 판정」 전용</b>이다 — 캐릭터 우클릭 게이트의 넷째 항(<c>AppControlDirector.RightClickFanGatePolicy</c>).
         ///
@@ -133,7 +181,8 @@ namespace StickMate.Platform
         ///
         /// <para>★ <b>닫기 소비자에게 쓰지 마라.</b> 표면을 걷을지는 여전히 <see cref="SuppressesPanels"/>
         /// (<c>StickmanAgent.ArePanelsSuppressed</c>)가 정한다. 이 값으로 바꾸면 등급 1 <b>진입 순간의 회수</b>가 사라진다
-        /// (원칙 2 회귀, 같은 문서 §16-2b B2).</para>
+        /// (원칙 2 회귀, 같은 문서 §16-2b B2). ★ 2026-09-15 (N-20): 사용자가 부르지 않은 자동 표면은 그것을 포함하는
+        /// <see cref="SuppressesUnsummonedSurfaces"/>가 정한다 — 역시 이 값으로 바꾸면 안 된다.</para>
         /// </summary>
         public static bool BlocksUserSummon(bool characterSuspended, bool panelRetreatActive,
             bool userSummonGranted)

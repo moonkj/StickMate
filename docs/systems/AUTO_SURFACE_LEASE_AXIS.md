@@ -4,6 +4,7 @@
 기준: HEAD `eb4670d`. 작업 트리에는 E-4(`coder-ui`)가 진행 중이다. 그 라운드의 테스트 파일은 **작업 트리 판**으로 읽었고, 그렇게 표시했다.
 발단: `persona-stress` ①과 `persona-newcomer` ②(메모 카드 깜빡임)가 따로 적발했다. 리더가 코드로 다시 확인한 뒤 배정했다.
 경로 표기: `Assets/_Project/Scripts/` 아래 상대 경로.
+정정(2026-09-15, 같은 날 2차 — `coder-ui` N-20 구현 보고 반영, HEAD `761f5cb` · 작업 트리): §6-2 거짓 1건 정정과 자백 · §6-5 인계 결과 신설 · §4-5 로그 문구 판정 · §4-6 리더 판정 기록. 옛 **판정** 문장(§6-2)은 지우지 않고 취소선으로 두었다. 단 **지시 문구 1줄**(§6-4 「게터로 읽는다」 → 「기존 게터 `TodoPostItWidget.IsClickBlockerEnabled`로 읽는다」)은 뜻이 같아 취소선 없이 제자리에서 갱신했다. 3차(`verify-change` 2차 조건부 반영): §6-2 「0건」의 범위를 코드로 한정 · §4-5 요구 1의 자연 만료 무로그 모순 수정.
 
 ---
 
@@ -228,8 +229,24 @@ if (_agent != null && UserSurfaceSummonPolicy.SuppressesUnsummonedSurfaces(
 
 수정 뒤에도 이 로그는 P를 키로 쓴다(N-8 파일이라 손대지 않음). 그래서 해제 문구 *「톱니와 포스트잇처럼 상시 HUD인 표면만 스스로 돌아옵니다」*는 임대 칸에서 **거짓**이 된다. E-3 결과를 받은 뒤 `design-narrative` 로그 문안 묶음에 합류시킨다.
 
+**★ 판정 추가 (2026-09-15, N-20 착지 뒤 — 코드 판독, 실기 0)** — N-20은 `StickmanAgent.cs`를 건드리지 않는다(작업 트리 diff 0). 바뀌는 것은 자동 표면의 동작이다. 그래서 같은 로그 문장의 참·거짓이 달라진다.
+
+| 줄 | N-20 전 | N-20 뒤 | 판정 |
+|---|---|---|---|
+| `StickmanAgent.cs:1707-1709` 「등급 1 해제 — … 톱니와 포스트잇처럼 상시 HUD인 표면만 스스로 돌아옵니다」 | 임대 칸(r∧g)에서 「해제」가 거짓이었다(등급 1은 계속 — 위 가짜 쌍). 「포스트잇이 돌아온다」는 **결함 그대로의 사실**이었다 | 「해제」 거짓은 그대로다. ★ **「포스트잇이 스스로 돌아온다」가 새로 거짓이 된다** — 임대 칸에서는 U = 참이라 카드·차단막이 숨은 채다. FFT 칸(등급 1이 끝났는데 사용자 창이 열림)에서는 P가 이미 거짓이라 **실제 해제 순간에 줄이 없다.** 카드는 창을 모두 닫고 허가가 끝난 뒤에야 돌아온다(§6-5 R3) | **부정확해진다** — 신규 1(포스트잇 복귀) · 기존 2(가짜 해제 · FFT 무로그) |
+| `:1704-1706` 「등급 1 — … 창·패널·팝오버·부채꼴과 그 클릭 차단막만 걷습니다」 | 임대 자연 만료 때 가짜 재진입 줄 | 같다. 「걷습니다」는 만료로 걷히는 사용자 창에 대해 참이다 | 기존 부정확 유지(N-20 무관) |
+| `:1885` 「[숨김] … 각 표면이 ArePanelsSuppressed를 폴링해 같은 프레임에 스스로 걷고」 | 참 | 이 가지는 `HidesScreenSurfaces`(s) = 참일 때만 찍힌다. 그러면 P = 참이고 U = P ∨ g = 참이라 **결과는 그대로 참이다.** 자동 표면 4곳이 P를 `SuppressesUnsummonedSurfaces(P, g)`의 인자로 읽게 된 **기전 서술만 낡는다** | **결과상 참 · 기전 문구만 낡음(낮음)** |
+
+- 조치: 두 줄 모두 N-8 목록 B 파일이라 **지금 고치지 않는다.** E-3 증거 결속이 해제된 뒤 **「21 로그 지점」 라운드에 합류**시킨다(리더 판정).
+- 그 라운드에 넘길 요구(문안은 `design-narrative` 몫):
+  1. 이 줄의 키를 P가 아니라 **등급(r) 전이**로 바꾼다. 허가 **부여**는 기존 `:401` 줄에 맡긴다. 허가 **만료**는 기존 `:430`(명시 만료 `ExpireUserSummonGrant`)만으로는 **부족하다** — 위 둘째 항목대로 자연 만료는 그 함수를 거치지 않는다. 허가는 시각 비교로만 끝나기 때문에(`IsUserSummonGrantActive => Time.unscaledTime < _userSummonLeaseUntil`, `StickmanAgent.cs:370`) 자연 만료에는 줄이 없다. ⇒ **허가가 참 → 거짓으로 바뀌는 전이를 폴링 한 곳에서 감지해, 사유(명시 만료 / 자연 만료)와 함께 1줄**을 남기도록 요구한다(명시 만료가 이미 `:430`을 찍었으면 중복하지 않는다 — 자리와 방법은 구현 라운드 몫). → 가짜 해제/진입 쌍 · FFT 칸 무로그 · **자연 만료 무로그**가 함께 없어진다. 〔3차 정정 — 2차 문안 「허가 부여·만료는 기존 `:401`·`:430` 줄에 맡긴다」는 같은 절의 사실과 모순이었다(`verify-change` 2차)〕
+  2. 포스트잇 복귀 조건을 「사용자가 연 창이 모두 닫히고 허가가 끝난 뒤」로 적는다.
+  3. `:1885`는 「자동 표면은 사용자 허가와 무관하게 걷힌다」 한 구절이면 된다.
+- 위의 계수 권고(빈도를 `[표면회수]` 줄로 세지 말 것)는 N-20 뒤에도 그대로다.
+
 ### 4-6. 별건 (한 줄, 판정 범위 밖)
 `WindowCrashDirector.TickAutoTrigger`(`:192-218`)에는 등급 가드가 없다. 등급 1에서도 휘두르기 상태로 전이하고, 오버레이만 다음 틱에 취소된다(현행, 이 수정과 무관한 기존 동작). 「결과 없는 휘두르기」로 읽히는지는 `design-motion`/`persona-immersion`이 판단할 일이다. 발동 가드에 같은 창구를 쓰는 것은 같은 파일이라 비용이 적다 — 넣을지는 리더가 판단한다.
+〔★ **리더 판정 2026-09-15: 크랙 발동 가드는 N-20 묶음에 넣지 않는다.** 캐릭터 행동 변경(원칙 1 「결과 없는 휘두르기」)이라 테스트가 끝난 묶음에 섞지 않는다. 커밋 뒤 페르소나 3인 질문으로 올리고, `design-motion` 판단 백로그로 둔다.〕
 
 ---
 
@@ -268,9 +285,19 @@ if (_agent != null && UserSurfaceSummonPolicy.SuppressesUnsummonedSurfaces(
 
 **수정한다**:
 - `Platform/UserSurfaceSummonPolicy.cs` — 함수 1개와 문서(§0 불변식, §3-2 표, 「FFT 칸은 의도」)
-- `Interaction/TodoPostItWidget.cs` — `:414` 가드. 그리고 **테스트 게터 `IsClickBlockerEnabledForTests` 추가**(차단막 상태를 읽을 공개 창구가 지금 없다. FPRT의 `PostItBlockerName` 문자열 상수 방식은 따르지 않는다)
+- `Interaction/TodoPostItWidget.cs` — `:414` 가드. 그리고 ~~**테스트 게터 `IsClickBlockerEnabledForTests` 추가**(차단막 상태를 읽을 공개 창구가 지금 없다.~~ FPRT의 `PostItBlockerName` 문자열 상수 방식은 따르지 않는다)
+  - 〔★ **정정 2026-09-15 — 취소선 문장은 거짓이었다.**
+    - `TodoPostItWidget.IsClickBlockerEnabled`(`:308`, `_clickThroughBlocker != null && _clickThroughBlocker.enabled`)가 **`2051739`(2026-09-02)부터** 있다.
+    - 근거: 파일 경로로 한정한 `git log -S "IsClickBlockerEnabled" -- Interaction/TodoPostItWidget.cs`의 첫 커밋이 `2051739`이다. 그 커밋 diff에 `+ public bool IsClickBlockerEnabled …` 한 줄이 있고, 부모 커밋의 같은 파일에는 0건이다(음성 대조).
+    - HEAD 테스트가 이미 읽는다 — **3파일 7줄**, 변수의 형 선언으로 확인: `FullscreenSuspendUiHidingTests.cs:286·317·350·377` · `TodoPostItExpansionTests.cs:170·283` · `TodoBoardDateNavigationTests.cs:384`. 리더가 전달한 「4곳」과는 세는 단위가 다르다.
+    - N-20 구현은 새 게터를 만들지 않고 이 게터를 썼다(코드(`Assets/`)에서 `IsClickBlockerEnabledForTests` 0건 — 이름 자체는 `Tasklist.md`와 이 문서에 남아 있다 · `AutoSurfaceLeaseAxisTests.cs`의 `_postIt.IsClickBlockerEnabled` 적중).
+    - **뒷문장(FPRT 문자열 방식을 따르지 않는다)은 유효하다.**〕
+  - 〔★ **자백** — 이 부재 주장에는 §2-1 같은 프로브 기록도, 양성 대조도 **0건**이었다(TEAM 거짓 통과 규칙 4 「모든 없음 판정에 양성 대조」 위반).
+    - 추정 경위: FPRT가 차단막을 이름 문자열 `PostItBlockerName = "TodoPostItClickBlocker"`(`FullscreenPanelRetreatTests.cs:513`)로 찾는 것을 보고 「게터가 없어서 그렇게 했다」고 **확인 없이 추론했다.**
+    - 필드명 `_clickThroughBlocker` 계열로만 찾았다면 이름이 다른 게터(`IsClickBlockerEnabled` — `Through`가 없다)를 놓친다.
+    - 작성 라운드의 실제 검색 문자열은 기록이 없어 **재구성할 수 없다.**〕
 - `Interaction/TodoReminderDirector.cs` — `:53`
-- `Interaction/WindowCrashDirector.cs` — `:167`(+ §4-6 발동 가드는 리더 판단)
+- `Interaction/WindowCrashDirector.cs` — `:167`(+ §4-6 발동 가드는 리더 판단 〔→ 판정: N-20에 넣지 않음, §4-6〕)
 - `Interaction/SettingsWindow.cs` — **`:169`만.** `:708`·`:767`은 무변경
 - 신규 `Tests/EditMode/UnsummonedSurfaceAxisTests.cs`, `Tests/PlayMode/AutoSurfaceLeaseAxisTests.cs`(+ `.meta`)
 
@@ -325,7 +352,20 @@ if (_agent != null && UserSurfaceSummonPolicy.SuppressesUnsummonedSurfaces(
 **식별자 규칙 준수**:
 - 프로퍼티·타입·열거값은 전부 `nameof`/형 참조로 쓴다.
 - private 필드명(`_fullscreenPanelRetreat`)과 메서드명은 문자열이 불가피하다 → **같은 테스트에서 리플렉션 결과 null 아님을 존재 단언**한다.
-- 포스트잇 차단막 이름 문자열은 쓰지 않는다 → 게터로 읽는다.
+- 포스트잇 차단막 이름 문자열은 쓰지 않는다 → 기존 게터 `TodoPostItWidget.IsClickBlockerEnabled`로 읽는다(§6-2 정정).
+
+### 6-5. 인계 결과 — N-20 구현 반영 (작업 트리 · 커밋 전)
+
+출처는 `coder-ui` 구현 보고(리더 전달)다. 러너 색은 **보고 인용**이다 — 이 문서 작성자는 러너를 돌리지 않았다. 「확인」 칸은 소스 텍스트로 대조한 것이다.
+
+| 설계(§5·§6) | 구현 결과 | 확인 |
+|---|---|---|
+| R4 한 케이스 | **R4a(캐릭터 우클릭 허가) · R4b(사용자 정보창 `Open` 허가)** 두 케이스로 나뉘었다. §5 해제 조건 3의 「R0~R4」는 R0~R3 · R4a · R4b로 읽는다 | `AutoSurfaceLeaseAxisTests.cs:677`·`:704` 이름 |
+| 「창을 모두 닫으면 카드 복귀」 | **R3(FFT 칸)**에서 잰다. 등급 1이 이어지는 동안(R1 임대 칸)에는 복귀하지 **않아야** 하므로, 복귀 관측은 등급 1이 끝난 칸에서만 성립한다 | `:545` R3 이름 |
+| 변이 M-a~M-d | 여기에 **M-e · M-e2**(자동 표면을 옛 창구 `return;` 가드로 되돌림)가 더해졌다. 결과: **T-B만 빨강, E-4의 F18e/F18f는 초록** → **E-4 스캐너 사각지대가 실재했다.** §5 해제 조건 4의 변이 목록에 M-e · M-e2가 더해진다 | T-C 교정 표본이 그 형태를 명시한다(`UnsummonedSurfaceAxisTests.cs:619-620` 「F18f 사각지대 · 변이 M-e」). `M-e2`라는 이름은 테스트 소스에 없다(보고서 명칭) |
+| (기존 감사) `SuspendClickBlockerAuditTests.PollsPanelChannel` | **「약해진 이유로」 초록이다.** 파일 텍스트에 `ArePanelsSuppressed`가 있기만 하면 참인데, N-20 뒤 (나) 소비자는 그 이름을 새 창구의 **인자로만** 가진다 — 옛 창구로 걷는지가 아니라 이름이 남았는지만 본다. **보강하지 않았다.** 소비자 분류는 T-B가 메서드·호출형 단위로 잰다 | `:194-195` 본문(`IndexOf("ArePanelsSuppressed") >= 0`) |
+| §6-2 게터 추가 | 새 게터는 만들지 않았다 — 기존 `IsClickBlockerEnabled` | §6-2 정정 |
+| §4-6 크랙 발동 가드 | 넣지 않았다 | §4-6 리더 판정 |
 
 ---
 
