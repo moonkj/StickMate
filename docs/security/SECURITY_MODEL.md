@@ -612,25 +612,68 @@ useMacAppStoreValidation: 0`. 착수 시 영수증 검증이 별도 주제가 �
 ## T-1. 실측 — 이 앱은 지금 벽시계를 거의 안 읽는다 (이게 출발점이다)
 
 프로덕션 `Assets/_Project/Scripts` 전수. **벽시계를 읽는 코드 지점은 5곳뿐이다.**
+★ **2026-09-15 재측정(HEAD `3751a10`): 이 문장은 낡았다 — 지금은 9파일 14지점이다(아래 T-1-r).**
+아래 표는 **09-03 측정 기록**으로 남기고, 행마다 그 줄 내용이 실제로 재현되는 커밋과 HEAD 위치를 함께 적었다.
 
-| # | 위치 | 읽는 값 | 무엇에 쓰나 | 보상에 걸리나 |
-|---:|---|---|---|---|
-| 1 | `Platform/ReservedBarRestoreLedger.cs:197`(`1f7e139` 기준) | `DateTime.UtcNow` | 원복 원장의 기록 시각(문자열) | ❌ |
-| 2 | `Interaction/CharacterAccessoryRenderer.cs:723` | `DateTime.Now.DayOfWeek` | 요일 연출 | ❌ |
-| 3 | `Interaction/CharacterPortraitStage.cs:1457` | `DateTime.Now.DayOfWeek` | 월요일 넥타이 | ❌ |
-| 4 | `Core/CharacterStatsModel.cs:75` | `DateTimeOffset.UtcNow` | `DaysTogether`(근속 **표시**) | ❌ (T-D-7 참조) |
-| 5 | `Core/CharacterStatsModel.cs:86` | `DateTimeOffset.UtcNow` | `firstRunUnixSeconds` 최초 1회 기록 | ❌ |
+| # | 위치(측정 기준 커밋) | HEAD `3751a10` 위치 | 읽는 값 | 무엇에 쓰나 | 보상에 걸리나 | 09-15 사실 대조 |
+|---:|---|---|---|---|---|---|
+| 1 | `Platform/ReservedBarRestoreLedger.cs:197`(`1eb0e2b`·`1f7e139` 기준) | `:221` | `DateTime.UtcNow` | 원복 흔적의 기록 시각(문자열) | ❌ | **참** — 기록만 한다. 프로덕션에서 `writtenAtUtc`가 나오는 줄은 선언 `:49`와 쓰기 `:221` 둘뿐이고, 이 값을 읽어 쓰는 코드는 0 |
+| 2 | `Interaction/CharacterAccessoryRenderer.cs:723`(`1eb0e2b` 기준. `1f7e139`에서는 `:724`) | `:887`(캐시 속성 `DayOfWeekIndex`, 60초마다 한 번 읽음) | `DateTime.Now.DayOfWeek` | 요일 연출 | ❌ | **참** |
+| 3 | `Interaction/CharacterPortraitStage.cs:1457`(`1eb0e2b`·`1f7e139` 기준) | `:1712` | `DateTime.Now.DayOfWeek` | 월요일 넥타이 | ❌ | **참** |
+| 4 | `Core/CharacterStatsModel.cs:75`(`1eb0e2b`·`1f7e139`·HEAD 동일) | `:75` 그대로 | `DateTimeOffset.UtcNow` | `DaysTogether`(근속 **표시**) | ❌ (T-D-7 참조) | **참** — 프로덕션에서 `DaysTogether`를 쓰는 곳 3줄이 전부 표시·로그(`CharacterInfoWindow.cs:971,1141`, `CharacterStatsDirector.cs:123`) |
+| 5 | `Core/CharacterStatsModel.cs:86`(〃) | `:86` 그대로 | `DateTimeOffset.UtcNow` | `firstRunUnixSeconds` 최초 1회 기록 | ❌ | **참** |
+
+> **측정 기준 커밋을 정한 방법(2026-09-15)**: `git log -S`로 이 절의 줄 인용 10개가 저장소에 처음 들어온 커밋을 찾으면
+> 전부 `1f7e139`(09-05)다. T절은 09-03에 썼고 09-05에 커밋됐다. **그런데 `1f7e139` 하나로는 표의 모든 행이 재현되지 않는다**:
+> 2행(`:723`)은 `1eb0e2b`(09-03)에서만, 아래 집중모드 행(`:197-198`)은 `1f7e139`에서만 맞는다.
+> 즉 **`1eb0e2b` 뒤의 커밋 안 된 작업 트리에서 쟀고**, 그 트리는 다시 만들 수 없다. 그래서 행마다
+> **그 줄 내용이 실제로 재현되는 커밋**을 적었다(`7ed996d`·`1eb0e2b`·`1f7e139` 세 커밋을 대조했고, 없는 니들로 음성 대조하면 0커밋).
 
 > **양성 대조**(0건이 「없다」인지 「스캐너가 못 본다」인지 가른다): 같은 grep이
 > `Time.unscaledTime` 계열 **40건 이상**, `Stopwatch` **20건 이상**을 찾는다. 스캐너는 살아 있다.
+> (09-15 HEAD: 프로덕션 줄 기준 `Time.unscaledTime` 99줄, `Stopwatch` 72줄.)
+
+### T-1-r. ★ 2026-09-15 현재 집합 — **9파일 14지점** (HEAD `3751a10`)
+
+측정: 테스트를 뺀 프로덕션 `.cs` 284개를 파일 통째로 읽고, 주석을 지운 뒤 T-3-a의 토큰
+(`DateTime.Now`/`DateTime.UtcNow`/`DateTimeOffset.Now`/`DateTimeOffset.UtcNow`/`Environment.TickCount`)을 셌다.
+**교정**: 줄을 나눠 쓴 `DateTime` 줄바꿈 `.UtcNow`는 잡히고, 주석 속 언급과 타입으로 쓴 `DateTime`(`new DateTime(1970,…)`)은 0이다.
+양성 대조로 `Core/CurrencyModel.cs`가 잡힌다. 음성 대조로 없는 토큰은 0이다.
+줄 단위 `git grep`으로 따로 재도 같은 14줄이 나온다.
+
+| 파일:줄 (HEAD) | 읽는 값 | 무엇에 쓰나 | 보상에 걸리나 | 09-03 표 |
+|---|---|---|---|---|
+| `Core/CurrencyModel.cs:548`(`ResolveTodayIndex` 안) | `DateTime.UtcNow` (+`TimeZoneInfo.Local` `:553`) | 오늘 일자 번호 → 일자 롤오버(상한 리셋·무료 회복제·창 리셋) | ★ **걸린다 — 설계상 유일한 예외.** 일자는 전진만 한다(`:577` 래칫, T-4-b). 세션 안에서 되풀이하려 해도 단조 시계 최소 간격(`CurrencyRules.MinRefillGapSeconds`, T-14-3-a)에 막힌다. **지급량은 이 값을 안 본다.** `IncomeTimeSourceAuditTests`가 「이 메서드 안에 1개」인지 매 실행 확인한다 | 신규 |
+| `Dialogue/AmbientCalendarClock.cs:120` | `DateTime.Now` | 대사의 요일·시간대 구간(60초 캐시) | ❌ — 쓰는 곳은 대사 추첨(`Dialogue/AmbientChatter.cs:466`)뿐 | 신규 |
+| `Platform/FreezeForensicsLog.cs:337,346` | `DateTime.UtcNow` | 동결 진단 기록 시각 | ❌ | 신규 |
+| `Platform/FreezeWatchdog.cs:180,251` | `DateTime.UtcNow` | 동결 진단 기록·세션 시작 로그 | ❌ | 신규 |
+| `Platform/SessionExitMarker.cs:193,250,266` | `DateTime.UtcNow` | 종료 표지 시각 | ❌ | 신규 |
+| `ReservedBarRestoreLedger.cs:221` · `CharacterAccessoryRenderer.cs:887` · `CharacterPortraitStage.cs:1712` · `CharacterStatsModel.cs:75,86` | 위 표 1~5행 | 〃 | ❌ | 기존 |
+
+- **토큰 스캔에 안 잡히는 시각 원천**(보상과는 무관, 기록만 해 둔다): 파일 수정 시각을 읽는 `File.GetLastWriteTimeUtc`가
+  `FreezeForensicsLog.cs:255`·`SessionExitMarker.cs:423`에 있다. 둘 다 진단 슬롯 선택용이다(가장 오래된 파일을 덮는다).
+  `GetTickCount` P/Invoke(`Platform/Windows/WindowsViewerPresenceService.cs:78`)는 부팅 뒤 경과를 세는 **단조 시계**라 벽시계가 아니다.
+- ★ **흔적 파일 시각 칸과 W1(`docs/verify/PLAYMODE_RED7_FIX_SPEC.md` W1·§14) — 모순 없음.** 이 보안 모델은
+  원복 흔적의 `writtenAtUtc`에 **무결성 역할도 판정 역할도 준 적이 없다**(1행 「보상에 걸리나 ❌」). HEAD에서도 이 값을
+  읽어 쓰는 프로덕션 코드는 0이다. 따라서 W1의 서술(「같은 값으로 다시 쓸 때 바이트가 달라질 수 있는 칸은 이것 하나」)과
+  **충돌하지 않는다.** 단 W1을 고치면서 시각 읽기를 호출부로 옮기거나 시계를 주입하면 1행의 위치가 바뀐다.
+  그 경우 T-11-a의 허용 목록도 **같은 라운드에** 따라가야 한다.
 
 ### 그리고 **지금 있는 시간 기반 수급은 전부 시계 면역이다** — 이건 좋은 소식이고, 정정이기도 하다
 
 | 채널 | 시간 원천 | 실측 위치 | 시계 조작 |
 |---|---|---|---|
-| 수동 XP(분당) | `Time.unscaledDeltaTime` 누적 | `Interaction/CharacterProgressionDirector.cs:117` | **면역** |
-| 집중모드 잔여시간 | `Time.deltaTime` 차감 | `Interaction/FocusWatchDirector.cs:197-198` | **면역**(단 T-D-2 주의) |
-| 함께한 시간 | `Time.unscaledDeltaTime` 누적 | `Interaction/CharacterStatsDirector.cs:93,118` | **면역** |
+| 수동 XP(분당) | `Time.unscaledDeltaTime` 누적 | `Interaction/CharacterProgressionDirector.cs:117`(`1eb0e2b`·`1f7e139` 기준, HEAD `:311`) | **면역** |
+| 집중모드 잔여시간 | `Time.deltaTime` 차감 | `Interaction/FocusWatchDirector.cs:197-198`(`1f7e139` 기준. `1eb0e2b`에서는 `:185`, HEAD `:364-365`) | **면역**(단 T-D-2 주의) |
+| 함께한 시간 | `Time.unscaledDeltaTime` 누적 | `Interaction/CharacterStatsDirector.cs:93,118`(`1eb0e2b`·`1f7e139` 기준. 두 줄은 flush 문턱과 flush 호출이고 누적은 `:91-92`. HEAD는 누적 `:106`, 문턱 `:107`, flush 호출 `:185`) | **면역** |
+
+> ★ **2026-09-15 사실 대조(HEAD `3751a10`)**: 세 행 모두 **참**이다(시간 원천 불변, 줄만 이동).
+> 그 뒤에 생긴 채널도 **지급량은 전부 시계 면역**이다. 유휴 동전과 활쏘기 동전은 `realtimeSinceStartupAsDouble` 단조 시계를 쓰고
+> `DailyLimitClampAuditTests`가 진입점 호출 인자를 검사한다. 집중 완주·취소 동전과 XP는 세션 길이를 받는다(`FocusWatchDirector.cs:289,307,333,352`).
+> ★ **다만 「전부 시계 면역」을 문자 그대로 읽지 마라** — **일자 롤오버(상한 리셋·무료 회복제·창 리셋)는 벽시계에 걸린다.**
+> 이것은 설계상 예외 1곳이다(T-1-r 첫 행. T-4-b 래칫과 T-14-3-a 최소 간격으로 방어).
+> 그리고 수동 XP와 집중모드는 여전히 **프레임 델타**를 쓴다. 이것은 T-D-2·T-3-c의 공정성 사안이다(적게 주는 방향이라 보안 사고는 아님).
+> `IncomeTimeSourceAuditTests`가 프레임 델타를 금지하는 범위는 **`Currency` 이름 타입뿐**이라 이 두 채널은 그 감사 밖이다.
 
 > ★ **`design/systems/ECONOMY_SPEC.md` 0-2-6의 표 한 칸을 정정한다(그쪽 문서는 안 건드렸다 — 읽기만).**
 > 그 표는 집중모드를 **「시간 종속(벽시계를 실제로 쓴다)」**로 분류한다. **실재는 벽시계를 안 쓴다 —
@@ -639,6 +682,11 @@ useMacAppStoreValidation: 0`. 착수 시 영수증 검증이 별도 주제가 �
 > 라벨이 틀린 채 남으면 다음 사람이 "이 채널은 벽시계를 쓰니까 새 채널도 벽시계로 쓰자"고 읽는다.
 
 ### `Time.timeScale` — 프로덕션 쓰기 **0건**(실측: 히트 4건 전부 테스트)
+
+> 2026-09-15 재측정(HEAD `3751a10`): **프로덕션 쓰기 0건 유지.** 테스트 쓰기는 8줄/5파일로 늘었다(PlayMode 집중모드 계열의 시간 압축).
+> ★ **자백**: 첫 재측정 프로브(`git grep -E`에 공백 클래스 `\s`를 쓴 대입 패턴)는 **테스트 쪽까지 0건**을 냈다.
+> git의 POSIX 정규식이 그 표기를 공백으로 읽지 않았기 때문이다. 고정 문자열 검색이 테스트에서 8건을 찾는 양성 대조로
+> 죽은 프로브임을 확인했고, 파이썬 정규식(대입만 잡고 `==`는 제외하는지 교정 3건 통과)으로 다시 쟀다.
 
 즉 `Time.deltaTime`도 오늘은 사실상 unscaled다. **그러나 이건 우연이고 계약이 아니다** → T-D-2.
 
@@ -676,7 +724,7 @@ useMacAppStoreValidation: 0`. 착수 시 영수증 검증이 별도 주제가 �
 >
 > **T-3-b (필수):** 세션 내 시간 경과는 **`Time.realtimeSinceStartupAsDouble` 델타**로 잰다.
 > 이 저장소는 이미 이 값을 **「단조 증가 시각」**이라 부르고 `Platform/`에서 10곳 넘게 쓴다
-> (`FullscreenSuspendPolicy.cs:438` · `RepeatedLogFolder.cs:68` 주석이 그 관례를 명시). **새 관례가 아니다.**
+> (`FullscreenSuspendPolicy.cs:438`(`1f7e139` 기준, HEAD `:468`) · `RepeatedLogFolder.cs:68`(HEAD 그대로) 주석이 그 관례를 명시). **새 관례가 아니다.**
 >
 > **T-3-c (필수·회피):** `Time.deltaTime`을 쓰지 않는다. 두 가지 이유가 겹친다 —
 > (i) `Time.timeScale`에 곱해진다(오늘 프로덕션 쓰기 0건이지만 **계약이 아니라 우연**이다),
@@ -994,10 +1042,75 @@ T-3(단조 세션 시계) + T-4(래칫) + T-5(단일 예산) + T-6(3중 clamp �
 
 | # | 테스트 | 잠그는 것 | **오늘의 기대값(실측)** |
 |---:|---|---|---|
-| 1 | `WallClockReadScopeAuditTests` | 프로덕션에서 `DateTime.Now`/`DateTime.UtcNow`/`DateTimeOffset.Now`/`DateTimeOffset.UtcNow`/`Environment.TickCount` **호출 지점의 파일 집합 등호**. 수급·정산 파일이 그 집합에 **들어오면 실패** | **정확히 4파일 5지점**: `ReservedBarRestoreLedger.cs:197`(`1f7e139` 기준) · `CharacterAccessoryRenderer.cs:723` · `CharacterPortraitStage.cs:1457` · `CharacterStatsModel.cs:75,86`. ★ **부재 단언이 아니라 집합 등호로 쓴다** — CLAUDE.md의 "부재 단언은 썩으면 조용히 초록이 된다" |
-| 2 | `IncomeTimeSourceAuditTests` | 수급·정산 타입에서 `Time.deltaTime` 부재 + `realtimeSinceStartupAsDouble` 존재를 **같은 테스트에서 대조** | 오늘 수급 코드 0줄 → **`Assert.Ignore`(사유 포함) + 항상 도는 동반 경보 1건.** `EntitlementFailOpenAuditTests`가 쓴 형태를 그대로 복제하고 `TestClaimExpiryAuditTests` 명부에 등록 |
+| 1 | `WallClockReadScopeAuditTests` ★ **명세만 있고 테스트 없음(2026-09-15 확인 — 한 번도 존재한 적 없음, T-11-a)** | 프로덕션에서 `DateTime.Now`/`DateTime.UtcNow`/`DateTimeOffset.Now`/`DateTimeOffset.UtcNow`/`Environment.TickCount` **호출 지점의 파일 집합 등호**. 수급·정산 파일이 그 집합에 **들어오면 실패** | **정확히 4파일 5지점**(09-03 측정): `ReservedBarRestoreLedger.cs:197`(`1eb0e2b`·`1f7e139` 기준) · `CharacterAccessoryRenderer.cs:723`(`1eb0e2b` 기준) · `CharacterPortraitStage.cs:1457`(`1eb0e2b`·`1f7e139` 기준) · `CharacterStatsModel.cs:75,86`. ★ **HEAD `3751a10`에서는 9파일 14지점**(T-1-r) — 이 기대값 그대로 테스트를 쓰면 첫 실행부터 빨갛다. ★ **부재 단언이 아니라 집합 등호로 쓴다** — CLAUDE.md의 "부재 단언은 썩으면 조용히 초록이 된다" |
+| 2 | `IncomeTimeSourceAuditTests` ★ **실재**(`Tests/EditMode/IncomeTimeSourceAuditTests.cs`, `349048f` 09-06 추가) | 수급·정산 타입에서 `Time.deltaTime` 부재 + `realtimeSinceStartupAsDouble` 존재를 **같은 테스트에서 대조** | 오늘 수급 코드 0줄 → **`Assert.Ignore`(사유 포함) + 항상 도는 동반 경보 1건.** `EntitlementFailOpenAuditTests`가 쓴 형태를 그대로 복제하고 `TestClaimExpiryAuditTests` 명부에 등록. ★ **09-15**: 배선이 생겨 Ignore가 아니라 **활성 단언**이다(`T11대조_수급_도메인에_프레임_델타가_없고_배선에는_단조_시계가_있다`). 범위는 **`Currency` 이름 타입**이고, `CurrencyModel`의 벽시계 읽기가 `ResolveTodayIndex` 안에 정확히 1개인지도 함께 잰다 |
 
 ★ 2번을 **지금 Ignore로 넣어 두는 이유**: 수급 배선 라운드가 이 테스트를 **켜는 것을 잊을 수 없게** 하기 위해서다.
+
+## T-11-a. ★ 2026-09-15 대조 — #1 `WallClockReadScopeAuditTests`: **판정 (b) 존재한 적 없음 · 필요함**
+
+`perf-doc`이 줄 인용을 정리하다 범위 밖으로 적발했다(`Tasklist.md` 문서 묶음 ⑤). **같은 적발이 두 번째다** —
+09-06(`349048f`) `Tasklist.md`에 이미 「`SECURITY_MODEL.md` T-11 #1의 "정확히 4파일 5지점" 기대치가 낡음(실측 5파일 6지점) — security 팀 확인 필요」가 적혔지만
+그때 테스트도 문서도 고쳐지지 않았다. 명세만 있으면 읽는 사람은 「감사가 돌고 있다」고 믿는다.
+`CurrencyModel` 클래스 문서가 09-05~09-06에 없는 테스트를 인용했던 것과 같은 형태다(`IncomeTimeSourceAuditTests.cs` 머리 문서가 그 사고를 적고 있다).
+
+### 확인 — 양성·음성 대조 (전부 파이썬 인자 목록으로 실행, 셸 단어 분리 없음)
+
+| 질문 | 명령 | 결과 |
+|---|---|---|
+| 한 번이라도 존재했나 | `git log -S WallClockReadScope --all` | 2커밋, **둘 다 문서만**(`1f7e139` 이 문서 T절 도입 · `3751a10` Tasklist 적발 기록). 그 이름의 `.cs`를 추가한 커밋(`--diff-filter=A`) **0** |
+| 지금 있나 | `git grep -l WallClockReadScope HEAD` | `Tasklist.md` · 이 문서, **2파일뿐** |
+| 양성 대조 | 같은 두 명령에 형제 이름 | `IncomeTimeSourceAudit` 2커밋·8파일, `DailyLimitClampAudit` 4커밋·10파일, `EntitlementAuditSource` 6커밋 — 스캐너는 살아 있다 |
+| 음성 대조 | 같은 두 명령에 없는 이름 | 0커밋 · 0파일(rc=1) |
+| 이름을 바꿔 있나 | 벽시계 토큰을 니들로 쓰는 테스트 전수(`git grep -F`, 토큰 5종) | 감사 테스트는 `IncomeTimeSourceAuditTests` · `DailyLimitClampAuditTests` **2개**. 나머지(`CurrencyDayRolloverTests`·`FreezeForensics*Tests`·`SessionExitMarkerTests`·`CharacterStatsPersistenceTests`·`AmbientChatterCalendarTests`·`CurrencyIdleTodoTierWiringTests`)는 시각을 주입하는 **동작 테스트**라 읽기 범위를 재지 않는다 |
+
+**두 형제 감사는 #1을 대신하지 못한다** — 범위가 재화 도메인에 갇혀 있다:
+
+| 약속 | `IncomeTimeSourceAuditTests` | `DailyLimitClampAuditTests` | #1 |
+|---|---|---|---|
+| 재화 모델의 벽시계 읽기 = `ResolveTodayIndex` 안 1개 | ✅ | — | (포함) |
+| 재화 규칙(`CurrencyRules`)의 시계 읽기 0 | ✅ | — | (포함) |
+| 단조 시계 진입점 6개의 **호출 인자**에 벽시계·프레임 델타 없음 | — | ✅ | — |
+| **`Currency` 이름 타입 밖**(XP 지급·근속·새 보상 디렉터)에 벽시계 읽기가 **새로 생김** | ❌ | ❌(진입점 인자만 봄) | ✅ **← #1의 고유 몫** |
+
+### 필요한가 — **필요하다. 다만 출시 차단은 아니고, 「다음 수급·보상 배선 라운드 전」 순위**
+
+- **무엇을 막나**: 앱을 켠 채 시계만 옮겨 보상을 얻는 경로(T-2 가·나·다)가 **재화 타입 밖에서 새로 생기는 것**.
+  대표 입구는 XP(T-D-1 — 레벨은 모든 잠금의 게이트다), 근속 `DaysTogether`에 거는 보상(T-D-7), 새 일일 선물·연출 디렉터다.
+  T-0 1번이 「계약으로 못 박기만 하면 된다」고 했는데, **그 못이 재화 타입 밖에는 아직 안 박혀 있다.**
+- **누가 무엇을 잃나**: 기본은 본인(§4). 그러나 **회복제 실화폐 판매가 사용자 확정**이다(`ENTITLEMENT_CONTRACT.md` E-13-4).
+  동전·상한에 닿는 새 벽시계 경로가 생기면 T-14-7의 매출 피해 상한(1인당 유료 회복제 약 3개)의 전제가 무너지고, 그때 손해는 **개발자**가 본다.
+  **오늘 새는 매출은 0**이다 — 프로덕션에 유료 회복제 SKU·엔타이틀먼트 경로가 없다(`potion` 등장 4파일에서 `potion`과 같은 줄에 구매·유료·SKU·엔타이틀먼트·스토어·DLC 낱말이 0줄. 양성 대조: 같은 낱말 필터가 `CurrencyRules.cs`에서는 4줄을 찾는다).
+- **오늘 위반**: 0. 9파일 14지점 중 보상에 닿는 것은 설계상 예외 1곳(`CurrencyModel.ResolveTodayIndex`)뿐이고, 이미 감사 중이다.
+- **비용**: EditMode 소스 스캔 1파일. 프로덕션 0줄, 백신 표면 0(선 3), 권한 0(선 2), 네트워크 0(선 1), 유저 파일 무접촉(원칙 3).
+  런타임 동작이 없으므로 **정당한 유저를 잠글 수 없다.** 오탐 비용은 **개발자 마찰뿐**이다 — 진단용 시각을 새로 넣으면 허용 목록에 1줄을 더한다.
+  그 1줄이 「이 읽기가 보상에 닿지 않는다」는 판단을 사람에게 강제한다. 그게 이 테스트의 효용이다.
+- **기각한 대안**: (c) 폐기 — 기각. 형제 감사 2개가 재화 타입 밖을 못 보는 한 #1의 고유 몫이 남는다.
+  「기존 파일에 메서드로 흡수」도 동작은 같지만, 이름이 바뀌면 T-11·T-14-9 인용이 또 끊기므로 **이름 유지**를 권고한다.
+
+### 구현 인계 문안 — `test-engineer` (리더 경유)
+
+1. **파일**: `Tests/EditMode/WallClockReadScopeAuditTests.cs`. 이름을 유지하면 이 문서의 인용이 살아난다. 리플렉션 0 — 소스 텍스트만 읽는다(활성 빌드 타깃 규칙).
+2. **스캔 대상**: `EntitlementAuditSource.ProductionSourceFiles()`(Tests 제외 전부, `Platform/Windows/`·`Platform/MacOS/` 포함). `MinProductionFileCount` 미만이면 실패.
+3. **토큰은 베끼지 말고 공유한다**: 지금 `private`인 `IncomeTimeSourceAuditTests.WallClockTokens`를 `EntitlementAuditSource`로 올리거나 `internal`로 열어, 두 감사가 **같은 표**를 쓰게 한다. `StripComments` 뒤 `CountIdentifier`로 센다.
+4. **허용 목록 = `(상대 경로, 기대 개수, 범주, 사유)`. 줄 번호 키 금지**(`docs/TEAM.md` 2026-09-15 규칙 3). 범주는 3종. HEAD `3751a10` 기준 9항목 14회(파이썬 독립 스캔 값이며 러너 미실행):
+   - **일자 판정(보상 예외 — 정확히 1파일)**: `Core/CurrencyModel.cs` 1
+   - **표시·연출**: `Core/CharacterStatsModel.cs` 2 · `Interaction/CharacterAccessoryRenderer.cs` 1 · `Interaction/CharacterPortraitStage.cs` 1 · `Dialogue/AmbientCalendarClock.cs` 1
+   - **진단·흔적 기록**: `Platform/ReservedBarRestoreLedger.cs` 1 · `Platform/FreezeForensicsLog.cs` 2 · `Platform/FreezeWatchdog.cs` 2 · `Platform/SessionExitMarker.cs` 3
+5. **단언**:
+   - (ㄱ) 실측 `{파일→개수}` == 허용 목록 `{파일→개수}`(집합과 개수를 함께 등호). 목록에 없는 파일이 나오면 「새 벽시계 읽기 — 범주를 정하라. 보상 경로면 T-3-a가 금지한다」로 빨강.
+   - (ㄴ) 목록에 있는데 실측이 0이면 **썩은 항목**으로 빨강. 조용히 지우지 말고 「기대 0 + 사라진 커밋」으로 남긴다(TEAM.md 규칙 3).
+   - (ㄷ) 「일자 판정」 범주 파일이 `IncomeTimeSourceAuditTests`가 찾는 `CurrencyModel` 선언 파일과 같은지 확인한다. 두 감사가 같은 사실을 가리키는지 대조하는 것이고, 타입 이름은 그 테스트의 상수를 참조한다.
+6. **양성 대조**: `CurrencyModel` 선언 파일이 실측에 반드시 잡힌다(존재 단언).
+   **음성 대조**(같은 스캐너 함수에 가짜 소스): ① 읽기 1줄 추가 → 등호 깨짐 ② 목록 항목 1개 삭제 → 실패가 정확히 그만큼 움직임 ③ 주석 속 언급 → 0 ④ 타입으로 쓴 `DateTime` → 0.
+   ③④는 `IncomeTimeSourceAuditTests`의 기존 음성 대조를 재사용한다. 줄을 나눠 쓴 형태(`DateTime` 줄바꿈 `.UtcNow`)를 `CountIdentifier`가 잡는지는 **미확인**이다 — 음성 대조로 확인하고, 못 잡으면 한계로 문서화한다(HEAD에 그런 형태는 0).
+7. **이 감사가 못 보는 것 — 테스트 문서에 적는다**:
+   (가) 파일 수정 시각(`File.GetLastWriteTimeUtc`) 같은 간접 시각 원천. 넣을 경우 「간접」 범주로 따로 둔다.
+   (나) **데이터 흐름** — 허용된 파일의 값이 나중에 보상으로 흘러가는 것. 이것은 `DailyLimitClampAuditTests`(진입점 인자)와 동작 테스트의 몫이다.
+8. **W1 결합**: W1 수정이 `ReservedBarRestoreLedger`의 시각 읽기를 옮기면, 같은 라운드에 허용 목록을 갱신한다.
+
+**Windows 영향**: `#if` 0개, Windows 전용 파일도 소스 텍스트로 스캔한다 — 새 테스트 1파일뿐이라 `PlatformParityAuditTests` 추가 항목은 0이다. 런타임 코드 0줄이라 `xcheck.sh win` 대상도 아니다.
+**macOS 영향**: 동일. 현재 14지점 중 플랫폼 전용 파일은 0이다(`Platform/` 4파일은 전부 공통 파일).
 
 ---
 
@@ -1325,9 +1438,9 @@ T-9-2 부팅 앵커는 **P/Invoke 2개를 들여 3개어치 매출을 지키는 
 
 | # | 테스트 | 잠그는 것 | 기대값 |
 |---:|---|---|---|
-| 1 | `WallClockReadScopeAuditTests` | (T-11 그대로) 벽시계 호출 **파일 집합 등호** | **4파일 5지점** |
+| 1 | `WallClockReadScopeAuditTests` ★ **명세만 있고 테스트 없음(2026-09-15 확인, T-11-a)** | (T-11 그대로) 벽시계 호출 **파일 집합 등호** | **4파일 5지점**(09-03 측정). ★ HEAD `3751a10`에서는 **9파일 14지점**(T-1-r) |
 | 2 | `IncomeTimeSourceAuditTests` | (T-11 그대로) 수급 타입의 `deltaTime` 부재 ↔ `realtimeSinceStartupAsDouble` 존재를 **같은 테스트에서 대조** | 오늘 0줄 → `Assert.Ignore` + 동반 경보 |
-| 3 | ★ **신규** `DailyLimitClampAuditTests` | (ㄱ) 세이브 로드 경로에 `potionsUsedToday`·`todayGrantedCoins`의 **clamp가 존재**한다 (ㄲ) 상한이 **저장 필드가 아니라 함수**다 = `SaveData`에 `dailyCap`/`todayLimit` 계열 필드 **부재** — `EntitlementNotInSaveAuditTests`의 필드명 스캐너를 **토큰만 바꿔 재사용** | 오늘 필드 0개 → `Assert.Ignore` + 동반 경보. 배선 라운드에 활성화 |
+| 3 | ★ **신규** `DailyLimitClampAuditTests` ★ **실재**(`349048f` 09-06 추가, 2026-09-15 확인) | (ㄱ) 세이브 로드 경로에 `potionsUsedToday`·`todayGrantedCoins`의 **clamp가 존재**한다 (ㄲ) 상한이 **저장 필드가 아니라 함수**다 = `SaveData`에 `dailyCap`/`todayLimit` 계열 필드 **부재** — `EntitlementNotInSaveAuditTests`의 필드명 스캐너를 **토큰만 바꿔 재사용** | 오늘 필드 0개 → `Assert.Ignore` + 동반 경보. 배선 라운드에 활성화 |
 
 ★ 3건 모두 **네거티브 컨트롤 필수**(가짜 위반 문자열을 같은 스캔 함수에 흘려 잡히는지).
 ★ 부재 단언은 **집합 등호**로 쓴다 — CLAUDE.md: *"부재 단언은 썩으면 조용히 초록이 된다."*
@@ -1567,6 +1680,11 @@ if (float.IsNaN(windowSecondsUsedToday)) windowSecondsUsedToday = WindowCapSecon
 | **네거티브 컨트롤 필수** — 가짜 `public int dailyCapCoins;`를 같은 스캔 함수에 흘려 잡히는지 | 잡혀야 함 |
 
 ### (B) ★ 신규 `IdleWindowRatchetTests` — **순수 함수 동작 + 네거티브 컨트롤**(리더 요구 3의 본체)
+
+> ★ **2026-09-15 확인 — 다른 이름으로 실재한다.** `IdleWindowRatchetTests`라는 이름은 저장소에 한 번도 없었다(`git log -S` 결과 이 문서만).
+> 같은 약속은 `Tests/EditMode/CurrencyRulesTests.cs`의 `창이_있으면_하루_수입이_창_길이에서_잘린다` ·
+> `음성대조_창을_없애면_실제로_하루치가_전부_샌다`가 지킨다(`1f7e139`). `SimulateOneDay`에 `double.PositiveInfinity`를 넣는 네거티브 컨트롤이 있고,
+> 기대값은 `IdleWindowCapMinutes × IdleCoinsPerMinute` 상수를 참조해 계산한다(T-15-7-a 준수). 러너 결과는 이번에 확인하지 않았다.
 
 ```
 // 하루(1,440분)를 시뮬레이션. 롤오버는 무한 허용(=②가 뚫린 최악 가정).
