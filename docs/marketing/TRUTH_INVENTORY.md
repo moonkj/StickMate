@@ -28,9 +28,9 @@
 
 | # | 사실 | 상태 | 근거 |
 |---|---|---|---|
-| F1 | 종료 순서 ⓪ 종료 시작 표지 → ① 원복 → ② 워치독 정지 → ③ 진행 저장 → ④ 정상 종료 표지 | 커밋 | `AppShutdownSequence.cs:135-139`(트리) · `TASKBAR_REVEAL.md:68` |
+| F1 | 종료 순서 ⓪ 종료 시작 표지 → ① 원복 → ② 워치독 정지 → ③ 진행 저장 → ④ 정상 종료 표지 | 커밋 | `AppShutdownSequence.cs:135-139`(트리 · `6173b6e` 기준) · `TASKBAR_REVEAL.md:68` |
 | F2 | ③은 **처리기가 등록되지 않아 아무것도 하지 않는다.** 진행 저장은 여전히 `CharacterProgressionDirector.OnApplicationQuit`(`:269-275`)과 주기 저장(`:319`, 배포 에셋 `DefaultStickConfig.asset:390` = 60초)에 달려 있다 | 트리 | `RegisterSaveHandler`를 참조하는 비테스트 파일 = `AppShutdownSequence.cs` 1개 |
-| F3 | Windows 세션 종료를 처리한 뒤 앱이 스스로 종료를 요청한다 | 커밋 | `AppShutdownSequence.cs:333`(트리) · `TASKBAR_REVEAL.md:88` |
+| F3 | Windows 세션 종료를 처리한 뒤 앱이 스스로 종료를 요청한다 | 커밋 | `AppShutdownSequence.cs:333`(트리 · `6173b6e` 기준) · `TASKBAR_REVEAL.md:88` |
 | F4 | ★ **중첩될 때만 작업 표시줄에 같은 값을 2회 쓴다.** 실재 미확인. 승인 형태는 불변이고 호출 횟수만 +1 | 트리 미커밋(5-b) | `TASKBAR_REVEAL.md:90-96` |
 | F5 | ④가 쓰인 뒤에는 ③을 건너뛴다. *"표지 뒤 몇 프레임분의 진행은 이 처리기로 저장되지 않는다"* | 트리 미커밋(5-c) | `TASKBAR_REVEAL.md:100-101` · `:135-137` |
 | F6 | 톱니 「안내 봤음」 저장소 경계. 출하 경로 동작 · 키 이름 · 값 형식 불변(디스크 골든) | 트리 미커밋 · **verify-change B1·B7로 커밋 차단** | `PlayerPrefsGearMenuOnboardingSeenStore.cs:34,79-81` · `GearRadialMenuWidget.cs:923` |
@@ -68,7 +68,7 @@
 | R10-6 범위 밖 관찰 ① | `FreezeWatchdog.cs:264` *"(파일은 첫 사건 때 생깁니다"* | — | **닫혔다** — `17f6f38`에서 *"원장 슬롯 파일은 첫 사건 때 … 정상 종료 표지 … 실행·종료 때마다 같은 이름으로 덮어씁니다"*로 고쳐졌다(`7900ad0` · 트리 `:264-265`) |
 | R10-6 범위 밖 관찰 ② · N2 ③ 「남은 문서 공백」 | 6절에 세션 종료 항목 없음(`3cc6753` 판 0건) | 있음(`17f6f38`부터 1건) | `:328` 8번 — **닫혔다** |
 | 0절 표 `UserAssetImmutabilityAuditTests` 행 | 「자동 검사 9건」 | `[Test` **10** | 10 (`3cc6753` · `17f6f38`도 10) — 개수만 낡았다 |
-| 매뉴얼 1장 6-1 주석 `01-where-to-click.md:680-681` | *"`AppShutdownSequence`(**맨 앞이 `RestoreReservedBar`**)"* (HEAD `a6b3101` 기준으로 적힘 — 그때는 참) | 맨 앞 = 종료 시작 표지(`17f6f38`부터) | `AppShutdownSequence.cs:135`. 본문 문장에는 영향 없음. 같은 주석의 `SystemTrayCommandBridge.cs:100`은 트리에서도 참 |
+| 매뉴얼 1장 6-1 주석 `01-where-to-click.md:680-681` | *"`AppShutdownSequence`(**맨 앞이 `RestoreReservedBar`**)"* (HEAD `a6b3101` 기준으로 적힘 — 그때는 참) | 맨 앞 = 종료 시작 표지(`17f6f38`부터) | `AppShutdownSequence.cs:135`(`6173b6e` 기준). 본문 문장에는 영향 없음. 같은 주석의 `SystemTrayCommandBridge.cs:100`은 트리에서도 참 |
 
 **`CAPTURE_PROTOCOL.md` — 고치지 않았다**(리더 지시: coder 커밋 뒤 이름이 확정되면 일괄 배정). 목록만 적는다.
 

@@ -183,7 +183,7 @@
         ★ **촬영용 폴더를 만들거나 다른 기계·다른 사용자 계정에서 가져올 때 넣지 않는 것** 〔R11-b 2026-09-14 — `game-architect` 「작업표시줄 원복 흔적의 기계 경계」 판정 반영〕
         - `*.writing` 파일 — 중단된 저장의 잔해다(`docs/security/ENTITLEMENT_CONTRACT.md` S-7-6 3번)
         - ★★ **`stickmate_reserved_bar_restore.json`** — **받는 기계의 작업표시줄 자동 숨김 설정을 바꿀 수 있다(원칙 3).**
-          흔적에는 기계·계정 식별자가 없고 플랫폼 태그만 대조한다(`Platform/ReservedBarRestoreLedger.cs:34-53,150-154`) — 다른 Windows 기계·계정에서 온 **열린 흔적**을 받은 쪽이 자기 빚으로 읽고 「원복」한다.
+          흔적에는 기계·계정 식별자가 없고 플랫폼 태그만 대조한다(`Platform/ReservedBarRestoreLedger.cs:34-53,174-178`) — 다른 Windows 기계·계정에서 온 **열린 흔적**을 받은 쪽이 자기 빚으로 읽고 「원복」한다.
           ★ `active` 값을 보고 골라 넣지 마라 — **닫힌 흔적도 넣지 않는다.** 넣어서 얻는 것이 없고(없으면 촬영 인스턴스가 필요할 때 새로 쓴다), 「닫힌 것을 확인했다」가 틀리는 순간 남의 PC 설정이 바뀐다
         - `FreezeForensics/` · `Player.log` · `Player-prev.log` — 원래 기계의 기록이다. 가져온 표지가 `state=running`이면 촬영 인스턴스가 **비정상 종료로 판정해 `previous-abnormal-player-NN.log` 복사본을 만든다**(`Platform/SessionExitMarker.cs:103-114`) —
           없던 사건 기록이 생겨 ⑤-3의 판정 자료가 오염된다. 로그 경로에는 원래 계정 이름이 찍혀 있을 수 있다

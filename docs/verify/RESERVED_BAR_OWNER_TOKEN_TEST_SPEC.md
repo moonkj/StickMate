@@ -3,6 +3,12 @@
 작성: test-engineer / 2026-09-14 · **명세만 있다 — `.cs` 0줄, 러너·빌드·앱 실행 0회**
 기준: `17f6f38` + 작업 트리(이 문서를 쓰는 동안 `Platform/`·테스트 폴더는 dev-platform 5차가 편집 중이었고, 여기서는 읽기만 했다)
 
+★ **줄 인용 갱신 (2026-09-15, 5-d 커밋 `e899fb8` 뒤)**
+- 대상: `ReservedBarRestoreLedger.cs` · `GlobalEditModeTestIsolation.cs` · `SessionEndShutdownTests.cs` 인용을 **`e899fb8` 기준**으로 고쳤다. 옛 번호는 괄호에 「(`17f6f38` 기준 …)」으로 남겼다.
+- 방법: `git diff -U0 5912e33 e899fb8` 헝크 헤더로 매핑을 뽑고, 줄마다 두 대조를 붙였다 — 양성: 옛 줄과 새 줄 내용이 같다 / 음성: 옛 번호로 새 파일을 읽으면 내용이 다르다. `ReservedBarRestoreLedger.cs`는 `17f6f38`과 `5912e33`이 바이트 동일이다.
+- `SessionEndShutdownTests.cs`는 `5912e33`에서 이미 낡아 있었다(이 문서 기준 `17f6f38`). 그래서 헝크 매핑이 아니라 **내용·테스트 이름으로** 새 자리를 찾았다.
+- 다시 대조하지 않은 것: `5912e33..e899fb8`에서 바뀌지 않았거나 인용 줄보다 뒤만 바뀐 파일(`PlatformParityAuditTests.cs` 3297행 뒤 · `TASKBAR_REVEAL.md` 344행 뒤 · `Tasklist.md` 27712행 뒤 · `CAPTURE_REQUESTS_R6.md` 299행 · `SHOT_LIST.md` 429행 이후, 그리고 `ReservedBarRevealDirector.cs` · `GlobalPlayModeTestIsolation.cs` · `ReservedBarRevealPolicyTests.cs` 등). 그 파일들의 `17f6f38` 이후 드리프트는 **미확인**이다.
+
 입력 — 이 명세가 전개한 것:
 - game-architect 「무작위 설치 토큰안 구조 확인」: 1절 C1~C4, 2절 동반 테스트, 3절 실패 방식 표, 4절 파일 분할(`Tasklist.md:27337-27341` 요지 + 보고 전문)
 - security S-7-7 구현 조건 1~6 · (e) 잔여 위험(`docs/security/ENTITLEMENT_CONTRACT.md:671-746`)
@@ -94,9 +100,9 @@
 | TK-02 | `레거시_v1_닫힌_흔적은_시스템에_쓰지_않는다` | E | `L1c` | OFF | 시스템 쓰기 0 · 토큰 생성 0 · 폴더 파일 수 불변 · 레거시 전용 경고 0(양성 대조: 같은 수집기가 TK-01에서는 1을 셌다) | 0 | 0 | 0 | `L1c` |
 | TK-02b | (같은 이름, 매개 사례) | E | `L1c` | ON | 복구 0 · 이번 실행 해제는 정상 | 0 | 1 | 1 | `L1c` |
 | TK-03 | `레거시_v1_열림인데_이미_원래값이면_쓰지_않고_v1로_닫는다` | E | `L1o` | ON | `ReservedBarReason.LeftoverAlreadyMatched` 경로 · 레거시 `active == false` · `version == 〈레거시 버전 상수〉` | 0 | 1 | 1 | — |
-| TK-04 | `레거시를_닫은_파일은_구_프리뷰가_새로운_스키마로_읽지_않는다` | E | `L1o` | OFF | 닫힌 레거시 파일의 `version`이 **골든 픽스처의 `version` 이하이고 1 이상**이다. 구 프리뷰의 `Read`(`Ledger:143,146`)가 `NewerSchema`나 `Unreadable`로 가지 않는 조건이다. 기대값의 출처는 골든이지 `〈레거시 버전 상수〉`가 아니다. 상수가 틀어져도 잡는다 | 1 | 1 | 1 | — |
+| TK-04 | `레거시를_닫은_파일은_구_프리뷰가_새로운_스키마로_읽지_않는다` | E | `L1o` | OFF | 닫힌 레거시 파일의 `version`이 **골든 픽스처의 `version` 이하이고 1 이상**이다. 구 프리뷰의 `Read`(`Ledger:167,170`)가 `NewerSchema`나 `Unreadable`로 가지 않는 조건이다. 기대값의 출처는 골든이지 `〈레거시 버전 상수〉`가 아니다. 상수가 틀어져도 잡는다 | 1 | 1 | 1 | — |
 | TK-05 | `레거시_열림인데_상태를_못_읽으면_닫지_않고_남긴다` | E | `L1o` | 조회 실패 | `ReservedBarReason.Unavailable` · 레거시 파일 그대로(`TASKBAR_REVEAL.md` 2-4 규칙의 레거시판) | 0 | 0 | 0 | `L1o` |
-| TK-06 | `읽을_수_없는_고정_이름_파일은_덮어쓰지_않는다` | E | `Gar` | ON | 이번 실행은 정상 해제하고 **자기 이름으로** 흔적을 연다. `Gar`는 한 바이트도 안 바뀐다. v1 시절에는 같은 경로에 `FileMode.Create`로 덮어썼다(`Ledger:207`) — **새로 생기는 성질이라 잠근다** | 0 | 1 | 1 | `Gar` |
+| TK-06 | `읽을_수_없는_고정_이름_파일은_덮어쓰지_않는다` | E | `Gar` | ON | 이번 실행은 정상 해제하고 **자기 이름으로** 흔적을 연다. `Gar`는 한 바이트도 안 바뀐다. v1 시절에는 같은 경로에 `FileMode.Create`로 덮어썼다(`Ledger:231`) — **새로 생기는 성질이라 잠근다** | 0 | 1 | 1 | `Gar` |
 | TK-07 | `잔여위험_다른_PC에서_복사된_레거시_v1도_한_번_갚는다` | **T** | `L1o` | OFF | **사양 박제 — 초록이 안전을 뜻하지 않는다.** v1은 소유를 적지 않아 가릴 수 없다(S-7-7 (e)). 레거시 분기를 「보존+경고」로 강등하는 라운드(첫 스토어 출시 전 ∧ I-6 전)가 **이 사례를 뒤집는다.** 조용히 바뀌지 않게 이름에 `잔여위험`을 박는다 | 1 | 1 | 0 | — |
 
 ### 1-B. 자기 흔적 (토큰 일치)
@@ -135,7 +141,7 @@
 | ID | 사례 이름 | 저장소 | 폴더 | AH | 기대(출처) | R | V | 생성 | 바이트 불변 |
 |---|---|---|---|---|---|---:|---:|---:|---|
 | TK-40 | `기동해제_후_정상종료하면_자기_흔적을_닫고_파일은_하나다` | E | `∅` | ON | `ReservedBarReason.RestoreOnQuit` · 제어기 AH == ON · 폴더 파일 1 · 그 파일 닫힘 · `version == ReservedBarRestoreLedger.CurrentVersion` | — | 1 | 1 | — |
-| TK-41 | `세션_종료_경로도_토큰_파생_흔적을_닫는다` | E | `∅` | ON | `AppShutdownSequence.Run(AppShutdownTrigger.SessionEnding)` 뒤 위와 같다. 이어서 `ApplicationQuitting`이 와도 쓰기가 늘지 않는다(`SessionEndShutdownTests.cs:306` 계승) | — | 1 | 1 | — |
+| TK-41 | `세션_종료_경로도_토큰_파생_흔적을_닫는다` | E | `∅` | ON | `AppShutdownSequence.Run(AppShutdownTrigger.SessionEnding)` 뒤 위와 같다. 이어서 `ApplicationQuitting`이 와도 쓰기가 늘지 않는다(`SessionEndShutdownTests.cs:839` 계승 — 테스트 `세션_종료_원복_뒤_quitting이_또_와도_시스템에_두_번_쓰지_않는다`, `17f6f38` 기준 `:306`) | — | 1 | 1 | — |
 | TK-42 | `종료는_토큰을_새로_만들거나_확보하지_않는다` | E | `∅` | ON | `기동` 뒤의 `확보`·`생성` 수를 기억해 두고, `정상종료`에서 둘 다 **증가 0** | — | 1 | 1 | — |
 
 ### 1-F. 제어기 없음 (macOS · 모바일 · 에디터)
@@ -144,11 +150,11 @@
 |---|---|---|---|---|---|---:|---:|---:|---|
 | TK-50 | `제어기가_없으면_토큰_저장소를_한_번도_부르지_않는다` | E / T (매개 2) | `L1o` + `For(U)o` | (제어기 `null`) | 저장소 **읽기·확보·생성 모두 0**(I-2) · 폴더 전 파일 바이트 불변 · `Bootstrap`의 비Windows 분기와 같은 입력(`Director:80` `RunStartup(null)`) | — | — | 0 | 전 파일 |
 
-### 1-G. 로그 가림 (`Director:132,220` · `Ledger:160,216`)
+### 1-G. 로그 가림 (`Director:132,220` · `Ledger:184,240`)
 
 | ID | 사례 이름 | 준비 | 기대 |
 |---|---|---|---|
-| TK-60 | `로그에_흔적_경로와_토큰_원시값이_없다` | **네 자리를 각각 실제로 태우는 하위 시나리오 4개**: (a) `Director:132` — 아무 기동이나 (b) `Director:220` — E·`∅`·ON (c) `Ledger:160` — `Own(T)o`를 만든 뒤 내용을 파싱 불가 바이트로 덮고 T로 기동(`JsonUtility`가 예외를 던져 `:158` catch를 탄다) (d) `Ledger:216` — `RedirectToPathForTesting(<파일 경로>)`로 쓰기 실패(`ReservedBarRevealPolicyTests.cs:278-280`과 같은 수법) | **부재**: 수집한 모든 줄에 다음이 없다 — ① 임시 폴더 전체 경로 ② 테스트마다 붙인 GUID 라벨(유일 문자열) ③ 디스크에서 **열거로 얻은** 흔적 파일 이름 ④ 그 이름에서 `〈레거시 파일명 상수〉`의 줄기와 확장자를 걷어낸 꼬리 ⑤ 저장소 토큰 원시값 ⑥ 토큰의 앞 8자. **존재 대조(같은 수집기, 같은 시나리오)**: ⑦ `ReservedBarRevealDirector.LogTag`로 시작하는 줄이 하위 시나리오마다 1줄 이상 ⑧ (c)(d)에는 `LogType.Warning` 줄이 1줄 이상 — **네 자리가 실제로 탔다는 증거** ⑨ O-4의 소유 문장이 (a)에 있다. ⑦~⑨ 중 하나라도 0이면 이 테스트의 부재 단언 **전부 무효**로 실패 처리한다 |
+| TK-60 | `로그에_흔적_경로와_토큰_원시값이_없다` | **네 자리를 각각 실제로 태우는 하위 시나리오 4개**: (a) `Director:132` — 아무 기동이나 (b) `Director:220` — E·`∅`·ON (c) `Ledger:184` — `Own(T)o`를 만든 뒤 내용을 파싱 불가 바이트로 덮고 T로 기동(`JsonUtility`가 예외를 던져 `:182` catch를 탄다) (d) `Ledger:240` — `RedirectToPathForTesting(<파일 경로>)`로 쓰기 실패(`ReservedBarRevealPolicyTests.cs:278-280`과 같은 수법) | **부재**: 수집한 모든 줄에 다음이 없다 — ① 임시 폴더 전체 경로 ② 테스트마다 붙인 GUID 라벨(유일 문자열) ③ 디스크에서 **열거로 얻은** 흔적 파일 이름 ④ 그 이름에서 `〈레거시 파일명 상수〉`의 줄기와 확장자를 걷어낸 꼬리 ⑤ 저장소 토큰 원시값 ⑥ 토큰의 앞 8자. **존재 대조(같은 수집기, 같은 시나리오)**: ⑦ `ReservedBarRevealDirector.LogTag`로 시작하는 줄이 하위 시나리오마다 1줄 이상 ⑧ (c)(d)에는 `LogType.Warning` 줄이 1줄 이상 — **네 자리가 실제로 탔다는 증거** ⑨ O-4의 소유 문장이 (a)에 있다. ⑦~⑨ 중 하나라도 0이면 이 테스트의 부재 단언 **전부 무효**로 실패 처리한다 |
 | TK-61 | `음성대조_로그_검사기는_경로와_토큰을_실제로_잡는다` | 합성 문자열 3개를 검사 함수에 직접 넣는다 | 경로를 담은 줄 → 위반 1, 토큰 앞 8자를 담은 줄 → 위반 1, 둘 다 없는 줄 → 위반 0 |
 
 ### 1-H. `ReservedBarOwnership` 순수 함수
@@ -179,11 +185,11 @@
 ### 1-J. ★ 반쯤 쓰인 흔적 — `Unreadable` 통과와 원자적 쓰기 (리더 추가 지시, 2026-09-14)
 
 **사실** — ux-designer 발견을 리더가 코드로 확인했고, 이 라운드에서 다시 쟀다.
-- `ReservedBarRevealDirector.cs:102`의 쉬기 조건은 `NewerSchema`·`ForeignPlatform` **둘뿐**이다. `Unreadable`은 통과해 `:189` 판정으로 간다. 자동 숨김이 켜져 있으면 `:204` `Open` → `ReservedBarRestoreLedger.cs:207` `FileMode.Create`가 그 파일을 **0바이트로 자르고 덮는다.**
+- `ReservedBarRevealDirector.cs:102`의 쉬기 조건은 `NewerSchema`·`ForeignPlatform` **둘뿐**이다. `Unreadable`은 통과해 `:189` 판정으로 간다. 자동 숨김이 켜져 있으면 `:204` `Open` → `ReservedBarRestoreLedger.cs:231` `FileMode.Create`가 그 파일을 **0바이트로 자르고 덮는다.**
 - 그런데 두 문장이 그 거동과 **어긋난다**:
-  - `ReservedBarRestoreLedger.cs:160-161` 경고 — *"없는 것으로 취급합니다 — 이번 실행은 시스템 설정을 바꾸지 않습니다."*
-  - `:204-206` 주석 — *"다음 실행이 Unreadable로 읽고 '시스템을 바꾸지 않는다'로 가므로"*
-  - `:140`(빈 파일)과 `:143`(`version < 1`)의 `Unreadable`은 경고조차 없다.
+  - `ReservedBarRestoreLedger.cs:184-185` 경고 — *"없는 것으로 취급합니다 — 이번 실행은 시스템 설정을 바꾸지 않습니다."*
+  - `:228-230` 주석 — *"다음 실행이 Unreadable로 읽고 '시스템을 바꾸지 않는다'로 가므로"*
+  - `:164`(빈 파일)과 `:167`(`version < 1`)의 `Unreadable`은 경고조차 없다.
 - 흔적 쓰기는 `FileMode.Create` → `Write` → `Flush(true)`다. **원자적이지 않다.** 자르기와 쓰기 사이에 끊기면 새 내용의 앞부분만 남는다.
 - ★ **`ReservedBarLedgerState.Unreadable`을 참조하는 테스트는 0건이다.** 측정 `grep -rn "ReservedBarLedgerState.Unreadable" Tests` → 0. 같은 명령의 `ReservedBarLedgerState\.` 양성 대조와 없는 상태 이름 음성 대조 결과는 6절에 적는다. **이 분기는 한 번도 잠긴 적이 없다.**
 
@@ -231,7 +237,7 @@
   2. Director를 리셋한다.
   3. 자동 숨김 켜짐 / 꺼짐을 **각각 새 폴더 복제에서** 돌린다.
   4. 계수한다.
-- **변형(선택) — 영채움**: 앞 L바이트 뒤를 `0x00`으로 채워 원래 길이를 맞춘다. 크기 메타데이터만 반영되고 데이터는 안 내려간 전원 차단 모양이다(가설). `0x00`은 `string.IsNullOrWhiteSpace`의 공백이 아니므로 `Ledger:140` 가드를 타지 않는다.
+- **변형(선택) — 영채움**: 앞 L바이트 뒤를 `0x00`으로 채워 원래 길이를 맞춘다. 크기 메타데이터만 반영되고 데이터는 안 내려간 전원 차단 모양이다(가설). `0x00`은 `string.IsNullOrWhiteSpace`의 공백이 아니므로 `Ledger:164` 가드를 타지 않는다.
 - **기록 칸**: L · 분류(`ReservedBarRevealDirector.LastLedgerState`/O-4) · R · V · 흔적 바이트 불변 · 폴더 파일 수 · **다음 실행 판정**.
   - 다음 실행 판정 = 이번 실행을 `크래시`로 끝내고 리셋한 뒤, 이번 실행이 남긴 자동 숨김 값으로 한 번 더 기동했을 때의 분류와 R/V.
   - 전 행을 `[흔적절단] 원본=… L=… AH=… 분류=… R=… V=… 불변=…` 한 줄씩 로그로 남긴다(거짓 통과 판독용 표).
@@ -244,7 +250,7 @@
 |---|---|---|---|---|
 | TK-80 | `반쯤_쓰인_자기_흔적은_어느_길이에서도_빚을_지우거나_거짓으로_만들지_않는다` | 공통 | 원본 (a)(b) × L 전수 × 자동 숨김 켜짐/꺼짐 | ① 위 불변식 ② **(a) 원본의 L < N, 자동 숨김 꺼짐에서 R = 0**(읽을 수 없는 흔적의 원래 값을 추측해 쓰지 않는다) ③ L = N 대조: (a)·꺼짐 → R = 1, (b)·꺼짐 → 0 ④ 켜짐 행의 V와 바이트 불변은 위 설계별 표로 판정. 설계가 확정되기 전에는 `Assert.Ignore`(사유에 미결 번호 Q-8·Q-9·Q-10) ⑤ **다음 실행 판정**을 설계별 표와 대조한다 |
 | TK-81 | `회귀대조_지금은_읽을_수_없는_흔적에서_해제가_진행된다` | **(가)·(다)의 합격 판정** | ★ **현재 트리(토큰 전)에서 먼저 돌리는 판**: `ReservedBarRestoreLedger.Open(originalAutoHide: true, "TestOS")`로 임시 폴더에 흔적을 만든다 → 그 바이트를 읽어 앞 ⌊N/2⌋바이트로 **같은 경로**를 덮는다 → 가짜 제어기 켜짐 → `RunStartup(control)` | **준비물 확인(먼저, 존재 단언)**: `LastLedgerState == ReservedBarLedgerState.Unreadable`. 아니면 「준비물 무효 — 파서가 접두부를 받아들였다」 문구로 실패한다. **거동 빨강과 원인을 섞지 않는다.** **거동 단언**: `WriteCount == 0` · 흔적 바이트 불변 · `LastStartupReason == ReservedBarReason.Unavailable`. ★ **현재 코드에서는 반드시 빨갛다**(V = 1, 흔적 덮어씀). 그 결과 xml을 `docs/verify/runs/`에 보관한다. 준비물 확인은 통과했는데 거동이 초록이면 **이 대조가 죽은 것이다**. 고친 뒤 초록으로 바뀌는지로 수정 여부를 가른다. 토큰 구현 뒤에는 자기 이름 경로판으로 옮긴다(TK-80 켜짐 행이 같은 것을 전수로 잰다) |
-| TK-81나 | `읽을_수_없는_흔적_경고는_실제로_한_일과_어긋나지_않는다` | **(나)만의 합격 판정** | 위 준비물 + 켜짐 → 해제가 진행된다((나)는 읽기 거동을 바꾸지 않는다) | 같은 실행에 시스템 쓰기가 있었다면, 읽기 실패 경고 줄은 O-4 정의처의 「이번 실행은 시스템을 바꾸지 않는다」 항목과 **같지 않다**. ★ **현재 트리에서는 돌릴 수 없다** — 문장이 `Ledger:160-161` 인라인 리터럴이다. **정의처로 옮기는 것이 먼저**다(한국어 니들 베끼기 금지). `:204-206` 주석 정정은 verify-change 확인 항목(리더 경유) |
+| TK-81나 | `읽을_수_없는_흔적_경고는_실제로_한_일과_어긋나지_않는다` | **(나)만의 합격 판정** | 위 준비물 + 켜짐 → 해제가 진행된다((나)는 읽기 거동을 바꾸지 않는다) | 같은 실행에 시스템 쓰기가 있었다면, 읽기 실패 경고 줄은 O-4 정의처의 「이번 실행은 시스템을 바꾸지 않는다」 항목과 **같지 않다**. ★ **현재 트리에서는 돌릴 수 없다** — 문장이 `Ledger:184-185` 인라인 리터럴이다. **정의처로 옮기는 것이 먼저**다(한국어 니들 베끼기 금지). `:228-230` 주석 정정은 verify-change 확인 항목(리더 경유) |
 | TK-82 | `반쯤_쓰인_레거시_v1은_갚지도_덮지도_않는다` | 공통 | 원본 (c)(d) × L 전수 × 켜짐/꺼짐, 고정 이름 경로 | ① L < N 전부 R = 0, 레거시 전용 경고 0 ② 고정 이름 바이트는 **전 L에서 불변**(토큰 빌드는 파싱되지 않은 고정 이름 파일을 쓰지 않는다) ③ 켜짐의 V = 1(C3·TK-06) — Q-9에서 「고정 이름까지 쉬기」가 채택되면 V = 0 ④ L = N 대조: (c) → R = 1(TK-01), (d) → R = 0 |
 | TK-83 | `원자적_쓰기는_어느_바이트에서_죽어도_옛_흔적_아니면_새_흔적만_남긴다` | (나)·(다) | O-7 사망 주입. **전이 4종**: (i) 없음 → 자기 열림(w1 첫 쓰기) (ii) 자기 닫힘 → 자기 열림(w1 재사용) (iii) 자기 열림 → 자기 닫힘(w3·w4) (iv) 레거시 v1 열림 → v1 닫힘(w5). **사망 지점**: 임시(또는 교대 슬롯) 쓰기의 k = 0…M 전 바이트 + 「쓰기 끝·`Flush(true)` 뒤·교체 전」 + (빈 대상 선생성 구조라면) 「빈 대상 생성 뒤·교체 전」 | 지점마다 ① 흔적 경로 바이트가 **옛 바이트와 같거나, 새 바이트와 같다**((i)의 「옛」 = 파일 없음) ② `Unreadable` **0건** ③ (i)(ii)는 사망 순간 시스템 쓰기 0(write-ahead 유지) ④ 다음 실행: 옛 열림이면 R = 1, 새 닫힘이면 R = 0 ⑤ **잔여물**: 흔적 폴더의 비흔적 파일이 `〈설치당 임시 파일 수〉`(O-9) 이하이고, 그 파일은 자기·남의·레거시 **어느 분류에도 잡히지 않으며** 불일치 경고도 내지 않는다(열거 정규식 음성 대조) ⑥ **「중간 상태 0」의 예외 목록은 비어 있어야 한다.** 첫 쓰기에 0바이트 대상이 남는 구조라면 그 한 칸만 Q-10 판정으로 예외다. **★ 먼저 빨갛게 — 구현 순서**: ① 사망 주입구만 현행 `FileMode.Create` 쓰기에 넣는다(쓰기 방식 무변경) → 전수가 **빨갛다**(0 < k < N에서 흔적이 접두부 = `Unreadable`), 그 xml 보관 ② 원자화 ③ 초록. **①에서 빨강이 안 나오면 주입구가 원자 구간 밖을 찌르는 것이다**(M-20) |
 | TK-84 | `교체가_실패하면_흔적_경로에_직접_쓰지_않는다` | (나)·(다) | O-8 교체 실패 강제 주입(세이브 `ForceAtomicCommitFailuresForTesting` 관례, `CharacterSaveStore.cs:1252-1260`) — 열기(w1)와 닫기(w3·w4)에서 각각 | 열기 실패 → 시스템 쓰기 0(fail-closed), 흔적 경로 불변 · 닫기 실패 → 옛 열림 흔적이 **온전**하고 다음 실행 R = 1. ★ 세이브 저장소의 마지막 단 「그림자 커밋 = 직접 쓰기」(`CharacterSaveStore.cs:1171`)를 **흔적에 옮기지 않는다.** 세이브는 「영원히 저장 안 됨」이 전손이라 폴백이 옳았다(`:1174-1177`). 흔적은 **「안 쓰면 안 바꾼다」가 안전한 실패**다(Q-11) |
@@ -265,7 +271,7 @@
 | A-4 | `원칙_3_감사의_쓰기_형태_수가_변하지_않는다` | 불변 | ① 기존 `UserAssetImmutabilityAuditTests.승인된_작업표시줄_예외는_정확히_그_한_파일_두_형태로만_존재한다`(`:445-489`)가 **무수정으로** 초록 ② 신규 3파일·`Ledger`·`Director`의 지운 코드에서 `SHAppBarMessage`·`ABM_` 식별자 0 ③ `.TrySetAutoHide(` 호출이 `ReservedBarRevealDirector.cs` 밖 프로덕션(인터페이스 선언·Windows 구현 제외)에서 0 | ② 같은 스캐너가 `WindowsReservedBarAutoHideControl.cs`에서 `ABM_SETSTATE` ≥ 1 · ③ `Director` 안에서는 ≥ 1. ★ **커밋 관문(verify-change 몫, 리더 경유)**: 구현 커밋에서 `UserAssetImmutabilityAuditTests.cs` · `Platform/Windows/WindowsReservedBarAutoHideControl.cs` diff **0줄**. 기대값 `2`나 `TaskbarStateExceptionFileName`을 고쳐 초록을 만든 흔적이 없어야 한다 |
 | A-5 | `토큰_테스트는_실제_PlayerPrefs를_부르지_않는다` | 부재 | `Tests/EditMode`·`Tests/PlayMode` 전 파일의 지운 코드에서 ① `new PlayerPrefsReservedBarOwnerTokenStore(` 0 ② 흔적·토큰 테스트 파일(구현 라운드가 만든 목록 — **빈 목록이면 실패**, TEAM.md 거짓 통과 #5)에서 `PlayerPrefs` 식별자 0. ③ ★★ **갈래 1 확정**(2026-09-14 `36e0a5e` — 온보딩 경계 선착지. 판정 규칙·등재·복제 형태·생존 우회형은 3절 **G-7**). 원래 문구: **범위는 착지 순서로 갈린다**(2026-09-14 리더 결정 — 온보딩 「봤음」 저장소 경계는 coder 별도 커밋). 토큰 구현 라운드는 착수 시점에 온보딩 커밋이 `git log`에 있는지 확인하고, **어느 갈래인지 완료 보고에 적는다**(verify-change가 확인, 리더 경유):<br>**갈래 1 — 온보딩 경계가 먼저 착지**: A-5를 **「PlayMode 스위트 전체 실제 PlayerPrefs 쓰기 0」**으로 넓힌다. 실제 저장소 구현(온보딩 + `PlayerPrefsReservedBarOwnerTokenStore`)의 쓰기 계수를 `GlobalPlayModeTestIsolation`의 `OneTimeTearDown`에서 0으로 단언한다. 텍스트로는 못 보는 **프로덕션 경유 간접 쓰기**(HEAD `6173b6e`: `GearRadialMenuWidget.TryStartOnboardingHint` `:917` → `MarkSeen` `:923`)까지 잡는 유일한 형태다. ①②는 보조로 유지한다. **존재 대조 필수**: 계수가 실제 쓰기 경로에 붙어 있다는 증거(coder 라운드가 제공하는 계수 자기 검증). 한 번도 증가할 수 없는 계수의 0은 무효다<br>**갈래 2 — 토큰이 먼저 착지**(★ 소멸 — 기록으로만 남긴다): A-5는 ①②(토큰 테스트 파일 목록)로 **좁혀 둔다.** 온보딩은 `미해결_온보딩_봤음_기록이_PlayMode에서_실제_PlayerPrefs에_쓰인다`를 `Assert.Ignore`로 러너에 띄운다(사유: G-1 선례, 복원이 한 픽스처만 감쌈, coder 별도 커밋 배정). 온보딩 경계 타입이 소스에 나타나면 `Assert.Pass`로 승격 신호를 낸다(`PlatformParityAuditTests.cs:527-538` 관례). 타입 이름은 coder 라운드가 등록하며, 등록 전 빈 이름이면 실패다. 승격되면 그 라운드 안에서 갈래 1로 넓힌다 | 합성 입력으로 스캐너 생존 확인. ★ 현재 실측: 테스트 폴더의 `PlayerPrefs` 출현은 `SteamEntitlementAdapterAuditTests.cs:162`·`EntitlementNotInSaveAuditTests.cs:81,322`의 **문자열 안**뿐이다(grep). 지운 코드 기준으로 0이 나와야 한다 |
 | A-6 | `토큰_구조는_중립_위치에_있고_파생_함수는_순수하다` | 구조 | `PlatformParityAuditTests.cs:469-480`의 필수 중립 파일 목록에 신규 3파일 추가 · `ReservedBarOwnership.cs` 지운 코드에서 `UNITY_STANDALONE_`·`DllImport`·`System.IO`·`PlayerPrefs` 0(`ReservedBarRevealPolicyTests.cs:410` 관례) · `PlayerPrefsReservedBarOwnerTokenStore.cs`에 `#if` 0(architect 4절) | `:431-435` 관례의 주석 제거기 음성 대조를 그대로 붙인다 |
-| A-7 | `흔적_원자화는_삭제_이동_금지_감사_안에_머문다` | 부재 + 한정 | (설계 (나)·(다) 선택 시) ① 기존 `ForbiddenPatterns`(`File.Delete(`·`File.Move(`·`Directory.Delete(`)가 **무수정**이고 0건 유지 ② `MoveFileEx`·`ReplaceFile` P/Invoke 선언 0 — 세이브 원자화에서 H3(`MoveFileEx`)을 **기각한 선례**(`Tasklist.md:27219`) ③ `File.Replace(` 출현 파일 집합 ⊆ {`CharacterSaveStore.cs`, `ReservedBarRestoreLedger.cs`}(파일명은 `nameof(…) + ".cs"`) ④ `ReservedBarRestoreLedger.cs`에서 **흔적 경로**를 `FileMode.Create`로 직접 여는 형태 0(임시·슬롯 경로만 허용) — 판정은 O-7 사망 주입 전수(TK-83)가 실행으로 한다. 이 소스 항목은 보조다 ⑤ 임시 파일 정리가 필요하면 **삭제가 아니라 빈 내용 쓰기**(세이브 H2′ 「`WriteAllText(temp, "")` — 감사 무확장」과 같은 처리) | ③ `CharacterSaveStore.cs`에서 `File.Replace(` ≥ 1(현재 `:1390`). ★ 이번 라운드 `grep -F` 측정(프로덕션, 주석 줄 제외): `File.Replace(` 1 · `File.Copy(` 2 · `File.Move(` 0 · `File.Delete(` 0 · `MoveFileEx` 0 · `ReplaceFile` 0. ★ 세이브 선례상 Windows `File.Replace`는 **대상에 삭제 공유 없는 핸들이 열려 있으면 1175로 거절된다**(`CharacterSaveStore.cs:1149-1164`, 이 머신에서 재현 불가). 흔적 읽기도 `FileShare.Delete`로 열어야 자기 교체를 막지 않는다(`:681-691` 관례). 현재 `Ledger:139`의 `File.ReadAllText`는 그렇게 열지 않는다 — **구현 확인 항목** |
+| A-7 | `흔적_원자화는_삭제_이동_금지_감사_안에_머문다` | 부재 + 한정 | (설계 (나)·(다) 선택 시) ① 기존 `ForbiddenPatterns`(`File.Delete(`·`File.Move(`·`Directory.Delete(`)가 **무수정**이고 0건 유지 ② `MoveFileEx`·`ReplaceFile` P/Invoke 선언 0 — 세이브 원자화에서 H3(`MoveFileEx`)을 **기각한 선례**(`Tasklist.md:27219`) ③ `File.Replace(` 출현 파일 집합 ⊆ {`CharacterSaveStore.cs`, `ReservedBarRestoreLedger.cs`}(파일명은 `nameof(…) + ".cs"`) ④ `ReservedBarRestoreLedger.cs`에서 **흔적 경로**를 `FileMode.Create`로 직접 여는 형태 0(임시·슬롯 경로만 허용) — 판정은 O-7 사망 주입 전수(TK-83)가 실행으로 한다. 이 소스 항목은 보조다 ⑤ 임시 파일 정리가 필요하면 **삭제가 아니라 빈 내용 쓰기**(세이브 H2′ 「`WriteAllText(temp, "")` — 감사 무확장」과 같은 처리) | ③ `CharacterSaveStore.cs`에서 `File.Replace(` ≥ 1(현재 `:1390`). ★ 이번 라운드 `grep -F` 측정(프로덕션, 주석 줄 제외): `File.Replace(` 1 · `File.Copy(` 2 · `File.Move(` 0 · `File.Delete(` 0 · `MoveFileEx` 0 · `ReplaceFile` 0. ★ 세이브 선례상 Windows `File.Replace`는 **대상에 삭제 공유 없는 핸들이 열려 있으면 1175로 거절된다**(`CharacterSaveStore.cs:1149-1164`, 이 머신에서 재현 불가). 흔적 읽기도 `FileShare.Delete`로 열어야 자기 교체를 막지 않는다(`:681-691` 관례). 현재 `Ledger:163`의 `File.ReadAllText`는 그렇게 열지 않는다 — **구현 확인 항목** |
 
 **원리적 한계(리더 판정 `Tasklist.md:27328` 그대로)**: 텍스트 감사는 유니코드 이스케이프 식별자, 계산된 이름 리플렉션(`typeof(PlayerPrefs).GetMethod("DeleteAll")`)을 못 본다. A-1(e)의 별칭 검사까지만 싸게 막는다.
 
@@ -390,8 +396,8 @@
 | M-5b | 자기 새 스키마에서 **안** 쉬기 | TK-17 | |
 | M-6a | `Director:132`에 경로 복원 | TK-60 (a) | 네 자리를 **각각** 따로 넣는다. 한 자리만 넣고 초록이면 그 자리를 태우는 하위 시나리오가 죽은 것이다 |
 | M-6b | `Director:220`에 경로 복원 | TK-60 (b) | |
-| M-6c | `Ledger:160`에 경로 복원 | TK-60 (c) | |
-| M-6d | `Ledger:216`에 경로 복원 | TK-60 (d) | |
+| M-6c | `Ledger:184`에 경로 복원 | TK-60 (c) | |
+| M-6d | `Ledger:240`에 경로 복원 | TK-60 (d) | |
 | M-6e | 소유 로그에 토큰 원시값·꼬리를 찍음 | TK-60 ④⑤⑥ | |
 | M-7 | 토큰 확보 실패를 무시하고 진행 | TK-15 | |
 | M-8 | 순서 뒤집기(흔적 열기 → 확보, 또는 시스템 → 확보) | TK-16 | |
@@ -524,16 +530,16 @@
 
 | 줄 | 전제 | 형태 | 이관 |
 |---|---|---|---|
-| `:23-43` | `FakeControl`(쓰기 수만) | — | G-3 공용화 권장 |
-| `:138`, `:309`, `:327` | `RunStartup(control)` 무주입 | 컴파일, 또는 **O-1 기본값이 실제 저장소면 개발자 plist 쓰기** | 저장소 주입 |
-| `:316`, `:320`, `:331` | `Read(control.PlatformTag, out _)` 단일 파일 | 컴파일 | 폴더 스냅샷 → TK-41 |
-| `:424` | 소스 경로 `ReservedBarRevealDirector.cs`(quitting 구독 감사) | 영향 없음 | — |
+| `:39-84`(`17f6f38` 기준 `:23-43`) | `FakeControl` — `17f6f38`에서는 쓰기 수만 셌다. `e899fb8`에서는 조회 수 `ReadCount`·조회 실패 `ReadFails`·호출 안 끼어들기 훅 `DuringNextRead`/`DuringNextWrite`가 더해졌다(5-b·5-d) | — | G-3 공용화 권장 — 공용 가짜가 이 기능들도 품어야 이 파일이 옮겨 온다 |
+| `:277`, `:842`, `:867`, `:896`, `:928`, `:1223`(`17f6f38` 기준은 `:138`, `:309`, `:327` 세 곳 — 뒤 세 곳은 5-b·5-d의 `N3_…`·`N5b_…`·`재진입_…`에서 늘었다) | `RunStartup(control)` 무주입 | 컴파일, 또는 **O-1 기본값이 실제 저장소면 개발자 plist 쓰기** | 저장소 주입 |
+| `:849`, `:853`, `:871`, `:906`, `:1225`, `:1243`, `:1354`(`17f6f38` 기준은 `:316`, `:320`, `:331` 세 곳 — 뒤 네 곳은 `N3_…`·`재진입_…`에서 늘었다) | `Read(control.PlatformTag, out _)` 단일 파일 | 컴파일 | 폴더 스냅샷 → TK-41 |
+| `:1484`(`17f6f38` 기준 `:424`) | 소스 경로 `ReservedBarRevealDirector.cs`(quitting 구독 감사) | 영향 없음 | — |
 
 ### 격리 픽스처 — **파일명이 아니라 폴더를 구하는 자리**
 
 | 줄 | 전제 | 형태 | 이관 |
 |---|---|---|---|
-| `Tests/EditMode/GlobalEditModeTestIsolation.cs:91-94` | `PurgeGuarded(true, ReservedBarRestoreLedger.FilePath, …)` — `FilePath`의 **폴더**를 비운다 | `FilePath`가 사라지거나 토큰을 요구하면 컴파일 오류, 다른 폴더를 가리키면 **이월 파일이 남는다** | O-3 폴더 경로 |
+| `Tests/EditMode/GlobalEditModeTestIsolation.cs:98-101`(`5912e33` 기준 `:91-94`) | `PurgeGuarded(true, ReservedBarRestoreLedger.FilePath, …)` — `FilePath`의 **폴더**를 비운다 | `FilePath`가 사라지거나 토큰을 요구하면 컴파일 오류, 다른 폴더를 가리키면 **이월 파일이 남는다** | O-3 폴더 경로 |
 | `Tests/PlayMode/GlobalPlayModeTestIsolation.cs:147-150` | 같음 | 같음 | 같음 |
 | `Tests/PlayMode/GlobalPlayModeTestIsolation.cs:76-81` | 주석: `BeforeSceneLoad`가 흔적을 읽고 쓴다 | 에디터에서는 `RunStartup(null)` — **토큰 저장소가 거기서 만들어지면 PlayMode 러너가 매번 plist를 쓴다** | A-3(b) |
 
@@ -546,9 +552,9 @@
 | 자리 | 사실 | 이관 |
 |---|---|---|
 | 테스트 전체 | `grep -rn "ReservedBarLedgerState.Unreadable" Assets/_Project/Scripts/Tests` → **0**. 같은 명령의 양성 대조 `ReservedBarLedgerState\.` → **13**, 없는 상태 이름 음성 대조 → **0** ⇒ 이 0은 프로브가 죽어서 나온 0이 아니다 | TK-80~82·TK-85가 처음 잠근다 |
-| `Platform/ReservedBarRestoreLedger.cs:160-161`(프로덕션 로그 문장) | 「이번 실행은 시스템 설정을 바꾸지 않습니다」 — 현재 거동과 어긋난다 | (가)·(다)면 참이 되고, (나)만이면 **정정 필수**(TK-81나). 문장을 O-4 정의처로 옮겨야 테스트가 한국어를 베끼지 않는다 |
-| `Platform/ReservedBarRestoreLedger.cs:204-206`(프로덕션 주석) | 「반쯤 써진 채 남으면 다음 실행이 Unreadable로 읽고 '시스템을 바꾸지 않는다'로 가므로」 — 현재 거동과 어긋난다 | 같음. 주석은 테스트로 못 잠근다 → verify-change 확인 항목(리더 경유) |
-| `Platform/ReservedBarRestoreLedger.cs:139` | `File.ReadAllText` — `FileShare.Delete` 없이 연다 | (나)에서 `File.Replace`를 택하면 Windows 1175 자충수(`CharacterSaveStore.cs:681-691`)가 흔적에도 생긴다 → A-7 비고 |
+| `Platform/ReservedBarRestoreLedger.cs:184-185`(프로덕션 로그 문장) | 「이번 실행은 시스템 설정을 바꾸지 않습니다」 — 현재 거동과 어긋난다 | (가)·(다)면 참이 되고, (나)만이면 **정정 필수**(TK-81나). 문장을 O-4 정의처로 옮겨야 테스트가 한국어를 베끼지 않는다 |
+| `Platform/ReservedBarRestoreLedger.cs:228-230`(프로덕션 주석) | 「반쯤 써진 채 남으면 다음 실행이 Unreadable로 읽고 '시스템을 바꾸지 않는다'로 가므로」 — 현재 거동과 어긋난다 | 같음. 주석은 테스트로 못 잠근다 → verify-change 확인 항목(리더 경유) |
+| `Platform/ReservedBarRestoreLedger.cs:163` | `File.ReadAllText` — `FileShare.Delete` 없이 연다 | (나)에서 `File.Replace`를 택하면 Windows 1175 자충수(`CharacterSaveStore.cs:681-691`)가 흔적에도 생긴다 → A-7 비고 |
 | `Tests/EditMode/SavePreviousGenerationTests.cs:212,247` | 세이브 사망 주입이 **고정 40바이트** 한 점 | 흔적 전수(TK-80·TK-83)의 모델이 **아니다**. 모델은 계획 단계인 세이브 H2′ T7(`Tasklist.md:27219`, 미착지). 둘이 같은 형태가 되도록 구현 라운드끼리 맞출 것(리더 경유) |
 
 ### 참고 — 같은 커밋에 갱신할 판독 문서 (architect ⑤, 테스트 아님 · 같은 병)
@@ -575,7 +581,7 @@
 | Q-7 | 무주입 `RunStartup(control)` 존치 여부. 존치 시 기본 저장소는 **실제 PlayerPrefs가 아니어야** 한다 | 존치 시 무해 기본값 필수 | 6절 전체, G-1 |
 | Q-8 | (가)·(다)를 택하면 반쯤 쓰인 자기 흔적 하나로 **그 설치의 기능이 영구 정지**한다(TK-86). 지우기·덮기 금지 안에서 스스로 풀리지 않는다. 이 비용을 수용하는가, 수용하지 않으면 무엇이 풀어 주는가 | 명세는 박제만 한다 | TK-86, TK-80 켜짐 행 |
 | Q-9 | (가)의 범위 — **자기 흔적**의 `Unreadable`만 쉬는가, **고정 이름**을 못 읽어도 쉬는가. 후자는 C3(「남의 흔적은 이번 실행을 멈추지 않는다」)·TK-06과 충돌한다 | 자기 흔적만(C3 우선) | TK-82 ③, TK-06 |
-| Q-10 | **0바이트·공백만 있는 흔적**은 「없음」인가 「읽을 수 없음」인가. 현재 `Ledger:140`은 `Unreadable`이다. 세이브는 같은 모양을 「새 캐릭터로 시작」으로 읽는다(`CharacterSaveStore.cs:1136-1139`). 원자화가 첫 쓰기에 빈 대상을 먼저 만드는 구조면 **(가)와 합쳐져 첫 해제 도중 사망 한 번으로 영구 정지(Q-8)**가 된다 | 보류 — 두 기대를 모두 적었다 | TK-80 L = 0, TK-83 ⑥ |
+| Q-10 | **0바이트·공백만 있는 흔적**은 「없음」인가 「읽을 수 없음」인가. 현재 `Ledger:164`는 `Unreadable`이다. 세이브는 같은 모양을 「새 캐릭터로 시작」으로 읽는다(`CharacterSaveStore.cs:1136-1139`). 원자화가 첫 쓰기에 빈 대상을 먼저 만드는 구조면 **(가)와 합쳐져 첫 해제 도중 사망 한 번으로 영구 정지(Q-8)**가 된다 | 보류 — 두 기대를 모두 적었다 | TK-80 L = 0, TK-83 ⑥ |
 | Q-11 | 교체 실패 시 흔적 경로 직접 쓰기 폴백 **금지**(TK-84). 지속형 1175 환경(ACL이 삭제만 막는 등, 세이브 선례 `:1175-1176`)에서는 그 설치의 해제 기능이 꺼진 채가 된다. 수용하는가 | 금지(fail-closed) | TK-84, M-17 |
 
 ---
@@ -602,7 +608,7 @@
 
 ## 등재할 문장
 
-> [test-engineer] 무작위 설치 토큰 테스트 명세 — `docs/verify/RESERVED_BAR_OWNER_TOKEN_TEST_SPEC.md`(문서만, `.cs` 0). game-architect 2절 동반 테스트 8건과 3절 실패 방식 7행을 **실행 사례 41건 + 순수 함수 7건 + 감사 7건 + 변이 28종**으로 전개했다(리더 추가 지시분 1-J 포함. ★ 초판 등재 문장의 「30·6·21」은 손으로 센 오기였고, 문서 행 ID를 grep으로 다시 세어 고쳤다 — TK-70~72가 표 가운데 칸에 있어 행머리 정규식이 못 세는 것도 따로 확인했다). 준비물은 파생 함수로 파일명을 계산해 심지 않고 **실제 경로를 돌려** 만든다(생성기·검사기 공유 차단). 해석 3곳을 고정했고 리더 확인이 필요하다: I-1 「토큰 저장소 비어 있음 → 쓰기 0」은 **자기 흔적 복구에만** 적용한다(글자 그대로면 프리뷰 사용자의 레거시 갚기와 모든 첫 해제가 막힌다), I-2 제어기 null이면 저장소 읽기까지 0, I-3 「둘 다 열림 → 쓰기 1회」는 복구 방향 1회 + 해제 1회. ★ 발견: 기존 `ReservedBarRevealPolicyTests.cs:231,340`의 `File.Exists(FilePath)` 부재 단언은 새 구조에서 **조용한 초록**이 되고(M-13으로 실증 지시), `:390`의 고정 이름 새 스키마 테스트는 고치기 쉬운 방향이 「남의 흔적에서 쉬기」 변이와 같다. 파일명 고정 변이는 TK-13·14·20이 **못 잡아** 전용 사례 TK-25를 두었다. 판독 문서 7곳(`WINDOWS_CHECK_SESSION.md:173,280,752` · `CAPTURE_PROTOCOL.md:159,187` · `TASKBAR_REVEAL.md:277` · `ROADMAP.md:4416`)이 같은 조용한 초록 형태다. Windows 실기 절차는 「토큰 있는 기계 무효」를 맨 위에 두었고, 함정 3개를 적었다: 레거시를 먼저 치우면 토큰이 생긴다(순서), 레지스트리 값 이름의 `_h<해시>` 꼬리, 백업 `reg import`가 새 토큰을 덮어 고아를 만든다. ★ 1-J(리더 추가): `Director:102`가 `Unreadable`을 통과시키는데 `Ledger:160-161` 로그와 `:204-206` 주석은 「바꾸지 않는다」고 적고 있다. **`ReservedBarLedgerState.Unreadable`을 잠근 테스트는 0건**이다(양성 대조 13 · 음성 대조 0). 사례는 세 설계 (가)(나)(다) 모두에 대해 적었다: 모든 접두부 길이 전수(TK-80·82, 관대한 파서가 `active` 누락을 `Closed`로 읽는 함정 포함), 현재 트리에서 **반드시 빨간** 회귀 대조 TK-81(준비물 확인과 거동 빨강을 분리), 사망 주입 전수로 「옛 흔적 아니면 새 흔적」을 재는 TK-83(주입구만 먼저 넣어 빨강을 기록한 뒤 원자화), 교체 실패 폴백 금지 TK-84. 추론: 강제 종료 모델에서는 반쯤 쓰인 흔적과 원래 시스템 값이 항상 짝이라 현재 통과 거동이 설정을 틀리게 만드는 경로를 찾지 못했다. 전원 차단 + 셸 지속 값 지연(가설)에서는 (나)만 갚는다. (가)는 반쯤 쓰인 흔적 하나로 그 설치의 기능을 영구 정지시킨다(TK-86 박제). 미결 11건(Q-1~11). 부수: 이 머신 plist 두 개가 모두 온보딩 키를 담고 있어 R5 되돌리기 대상이 하나 빠졌을 수 있다. `GearMenuOnboardingHintTests`가 실제 PlayerPrefs를 쓰는 기존 선례. Unity 6 문서상 에디터 PlayerPrefs 자리는 플레이어와 다르다.
+> [test-engineer] 무작위 설치 토큰 테스트 명세 — `docs/verify/RESERVED_BAR_OWNER_TOKEN_TEST_SPEC.md`(문서만, `.cs` 0). game-architect 2절 동반 테스트 8건과 3절 실패 방식 7행을 **실행 사례 41건 + 순수 함수 7건 + 감사 7건 + 변이 28종**으로 전개했다(리더 추가 지시분 1-J 포함. ★ 초판 등재 문장의 「30·6·21」은 손으로 센 오기였고, 문서 행 ID를 grep으로 다시 세어 고쳤다 — TK-70~72가 표 가운데 칸에 있어 행머리 정규식이 못 세는 것도 따로 확인했다). 준비물은 파생 함수로 파일명을 계산해 심지 않고 **실제 경로를 돌려** 만든다(생성기·검사기 공유 차단). 해석 3곳을 고정했고 리더 확인이 필요하다: I-1 「토큰 저장소 비어 있음 → 쓰기 0」은 **자기 흔적 복구에만** 적용한다(글자 그대로면 프리뷰 사용자의 레거시 갚기와 모든 첫 해제가 막힌다), I-2 제어기 null이면 저장소 읽기까지 0, I-3 「둘 다 열림 → 쓰기 1회」는 복구 방향 1회 + 해제 1회. ★ 발견: 기존 `ReservedBarRevealPolicyTests.cs:231,340`의 `File.Exists(FilePath)` 부재 단언은 새 구조에서 **조용한 초록**이 되고(M-13으로 실증 지시), `:390`의 고정 이름 새 스키마 테스트는 고치기 쉬운 방향이 「남의 흔적에서 쉬기」 변이와 같다. 파일명 고정 변이는 TK-13·14·20이 **못 잡아** 전용 사례 TK-25를 두었다. 판독 문서 7곳(`WINDOWS_CHECK_SESSION.md:173,280,752` · `CAPTURE_PROTOCOL.md:159,187` · `TASKBAR_REVEAL.md:277` · `ROADMAP.md:4416`)이 같은 조용한 초록 형태다. Windows 실기 절차는 「토큰 있는 기계 무효」를 맨 위에 두었고, 함정 3개를 적었다: 레거시를 먼저 치우면 토큰이 생긴다(순서), 레지스트리 값 이름의 `_h<해시>` 꼬리, 백업 `reg import`가 새 토큰을 덮어 고아를 만든다. ★ 1-J(리더 추가): `Director:102`가 `Unreadable`을 통과시키는데 `Ledger:160-161` 로그와 `:204-206` 주석(작성 당시 `17f6f38` 기준 — `e899fb8` 기준 `:184-185`·`:228-230`)은 「바꾸지 않는다」고 적고 있다. **`ReservedBarLedgerState.Unreadable`을 잠근 테스트는 0건**이다(양성 대조 13 · 음성 대조 0). 사례는 세 설계 (가)(나)(다) 모두에 대해 적었다: 모든 접두부 길이 전수(TK-80·82, 관대한 파서가 `active` 누락을 `Closed`로 읽는 함정 포함), 현재 트리에서 **반드시 빨간** 회귀 대조 TK-81(준비물 확인과 거동 빨강을 분리), 사망 주입 전수로 「옛 흔적 아니면 새 흔적」을 재는 TK-83(주입구만 먼저 넣어 빨강을 기록한 뒤 원자화), 교체 실패 폴백 금지 TK-84. 추론: 강제 종료 모델에서는 반쯤 쓰인 흔적과 원래 시스템 값이 항상 짝이라 현재 통과 거동이 설정을 틀리게 만드는 경로를 찾지 못했다. 전원 차단 + 셸 지속 값 지연(가설)에서는 (나)만 갚는다. (가)는 반쯤 쓰인 흔적 하나로 그 설치의 기능을 영구 정지시킨다(TK-86 박제). 미결 11건(Q-1~11). 부수: 이 머신 plist 두 개가 모두 온보딩 키를 담고 있어 R5 되돌리기 대상이 하나 빠졌을 수 있다. `GearMenuOnboardingHintTests`가 실제 PlayerPrefs를 쓰는 기존 선례. Unity 6 문서상 에디터 PlayerPrefs 자리는 플레이어와 다르다.
 
 ## 플랫폼 영향
 

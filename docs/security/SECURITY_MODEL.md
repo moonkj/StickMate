@@ -615,7 +615,7 @@ useMacAppStoreValidation: 0`. 착수 시 영수증 검증이 별도 주제가 �
 
 | # | 위치 | 읽는 값 | 무엇에 쓰나 | 보상에 걸리나 |
 |---:|---|---|---|---|
-| 1 | `Platform/ReservedBarRestoreLedger.cs:197` | `DateTime.UtcNow` | 원복 원장의 기록 시각(문자열) | ❌ |
+| 1 | `Platform/ReservedBarRestoreLedger.cs:197`(`1f7e139` 기준) | `DateTime.UtcNow` | 원복 원장의 기록 시각(문자열) | ❌ |
 | 2 | `Interaction/CharacterAccessoryRenderer.cs:723` | `DateTime.Now.DayOfWeek` | 요일 연출 | ❌ |
 | 3 | `Interaction/CharacterPortraitStage.cs:1457` | `DateTime.Now.DayOfWeek` | 월요일 넥타이 | ❌ |
 | 4 | `Core/CharacterStatsModel.cs:75` | `DateTimeOffset.UtcNow` | `DaysTogether`(근속 **표시**) | ❌ (T-D-7 참조) |
@@ -994,7 +994,7 @@ T-3(단조 세션 시계) + T-4(래칫) + T-5(단일 예산) + T-6(3중 clamp �
 
 | # | 테스트 | 잠그는 것 | **오늘의 기대값(실측)** |
 |---:|---|---|---|
-| 1 | `WallClockReadScopeAuditTests` | 프로덕션에서 `DateTime.Now`/`DateTime.UtcNow`/`DateTimeOffset.Now`/`DateTimeOffset.UtcNow`/`Environment.TickCount` **호출 지점의 파일 집합 등호**. 수급·정산 파일이 그 집합에 **들어오면 실패** | **정확히 4파일 5지점**: `ReservedBarRestoreLedger.cs:197` · `CharacterAccessoryRenderer.cs:723` · `CharacterPortraitStage.cs:1457` · `CharacterStatsModel.cs:75,86`. ★ **부재 단언이 아니라 집합 등호로 쓴다** — CLAUDE.md의 "부재 단언은 썩으면 조용히 초록이 된다" |
+| 1 | `WallClockReadScopeAuditTests` | 프로덕션에서 `DateTime.Now`/`DateTime.UtcNow`/`DateTimeOffset.Now`/`DateTimeOffset.UtcNow`/`Environment.TickCount` **호출 지점의 파일 집합 등호**. 수급·정산 파일이 그 집합에 **들어오면 실패** | **정확히 4파일 5지점**: `ReservedBarRestoreLedger.cs:197`(`1f7e139` 기준) · `CharacterAccessoryRenderer.cs:723` · `CharacterPortraitStage.cs:1457` · `CharacterStatsModel.cs:75,86`. ★ **부재 단언이 아니라 집합 등호로 쓴다** — CLAUDE.md의 "부재 단언은 썩으면 조용히 초록이 된다" |
 | 2 | `IncomeTimeSourceAuditTests` | 수급·정산 타입에서 `Time.deltaTime` 부재 + `realtimeSinceStartupAsDouble` 존재를 **같은 테스트에서 대조** | 오늘 수급 코드 0줄 → **`Assert.Ignore`(사유 포함) + 항상 도는 동반 경보 1건.** `EntitlementFailOpenAuditTests`가 쓴 형태를 그대로 복제하고 `TestClaimExpiryAuditTests` 명부에 등록 |
 
 ★ 2번을 **지금 Ignore로 넣어 두는 이유**: 수급 배선 라운드가 이 테스트를 **켜는 것을 잊을 수 없게** 하기 위해서다.
