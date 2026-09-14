@@ -4645,28 +4645,38 @@ namespace StickMate.Tests.EditMode
                         $"{label} Enforcer에 화면 변경 유예 배선 '{needle}'이 없습니다 — 한쪽 플랫폼만 완화가 걸립니다.");
                 }
 
-                // ★ X2c 잠금(verify-change 2차) — 무장 메서드는 없다(DisplayChangeRenderHoldTests가 리플렉션·실행으로 잠근다).
-                //   남은 우회로는 Enforcer 쪽 세 가지다: (1) 확정 판정을 두 곳 이상에서 부른다(틱 자리에서 상수 인자로),
-                //   (2) 규칙을 신호 객체 없이 직접 불러 확정과 무장을 다시 가른다, (3) 구동기에 다른 신호 인스턴스를 넘긴다.
-                string evaluate = "." + nameof(FullScreenFitLatchSignal.Evaluate) + "(";
-                string latchDecision = "bool ok = _fullScreenFitLatch" + evaluate + "within, wroteThisTick);";
-                Assert.AreEqual(1, CountOccurrences(code, latchDecision),
-                    $"{label}: 적합 틱의 확정 판정 줄('{latchDecision}')이 정확히 한 번이 아닙니다(니들이 썩었거나 판정이 옮겨졌다).");
-                Assert.AreEqual(1, CountOccurrences(code, evaluate),
-                    $"{label}: 확정 판정('{evaluate}')이 적합 틱 밖에서도 불립니다 — 상수 인자로 부르면 기동 첫 프레임부터 유예가 무장됩니다(X2c).");
-                int decisionAt = code.IndexOf(latchDecision, StringComparison.Ordinal);
-                string afterDecision = code.Substring(decisionAt, Math.Min(240, code.Length - decisionAt));
-                StringAssert.Contains("if (ok)", afterDecision, $"{label}: 확정 판정 결과가 곧바로 확정 블록을 열지 않습니다.");
-                StringAssert.Contains("_fullScreenBoundsApplied = true;", afterDecision,
-                    $"{label}: 확정 판정과 적합 완료 플래그가 떨어져 있습니다 — 무장과 적합 확정이 다른 사건이 됩니다.");
-                Assert.AreEqual(0, CountOccurrences(code, nameof(OverlayBoundsFitPolicy.ShouldLatchFitApplied) + "("),
+                // ★ X2c 잠금(verify-change 2차·3차) — 무장 메서드는 없다(DisplayChangeRenderHoldTests가 리플렉션·실행으로 잠근다).
+                //   3차 검증: 문자열 ".Evaluate(" 계수라 `Evaluate (true, false)`(공백 한 칸, V1)와 메서드 그룹(`Func<…> f = _fullScreenFitLatch.Evaluate;`, V1b)이
+                //   두 타깃 컴파일 + 전량 초록으로 살아남았다. 4차: 주석·문자열·보간 구멍을 지운 코드에서 <b>식별자 토큰</b>으로 센다(공백·줄바꿈 무관).
+                //   (1) 확정 신호 필드는 선언·구동기 인자·확정 판정 세 토큰뿐 — 두 번째 호출·메서드 그룹·별칭 대입·다른 곳으로 넘기기가 전부 네 번째 토큰이다.
+                //   (2) `.Evaluate` 멤버 접근은 이 파일에서 하나이고, 그것은 적합 틱 본문 안의 `bool ok = …Evaluate(within, wroteThisTick);`이며 곧바로 적합 완료를 세운다.
+                //   (3) 규칙 직접 호출 0 · 타입 이름은 필드 선언·생성식 두 번 · 리플렉션용 이름 문자열 0 · 구동기에 같은 인스턴스.
+                //   ★ 한계(정직하게): C#에는 "이 메서드 안에서만 부를 수 있다"는 접근 한정이 없다(최소 단위가 타입). 그래서 적합 틱 밖 호출을
+                //   <b>컴파일러로</b> 불가능하게 만들지는 못했고, 그 자리를 이 토큰 계수가 막는다. 적합 틱 <b>안에서</b> 판정 입력(within·wroteThisTick)을
+                //   거짓 값으로 바꾸는 변경은 무장 자리의 문제가 아니라 적합 동작 자체의 변경이라 이 감사의 범위 밖이다.
+                var enforcerLiterals = new List<string>();
+                string tokens = SourceTextScanner.BlankCommentsAndStrings(ReadSource(path), enforcerLiterals, blankInterpolationHoles: true);
+                const string latchField = "_fullScreenFitLatch";
+                Assert.AreEqual(3, SourceTextScanner.CountIdentifier(tokens, latchField),
+                    $"{label}: 확정 신호 필드 '{latchField}' 토큰이 3개(선언·구동기 인자·확정 판정)가 아닙니다 — 두 번째 호출·메서드 그룹·별칭이 생겼거나 니들이 썩었습니다(X2c).");
+                Assert.AreEqual(1, SourceTextScanner.CountMemberAccess(tokens, nameof(FullScreenFitLatchSignal.Evaluate)),
+                    $"{label}: '.{nameof(FullScreenFitLatchSignal.Evaluate)}' 멤버 접근이 1개가 아닙니다 — 상수 인자 호출·메서드 그룹으로 기동 첫 프레임부터 유예가 무장될 수 있습니다(X2c).");
+                string fitBody = SourceTextScanner.BlockMemberBody(tokens, "private void TickFullScreenBounds()");
+                Assert.IsNotNull(fitBody, $"{label}: 적합 틱 본문을 찾지 못했습니다(니들이 썩었다).");
+                string decisionPattern = @"bool\s+ok\s*=\s*" + latchField + @"\s*\.\s*" + nameof(FullScreenFitLatchSignal.Evaluate) +
+                                         @"\s*\(\s*within\s*,\s*wroteThisTick\s*\)\s*;";
+                Assert.AreEqual(1, Regex.Matches(fitBody, decisionPattern).Count,
+                    $"{label}: 적합 틱 본문 안에 확정 판정(within·wroteThisTick)이 정확히 한 번 있지 않습니다.");
+                Assert.IsTrue(Regex.IsMatch(fitBody, decisionPattern + @"\s*if\s*\(\s*ok\s*\)\s*\{\s*_fullScreenBoundsApplied\s*=\s*true\s*;"),
+                    $"{label}: 확정 판정 결과가 곧바로 적합 완료 플래그를 세우지 않습니다 — 무장과 적합 확정이 다른 사건이 됩니다.");
+                Assert.AreEqual(0, SourceTextScanner.CountIdentifier(tokens, nameof(OverlayBoundsFitPolicy.ShouldLatchFitApplied)),
                     $"{label}: 확정 규칙을 신호 객체 없이 직접 부릅니다 — 확정은 서는데 유예는 무장되지 않거나 그 반대가 됩니다.");
-                Assert.AreEqual(1, CountOccurrences(code, "new " + nameof(FullScreenFitLatchSignal) + "("),
-                    $"{label}: 확정 신호 인스턴스가 하나가 아닙니다 — 구동기가 다른 인스턴스로 무장될 수 있습니다.");
-                int driverAt = code.IndexOf("new " + nameof(DisplayChangeHoldDriver) + "(", StringComparison.Ordinal);
-                int driverEnd = code.IndexOf(nameof(DisplayChangeHoldPolicy.ReadDisabledFromEnvironment) + "()", driverAt, StringComparison.Ordinal);
-                Assert.Greater(driverEnd, driverAt, $"{label}: 구동기 생성식의 끝을 찾지 못했습니다.");
-                StringAssert.Contains("_fullScreenFitLatch,", code.Substring(driverAt, driverEnd - driverAt),
+                Assert.AreEqual(2, SourceTextScanner.CountIdentifier(tokens, nameof(FullScreenFitLatchSignal)),
+                    $"{label}: 확정 신호 타입 이름이 필드 선언·생성식 두 번이 아닙니다 — 두 번째 인스턴스나 다른 경로로 무장될 수 있습니다.");
+                Assert.IsFalse(enforcerLiterals.Contains(nameof(FullScreenFitLatchSignal.Evaluate)) || enforcerLiterals.Contains(latchField),
+                    $"{label}: 확정 판정/필드 이름이 문자열로 나타납니다 — 리플렉션 우회로 무장될 수 있습니다.");
+                Assert.AreEqual(1, Regex.Matches(tokens, @"\}\s*,\s*" + latchField + @"\s*,\s*" + nameof(DisplayChangeHoldPolicy) + @"\s*\.\s*" +
+                        nameof(DisplayChangeHoldPolicy.ReadDisabledFromEnvironment) + @"\s*\(\s*\)\s*\)\s*;").Count,
                     $"{label}: 구동기에 적합 틱과 같은 확정 신호가 넘어가지 않습니다.");
 
                 // 원칙 2 — 유예 틱은 클릭 관통·투명·항상위·히트테스트 상태를 건드리지 않는다.
@@ -4706,10 +4716,51 @@ namespace StickMate.Tests.EditMode
         {
             var literals = new List<string>();
             string code = SourceTextScanner.BlankCommentsAndStrings(source, literals);
-            int n = RenderFrameIntervalWrite.Matches(code).Count + RenderFrameIntervalPrefixStep.Matches(code).Count;
+            int n = RenderFrameIntervalWrite.Matches(code).Count + RenderFrameIntervalPrefixStep.Matches(code).Count
+                    + CountTupleDeconstructionTargets(code) + RenderFrameIntervalNameOf.Matches(code).Count;
             foreach (string literal in literals)
             {
                 if (literal == RenderFrameIntervalName) n++;
+            }
+            return n;
+        }
+
+        private static readonly Regex RenderFrameIntervalIdentifier = new Regex(
+            @"(?<![\w@])@?" + RenderFrameIntervalName + @"(?!\w)", RegexOptions.CultureInvariant);
+
+        /// <summary>★ 4차(verify-change 3차 V3) — <c>GetProperty(nameof(…renderFrameInterval)).SetValue</c> 형태의 리플렉션 쓰기. <c>nameof</c>는 코드라
+        /// 문자열 리터럴 검사에 안 걸린다. 프로덕션에서 이 속성 이름을 <c>nameof</c>로 부를 정당한 용도가 없어 쓰기 가능 참조로 센다.</summary>
+        private static readonly Regex RenderFrameIntervalNameOf = new Regex(
+            @"nameof\s*\(\s*(?:@?\w+\s*\.\s*)*@?" + RenderFrameIntervalName + @"\s*\)", RegexOptions.CultureInvariant);
+
+        /// <summary>
+        /// ★ 4차(verify-change 3차 V2) — 튜플 분해 대입 <c>(OnDemandRendering.renderFrameInterval, _) = (2, 0);</c>. 이름 뒤에서 식별자·<c>,</c>·<c>.</c>·
+        /// 공백만 지나 이름을 감싼 괄호를 빠져나가고(중첩 튜플이면 여러 겹), 닫힌 괄호 바로 뒤가 대입 <c>=</c>(비교 <c>==</c>·람다 <c>=&gt;</c> 아님)면
+        /// 쓰기로 센다. 그 전에 다른 연산자·<c>;</c>·중괄호를 만나면 분해 대입이 아니다(인자 목록·튜플 식·비교).
+        /// </summary>
+        private static int CountTupleDeconstructionTargets(string code)
+        {
+            int n = 0;
+            foreach (Match m in RenderFrameIntervalIdentifier.Matches(code))
+            {
+                int k = m.Index + m.Length;
+                int opened = 0;
+                while (k < code.Length)
+                {
+                    char c = code[k];
+                    if (char.IsWhiteSpace(c) || c == ',' || c == '.' || c == '_' || c == '@' || char.IsLetterOrDigit(c)) { k++; continue; }
+                    if (c == '(') { opened++; k++; continue; }
+                    if (c != ')') break;
+                    k++;
+                    if (opened > 0) { opened--; continue; }
+                    int j = k;
+                    while (j < code.Length && char.IsWhiteSpace(code[j])) j++;
+                    if (j < code.Length && code[j] == '=' && (j + 1 >= code.Length || (code[j + 1] != '=' && code[j + 1] != '>')))
+                    {
+                        n++;
+                        break;
+                    }
+                }
             }
             return n;
         }
@@ -4746,6 +4797,12 @@ namespace StickMate.Tests.EditMode
                 "간격을 바꿔야 하면 FramePacing의 입력(계획·유예)을 늘리세요.");
         }
 
+        /// <summary>
+        /// 탐지기 표본 — 새 탐지 규칙마다 양성·음성을 함께 둔다(4차: 튜플 분해 V2, <c>nameof</c> 리플렉션 V3).
+        /// <para><b>★ 텍스트 감사가 원리상 못 보는 형태(조용히 두지 않고 적는다).</b> (1) 계산된 이름의 리플렉션(<c>"render" + "FrameInterval"</c>,
+        /// <c>GetProperties()</c> 순회), (2) 표현식 트리·<c>dynamic</c>, (3) 네이티브 플러그인·Unity 내부, <c>Packages/</c> 등 Assets 밖 코드,
+        /// (4) <c>foreach</c> 분해 대상 등 컴파일러가 허용하는지조차 드문 형태. 이 형태가 필요해지면 실행 계측(<c>FramePacing</c>의 실효 간격 로그)으로 본다.</para>
+        /// </summary>
         [Test]
         public void 렌더_간격_쓰기_탐지기는_표기_변형을_잡고_읽기_문자열_주석은_거른다()
         {
@@ -4762,6 +4819,9 @@ namespace StickMate.Tests.EditMode
                 "typeof(OnDemandRendering).GetProperty(\"renderFrameInterval\").SetValue(null, 2);",
                 "var s = $\"{(OnDemandRendering.renderFrameInterval = 5)}\";",
                 "char q = '\"'; OnDemandRendering.renderFrameInterval = 6;",
+                "(OnDemandRendering.renderFrameInterval, _) = (2, 0);",
+                "((a, UnityEngine.Rendering.OnDemandRendering.renderFrameInterval), b) = t;",
+                "typeof(UnityEngine.Rendering.OnDemandRendering).GetProperty(nameof(UnityEngine.Rendering.OnDemandRendering.renderFrameInterval)).SetValue(null, 2);",
             };
             foreach (string snippet in writes)
             {
@@ -4784,6 +4844,11 @@ namespace StickMate.Tests.EditMode
                 "int renderFrameIntervalCount = 2; int RenderFrameInterval = 3;",
                 "char q = '\"'; int y = OnDemandRendering.renderFrameInterval;",
                 "int Plan => renderFrameInterval;",
+                "(int a, int b) = (OnDemandRendering.renderFrameInterval, 1);",
+                "int m = Math.Max(OnDemandRendering.renderFrameInterval, 1) == 2 ? 1 : 0;",
+                "Foo(OnDemandRendering.renderFrameInterval, x = 2);",
+                "if (Foo(OnDemandRendering.renderFrameInterval)) x = 1;",
+                "var t = (OnDemandRendering.renderFrameInterval, 1);",
             };
             foreach (string snippet in notWrites)
             {

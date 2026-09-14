@@ -19,6 +19,12 @@ namespace StickMate.Platform
         OtherInstanceAlive,
         /// <summary>표지를 해석할 수 없다 — 추측하지 않는다(복사하지 않는다).</summary>
         Unreadable,
+        /// <summary>
+        /// ★ 4차 — 표지가 "종료 시작"에서 멈췄다. 종료 순서를 시작했지만 끝내지 못하고 끊겼다(추정 경로: 셸이 먼저 내려가
+        /// 작업표시줄 원복의 동기 셸 호출이 돌아오지 않은 채 세션 종료로 강제 종료). <b>세션 중 멈춤이 아니므로 복사하지 않는다</b>
+        /// — 이 경로가 매일 밤 반복되는 사용자에게 매일 아침 4MB 복사가 일어나면 안 된다.
+        /// </summary>
+        ExitStartedNotFinished,
     }
 
     /// <summary>
@@ -32,10 +38,13 @@ namespace StickMate.Platform
     ///
     /// <para><b>왜 표지를 종료 순서 안에 두나(R-6).</b> 표지를 <c>Application.quitting</c>에만 찍으면, Unity가 Windows
     /// 로그오프·시스템 종료에서 quitting을 부르지 않는 경우(실기 미확인) 매일 밤 PC를 끄는 사용자가 매일 아침
-    /// "비정상 종료"로 오판된다. 그래서 <see cref="AppShutdownSequence"/>의 마지막 단계로 두어 두 입구가 같이 찍는다.</para>
+    /// "비정상 종료"로 오판된다. 그래서 <see cref="AppShutdownSequence"/> 안에 두어 두 입구가 같이 찍는다.</para>
     ///
-    /// <para><b>원칙 3.</b> 원본(<c>Player-prev.log</c>)은 읽기만 한다. 쓰는 곳은 우리 폴더
-    /// (<c>persistentDataPath/FreezeForensics</c>)의 표지 파일 1개와 복사본 슬롯 <see cref="CopySlotCount"/>개뿐이고,
+    /// <para><b>표지 세 상태(4차).</b> 기동 "실행 중"(디스크 동기화) → 종료 순서 맨 앞 "종료 시작"(동기화 <b>없음</b> — 원복 앞에
+    /// 기다리는 단계를 두지 않는다) → 종료 순서 맨 끝 "정상 종료"(동기화). 원복 도중 끊기면 "종료 시작"이 남는다.</para>
+    ///
+    /// <para><b>원칙 3.</b> 원본(<c>Player-prev.log</c>)은 읽기만 하고 남의 읽기·쓰기·이름 바꾸기를 막지 않는다(공유 모드). 쓰는
+    /// 곳은 우리 폴더(<c>persistentDataPath/FreezeForensics</c>)의 표지 파일 1개와 복사본 슬롯 <see cref="CopySlotCount"/>개뿐이고,
     /// 슬롯은 덮어쓰기 링이라 삭제·이동이 없다. 사용자에게 알림 UI를 띄우지 않는다(로그 한 줄뿐).</para>
     /// </summary>
     public static class SessionExitMarkerPolicy
@@ -43,6 +52,8 @@ namespace StickMate.Platform
         /// <summary>표지 파일 이름(우리 폴더 안).</summary>
         public const string MarkerFileName = "session-exit-marker.txt";
         public const string RunningState = "running";
+        /// <summary>종료 순서를 시작했다(4차).</summary>
+        public const string ExitStartedState = "exit-started";
         public const string CleanExitState = "clean-exit";
 
         /// <summary>Unity가 직전 실행 로그에 붙이는 이름(<c>Application.consoleLogPath</c>와 같은 폴더).</summary>
@@ -62,6 +73,9 @@ namespace StickMate.Platform
 
         public static string FormatRunning(int pid, DateTime utc)
             => string.Format(CultureInfo.InvariantCulture, "state={0} pid={1} utc={2:o}", RunningState, pid, utc.ToUniversalTime());
+
+        public static string FormatExitStarted(int pid, AppShutdownTrigger trigger, DateTime utc)
+            => string.Format(CultureInfo.InvariantCulture, "state={0} pid={1} trigger={2} utc={3:o}", ExitStartedState, pid, trigger, utc.ToUniversalTime());
 
         public static string FormatCleanExit(int pid, AppShutdownTrigger trigger, DateTime utc)
             => string.Format(CultureInfo.InvariantCulture, "state={0} pid={1} trigger={2} utc={3:o}", CleanExitState, pid, trigger, utc.ToUniversalTime());
@@ -91,6 +105,7 @@ namespace StickMate.Platform
             if (!markerExists) return PreviousSessionVerdict.NoMarker;
             if (!TryParse(markerText, out string state, out int pid)) return PreviousSessionVerdict.Unreadable;
             if (state == CleanExitState) return PreviousSessionVerdict.CleanExit;
+            if (state == ExitStartedState) return PreviousSessionVerdict.ExitStartedNotFinished;
             if (state != RunningState) return PreviousSessionVerdict.Unreadable;
             if (pid > 0 && pid != currentPid && isSameAppAlive != null && isSameAppAlive(pid)) return PreviousSessionVerdict.OtherInstanceAlive;
             return PreviousSessionVerdict.AbnormalExit;
@@ -138,6 +153,9 @@ namespace StickMate.Platform
         private static string s_directory;
         private static int s_pid;
 
+        /// <summary>테스트 전용 — 원본을 연 <b>동안</b> 불린다(원본 경로). 남의 핸들을 막지 않는지 실행으로 재는 탐침 자리.</summary>
+        internal static Action<string> SourceOpenedForTesting;
+
         /// <summary>이번 실행의 표지가 켜졌는가(기동이 "실행 중" 표지를 썼다).</summary>
         public static bool IsStarted
         {
@@ -171,9 +189,13 @@ namespace StickMate.Platform
                     copied = TryCopyTail(previousPlayerLogPath, directory, maxCopyBytes, verdict, utcNow,
                         out sourceBytes, out copiedBytes, out truncated, out note);
                 }
+                else if (verdict == PreviousSessionVerdict.ExitStartedNotFinished)
+                {
+                    note = "직전 실행이 종료를 시작했지만 끝내지 못했습니다(종료 중 끊김 — 셸 선종료 등 추정). 세션 중 멈춤이 아니라 복사하지 않습니다";
+                }
 
                 // 복사 <b>뒤에</b> 쓴다 — 복사 도중 죽으면 옛 "실행 중" 표지가 남아 다음 실행이 다시 판정한다.
-                WriteMarker(markerPath, SessionExitMarkerPolicy.FormatRunning(pid, utcNow));
+                WriteMarker(markerPath, SessionExitMarkerPolicy.FormatRunning(pid, utcNow), flushToDisk: true);
                 lock (Gate)
                 {
                     s_directory = directory;
@@ -187,21 +209,34 @@ namespace StickMate.Platform
             return new StartupResult(verdict, copied, sourceBytes, copiedBytes, truncated, note);
         }
 
-        /// <summary>종료 순서의 마지막 단계. 기동이 표지를 켜지 않았으면 아무것도 하지 않는다. 던지지 않는다.</summary>
-        public static bool WriteCleanExit(AppShutdownTrigger trigger)
+        /// <summary>
+        /// ★ 4차 — 종료 순서의 <b>맨 앞</b>. 우리 폴더의 한 줄을 OS에 넘기고 끝난다 — <b>디스크 동기화(<c>Flush(true)</c>)를 하지 않는다</b>.
+        /// 프로세스가 끊겨도 OS가 받은 쓰기는 남고(잃는 것은 전원 차단뿐), 그래서 작업표시줄 원복 앞에 기다리는 단계가 생기지 않는다.
+        /// 기동이 표지를 켜지 않았으면 아무것도 하지 않는다. 던지지 않는다.
+        /// </summary>
+        public static bool WriteExitStarted(AppShutdownTrigger trigger)
         {
-            string directory;
-            int pid;
-            lock (Gate)
-            {
-                directory = s_directory;
-                pid = s_pid;
-            }
-            if (directory == null) return false;
+            if (!TryGetStarted(out string directory, out int pid)) return false;
             try
             {
                 WriteMarker(Path.Combine(directory, SessionExitMarkerPolicy.MarkerFileName),
-                    SessionExitMarkerPolicy.FormatCleanExit(pid, trigger, DateTime.UtcNow));
+                    SessionExitMarkerPolicy.FormatExitStarted(pid, trigger, DateTime.UtcNow), flushToDisk: false);
+                return true;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        /// <summary>종료 순서의 마지막 단계(디스크 동기화). 기동이 표지를 켜지 않았으면 아무것도 하지 않는다. 던지지 않는다.</summary>
+        public static bool WriteCleanExit(AppShutdownTrigger trigger)
+        {
+            if (!TryGetStarted(out string directory, out int pid)) return false;
+            try
+            {
+                WriteMarker(Path.Combine(directory, SessionExitMarkerPolicy.MarkerFileName),
+                    SessionExitMarkerPolicy.FormatCleanExit(pid, trigger, DateTime.UtcNow), flushToDisk: true);
                 return true;
             }
             catch (Exception)
@@ -236,6 +271,17 @@ namespace StickMate.Platform
                 s_directory = null;
                 s_pid = 0;
             }
+            SourceOpenedForTesting = null;
+        }
+
+        private static bool TryGetStarted(out string directory, out int pid)
+        {
+            lock (Gate)
+            {
+                directory = s_directory;
+                pid = s_pid;
+            }
+            return directory != null;
         }
 
         private static string ReadSmallText(string path)
@@ -249,14 +295,17 @@ namespace StickMate.Platform
             }
         }
 
-        /// <summary>우리 폴더의 표지 파일을 통째로 다시 쓴다(<c>FileMode.Create</c> = 우리 파일 덮어쓰기). 전원 차단 대비로 OS 캐시까지 민다.</summary>
-        private static void WriteMarker(string markerPath, string line)
+        /// <summary>
+        /// 우리 폴더의 표지 파일을 통째로 다시 쓴다(<c>FileMode.Create</c> = 우리 파일 덮어쓰기).
+        /// <paramref name="flushToDisk"/>가 참이면 전원 차단 대비로 OS 캐시까지 민다.
+        /// </summary>
+        private static void WriteMarker(string markerPath, string line, bool flushToDisk)
         {
             byte[] bytes = Encoding.UTF8.GetBytes(line + "\n");
             using (var stream = new FileStream(markerPath, FileMode.Create, FileAccess.Write, FileShare.Read))
             {
                 stream.Write(bytes, 0, bytes.Length);
-                stream.Flush(true);
+                if (flushToDisk) stream.Flush(true);
             }
         }
 
@@ -291,9 +340,10 @@ namespace StickMate.Platform
             string fileName = SessionExitMarkerPolicy.CopySlotFileName(slot);
             string destination = Path.Combine(directory, fileName);
 
-            // 원본은 읽기 전용으로 연다. Unity가 아직 붙잡고 있을 수 있어 공유 쓰기를 허용한다.
+            // 원본은 읽기 전용으로 연다. Unity·사용자·다른 프로그램의 읽기·쓰기·이름 바꾸기를 막지 않도록 공유를 전부 연다.
             using (var source = new FileStream(fullSource, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
             {
+                SourceOpenedForTesting?.Invoke(fullSource);
                 sourceBytes = source.Length;
                 long start = SessionExitMarkerPolicy.CopyStartOffset(sourceBytes, maxCopyBytes);
                 truncated = start > 0;

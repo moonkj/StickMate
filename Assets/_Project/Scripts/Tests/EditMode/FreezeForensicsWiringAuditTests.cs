@@ -28,28 +28,27 @@ namespace StickMate.Tests.EditMode
             ? Path.Combine(PlatformRoot, "Windows", "WindowsOverlayStateEnforcer.cs")
             : Path.Combine(PlatformRoot, "MacOS", "MacOverlayStateEnforcer.cs");
 
+        /// <summary>
+        /// ★ 4차(verify-change 3차 V5) — 주석·문자열·보간 구멍을 전부 공백으로 지운 <b>코드만</b> 돌려준다(<see cref="SourceTextScanner"/>).
+        /// 옛 판은 <c>//</c> 주석만 벗겨 문자열·보간을 남겼고, 같은 파일의 로그 문자열이 배선 니들을 채울 수 있었다(V5가 다른 파일에서 그렇게 살아남았다).
+        /// 문자열 내용 자체를 봐야 하는 단언은 <see cref="BodyLiterals"/>로 따로 본다. 줄 구조·위치는 원문과 같다.
+        /// </summary>
         private static string ReadCode(string path)
         {
             Assert.IsTrue(File.Exists(path), $"소스를 찾지 못했습니다({path}) — 옮겨졌다면 이 감사도 함께 갱신하세요.");
-            return StripComments(File.ReadAllText(path).Replace("\r\n", "\n"));
+            return SourceTextScanner.BlankCommentsAndStrings(File.ReadAllText(path).Replace("\r\n", "\n"), null, blankInterpolationHoles: true);
         }
 
-        /// <summary>줄 주석을 벗긴다(따옴표 안의 <c>//</c>는 남긴다 — 짝수 개의 따옴표 뒤에서만 자른다).</summary>
-        private static string StripComments(string src)
+        /// <summary>시그니처로 시작하는 멤버 본문 안의 평문 문자열 리터럴들(지운 코드와 원문의 위치가 같다는 성질을 쓴다).</summary>
+        private static System.Collections.Generic.List<string> BodyLiterals(string path, string signature)
         {
-            var sb = new StringBuilder(src.Length);
-            foreach (string raw in src.Split('\n'))
-            {
-                int cut = -1;
-                int quotes = 0;
-                for (int i = 0; i + 1 < raw.Length; i++)
-                {
-                    if (raw[i] == '"' && (i == 0 || raw[i - 1] != '\\')) quotes++;
-                    if (raw[i] == '/' && raw[i + 1] == '/' && quotes % 2 == 0) { cut = i; break; }
-                }
-                sb.Append(cut >= 0 ? raw.Substring(0, cut) : raw).Append('\n');
-            }
-            return sb.ToString();
+            string raw = File.ReadAllText(path).Replace("\r\n", "\n");
+            string code = SourceTextScanner.BlankCommentsAndStrings(raw, null, blankInterpolationHoles: true);
+            string body = Body(code, signature);
+            int start = code.IndexOf(signature, StringComparison.Ordinal);
+            var literals = new System.Collections.Generic.List<string>();
+            SourceTextScanner.BlankCommentsAndStrings(raw.Substring(start, body.Length), literals);
+            return literals;
         }
 
         /// <summary>시그니처부터 다음 멤버 선언(8칸 들여쓰기) 직전까지. 못 찾으면 실패한다(썩은 니들은 빨갛게).</summary>
@@ -90,7 +89,8 @@ namespace StickMate.Tests.EditMode
             Assert.GreaterOrEqual(observe, 0, $"{platform}: 토폴로지 관측이 원장에 전해지지 않는다(t0를 못 찍는다).");
             Assert.GreaterOrEqual(rearm, 0, $"{platform}: 재무장 줄 니들이 썩었다 — 감사를 갱신하세요.");
             Assert.Less(observe, rearm, $"{platform}: 원장 기록은 재무장보다 앞이어야 한다.");
-            StringAssert.Contains("\"" + platform + "\"", body, $"{platform}: 원장 줄의 플랫폼 꼬리표가 다르다.");
+            CollectionAssert.Contains(BodyLiterals(EnforcerPath(platform), "private void TickDisplayTopology()"), platform,
+                $"{platform}: 원장 줄의 플랫폼 꼬리표가 다르다.");
         }
 
         [TestCase("Windows", FreezeForensicsEvent.SetResolution, "Screen.SetResolution(")]

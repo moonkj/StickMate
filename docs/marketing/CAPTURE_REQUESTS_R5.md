@@ -86,6 +86,7 @@
 ## 3. ★★ 신규 선행 절차 — **「첫 실행」은 세이브만 지워서는 안 된다**
 
 `CAPTURE_PROTOCOL.md`의 기존 절차는 **세이브 JSON만** 지운다. **그걸로는 첫 실행이 안 된다.**
+〔R11 (2026-09-14): 그 세이브 절차 자체도 **저장 폴더 단위**로 바뀌었다(아래 1번). 이 절의 결론 — **`PlayerPrefs`는 따로 옮겨야 한다** — 은 그대로다〕
 
 온보딩 「봤음」 기록은 **`PlayerPrefs`**에 있다
 (`GearRadialMenuWidget.OnboardingSeenKey` = `StickMate.GearMenu.OnboardingSeen.v1`).
@@ -98,8 +99,12 @@
 ```
 
 > ### ★ B3(첫 실행 캡처) 선행 절차
-> 1. 세이브: `~/Library/Application Support/Vibelab/StickMate/stickmate_character.json`
->    → **옮긴다**(`.bak`). ★ **지우지 마라 — 되돌릴 수 있어야 한다.**
+> 1. 세이브: ~~`~/Library/Application Support/Vibelab/StickMate/stickmate_character.json` → 옮긴다(`.bak`)~~
+>    ★★ **R11 (2026-09-14) 정정 — 본체 파일 하나가 아니라 저장 폴더 `~/Library/Application Support/Vibelab/StickMate/`를 통째로 옮긴다**
+>    (Windows: `%USERPROFILE%\AppData\LocalLow\Vibelab\StickMate\`). 같은 폴더 안 `.bak` 개명은 **본체만 없어진 모양**이라,
+>    곧 들어갈 세이브 복구 규칙(H2′)과 겹쳐 **"지웠는데 캐릭터가 돌아온다"**가 날 수 있다.
+>    절차 정본: `CAPTURE_PROTOCOL.md` 2-3(① 인스턴스 전부 종료 → ② Windows 작업표시줄 흔적 확인 → ③ 옮기기 → ④ 대조 → ⑤ 되돌리기).
+>    ★ **지우지 마라 — 되돌릴 수 있어야 한다.**
 > 2. ★ **PlayerPrefs**: `~/Library/Preferences/unity.Vibelab.StickMate.plist` → **옮긴다**(`.bak`).
 >    ★ **구경로도 확인**: `unity.DefaultCompany.StickMate.plist`가 **따로 실재한다.**
 >    빌드의 `companyName`에 따라 읽는 파일이 갈린다 — **어느 회사명으로 빌드했는지 먼저 확인.**

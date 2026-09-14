@@ -22540,12 +22540,11 @@ CharacterInfoWindow.cs:339        floor(width / CaptionKoreanAdvance)   ← 나�
 **판정: 원칙 3 위반 아니다**(OS가 배정한 자기 자리). **고칠 것은 코드가 아니라 문장이다.**
 ★ 위험한 이유: 그 파일은 CLAUDE.md가 *"되돌리기 전에 먼저 읽으라"*고 지정한 문서군이라, 과장이 있으면 다음 사람이 *"감사가 막아 준다"*고 믿고 검사를 생략한다.
 
-### ★ 승인된 예외(작업표시줄)는 **아직 한 줄도 실행되지 않는다**
-`ReservedBarRevealDirector.RunStartup`/`RunShutdown`의 **프로덕션 호출처 0건.** `Platform/` 밖 어떤 프로덕션 파일도 `ReservedBar`를 한 글자도 언급하지 않는다.
-**양성 대조**: 같은 방식으로 `.Save(` 22건 / `.Load(` 1건이 잡힌다 → 0은 「없다」이지 「못 본다」가 아니다.
-디스크 실측 일치 — `stickmate_reserved_bar_restore.json`이 양쪽 디렉터리 어디에도 없다. ⇒ **오늘 고아 원장 위험 0.**
-★ **배선 라운드가 그 문을 연다. 그 전에 `companyName`/`productName`/`applicationIdentifier`를 동결해야 한다**(S-7-a).
-  세이브 미이관은 사용자가 **즉시 알아채지만**, 고아 원장은 **영원히 모른다** — **조용한 실패라 더 비싸다.**
+### ★★ 정정(2026-09-14) — 승인된 예외(작업표시줄)는 **첫 공개 Windows 빌드부터 실행돼 왔다**
+초판(09-03)의 「호출처 0건 · 한 줄도 실행되지 않는다 · 고아 원장 위험 0」은 **거짓**이었다. `9c46d30`부터 `ReservedBarRevealDirector.cs:71`의 `[RuntimeInitializeOnLoadMethod(BeforeSceneLoad)]`가 기동마다 `RunStartup`을 부른다(텍스트 호출처가 원리상 없다). 「파일 부재」는 **macOS에서 잰 값**이라 탐지력이 0이었다(macOS는 흔적을 만들지 않는다).
+공개 릴리스 `windows-preview-20260902b`(09-02 12:44 KST, `DefaultCompany`)에 실렸다. zip 크기가 첨부와 일치하고, DLL에 `WindowsReservedBarAutoHideControl` 1(직전 zip 0)이 있다. 그 뒤 **회사명 이사(`1eb0e2b`)**가 일어나, 그 빌드가 열어 둔 채 끝난 흔적은 이후 빌드가 읽지 않는다. `9c46d30`을 포함한 공개 릴리스는 **21개**(다운로드 카운터 합 23, 받은 사람 미확인)이고 흔적 v1에는 소유 식별자가 없다. 따라서 **외부 기계에 v1 흔적이 있을 수 있다.**
+**결론 유지·강화**: `companyName`/`productName`/`applicationIdentifier`는 「배선 전」이 아니라 **지금 값으로 영구 동결**한다. S-7-c 회수 코드는 만들지 않고 **사용자에게 0-1 실행 여부를 확인**한다. 근거: `ENTITLEMENT_CONTRACT.md` S-7-2 (가)~(라).
+*(초판 문장: 「`RunStartup`/`RunShutdown`의 프로덕션 호출처 0건 … 양성 대조 `.Save(` 22건 … 디스크에 흔적 파일 없음 ⇒ 오늘 고아 원장 위험 0」 — 속성 진입점을 못 본 grep과 macOS 디스크 실측에 기댄 거짓 판정. security 2026-09-14 정정, 리더가 이 자리에 교체.)*
 
 ### ★★ 코드서명 — 사용자 결정이 필요하다
 1차 출처 2개가 **글자까지 일치**: *"Individual developers are currently limited to the USA and Canada."*
@@ -27191,6 +27190,147 @@ coder 소량: `CharacterPreservationFreeze.cs:20` 소비자 목록의 `DialogueI
 **coder(읽기 전용 설계만, 4차와 병렬)**: `CharacterProgressionDirector.OnApplicationQuit` 진행 저장의 세션 종료 누락 — `AppShutdownSequence`(dev-platform 소유)에 어떤 형태로 합류할지 설계안만. 구현은 4차 커밋 뒤.
 **marketing**: `TRUTH_INVENTORY` R10 N2 ③ 낡음 정정(이번 커밋 기준, 단 "종료·로그오프에도 되돌린다" 금지는 실기 전까지 유지).
 **릴리즈 본문 빌드 결속**: 3차(`SessionExitMarker`) 빌드를 외부에 낼 때 1단계 "두 번 켜면 기록이 사라집니다"가 일부 틀림 → 그때 별도 게시본.
+
+### [marketing R10-S] 커밋에 따라 낡은 인용 정정 (`3cc6753` 뒤, 미커밋)
+> 2026-09-14 (marketing R10-S) — verify-change 3차가 지적한 `TRUTH_INVENTORY` R10 N2 ③을 `3cc6753` 기준으로 고쳤다. 이제 `TASKBAR_REVEAL.md` §2-2에 경로가 적혀 있다(grep 0줄 → 8줄). "종료·로그오프해도 되돌린다" 금지는 유지하고, 근거를 "문서 없음"에서 "실기 0회"(체크표 §R 수행 0)로 바꿨다. 같은 식으로 낡은 인용 8건(S-2~S-9)도 함께 정정했다: C-a1은 리더 typedef 측정으로 `a6b3101` zip 하나에 한해 충족이고, 남은 불충족은 C-b 0회다. E-3 라벨 요청은 닫혔고, STORE_PAGE 4-1은 원문에 반영됐다. `3cc6753`부터 FreezeForensics 폴더에 매 실행 표지 파일이 생긴다. 게시본 K-3은 결속 주석이 없다. 신고자 빌드는 `ccfaef9` 기록으로 풀렸다. R9-0 빌드 경로는 지금 다른 빌드를 가리킨다. 판정 변경은 0건, 프로덕션 코드는 0줄이다. 범위 밖 관찰 3건은 리더 판단으로 올린다.
+
+**리더 재확인**: `TASKBAR_REVEAL.md`의 `WM_ENDSESSION` 등장 `a6b3101` 0 → `3cc6753` 5(marketing은 다른 니들로 0→8줄, 방향 일치) / `FreezeWatchdog.cs:264`(3cc6753) "파일은 첫 사건 때 생깁니다" 실재 — 3차 표지 이후 사실보다 좁음 / 표지는 **고정 이름 `session-exit-marker.txt` 1개**(`SessionExitMarker.cs:44`) — 실행마다 누적되지 않는 형태로 판독(덮어쓰기 여부는 dev-platform 보고로 확정).
+**배분**: 범위 밖 관찰 1(로그 문구)·2(`TASKBAR_REVEAL.md` 6절 실기 목록에 세션 종료 항목) → **dev-platform 4차에 추가 전달**. 3(`TRUTH_INVENTORY` 머리 "R7 갱신" 표기) → 다음 marketing 라운드. K-3 결속 주석은 게시본 본문에 넣으면 그대로 게시되므로 **넣지 않고** 이 로그로 대신한다.
+**marketing 자진 신고 수용**: "없다" 인용에는 기준 커밋을 붙인다.
+
+### [coder 읽기 전용 설계] 세션 종료 진행 저장 합류 + ★ 세이브 교체 틈 발견
+> 2026-09-14 coder(읽기 전용 설계) — `CharacterProgressionDirector.OnApplicationQuit` 세션 종료 갭. 손실은 코드로 확인했다: 주기 60초(`StickConfig.cs:3475`·애셋 `:390`) 동안의 연속 적립분(패시브 XP·유휴 동전 ≤12·활쏘기 ≤20·함께한 시간 60초 + 모델 밖 10초분)이고, 사용자 조작은 즉시 저장이라 무사하다. 권고는 `AppShutdownSequence`에 `FlushProgressSave` 단계 합류(순서 원복 → 워치독 정지 → 진행 저장 → 표지)다. 계약은 단일 슬롯 `RegisterSaveHandler` 대리자이고, `OnApplicationQuit`은 제거한다(Unity 문서: quitting은 에디터 플레이 종료에서도 발생). 세션 종료 뒤 주기 저장 간격만큼 쓰기를 보류하고, 재진입 가드를 둔다. 주기 단축안은 IO 4배에 창이 안 닫혀 기각했다. 저장 비용은 macOS 하한 p99 0.34ms(2.5 KB)이고 Windows는 미측정이며 MS 예산은 5초다. ★ 별도 발견: `File.Replace(임시, 본체, 직전세대)`는 Windows(`ReplaceFileW`, MS 오류 1177)와 macOS(Mono rename 2회) 모두 본체가 잠시 없는 2단계인데, 설계 주석(`CharacterSaveStore.cs:1129,1399`)은 "rename 한 번"이라 적었다. 그 틈에서 끊기면 `Load():787`가 새 캐릭터로 시작하고 두 번째 저장이 직전 세대를 덮어 전손한다(실기 미관측). H1 진단 로그는 권고, H2 복구는 리더 판정 대기. 교차 영향 X1: `IsSessionEndingNow`가 `ENDSESSION_CLOSEAPP`·종료 취소를 구분하지 못한다(dev-platform). 파일 수정 0.
+
+**리더 재확인**: `CharacterSaveStore.cs:1129-1130` "커널 수준에서 rename 한 번이라 반쯤 교체된 상태가 존재하지 않는다" · `:1399-1400` "커널이 한 덩어리로 처리" 주석 실재 / `Load()` `:783-787` 본체 없으면 의도적으로 새 캐릭터(초기화와 같은 모양) / 임시 파일 `…<인스턴스>.writing`(`:1200,:1227`) / `AppShutdownSequence.cs:152` `IsSessionEndingNow`가 lParam 미확인.
+**리더 판정**:
+- 진행 저장 **합류안 채택**(원복 → 워치독 정지 → 진행 저장 → 표지, 단일 슬롯 대리자, `OnApplicationQuit` 제거, 세션 종료 뒤 쓰기 보류, 재진입 가드). 구현 순서: **dev-platform 4차 커밋 → dev-platform 단계·계약 추가 + coder 등록·보류·가드를 같은 커밋**(대장 `SessionEndShutdownTests.cs:309-332`·명부 `TestClaimExpiryAuditTests.cs:607-619` 줄 범위를 coder 라운드에 명시 이관 — 원자적 착지).
+- ★ **세이브 교체 틈 = 사용자 데이터 전손 위험, 우선순위 상향.** P0(강제 리부팅)가 바로 "쓰기 도중 끊김"을 현실화하는 사건이다. **H1(진단 로그) 채택. H2(복구)는 security 검토 후 판정** — "지웠는데 돌아온다" 회귀, 동시 실행 인스턴스의 남의 `.writing` 복구, 사용자가 만든 `.writing`으로 재화 주입 같은 새 공격면을 먼저 본다. H3(`MoveFileEx`)는 원칙 3 감사 확장이라 기각 동의. 틀린 주석 2곳 정정은 coder 구현 라운드에.
+- **X1 → dev-platform 4차에 추가 전달**: `ENDSESSION_CLOSEAPP`·종료 취소로 앱이 살아남으면 실행 중 원복(원칙 3 예외 "실행 중에만" 역전) + 표지 clean-exit 오기록.
+- **security 배정(읽기 전용)**: `File.Replace` 2단계 주장 1차 출처 검증 + H2 규칙 안전성·조작면·대안.
+- coder가 짚은 기존 소견 재확인: `CharacterStatsDirector` 함께한 시간 `Flush`가 `OnDisable`에서만 돌아 **정상 종료에서도** 저장 뒤에 돈다(`Tasklist.md:11889-11893` 미수정) — 합류 구현 라운드에서 `FlushPendingForSave`로 함께 닫는다.
+
+### [security] 세이브 교체 중 끊김 검토 — H1/H2/H3
+> [security] 세이브 교체 중 끊김 검토: Windows `ReplaceFileW`에는 본체가 비는 중간 상태가 **있다**(MS 문서 1177/1176, 백업 유무와 무관). macOS 출하 빌드는 CoreFX `link+rename`이라 **없다**. coder가 인용한 Mono `w32file-unix.c`는 `File.Replace` 경로가 아니다(corlib 소스 목록 + 출하 mscorlib import로 반증). H2는 적힌 그대로는 기각한다. 정상 경로 3개(포기·그림자 커밋·1단계 뒤 사망)가 완결 `.writing`을 남기고(실물 1건 확인), mtime 비교는 시계·복사·CopyFile 보존 여부에 흔들린다. 권고는 **H1 + H2′**: 내용 기반 비교, 같은 캐릭터 확인, 구조 완결성 검사, 정상 경로 임시 파일 비우기, Load 무쓰기, 복구 후 즉시 저장, 테스트 T1~T16. 새 공격면은 없다(같은 복원 파이프라인 조건). 리더 판정이 필요한 것: "본체만 지우면 초기화" 의도를 유지할지(유지 시 최소 R1). 부가: macOS 하드링크 과도 상태에서 그림자 커밋의 세대 보장이 무효가 된다(드묾, 주입 지점이 기본 동작보다 위라 테스트 사각). `CAPTURE_PROTOCOL.md:132`의 본체 단독 초기화 절차는 폴더 단위로 바꿀 것을 권고한다.
+
+**리더 재확인(Read 도구)**: `CharacterSaveStore.cs:1152` 주석은 이미 "ReplaceFile은 [대상 치우기] → [임시를 대상 이름으로] 두 걸음" — `:1129-1130`의 "rename 한 번"과 **같은 파일 안에서 모순** 확인 / 포기 경로 `:1472-1477`("임시 파일은 남지만") · 그림자 커밋 `:1488-1499`(임시 파일 미소모) 실재 — 정상 경로가 완결 `.writing`을 남긴다는 주장 참 / `docs/marketing/CAPTURE_PROTOCOL.md:132` "저장 파일 초기화 … `stickmate_character.json`" 본체 단독 절차 실재.
+**리더 미확인(셸 차단으로 못 잼)**: 디스크의 고아 `.writing` 실물 1건, 출하 mscorlib의 `ReplaceFileW`/`SystemNative_Rename` import 계수 — security 측정으로만 기록.
+
+**리더 판정**:
+- **H1 + H2′ 채택.** "본체만 지우면 초기화" 의도는 **유지**하되, H2′가 좁힌 조건(본체 없음 재확인 + prev 엄격 해석 + 후보 `.writing` 엄격 파일명·구조 완결·`version ≤ CurrentVersion`·같은 `firstRunUnixSeconds`·**내용 기반** 순서 비교, mtime 미사용)에서만 복구. 정상 경로(포기·그림자 커밋) 뒤 자기 임시 파일을 `WriteAllText(temp, "")`로 비움(삭제 아님 — 감사 무확장). Load 무쓰기, 복구 후 즉시 저장. 테스트 T1~T16(모든 접두부 길이 T7 포함). H2(mtime)·A(prev 기반)·H3(`MoveFileEx`) 기각.
+- 앱 내 [데이터] 초기화(아직 자리만 있음)는 **지우지 말고 새 본체를 쓴다**를 계약으로(구현 시).
+- 구현: **coder**, dev-platform 4차 커밋 뒤(러너·컴파일 충돌 방지 직렬). 틀린 주석 `:1129-1130`·`:1399-1400` 정정(Windows 2단계 / macOS unlink·link·rename 3회) 동반.
+- macOS 하드링크 과도 상태(그림자 커밋 세대 보장 무효, 드묾, 주입 지점이 실제 동작보다 위라 테스트 사각) → coder 구현 라운드 부가 항목 + game-architect 판단 후보로 기록.
+- `CAPTURE_PROTOCOL.md:132` → **marketing에 폴더 단위 초기화로 정정 배정**(본체만 지우는 절차가 H2′의 남은 오판 경로와 겹친다).
+
+### ★ 리더 운영 제약 (2026-09-14 발생)
+리더 세션의 셸(Bash) 실행이 **자동 모드 안전 검사에 막혔다**("earlier conversation content" 사유, 재시도 불가, 이 대화 끝까지 지속). 파일 읽기·편집은 가능. **커밋·빌드·결과 xml 파싱·`git status`는 리더가 직접 할 수 없다** → 사용자에게 권한 모드 전환 또는 새 세션을 요청한다. 그 전까지 커밋 대기분은 작업 트리에 쌓인다.
+- ★ 이어서 **에이전트 새 배정(Agent)도 같은 사유로 차단됐다.** 이미 돌고 있던 dev-platform 4차는 영향 없이 계속된다(완료 알림은 수신 가능).
+- **배정하지 못하고 남은 일감(다음 세션/권한 전환 뒤 즉시 배정)**:
+  1. marketing — `docs/marketing/CAPTURE_PROTOCOL.md:132` 본체 단독 초기화 → **저장 폴더 단위** 백업·복원 절차(macOS·Windows 경로, `FreezeForensics/`·`stickmate_reserved_bar_restore.json` 동거 주의 — 자동 숨김 기계는 트레이 종료 뒤 옮김), 다른 마케팅 문서의 같은 절차 목록, `TRUTH_INVENTORY.md` 머리 "R7 갱신" 표기 정정.
+  2. verify-change — dev-platform 4차 착지 후 검증(V1·V1b·V2~V6 재주입, X1 `ENDSESSION_CLOSEAPP`, 표지 멈춤 내성, Mac 변이는 macOS 러너로).
+  3. 리더 커밋 — `3cc6753` 뒤 작업 트리(marketing R10-S `TRUTH_INVENTORY.md`, Tasklist, dev-platform 4차).
+  4. coder — (a) 세션 종료 진행 저장 합류 구현(dev-platform 단계 추가와 같은 커밋, 대장·명부 줄 이관) (b) 세이브 H1 + H2′ + 정상 경로 임시 파일 비우기 + 틀린 주석 정정 + T1~T16.
+  5. 페르소나 3인 — 4차·세이브 복구 착지 뒤 검증.
+
+## 2026-09-14 (리더) — [dev-platform 4차] 완료 (미커밋, verify-change 미실시 — 배정 차단 중)
+> **2026-09-14 P0 완화 4차 (dev-platform)** — verify-change 3차 생존 변이 7종(V1·V1b·V2·V3·V4a·V4b·V5, V6 포함)을 전부 사살. V5: 트레이 수신 창 판정을 중립 `ShouldCreateReceiverWithoutTrayNow`로 옮겨 실행으로 잠그고, 배선 감사를 주석·문자열·보간 제거 스캐너로 통일. 스캐너의 보간 `{` 누락 결함도 발견해 수정하고 회귀 테스트를 추가. V1: 컴파일 강제는 불가(C# 접근 한정 최소 단위가 타입)임을 명시하고, 식별자 토큰 감사로 닫음. V4: 원칙 3 스냅샷에 속성 추가, 원본 공유 모드 실행 탐침(Mono 음성 대조 통과, Windows 커널 미확인). V2·V3·V6: 탐지 규칙과 한계를 문서화. 종료 순서에 "종료 시작" 표지를 추가(동기화 없음 — 원복 도중 끊겨도 비정상으로 오판하지 않음). X1: `WM_ENDSESSION` 처리 뒤 `Application.Quit()` 요청으로 살아남은 채 원복된 상태를 없앰(lParam은 로그만, MS 문서 근거). 동결기록 로그 문구 정정, `TASKBAR_REVEAL` 6절에 세션 종료 항목 추가. EditMode 3088건: macOS 0 실패 / Win64 0 실패(건너뜀 91). 변이 15종 각각 따로(macOS 12 · Win64 3) 전부 빨강, 원복 `cmp` 일치. 기본 1·2차 실패는 내 스캐너 결함과 테스트 로직 결함이었고 수정 후 초록. 공개 형태 변경: `AppShutdownStep.MarkExitStarted`, 4단계 `Order`, `HandleSessionEnding`. 진행 저장 자리는 워치독 정지 뒤·정상 종료 표지 앞. 실기 미확인: Windows 커널 공유 검사, Restart Manager·종료 취소 경로의 생존 여부, Unity의 quitting 호출.
+
+**리더 확인(Read 도구 — 셸 차단 중이라 xml 머리만 직접 읽음)**: `em4_final_osx.xml` testcasecount 3088 / passed 2997 / **failed 0** / skipped 91, start 03:56:44Z · `em4_base_win.xml` 3088 / 2997 / **0** / 91, start 03:52:47Z. 변이 xml·트리·`.meta`·타깃 TypeDef는 **리더 미확인**(셸 필요).
+**리더 판정(잠정 — verify-change 전)**:
+- X1 처리(`WM_ENDSESSION` wParam=TRUE면 순서 실행 후 `Application.Quit()` 요청, 해제 재적용 복귀 경로 없음) **수용**: MS 문서상 wParam=TRUE면 플래그와 무관하게 앱이 끝나야 하고, 복귀 경로는 직후 실제 종료 시 작업표시줄을 앱 없이 드러낸 채 남기는 역효과. 원칙 3 예외 "실행 중에만"을 지키는 쪽.
+- "종료 시작" 표지를 원복 **앞**에 둔 것 **수용(잠정)**: 시스템을 바꾸지 않는 우리 폴더 버퍼 쓰기 1회이고, 시스템을 바꾸는 단계 중 원복은 여전히 맨 앞(`Order[1]` 잠금). R-1(원복 전 대기 금지)과 충돌 없음 — verify-change에 원칙 3 관점 재확인 요청 항목.
+- V1 "컴파일 강제 불가 → 토큰 감사" 정직한 한계 명시 **수용**.
+- 범위 밖 발견 2건(`ROADMAP.md:4391` 트레이 호출 서술 낡음 / 체크표 §R 출처표 트레이 행) → 다음 세션에 product-strategy·qa-regression.
+- 사용자 안내 문구(표지 파일 1개 덮어쓰기 · 비정상 종료 뒤에만 로그 사본 최대 3개) → 매뉴얼·게시본 갱신 시 사용. **단 공개 프리뷰(`1283d74`)·시험 빌드(`a6b3101`)에는 해당 없음.**
+- **사용자 답변 N-3(2026-09-14)**: *"1번 분리했는데 1번 멈춤 나머지 계속진행"* — 09-09 빌드에서 켠 채 분리 **1회 중 1회 정지**. 표본 1이라 분리당 정지 확률 p₀는 확정 못 하지만 "드물게 멈춘다"는 증거는 없다. product-strategy §60-8 식 (1−p₀)²에서 p₀가 높을수록 E-3(분리 2회) 1세션의 판별력이 크다 — **E-3을 1세션으로 먼저 진행하고, 통과해도 "원인 미확정 완화" 기록 + 필요 시 반복**으로 판정. 사용자 지시 "나머지 계속 진행".
+- **운영 제약 해소(같은 날)**: 사용자 답변 뒤 에이전트 배정·셸이 다시 동작함 — `git log`(`3cc6753`)·`git status` 13항목 확인. 즉시 배정: **verify-change 4차**(dev-platform 4차 + marketing R10-S, 트리 목록·`.meta` 선보고 요청) / **marketing**(`CAPTURE_PROTOCOL` 폴더 단위 + `TRUTH_INVENTORY` 머리 표기) / **product-strategy**(N-3 1/1 반영 + `ROADMAP.md:4391` 낡은 진입점 서술) / **qa-regression**(E-3 반복 지침 + §R 4차 빌드용 출처표·`ExitStartedNotFinished` 판독 칸). coder(진행 저장 합류 + 세이브 H1·H2′)는 러너·컴파일 충돌을 피해 **verify-change 4차 → 커밋 뒤**.
+- **[marketing R11] 저장 초기화 폴더 단위 교체 착지**:
+  > [marketing R11] `CAPTURE_PROTOCOL.md` 2-3 저장 초기화를 본체 단독에서 저장 폴더 단위로 교체했다(macOS·Windows 경로, 코드 실측 파일 6종, 인스턴스 전부 종료, Windows 작업표시줄 흔적 `active` 확인 후 이동, 켜기 전 대조 둘, 촬영 뒤 되돌리기). 같은 절차를 복사한 `CAPTURE_REQUESTS_R5.md` 3절 1번도 고쳤고, `CLAIM_AUDIT_R5.md`·`ROADMAP.md` H6에 표지를 달았다. R5 PlayerPrefs 주의는 유지. `TRUTH_INVENTORY.md` 머리의 R7 표기를 정정했다.
+
+  **리더 재확인**: numstat `CAPTURE_PROTOCOL.md` +50/−3 · `CAPTURE_REQUESTS_R5.md` +7/−2 · `CLAIM_AUDIT_R5.md` +4 · `ROADMAP.md`(marketing) +1/−1 · `TRUTH_INVENTORY.md` +46/−15(R10-S 누적) / 폴더 이동 명령 `CAPTURE_PROTOCOL.md:164-165` 실재 / `FreezeWatchdog.cs:263` 활성 로그 줄 실재 / ★ 이 맥 세이브 폴더에 `stickmate_character.json.backup-20260906-211232`·`-211934` **실재**.
+  **coder H2′ 구현 브리프에 반드시 넣을 음성 사례**: `stickmate_character.json.backup-<시각>`(09-06 사용자 요청 백업 실물) — 엄격 파일명 `.<숫자|r+16진수 8자>.writing`만 후보. 느슨한 `stickmate_character.json.*` 매칭이면 복구 후보로 오인된다(T9 확장).
+  **상시 발굴 수용·보관**: Steam Auto-Cloud를 켤 때 동기화 대상을 `stickmate_character.json` 한 파일로 — `*.json`이면 기계 식별자 없는 `stickmate_reserved_bar_restore.json`이 PC 사이로 넘어가 **다른 기계의 작업표시줄 설정을 바꿀 수 있다**(원칙 3 예외의 기계 경계 이탈). Auto-Cloud 패턴 지원은 marketing이 문서 미열람이라 미확인 → product-strategy(설정)·game-architect(흔적 파일 기계 경계) 다음 라운드.
+- **[qa-regression] 체크표 E-3 반복 지침 + §R 4차 빌드 구분 착지**:
+  > 2026-09-14 qa-regression — 체크표 E-3 반복 지침(N-3 1/1 → `a6b3101`이면 1세션 한 벌 = 분리 2회, 통과해도 「원인 미확정」, 반복은 리더 판단)과 §R 빌드 구분표·4차 표지 판독을 반영했다. 교차 발견 2건: ① 4차 `HandleSessionEnding` → `Application.Quit()` 뒤 `quitting`이 순서를 한 번 더 돌며 표지를 `exit-started trigger=ApplicationQuitting`으로 덮어쓸 수 있다. 이러면 `ExitStartedNotFinished`가 「원복 도중 끊김」이 아닐 수 있고, 잠그는 테스트가 없다(dev-platform / test-engineer 배정 후보). ② 3차 이후 빌드는 기동 때 원장 폴더를 만들어 「원장 폴더 있음」이 사건 증거가 아니게 됐다 — 체크표는 `freeze-*.log` 개수로 교정했다.
+
+  **리더 재확인**: numstat +66/−9 / `AppShutdownSequence.cs:107` `Run`에 1회 가드 식별자 없음(grep), `:145` `HandleSessionEnding` → `:161` `Application.Quit()` 실재 — 발견 ① 전제 참.
+  **리더 답변(해석 확인)**: "분리 조작 2회" = **E-3 한 벌(분리 (a)·(c) 2회)** — qa 해석이 맞다. E-3′(같은 세션 반복)·OS 빌드·드라이버 버전 칸은 product-strategy 제안 수령 후 판정.
+  **발견 ① 처리**: 진행 중인 verify-change 4차 3(a)(재진입·중복 종료 순서 멱등성)에 **즉시 입력**으로 전달 — 사실·등급·커밋 차단 여부 판정 요청. 결과에 따라 dev-platform 5차(1회 가드 또는 표지 덮어쓰기 규칙) + 테스트.
+  **발견 ② 수용**: "원장 폴더 있음"은 3차 이후 사건 증거가 아님 — 거짓 통과 자리를 체크표 소유자가 스스로 막음(좋은 사례).
+- **[product-strategy] N-3 반영 + 반복 사전 등록 반론**:
+  > 2026-09-14 product-strategy — N-3(1/1)을 §60-8 (라)-2′에 반영. p₀는 확정 못 하고 "드물게 멈춘다"는 증거도 없다(우도비 10:1). 효과 없는 완화가 E-3 1회를 통과할 확률은 12~17%, 2회면 5.5~6.7%. E-3 1세션 먼저에 동의하되, 반복 여부는 결과 전에 등록하자고 반론: 통과면 같은 세션 E-3 → G-1 → E-3′(`$name='E-3b'`, 사용자 동의 시). 체크표 E-3 머리에 OS 빌드·그래픽 드라이버 버전 칸 추가를 제안(qa-regression, 리더 경유). `ROADMAP.md:4391` 4차 진입점 서술의 낡은 곳 3개를 정정했고 CW-2 문장에는 영향 없음. 체크표 §R에 (c) 실험이 없다(리더 경유 제안).
+
+  **리더 재확인**: `ROADMAP.md` numstat +108/−9, N-3 답변 행(`:4379`)·CW-2 영향 단락(`:4435`)·E-3′ 규칙 표(`:4551-4552`)·반론 버리는 조건(`:4556`) 실재 / 체크표에 OS 빌드·드라이버 칸 **0건**(제안 참).
+  **리더 판정**:
+  - **반론 채택 — 반복을 결과 전에 등록한다**: E-3 통과(조건 1~5)면 같은 세션 E-3 → G-1 → E-3′(`E-3b`, 사용자 동의 시). 거절 시 판정문에 "분리 2회 무사 — p₀ ≥ 0.78만 기각"을 수치로. 리더의 "반복은 결과 후 판단" 잠정안은 **철회**(통과는 p₀에 새 정보를 주지 않는다는 지적이 옳다).
+  - OS 빌드·그래픽 드라이버 버전 칸, `캐릭터 위치:` 칸, §R (c) 실험(강제 종료 → 재실행 없이 다시 시작 → 앱 켜기 전 판독, **선택**) → **qa-regression에 배정**.
+  - **사용자 질문 추가**: 09-09 빌드에서 멈췄을 때 캐릭터가 뽑은 모니터에 있었는가 — 멈춤이 한쪽 조건에서만 나면 1회 통과의 거짓 통과율이 33%/25%로 오른다.
+  - RA-1(Windows 재시작 등록 — 4차 "앱이 조용히 사라짐"의 짝): 원칙 2 해석·엔타이틀먼트 `Unknown` 대가가 있어 **P0 종료 후** 재론. 보관.
+- **[game-architect] 작업표시줄 원복 흔적의 기계 경계 — 실해 경로 확인**:
+  > [game-architect] 작업표시줄 원복 흔적의 기계 경계 — **주장 확인, 실해 경로 있음.** 흔적 파일(`ReservedBarRestoreLedger.cs:34-53`)에 소유 식별자가 없고 플랫폼 태그만 대조한다(`:150-154`). 그래서 다른 Windows 기계에서 온 열린 흔적이 `ResolveRecovery`(`ReservedBarRevealPolicy.cs:149`)를 거쳐 `ABM_SETSTATE`로 이어진다. 열린 흔적의 원래 값은 구조상 항상 true(`Director:204` 유일 호출)이므로, 받는 PC의 자동 숨김이 **꺼져 있을 때(기본값)** 켜고, 종료 원복이 다시 켜서 **영구히 켜진 채** 남는다. 양방향 동기화면 원래 PC의 빚도 지워진다. 기존 플랫폼 태그 대조는 macOS에 제어기가 없어(`Director:74-81`) 실효가 없다. 경로: (a) Auto-Cloud 넓은 패턴 (b) 수동 복사·PC 이전(1.0에 이미 존재) (c) 다른 기계에서 만든 촬영용 폴더 (d) 계정 간 복사 또는 같은 Steam 계정 동기화. 권고: **첫 외부 배포 전**에 흔적을 **소유자별 파일명**(사용자 SID+MachineGuid 솔트 해시)으로 바꾸고, 레거시 고정 이름은 읽기만 한다. `CurrentVersion` 2와 하위 호환·음성 대조 테스트를 동반한다. 쓰기 형태는 늘지 않는다(파일 1개·형태 2개 유지). Auto-Cloud(I-6)의 필수 선결 조건으로 두고 패턴 한정도 병행한다. **원칙 3 예외 조건 문언 변경("같은 설치·같은 계정에서 갚는다")이므로 사용자 확인 필요.** 부수: `ENTITLEMENT_CONTRACT.md` S-7-2의 "호출처 0건·위험 0"은 `[RuntimeInitializeOnLoadMethod]` 진입점을 못 본 판정이라 정정 필요.
+
+  **리더 재확인**: 흔적 필드 6개(`version`·`active`·`originalAutoHide`·`platform`·`writtenAtUtc`·`pid`) — 기계·사용자 식별자 없음 / 흔적을 여는 프로덕션 호출 `ReservedBarRevealDirector.cs:204` 1곳 / ★★ **`9c46d30`(원복 흔적 도입)은 공개 프리뷰 `1283d74`(`windows-preview-20260909b`)의 조상이고, 그 커밋의 `ReservedBarRevealDirector.cs:71`에 `[RuntimeInitializeOnLoadMethod(BeforeSceneLoad)]` 실재.** GitHub 공개 릴리즈 `windows-preview-*` 중 `9c46d30`을 포함한 것은 **21개**(다운로드 카운터 합 23 — security가 GitHub API로 재측정, 로컬 태그는 3개가 없어 18로 보임; 리더의 「20개 이상」 정정). 첫 공개는 `windows-preview-20260902b`(09-02 12:44 KST, `DefaultCompany` 시절).
+
+  **[security] S-7-2 정정 + 소유 식별 프라이버시 판단(`ENTITLEMENT_CONTRACT.md` +139/−10, S-7-2 `:496-553` · S-7-6 6번 `:644` · S-7-7 신설)**:
+  - S-7-2 "위험 0"은 거짓 — 위 `Tasklist.md:22543` 자리를 security 문장으로 **리더가 교체함**. `companyName` 동결은 "지금 값으로 영구 동결"로 강화.
+  - ★ **소유 식별 수단 — SID+MachineGuid 해시 대신 무작위 설치 토큰 권고**: 128비트 난수를 우리 `HKCU\Software\<회사>\<제품>`(PlayerPrefs, 이미 사용 중인 OS 배정 자리)에 두고 흔적에도 기록, **일치할 때만** 갚는다. 폴더 복사·Steam Auto-Cloud(레지스트리 루트 없음)에 따라가지 않고, OS 식별자를 읽지 않으며 새 DllImport·권한·네트워크 0. 해시안의 문제: 솔트가 공개 저장소 DLL에 있어 SID+MachineGuid를 가진 제3자가 파일명을 계산해 **상관 추적** 가능, 흔적 경로가 `Player.log`에 찍혀 해시가 로그로 퍼짐, MachineGuid 읽기는 샌드박스 보고서가 지문 수집으로 표시(V3·Defender 반응 미확인), `SECURITY_MODEL.md` V-4 "OS 식별자는 프로세스에 들이지도 않는다"에 반함. 새 실패 경우는 "앱 레지스트리 키 삭제" 하나이고 **안전한 쪽으로 실패**(남의 설정 변경 대신 우리 변경 미원복).
+  - 구현 조건: 흔적을 **열 때만** 토큰 생성(자동 숨김 안 쓰는 사용자는 디스크·레지스트리 흔적 0 유지) / 저장 → 되읽기 → 흔적 열기 순, 실패 시 시스템 변경 안 함 / 읽기는 토큰을 만들지 않음 / 로그는 일치·불일치·없음만 / macOS 토큰 없음.
+  - 레거시 v1 "한 번 갚기" 규칙: **유지하되 좁히고 기한** — 레거시 갚기는 크게 로그, 첫 스토어 출시 전에 이 분기 제거 재판정(스토어 사용자는 v1 파일이 있을 수 없음).
+  - S-7-6 6번 추가: 사용자 이전 안내에 **흔적 파일 무조건 제외**. `COMPANY_RENAME_MIGRATION.md` §0·체크표 §0-1의 "`active: true`면 옮긴다"는 **개발자 본인 기계 전용** — 사용자 안내로 옮겨 적지 않는다.
+  - **사용자 질문(security → 리더 경유)**: ① 체크표 §0-1을 Windows PC에서 실행했는지, 무엇이 출력됐는지(`Vibelab` 경로 포함) ② 사용자 외에 Windows 프리뷰를 받은 사람이 있는지(없으면 외부 v1 흔적 위험이 한 번의 확인으로 닫힌다).
+  **리더 판정**: 소유 식별은 **무작위 설치 토큰안으로 전환**(game-architect의 SID+MachineGuid안 대체 — 프라이버시·백신 오탐·V-4 선례 근거). 원칙 3 예외 문언 변경은 여전히 **사용자 판단**이며, 사용자 질문의 조건 설명을 "같은 Windows 설치·같은 사용자 계정" → "이 앱이 이 PC·이 계정에 남긴 표식이 일치할 때"로 바꿔 다시 묻는다. 구현은 game-architect 구조 확인 → dev-platform/coder, P0 커밋 뒤.
+  **★ 리더 정정 — game-architect 전제 반증**: "지금 v1 흔적은 사용자 테스트 기계에만 있다 → 첫 외부 배포 전에 넣으면 공개 v1은 0개"는 **거짓**이다. 공개 프리뷰 다운로드(전체 릴리즈 합계 약 34~35회, 팀 내부 포함 여부 미확인)가 이미 v1 코드를 외부에 내보냈다. ⇒ **되돌릴 수 없는 결정은 이미 일어났다.** 권고안 A(소유자별 파일명 + 레거시 고정 이름 영구 읽기)는 여전히 옳고 오히려 필수 — 레거시 v1을 "자기 것으로 보고 한 번 갚는" 규칙이 **외부 기계의 복사본에도 적용된다**는 잔여 위험이 영구히 남는다는 점을 사용자 판단 자료에 넣는다.
+  **리더 판정**:
+  - 울타리(안 A + 안 C) **방향 채택**. 쓰기 형태 무증가라 착수는 리더 재량이나, **예외 조건 문언("같은 Windows 설치·같은 사용자 계정에서 갚는다") 변경과 "소유키를 못 읽으면 갚지 않고 보존"이라는 새 잔여 위험은 사용자 판단** → 질문 발송.
+  - 구현: dev-platform, **P0 라운드와 파일 겹침**(`Platform/`) — 사용자 결정 + verify-change 4차 커밋 뒤 직렬.
+  - security: (i) `ENTITLEMENT_CONTRACT.md` S-7-2 "위험 0" 정정 (ii) 소유키 해시를 디스크에 두는 것의 프라이버시 판단(`SECURITY_MODEL.md` V-4 "디스크 0" 선례, TRUTH_INVENTORY 문구) → 배정.
+  - marketing: 촬영용 폴더를 **다른 기계에서 만들 때** 흔적 파일 제외(`CAPTURE_PROTOCOL.md:178-182` 부근) → 배정.
+  - Auto-Cloud(I-6) 선결 조건 등록 → product-strategy 다음 라운드.
+- **[qa-regression] 반복 사전 등록·버전 칸·R-3 반영**:
+  > 2026-09-14 qa-regression — 리더 판정(§60-8 (라)-2′ 반론 채택)을 체크표에 반영했다: E-3 반복 사전 등록(통과 시 E-3 → G-1 → E-3′, `$name='E-3b'`, 거절 시 「분리 2회 무사 — p₀ ≥ 0.78만 기각」), 블록 ④ 원장 유예 시각 판독, 블록 ⓪ OS 빌드·그래픽 드라이버 버전(MS 문서 확인, Windows 실행 미확인), 분리 줄의 `캐릭터 위치=`, §R 선택 항목 R-3(강제 종료 → 재실행 없이 다시 시작). 미결 1건: 버리는 조건 「유예가 분리 순간을 덮지 못함」의 기준 수치가 없어 세션 중 판정은 리더 회신으로 대신한다(회신 없으면 E-3′ 미수행). 발견 ①(종료 순서 두 번 실행) 관련 4차 판독 행 3개는 앞 라운드에 이미 들어가 있으며 verify-change 판정 대기다.
+
+  **리더 재확인**: numstat 누적 +165/−17 / `E-3b`·`E-3′` 26회 · OS 빌드·드라이버 8회 · `캐릭터 위치=` 3회 · `R-3` 12회.
+  **리더 판정 — 버리는 조건 기준 확정(qa 지적 "조작 시각보다 늦음은 항상 참"이 옳다)**: ① **1차(로그만)** — 같은 에피소드에서 `RenderHoldStarted`가 **첫 창·해상도 쓰기 줄보다 앞**이면 「덮음」, 뒤이거나 유예 없이 쓰기만 있으면 「못 덮음」 → E-3′ 대신 리더(→ debugger). 근거: 완화 1안의 본체는 재적합 쓰기를 유예 안에서 하는 것. ② **2차(참고, PC 시계가 영상에 보일 때)** — 분리 → 유예 시작 2초 이하 「빠름」/초과 「느림」 기록만(판정 불사용, 시계 오차). ③ 1차로 판정되면 세션 안에서 사용자가 직접 진행/버림 결정, 판정 불가일 때만 리더 회신 경로. 원장 줄 형식은 **시험 빌드 `a6b3101` 커밋 기준**으로 확인하라고 지시. 4차 판독 행 3개는 verify-change 판정까지 유지.
+- **[marketing] 원복 흔적 기계 경계 — 촬영 절차 반영**:
+  > [marketing] 원복 흔적 기계 경계 — 촬영 절차 반영: `CAPTURE_PROTOCOL.md` 2-3에 「넣지 않는 것」 신설(`stickmate_reserved_bar_restore.json` 무조건 제외 + 원래 기계의 `FreezeForensics/`·`Player*.log` 제외 + 켜기 전 대조 둘). `SHOT_LIST.md` R8-0·R8-3, `CAPTURE_REQUESTS_R6.md` 6번, `M9_여러대.md` Auto-Cloud 단서 추가. 사용자 문서 `manual/02-first-launch.md:156`은 한 파일 복사라 안전하나 `:157` 폴더 백업 안내와 합치면 흔적이 따라갈 수 있음 → manual-writer 판단. `ENTITLEMENT_CONTRACT.md` S-7-6에 흔적 제외 항목 없음 → security 판단.
+
+  **리더 재확인**: 흔적 파일명 등장 `CAPTURE_PROTOCOL.md` 6 · `SHOT_LIST.md` 2 · `CAPTURE_REQUESTS_R6.md` 1 · `M9_여러대.md` 1 / `02-first-launch.md:156`(한 파일 복사)·`:157`(폴더 지우기 전 복사본) 실재.
+  **판정·배분**: 수용. 지시 밖 추가분(`FreezeForensics/`·`Player*.log` 제외 — 가져온 표지 `state=running`이 비정상 판정·로그 복사로 판정 자료 오염)은 옳은 확장. `02-first-launch.md:156-157` → **manual-writer 배정**(다른 PC로는 폴더째가 아니라 한 파일만). S-7-6 → **진행 중인 security 라운드에 추가 전달**.
+- **[manual-writer] 다른 PC로는 세이브 한 파일만**:
+  > [manual-writer] 원복 흔적 기계 경계 — 사용자 문서 반영: `manual/02-first-launch.md` 3-1에 「다른 컴퓨터로는 `stickmate_character.json` **한 파일만** · 폴더를 통째로 옮기지 않는다」와 이유 한 문장(흔적 파일은 만든 컴퓨터 전용 → 다른 컴퓨터의 작업 표시줄 설정을 바꿀 수 있음)을 추가했다. `:157` 「지우기 전에 복사본」도 한 파일로 좁혔다. 원복 약속 문장 0 · 로그오프/PC 종료 언급 0. 1~3장 전수 확인 결과 폴더 백업·복원을 권하는 문장은 이 한 곳뿐이었다(1장 6-1 · 3장 없음, drafts P0 공지는 로그만 복사해 해당 없음). 이미 폴더째 옮긴 사람의 복구 안내는 Windows 실기 미확인이라 쓰지 않았고 리더 판단 대기. 흔적 파일이 소유자별로 바뀌면(game-architect 권고, 사용자 판단 대기) 3-1 이유 문장이 첫 갱신 대상이다.
+
+  **리더 재확인**: numstat +5/−2, `:156` 「한 파일만」·`:157` 「폴더를 통째로 옮기지 마십시오」·갱신 이력 `:358` 실재.
+  **리더 판정**: 이미 폴더째 옮긴 사람의 복구 안내 **넣는다** — 앱 동작 약속 없이 "작업 표시줄이 계속 숨으면 Windows 설정에서 자동 숨기기를 직접 끄십시오"만(사용자 조작이라 실기 미확인이어도 참). manual-writer 후속 배정.
+  **후속 착지**: `02-first-launch.md:159` "이미 폴더를 통째로 옮긴 뒤 작업 표시줄이 원래와 달리 계속 숨는다면, Windows에서 직접 바꾸십시오" + 설정 경로 한 줄(마지막 항목 이름 일반화), 갱신 이력 (5). 누적 numstat +8/−2. 리더 확인.
+- **[qa-regression] 버리는 조건 1차 기준을 블록 ④에 반영**:
+  > 2026-09-14 qa-regression — 리더가 확정한 버리는 조건 기준을 체크표 E-3′ 블록 ④에 반영했다. 1차 기준은 로그 순서(분리 구간의 첫 창·해상도 쓰기 순간 유예가 켜져 있었으면 「덮음」)로, 사용자가 세션 안에서 판정한다. 2차 기준(시계 차이 2초)은 참고로만 적는다. 1차 적용 불가면 리더 회신, 회신 없으면 E-3′ 미수행. 원장 형식은 시험 빌드 `a6b3101` 기준으로 확인했고 작업 트리와 차이 0줄이다. 교차 발견 3건: ① 사건 창 밖 적합 쓰기가 사건 여는 줄보다 먼저 원래 시각으로 파일에 들어가 파일 순서로 읽으면 거짓 「못 덮음」이 난다 — UTC 창과 정렬로 막았다. ② 분리 1회가 조기 신호 유예와 토폴로지 유예를 따로 낼 수 있어 「첫 쓰기 순간 유예 활성」으로 엄격하게 해석했다. ③ `TransparencyReassign`을 쓰기 종류에 더했다. ②③과 `monitors=` 짝 확인은 리더 확인 대상이다. PowerShell 실행은 미확인이고 판정 논리는 파이썬 거울로 11경우 확인했다.
+
+  **리더 재확인**: numstat 누적 +231/−18, 블록 ④ 판독 용어(`덮음판독`·`TransparencyReassign`·`EarlySignalExpired`) 9회 / 시험 빌드 `a6b3101`의 `FreezeForensicsPolicy.cs`에 쓰기 종류 이름(`SetResolution`·`WindowResize`·`WindowMove`·`TransparencyReassign`) 11회 실재.
+  **리더 확인 4건 — 전부 수용**: ① 엄격 해석("첫 쓰기 순간 유예 활성", `EarlySignalExpired`는 구간을 닫지 않음) — 리더 기준 "시작 줄이 앞"보다 정확하다(조기 신호 유예 해제 뒤 틈의 쓰기를 「덮음」으로 오판하지 않음), 리더 기준 문장의 부정확 인정. ② `TransparencyReassign` 포함 — Windows에서 창 사각형을 바꾸는 쓰기이고 유예 게이트 밖이다. ③ UTC 창 필터 + 정렬 — 맥락 링 선기록 함정의 옳은 처방. ④ 구간-조작 개수 짝짓기 + `monitors=` 확인은 **추정**으로 두고 짝 실패 시 리더 회신 경로 유지.
+- **사용자 답변(캐릭터 위치 질문)**: *"노트북에 모니터를 연결한상태에서 모니터제거를 하니 노트북 화면에서 멈춰있었음"* — 구성은 **노트북 + 외장 모니터 1대**, 외장을 뽑은 뒤 **정지 화면(흰 화면 + 캐릭터)은 노트북 화면에 보였다.**
+  **해석(리더)**: 정지 시점에 오버레이 창은 노트북(남은) 화면에 있었다. 뽑기 **전** 캐릭터가 어느 화면에 있었는지는 이 답으로 확정되지 않는다 — 두 경우가 갈린다:
+  - (가) 오버레이가 원래 **외장**(기본 규칙 "가장 왼쪽" → 외장이 노트북 왼쪽 배치)에 있었고 Windows가 창을 노트북으로 옮긴 뒤 멈춤 → dev-platform 표의 "대상 모니터 제거" 경우, 우리 재적합(SetResolution·리사이즈) 경로가 **돌았을 수 있음**.
+  - (나) 오버레이가 원래 **노트북**(노트북이 가장 왼쪽)에 있었는데도 멈춤 → "비대상 모니터 제거" 경우, 우리 쓰기는 **이동만 또는 0**이었을 것 → 원인 후보가 **상시 부하(BitBlt·DWM)·Unity 자체 처리** 쪽으로 기운다.
+  → **후속 질문**: Windows 디스플레이 설정에서 외장 모니터가 노트북의 **왼쪽/오른쪽** 중 어디에 배치돼 있었는지(주 디스플레이가 어느 쪽이었는지). E-3 체크표의 (a)(c) 두 조작이 바로 이 두 경우를 가르므로 실기 시험 가치가 크다.
+- **사용자 위임(2026-09-14 두 번째)**: *"나머지는 팀장판단하진행"* → 리더 결정:
+  1. **원칙 3 원복 조건 변경 채택** — 흔적에 무작위 설치 토큰(우리 `HKCU\Software\<회사>\<제품>` 자리 + 흔적 파일), **일치할 때만** 원복. 대가(앱 설정 기록 삭제 시 원래 PC도 자동 복구 없음 → 사용자 설정 직접 조작) 수용. **CLAUDE.md 원칙 3 예외 문언은 구현 착지·검증 뒤에 개정**(판정과 코드 반영을 같은 칸에 쓰지 않는다). 구현: game-architect 구조 확인 → dev-platform, P0 커밋 뒤.
+  2. **작업표시줄 변경 고지 = (2) 트레이 툴팁 + (3) 설정창 상태·원복 버튼** 채택 → **ux-designer 설계 배정**(문서만, 버튼의 원칙 3 API 무확장은 dev-platform 확인 대상).
+  3. **공개 프리뷰 경고 게시 실행** — `gh release edit windows-preview-20260909b --notes-file docs/manual/drafts/P0-MONITOR-UNPLUG-RELEASE-BODY-FINAL.md` rc=0, **게시 확인**: 본문 첫 줄 "### ⚠ 알려진 문제 (원인 확인 중): 외장 모니터를 뽑기 전에 StickMate를 종료해 주십시오"(gh로 되읽음). 앞서 권한 분류기에 막혔던 동작이며 이번엔 사용자 위임 뒤 1회 시도로 통과.
+  4. security 사실 질문(§0-1 실행 여부 · 다른 다운로더 존재)은 사용자 답이 없으므로 **"외부 v1 흔적이 있을 수 있다"는 보수적 전제**로 진행 — 레거시 v1 1회 갚기 유지 + 크게 로그 + 첫 스토어 출시 전 제거 재판정.
+  5. 외장 모니터 배치(왼쪽/오른쪽) 미확인 → E-3 (a)(c) 두 조작으로 실기에서 가른다.
+  6. 위임 성향을 메모리 `feedback_leader_discretion_delegation.md`에 기록.
+## 2026-09-14 (리더) — [verify-change 4차] 판정: 【차단】 없음 · 동작 거짓 0 · 보고서 문장 3곳 틀림 · 새 생존 변이 8
+> 2026-09-14 verify-change 4차 — dev-platform 4차, marketing R10-S, 리더 추가 질의(`Run` 재실행 가드)를 다시 쟀다. 커밋 차단은 없고 프로덕션 동작에 관한 거짓은 0건이다. EditMode는 macOS·Win64 모두 3088/2997/0/91이었고, 타깃은 TypeDef로 판정해 macOS로 되돌렸다. 새 격리 미러는 osx·win 모두 0에러였고 셀프테스트와 양방향 교차 대조를 통과했다. 3차 원형 변이 7종(Win V1w 포함)은 각각 따로 전부 빨갛다. V5는 원형 대상 줄이 없어져 같은 뜻의 두 표기로 넣었고 둘 다 빨갛다. 스캐너 수정은 Roslyn 차등 비교로 719파일 × 두 모드에서 불일치 0이다(결함 3개를 넣은 스캐너로 교정). 본문 추출은 Roslyn과 16/16 일치하고, raw 문자열은 C# 9 컴파일러가 거부한다. 표지 파일은 한 개로 덮어써지고, 원복 도중 kill된 실행은 복사 없이 `ExitStartedNotFinished`로 판정된다(macOS 프로세스 실측). TRUTH_INVENTORY 표본 5곳은 커밋 사실과 맞는다. 다만 보고서 문장 3곳은 틀렸다. (1) V4 공유 탐침의 음성 대조는 읽기 축뿐이다 — Unity Mono는 `FileShare.None` 중에도 이름 바꾸기를 허용해 "이름바꾸기" 잠금은 이 러너에서 잴 수 없다. (2) 속성 스냅샷은 ReadOnly·Hidden만 본다. (3) `AppShutdownSequence` "표지는 같은 줄을 다시 쓸 뿐"은 4차 이후 거짓이다. 새 변이 11개 중 8개가 초록으로 살아남았다: 유니코드 이스케이프 무장(두 플랫폼), 계산된 이름 리플렉션 무장, NotContentIndexed 속성, 삭제 공유 없는 두 번째 핸들, 트레이 판정 앞 조기 반환(V5 결함 재발), 트레이 lParam==0 조건(로그오프 원복 누락), 세션 종료 뒤 "종료 시작" 잔존. 리더 질의는 사실이다: 가드가 없어 quitting 재실행이 정상 종료 표지를 덮어쓸 수 있고, 그 사이 끊기면 `ExitStartedNotFinished`로 원복 도중 끊김과 구별되지 않는다. 원복이 성공했으면 시스템에 다시 쓰지 않고 로그 복사도 일어나지 않지만, `TASKBAR_REVEAL` 6절 8번 판독문을 틀리게 만든다. 세션 중 다른 라운드가 문서 11개를 수정해 커밋 범위를 분리해야 한다. Windows 실기는 0회다.
+
+**리더 판정 — 커밋 승인(프로덕션 동작 옳음, 두 타깃 전량 초록).** 커밋 범위: Assets 10파일 + `docs/TASKBAR_REVEAL.md` + `TRUTH_INVENTORY.md`(verify-change 검증분) + 세션 중 들어온 문서 11개(marketing R11·원복 흔적 제외, manual-writer 3-1, security S-7-2/6/7, product-strategy §60-8, qa-regression 체크표) — **후자는 verify-change 범위 밖이며 리더 표본 확인(numstat·핵심 줄 grep)만 거쳤다**고 커밋 메시지에 구분해 적는다.
+**생존 변이 분류(리더 판정)**:
+- **실제 개발 중 생길 법한 회귀 → 실행 테스트로 잠근다(dev-platform 5차)**: V5g(트레이 판정 앞 조기 반환), X1g(트레이 lParam 조건으로 세션 종료 처리 건너뜀), G2(세션 종료 뒤 최종 표지 잔존), `Run` 재실행이 정상 종료 표지를 덮어쓰는 문제(**표지 단계만** 재실행을 막는 세분 가드 — `:324` 원복 재시도 설계와 충돌하지 않게).
+- **일부러 꼬아야만 생기는 형태 → 텍스트 감사의 원리적 한계로 명시만**: N1/N1w(유니코드 이스케이프 식별자), N2(계산된 이름 리플렉션). C# 파서를 들여오지 않는다(비용 대비 가치 없음).
+- **러너가 원리상 못 재는 축 → 이름·주석을 실제 잠금 범위로 정정 + Windows 실기 항목**: N3(속성 — 이 러너는 ReadOnly·Hidden만 반영), N4(삭제 공유 없는 핸들의 이름 바꾸기 차단 — Unity Mono는 막지 않음).
+- 보고서 틀린 문장 3곳 → 테스트 이름·주석·`AppShutdownSequence.cs:45-47`·`:137` 정정.
+- `TASKBAR_REVEAL.md` 6절 8번 판독문("`ExitStartedNotFinished`면 원복 도중 끊김") → 재실행 가드가 들어갈 때까지 조건부로 정정, 체크표 §R 해당 행도(qa-regression).
+**순서**: 커밋 → dev-platform 5차(위 + coder 합류용 `FlushProgressSave` 단계·`RegisterSaveHandler` 계약 추가 — `AppShutdownSequence` 편집이 겹치므로 한 라운드에) → coder(진행 저장 등록 + 세이브 H1·H2′). game-architect 토큰 구조 확인·ux-designer 고지 설계는 문서 라운드라 병행.
+- **다음 세션 첫 순서**(위 배정으로 대부분 착수됨): verify-change 4차(변이 15종 중 표본 재주입 + 네 변이, X1 `Application.Quit` 경로, "종료 시작" 표지와 원칙 3, `SourceTextScanner` 보간 처리) → 리더 커밋 → coder(진행 저장 합류 + 세이브 H1·H2′) → marketing(`CAPTURE_PROTOCOL` 폴더 단위) → 페르소나 3인.
 - manual-writer 범위 밖 발견: NOTICE 초안 219행의 한국어 설정 항목 이름이 MS 페이지 안에서 둘로 갈림 — **게시용 최종본(`RELEASE-BODY-FINAL`)은 리더가 이미 일반화해 해당 이름 0건**이라 공개 문안에는 영향 없음. (manual-writer가 "다른 라운드가 수정 중"이라 한 그 파일의 수정자는 리더다.)
 
 **판정**: 커밋은 dev-platform 2차와 **묶어서** verify-change 통과 후. 2장 1-2의 작업표시줄 서술 보강(실행 중 재해제 · 종료 시 원복)은 dev-platform C(`WM_ENDSESSION`) 착지 후 manual-writer에 재배정 — 원복 경로가 바뀌므로 지금 쓰면 곧 낡는다.

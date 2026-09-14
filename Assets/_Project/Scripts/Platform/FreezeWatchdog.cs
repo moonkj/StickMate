@@ -261,7 +261,8 @@ namespace StickMate.Platform
                 RecordPreviousSessionVerdict(directory, pid);
 
                 Debug.Log($"{FreezeForensicsPolicy.LogTag} 활성 — 폴더 {directory} " +
-                    $"(파일은 첫 사건 때 생깁니다, 슬롯 {FreezeForensicsPolicy.SlotCount}개 링). " +
+                    $"(원장 슬롯 파일은 첫 사건 때 생깁니다 — {FreezeForensicsPolicy.SlotCount}개 링. 정상 종료 표지 " +
+                    $"{SessionExitMarkerPolicy.MarkerFileName} 한 개는 실행·종료 때마다 같은 이름으로 덮어씁니다(쌓이지 않습니다)). " +
                     "앱이나 컴퓨터가 멈추면 이 폴더를 통째로 보내 주세요. " +
                     $"정상 상주 중에는 워치독이 디스크에 쓰지 않습니다(정지 {FreezeForensicsPolicy.StallThresholdSeconds:F0}초 이상 / " +
                     $"화면 구성 변화 후 {FreezeForensicsPolicy.HeartbeatWindowSeconds:F0}초만).");

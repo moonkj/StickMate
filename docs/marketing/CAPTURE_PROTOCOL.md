@@ -1,6 +1,6 @@
 # 캡처 규율 — 홍보 소재는 이렇게만 찍는다
 
-작성: marketing / 2026-09-02 · **R2 갱신**
+작성: marketing / 2026-09-02 · **R11 갱신 2026-09-14**(2-3 저장 초기화를 **폴더 단위**로 교체. R5·R6·R9 추가분도 본문에 있다)
 **★ 아직 한 장도 찍지 않았다.** 이 문서는 **찍기 전에 리더 승인을 받기 위한 절차서**다.
 사람이 할 일 / 자동화할 일의 분리와 우선순위는 `ROADMAP.md` §4·§6.
 
@@ -129,8 +129,65 @@
 - [ ] **회사·타사 로고와 UI가 크게 찍히지 않는가** — 스토어 심사와 상표 문제
 
 ### 2-3. 앱 상태
-- [ ] **저장 파일 초기화** 여부를 정한다. `~/Library/Application Support/Vibelab/StickMate/stickmate_character.json`
-      - 첫 실행 연출을 찍으려면 초기화 필요. **다만 사용자의 진행도를 지우지 않도록 백업 필수**
+- [ ] **저장 초기화 여부를 정한다.** ★★★ **R11 (2026-09-14) — 파일 하나가 아니라 저장 폴더를 통째로 옮긴다**
+      〔R2~R10의 *"`stickmate_character.json` 본체만 초기화"*는 **폐기**. 같은 절차를 옮겨 적은 `CAPTURE_REQUESTS_R5.md` 3절 1번도 함께 고쳤다〕
+      - 첫 실행 연출을 찍으려면 초기화 필요. **사용자 진행도는 지우지 않는다 — 옮겨 두고, 촬영 뒤 되돌린다**
+      - ★ **본체만 치우면 안 되는 이유**: 곧 들어갈 세이브 복구 규칙(H2′)은 *본체가 없고, 직전 세대(`stickmate_character.prev.json`)와
+        같은 캐릭터이면서 내용상 더 새로운 임시 파일(`stickmate_character.json.<번호>.writing`)이 남아 있으면* 교체 중 끊김으로 보고 **복구한다.**
+        본체만 치운 폴더는 그 모양과 겹칠 수 있다 → **"지웠는데 캐릭터가 돌아온다"** → 첫 실행 컷이 **조용히 거짓 소재**가 된다
+        (근거: `Tasklist.md` 「[security] 세이브 교체 중 끊김 검토」). 같은 폴더 안에서 `.bak`으로 **이름만 바꾸는 것도 같은 모양**이다.
+        H2′가 아직 없는 빌드도 **이 절차로** 찍는다 — 빌드마다 절차를 고르면 언젠가 틀린 쪽을 고른다
+      - **폴더 위치** — 경로의 회사명 칸은 그 빌드의 `companyName`을 따른다(현행 `ProjectSettings.asset` = `Vibelab`). **추측하지 말고 그 빌드가 찍은 로그 줄로 확인한다**
+        - macOS: `~/Library/Application Support/Vibelab/StickMate/` (이 머신에 실재)
+        - Windows: `%USERPROFILE%\AppData\LocalLow\Vibelab\StickMate\`
+        - 확인 줄: `[동결기록] 활성 — 폴더 <이 폴더>/FreezeForensics`(양 플랫폼, `Platform/FreezeWatchdog.cs:263`) ·
+          Windows는 `[작업표시줄] … 흔적 파일=<이 폴더>\stickmate_reserved_bar_restore.json`도(`Platform/ReservedBarRevealDirector.cs:132`)
+      - **폴더 안에 있는 것** (코드 실측 — `persistentDataPath`를 쓰는 프로덕션 파일 6개 전수):
+        `stickmate_character.json`(본체, `Core/CharacterSaveStore.cs:37`) · `stickmate_character.prev.json`(직전 세대, `:714`) ·
+        `stickmate_character.json.<번호>.writing`(쓰다 끊기면 남는 임시 파일, `:1200,1230`) · `character_save.v<N>.backup.json`(다운그레이드 백업, `:764`) ·
+        ★ `stickmate_reserved_bar_restore.json`(작업표시줄 원복 흔적 — Windows만 쓴다, `Platform/ReservedBarRestoreLedger.cs:93`) ·
+        `FreezeForensics/`(멈춤 원장 · `session-exit-marker.txt` · `previous-abnormal-player-NN.log`, `Platform/FreezeForensicsPolicy.cs:45` · `Platform/SessionExitMarker.cs:53,63`).
+        ★ **Windows는 Unity `Player.log` · `Player-prev.log`도 이 폴더에 있다**(`Platform/Windows/WindowsCompositionProbe.cs:34`) — 폴더와 함께 옮겨진다.
+        **멈춤 조사용 로그 회수(`docs/verify/WINDOWS_CHECK_SESSION.md` H-3)가 남아 있으면 그것부터 끝낸다.** macOS 로그는 `~/Library/Logs/Vibelab/StickMate/`라 이 폴더 밖이다
+      - **① 모든 인스턴스를 앱 안에서 종료** — Windows 트레이 메뉴 「StickMate 종료」(`Platform/SystemTrayPresencePolicy.cs:182`) 또는 톱니 부채꼴 「앱 종료」(`Interaction/GearRadialMenuWidget.cs:479`).
+        ★ `driver.sh stop` · 전역 `Q` 금지(0절 4번). 확인은 **읽기만**: macOS `pgrep -x StickMate` / Windows `Get-Process StickMate -ErrorAction SilentlyContinue` → **0줄**
+        (macOS에서 `-f`를 쓰지 마라 — 프로젝트 경로에 `StickMate`가 든 Unity 러너까지 걸린다).
+        ★ 하나라도 살아 있으면 안 된다 — 세이브는 인스턴스끼리 공유하고, 저장은 **폴더가 없으면 다시 만든다**(`Core/CharacterSaveStore.cs:652,1637`).
+        살아 있는 인스턴스의 다음 저장(기본 60초 주기)이 **원래 자리에 사용자 캐릭터를 다시 써** 첫 실행 컷이 오염되고, **그 사이 쌓인 진행도는 ⑤에서 버려진다**
+      - **② ★ Windows · 작업표시줄 자동 숨김을 쓰는 기계 — 흔적 파일을 옮기면 원복 흔적이 사라진다. 앱을 트레이에서 종료한 뒤에 옮긴다.**
+        옮기기 전에 흔적이 닫혀 있는지 본다(`docs/TASKBAR_REVEAL.md` 2-3):
+        `$f = "$env:USERPROFILE\AppData\LocalLow\Vibelab\StickMate\stickmate_reserved_bar_restore.json"; if (Test-Path $f) { (Get-Content -Raw -Encoding UTF8 $f | ConvertFrom-Json).active } else { "흔적 없음" }`
+        → `False` 또는 `흔적 없음`이면 옮긴다. ★ **`True`면 옮기지 않는다** — 지난 실행(크래시·리부팅)이 못 갚은 빚이다. 흔적째 옮기면 **아무도 갚지 않는다**
+        (`docs/COMPANY_RENAME_MIGRATION.md` 0절의 고아 흔적과 같은 경로). 앱을 한 번 켜 로그 `[작업표시줄] ★ 복구 —` 줄과 자동 숨김 복귀를 확인 → 트레이에서 종료 → 다시 `False` 확인.
+        (켜는 순간 `Player.log`가 `Player-prev.log`로 밀린다 — 위 로그 회수 주의)
+      - **③ 옮긴다** — 백업은 **같은 부모 폴더에 다른 이름으로**(같은 볼륨이라 이름 바꾸기 한 번이다). ★ 바탕화면에 두지 마라 — 2-1 「바탕화면 아이콘 0개」가 깨지고 촬영에 찍힌다
+        - macOS: `mv "$HOME/Library/Application Support/Vibelab/StickMate" "$HOME/Library/Application Support/Vibelab/StickMate.capture-backup-$(date +%Y%m%d-%H%M%S)"`
+        - Windows: `Rename-Item "$env:USERPROFILE\AppData\LocalLow\Vibelab\StickMate" "StickMate.capture-backup-$(Get-Date -Format yyyyMMdd-HHmmss)"`
+        - **실제로 생긴 백업 폴더 이름을 캡처 메모(4절)에 적는다**
+      - **④ 켜기 전 확인 — 대조 둘** — 원래 경로가 **없다**(`ls` 실패 / `Test-Path` → `False`) **그리고** 백업 폴더 안에 `stickmate_character.json`이 **보인다**.
+        ★ 둘 다 없으면 **경로를 잘못 본 것이다** — 「없음」 하나만 보고 통과시키지 마라(죽은 확인이 산 확인과 똑같이 생긴다)
+      - **⑤ 촬영 뒤 되돌리기**
+        1. 촬영 인스턴스를 ①과 같이 종료 → 0줄 확인
+        2. ★ Windows · 자동 숨김 기계: **촬영 폴더의** 흔적을 ②의 명령으로 본다. `True`면(촬영 중 정지·강제 종료) **되돌리기 전에** 앱을 한 번 켜 갚게 하고 종료 → `False` 확인.
+           **촬영 폴더를 치운 뒤에는 그 빚을 갚을 실행이 없다** — 되돌린 사용자 폴더의 흔적은 닫혀 있어 다음 실행이 복구하지 않는다
+        3. 촬영 폴더는 **지우지 말고** 이름을 바꿔 치운다(`StickMate.capture-shot-<시각>`) — 촬영 중 멈춤이 있었다면 그 안의 `FreezeForensics/`가 판정 자료다. 필요 없다고 판정된 뒤 사용자가 지운다
+        4. 백업 폴더 이름을 `StickMate`로 되돌린다
+        5. 확인: `stickmate_character.json`의 크기·수정 시각이 옮기기 전과 같은가
+        6. 아래 R5 `PlayerPrefs`도 되돌린다 — **폴더만 되돌리면 온보딩 「봤음」 기록이 빠진 채 남는다**
+      - ★ **레벨 30 / 중간 진행 세이브를 쓰는 컷도 같은 방식이다** — ③까지 한 뒤 **촬영용 폴더를 통째로** `StickMate` 자리에 둔다.
+        사용자 폴더 안에서 본체만 바꿔 끼우지 마라 — 사용자 본체를 덮게 되고, 사용자의 `prev.json`·임시 파일이 촬영용 본체 옆에 남아 섞인다.
+        ★ **촬영용 폴더를 만들거나 다른 기계·다른 사용자 계정에서 가져올 때 넣지 않는 것** 〔R11-b 2026-09-14 — `game-architect` 「작업표시줄 원복 흔적의 기계 경계」 판정 반영〕
+        - `*.writing` 파일 — 중단된 저장의 잔해다(`docs/security/ENTITLEMENT_CONTRACT.md` S-7-6 3번)
+        - ★★ **`stickmate_reserved_bar_restore.json`** — **받는 기계의 작업표시줄 자동 숨김 설정을 바꿀 수 있다(원칙 3).**
+          흔적에는 기계·계정 식별자가 없고 플랫폼 태그만 대조한다(`Platform/ReservedBarRestoreLedger.cs:34-53,150-154`) — 다른 Windows 기계·계정에서 온 **열린 흔적**을 받은 쪽이 자기 빚으로 읽고 「원복」한다.
+          ★ `active` 값을 보고 골라 넣지 마라 — **닫힌 흔적도 넣지 않는다.** 넣어서 얻는 것이 없고(없으면 촬영 인스턴스가 필요할 때 새로 쓴다), 「닫힌 것을 확인했다」가 틀리는 순간 남의 PC 설정이 바뀐다
+        - `FreezeForensics/` · `Player.log` · `Player-prev.log` — 원래 기계의 기록이다. 가져온 표지가 `state=running`이면 촬영 인스턴스가 **비정상 종료로 판정해 `previous-abnormal-player-NN.log` 복사본을 만든다**(`Platform/SessionExitMarker.cs:103-114`) —
+          없던 사건 기록이 생겨 ⑤-3의 판정 자료가 오염된다. 로그 경로에는 원래 계정 이름이 찍혀 있을 수 있다
+        - ★ **⑤-3에서 치운 `StickMate.capture-shot-<시각>`을 다음 촬영의 원본으로 다시 쓸 때도 같다** — 그 안에는 촬영 인스턴스가 쓴 흔적·표지·로그가 들어 있다
+        - **넣은 뒤 켜기 전 대조 둘**(④와 같은 형태) — 새 `StickMate` 자리에 `stickmate_character.json`이 **보이고** `stickmate_reserved_bar_restore.json`은 **없다.**
+          Windows: `Test-Path "$env:USERPROFILE\AppData\LocalLow\Vibelab\StickMate\stickmate_character.json"` → `True` · 같은 폴더 `stickmate_reserved_bar_restore.json` → `False`.
+          ★ 둘 다 `False`면 경로를 잘못 본 것이다 — 「흔적 없음」 하나만 보고 통과시키지 마라
+        ★ 여기서 「복사」가 아니라 「옮기기」를 쓰는 것은 일부러다(같은 문서 S-7-6 1번은 사용자 이전 안내라 「복사」다) — 원래 경로가 **비어야** 첫 실행이 되고, 이름 바꾸기는 형제 폴더로 복구 지점을 남긴다
 - [ ] ★★ **R5 — 「첫 실행」은 저장 파일만 지워서는 안 된다.** 온보딩 안내 「봤음」 기록은
       **`PlayerPrefs`**에 있다(`GearRadialMenuWidget`의 `OnboardingSeenKey` =
       `StickMate.GearMenu.OnboardingSeen.v1`). 이 머신 실측: **이미 `= 1`로 기록돼 있다.**

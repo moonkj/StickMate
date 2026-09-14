@@ -288,8 +288,11 @@ namespace StickMate.Tests.EditMode
                 StringAssert.Contains("MonitorTopologyReport.EmitOnce(", src,
                     $"{rel}에 Phase 0 계측 호출이 없습니다 — 한쪽만 계측하면 두 플랫폼 로그를 " +
                     "나란히 놓고 비교할 수 없습니다(이번 라운드의 목적 자체가 그 대조입니다).");
-                // ★ 2026-09-14 (X2c) — 확정 규칙은 신호 객체 너머로 부른다(규칙 동일성은 DisplayChangeRenderHoldTests가 실행으로 잠근다).
-                StringAssert.Contains("_fullScreenFitLatch." + nameof(FullScreenFitLatchSignal.Evaluate) + "(within, wroteThisTick)", src,
+                // ★ 2026-09-14 (X2c, 4차) — 확정 규칙은 신호 객체 너머로 부른다(규칙 동일성은 DisplayChangeRenderHoldTests가 실행으로 잠근다).
+                //   주석·문자열·보간을 지운 코드에서 공백을 정규화해 본다(주석 속 언급이 니들을 채우지 않게).
+                string latchTokens = SourceTextScanner.BlankCommentsAndStrings(src, null, blankInterpolationHoles: true);
+                Assert.IsTrue(System.Text.RegularExpressions.Regex.IsMatch(latchTokens,
+                        @"_fullScreenFitLatch\s*\.\s*" + nameof(FullScreenFitLatchSignal.Evaluate) + @"\s*\(\s*within\s*,\s*wroteThisTick\s*\)"),
                     $"{rel}이 확정 규칙을 부르지 않습니다 — 한쪽에만 고치면 그 결함이 그대로 남습니다.");
             }
         }
