@@ -96,8 +96,8 @@ namespace StickMate.Platform.Windows
     /// <para>★ <b>예외 1건(2026-09-14) — <c>WM_ENDSESSION</c>(wParam=TRUE).</b> 로그오프·시스템 종료 통보다. 이 메시지를
     /// 처리하고 돌아가면 곧 프로세스가 끊기므로(MS 문서: "the session can end any time after all applications have
     /// returned from processing this message") "다음 Tick에서 배달"이 성립하지 않는다. 그래서 이 한 메시지에 한해
-    /// 프로시저 안에서 <see cref="StickMate.Platform.AppShutdownSequence.HandleSessionEnding"/>을 <b>동기로</b> 부른다(종료 시작 표지 → 작업표시줄 원복 →
-    /// 워치독 정지 신호 → 정상 종료 표지, 그 안에서 <c>Debug.Log</c>·흔적 파일·표지 파일 쓰기가 일어난다). 허용 근거: 이 창은 Unity 메인 스레드가
+    /// 프로시저 안에서 <see cref="StickMate.Platform.AppShutdownSequence.TryHandleSessionEndMessage"/>(→ <c>HandleSessionEnding</c>)을 <b>동기로</b> 부른다(종료 시작 표지 → 작업표시줄 원복 →
+    /// 워치독 정지 신호 → 진행 저장(처리기가 등록됐을 때) → 정상 종료 표지, 그 안에서 <c>Debug.Log</c>·흔적 파일·표지 파일 쓰기가 일어난다). 허용 근거: 이 창은 Unity 메인 스레드가
     /// <see cref="Tick"/>에서 만든 창이라 프로시저도 그 스레드에서 돈다(Unity API 스레드 규칙 위반 아님), 모달 루프가
     /// 아니다(메뉴의 중첩 루프와 다르다), 처리 뒤 앱 종료를 요청하므로 원복된 채 계속 도는 실행이 남지 않는다(4차 X1 — Restart Manager·종료 취소 경로). <c>WM_QUERYENDSESSION</c>은 건드리지
     /// 않는다(DefWindowProc = 종료 허용). 트레이를 끈 사용자도 받도록 옵트아웃 경로에서 <b>아이콘 없는 수신 창</b>만
@@ -199,7 +199,7 @@ namespace StickMate.Platform.Windows
             {
 #if !UNITY_EDITOR
                 // ★ 2026-09-14 — 트레이를 끈 사용자도 로그오프·시스템 종료 때 작업표시줄 원복을 받고 정상 종료 표지를 남겨야 한다.
-                //   아이콘 없이 세션 종료 수신 창만 세운다(판정은 중립 SessionEndPolicy.ShouldCreateReceiverWithoutTrayNow — 4차).
+                //   아이콘 없이 세션 종료 수신 창만 세운다(결정 경로 전체는 중립 SessionEndReceiverGate — 5차. 이 블록에 조건을 더하지 마라).
                 EnsureSessionEndReceiverWithoutTray();
 #endif
                 return;
@@ -279,20 +279,18 @@ namespace StickMate.Platform.Windows
 #endif
         }
 
-        private static bool _sessionEndReceiverEvaluated;
-
         /// <summary>
         /// ★ 2026-09-14 — 트레이를 끈 사용자에게도 <c>WM_ENDSESSION</c> 수신자를 둔다. 이 앱의 창 중 우리가 프로시저를
         /// 가진 최상위 창은 트레이 호스트 창뿐이고(Unity 창은 서브클래싱하지 않는다 — 클래스 문서), 옵트아웃이면 그 창이
         /// 만들어지지 않아 세션 종료 원복이 누락된다.
         ///
         /// <para><b>조건</b>: 세션 종료에서 할 일이 있을 때만 — 이번 실행이 작업표시줄 자동 숨김을 실제로 바꿨거나,
-        /// 정상 종료 표지(<see cref="StickMate.Platform.SessionExitMarker"/>, 3차 D)가 켜져 있을 때
-        /// (<see cref="StickMate.Platform.SessionEndPolicy.NeedsReceiverWithoutTray"/>). 둘 다 아니면 창도 만들지 않는다.
-        /// 기동(<c>BeforeSceneLoad</c> 원복 판정 / <c>AfterSceneLoad</c> 표지)은 첫 <c>Update</c>보다 먼저 끝나므로 한 번만 평가한다.
-        /// ★ 4차(verify-change 3차 V5): 두 사실은 이 파일이 모으지 않는다 — 중립
-        /// <see cref="StickMate.Platform.SessionEndPolicy.ShouldCreateReceiverWithoutTrayNow"/>가 읽고, 이 파일은 옵트아웃 여부만 넘긴다
-        /// (조건에서 표지 사실을 지워도 초록이던 구멍을 EditMode 실행 테스트로 잠그기 위해서다).</para>
+        /// 정상 종료 표지(<see cref="StickMate.Platform.SessionExitMarker"/>, 3차 D)가 켜져 있을 때. 둘 다 아니면 창도 만들지 않는다.
+        /// ★ 5차(verify-change 4차 V5g): <b>세울지 결정하는 경로 전체</b>(한 번만 판정 · 옵트아웃 · 두 사실 · 생성 호출)가 중립
+        /// <see cref="StickMate.Platform.SessionEndReceiverGate.EnsureReceiverWithoutTray"/>에 있다. 이 파일은 옵트아웃 여부와 창을 만드는 손
+        /// (<see cref="CreateSessionEndReceiverWindow"/>)만 넘기고, 돌려받은 결과로 <b>로그만</b> 고른다. 4차에는 판정 줄 앞에 조건 한 줄을
+        /// 넣어도 초록이었다 — 이제 결정은 EditMode가 실행해 잠그고, 이 메서드와 생성 손은 <b>모양 전체</b>가 허용 형태로 감사된다
+        /// (<c>SessionEndShutdownTests</c>). 여기에 조건을 더하지 마라 — 조건은 중립 쪽에 넣고 테스트로 잠근다.</para>
         ///
         /// <para><b>무엇을 만드나</b>: 트레이와 같은 숨은 호스트 창(같은 클래스·같은 프로시저·<c>WS_VISIBLE</c> 없음)이고
         /// 아이콘은 세우지 않는다. 승인된 예외 API(<c>SetForegroundWindow</c>/<c>PostMessage</c>/<c>DestroyWindow</c>)는
@@ -303,22 +301,28 @@ namespace StickMate.Platform.Windows
         /// </summary>
         private static void EnsureSessionEndReceiverWithoutTray()
         {
-            if (_sessionEndReceiverEvaluated) return;
-            _sessionEndReceiverEvaluated = true;
-            if (!SessionEndPolicy.ShouldCreateReceiverWithoutTrayNow(_optOut)) return;
-
-            if (EnsureHostWindow())
+            SessionEndReceiverOutcome outcome = SessionEndReceiverGate.EnsureReceiverWithoutTray(_optOut, CreateSessionEndReceiverWindow);
+            if (outcome == SessionEndReceiverOutcome.Created)
             {
-                InstallQuitHook();
                 Debug.Log($"{LogPrefix} 트레이는 꺼져 있지만 로그오프·시스템 종료 통보를 받을 숨은 창만 세웠습니다(아이콘 없음) — " +
                     $"그 순간 작업표시줄 원래 설정 복귀(이번 실행이 바꿨음={ReservedBarRevealDirector.ChangedThisSession})와 " +
                     $"정상 종료 표지(켜짐={SessionExitMarker.IsStarted})를 남기기 위해서입니다.");
             }
-            else
+            else if (outcome == SessionEndReceiverOutcome.CreateFailed)
             {
                 Debug.LogWarning($"{LogPrefix} 세션 종료 통보를 받을 숨은 창을 만들지 못했습니다 — 로그오프·시스템 종료 때는 " +
                     "원복하지 못하고, 다음 실행이 시작하자마자 되돌립니다.");
             }
+        }
+
+        /// <summary>
+        /// 숨은 수신 창을 만드는 손(플랫폼 사실). 중립 판정이 "세워야 한다"고 할 때만 한 번 불린다. 조건을 두지 않는다(위 문서).
+        /// </summary>
+        private static bool CreateSessionEndReceiverWindow()
+        {
+            if (!EnsureHostWindow()) return false;
+            InstallQuitHook();
+            return true;
         }
 
         private static void DrainPendingCommand()
@@ -525,10 +529,11 @@ namespace StickMate.Platform.Windows
                 // ★ 2026-09-14 — 세션 종료(로그오프·시스템 종료·재시작). 처리하고 돌아가면 곧 프로세스가 끊긴다 —
                 //   원복을 <b>여기서 동기로</b> 끝낸다(클래스 문서 "예외 1건"). wParam=FALSE(종료 취소)는 아무것도 안 한다.
                 //   WM_QUERYENDSESSION은 건드리지 않는다 — 아래 DefWindowProc가 TRUE(종료 허용)를 돌려준다.
-                if (SessionEndPolicy.IsSessionEndingNow(message, wParam.ToInt64()))
+                // ★ 5차(verify-change 4차 X1g) — 분기 규칙(메시지·wParam 판정 → lParam과 무관하게 순서 + 앱 종료 요청 한 번)은 중립
+                //   AppShutdownSequence.TryHandleSessionEndMessage에 있고 EditMode가 lParam 조합으로 실행해 잠근다. 이 줄에 조건을 붙이지 마라
+                //   (lParam 조건 한 줄로 로그오프·Restart Manager 원복이 빠지는데 4차 감사는 초록이었다 — 지금은 이 줄의 모양 전체를 본다).
+                if (AppShutdownSequence.TryHandleSessionEndMessage(message, wParam.ToInt64(), lParam.ToInt64()))
                 {
-                    // ★ 4차(X1) — 순서를 돈 뒤 앱 종료까지 요청한다(ENDSESSION_CLOSEAPP·종료 취소로 살아남아 원복된 채 도는 실행을 남기지 않는다).
-                    AppShutdownSequence.HandleSessionEnding(lParam.ToInt64());
                     return IntPtr.Zero;   // MS 문서: 이 메시지를 처리했으면 0을 돌려준다.
                 }
 

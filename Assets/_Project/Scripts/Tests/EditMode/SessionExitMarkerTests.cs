@@ -11,8 +11,13 @@ using UnityEngine;
 namespace StickMate.Tests.EditMode
 {
     /// <summary>
-    /// ★ 2026-09-14 (3차 D, 4차) — 정상 종료 표지와 비정상 종료 다음 실행의 <c>Player-prev.log</c> 복사.
-    /// 파일 조작은 전부 임시 폴더에서 <b>실행</b>한다. 두 종료 입구가 표지를 남기는지(R-6)와 원복 도중 끊김(R5)은 <c>SessionEndShutdownTests</c>가 본다.
+    /// ★ 2026-09-14 (3차 D, 4차, 5차) — 정상 종료 표지와 비정상 종료 다음 실행의 <c>Player-prev.log</c> 복사.
+    /// 파일 조작은 전부 임시 폴더에서 <b>실행</b>한다. 두 종료 입구가 표지를 남기는지(R-6)·원복 도중 끊김(R5)·재실행 가드(R7)는 <c>SessionEndShutdownTests</c>가 본다.
+    ///
+    /// <para><b>★ 이 러너(Unity Mono, macOS 에디터)가 원칙 3 축 중 실행으로 재는 것과 못 재는 것(5차 정정, verify-change 4차 하니스 실측).</b>
+    /// 잰다: 내용·크기·수정 시각, 속성 중 <b>ReadOnly·Hidden</b>, 남의 핸들 <b>열기(읽기·쓰기)</b>를 막는가.
+    /// 못 잰다: 그 밖의 속성(System·Archive·Temporary·NotContentIndexed — 설정해도 <c>GetAttributes</c>에 안 보인다), 남의 <b>이름 바꾸기·삭제</b>를 막는가
+    /// (Mono는 <c>FileShare.None</c> 핸들을 쥔 채로도 <c>File.Move</c>를 허용한다). 못 재는 축은 소스 감사가 <b>형태로</b>만 막고, 실제 동작은 Windows 실기 항목이다.</para>
     /// </summary>
     public sealed class SessionExitMarkerTests
     {
@@ -148,15 +153,30 @@ namespace StickMate.Tests.EditMode
         }
 
         /// <summary>
-        /// ★ 원칙 3 — 우리 폴더 <b>밖</b> 파일(원본 <c>Player-prev.log</c> 포함)의 <b>내용(해시)·크기·수정 시각·파일 속성(읽기 전용 포함)</b>이 그대로이고,
-        /// 지워지거나 새로 생긴 파일이 없다.
-        /// <para><b>잠그지 않는 것(정직하게).</b> 접근 시각(읽으면 OS가 바꾼다 — 읽기 자체의 부수효과라 원칙 3 위반이 아니다), Unix의 inode 변경 시각,
-        /// ACL·확장 속성. 원본을 연 동안 남의 핸들을 막는가(공유 모드)는 아래 별도 실행 테스트가 본다.</para>
+        /// ★ 원칙 3 — 우리 폴더 <b>밖</b> 파일(원본 <c>Player-prev.log</c> 포함)의 <b>내용(해시)·크기·수정 시각·이 러너가 반영하는 속성(읽기 전용·숨김)</b>이
+        /// 그대로이고, 지워지거나 새로 생긴 파일이 없다.
         /// <para>4차(verify-change 3차 V4a): 3차 스냅샷은 내용·크기·수정 시각만 봐서 복사 뒤 원본에 읽기 전용 속성을 거는 변이가 초록이었다.</para>
+        /// <para><b>★ 5차 정정 — 속성 축의 실제 범위.</b> 4차 이름("…속성이 그대로")은 속성 전체를 잠그는 것처럼 읽혔는데, 이 러너(Unity Mono, macOS)의
+        /// <c>File.GetAttributes</c>는 <b>ReadOnly·Hidden만</b> 반영한다(verify-change 4차 하니스 실측 — System·Archive·Temporary·NotContentIndexed는 설정해도
+        /// 읽히지 않는다). 그래서 원본에 <c>NotContentIndexed</c>를 거는 N3 변이가 이 테스트를 초록으로 통과했다. 그 밖의 속성 변경은 이 실행 테스트가
+        /// 못 보고, 소스 감사(속성·시각 <b>세터</b>와 <c>SetAttributes</c> 금지 — <see cref="원칙3_소스_감사_표지_코드는_삭제_이동_속성변경_독점열기_없이_원본을_읽기_전용으로만_연다"/>)가
+        /// <b>형태로</b> 막는다. Windows 파일 시스템에서의 속성 반영은 실기 항목이다. 속성 칸이 이 러너에서 살아 있는지는 테스트 첫머리의 교정(숨김 한 비트)이 매번 보인다.</para>
+        /// <para><b>잠그지 않는 것(정직하게).</b> 접근 시각(읽으면 OS가 바꾼다 — 읽기 자체의 부수효과라 원칙 3 위반이 아니다), Unix의 inode 변경 시각,
+        /// ACL·확장 속성. 원본을 연 동안 남의 핸들을 막는가(공유 모드)는 아래 별도 실행 테스트가 본다(열기 축만).</para>
         /// </summary>
         [Test]
-        public void 원칙3_우리_폴더_밖_파일의_내용_크기_수정시각_속성이_그대로이고_지워지거나_생기지_않는다()
+        public void 원칙3_우리_폴더_밖_파일의_내용_크기_수정시각_읽기전용_숨김_속성이_그대로이고_지워지거나_생기지_않는다()
         {
+            // 교정 — 이 러너에서 스냅샷의 속성 칸이 살아 있는가(숨김 한 비트를 켜서 칸이 달라지는지 본다). 깨지면 아래 속성 비교는 공허하다.
+            string calibration = Path.Combine(_root, "attribute-calibration.txt");
+            File.WriteAllText(calibration, "교정");
+            string plainRow = SnapshotOutside(_ours)[Path.GetFullPath(calibration)];
+            File.SetAttributes(calibration, File.GetAttributes(calibration) | FileAttributes.Hidden);
+            string hiddenRow = SnapshotOutside(_ours)[Path.GetFullPath(calibration)];
+            Assert.AreNotEqual(plainRow, hiddenRow, "교정 실패 — 이 러너의 스냅샷은 숨김 속성 변경도 보지 못한다. 속성 축은 공허하다(한계로 보고할 것).");
+            File.SetAttributes(calibration, FileAttributes.Normal);
+            File.Delete(calibration);
+
             File.WriteAllText(_prev, "원본 로그\n");
             string neighbor = Path.Combine(_logs, "Player.log");
             File.WriteAllText(neighbor, "지금 실행 로그\n");
@@ -167,7 +187,7 @@ namespace StickMate.Tests.EditMode
             foreach (string p in new[] { _prev, neighbor, sibling }) File.SetLastWriteTimeUtc(p, old);
 
             Dictionary<string, string> before = SnapshotOutside(_ours);
-            Assert.AreEqual(3, before.Count, "전제: 우리 폴더 밖 파일 3개를 지켜본다.");
+            Assert.AreEqual(3, before.Count, "전제: 우리 폴더 밖 파일 3개를 지켜본다(교정 파일은 지웠다).");
             StringAssert.Contains("ro=False", before[Path.GetFullPath(_prev)], "전제: 원본은 읽기 전용이 아니다(아래 속성 비교가 공허하지 않게).");
 
             SessionExitMarker.RunStartup(_ours, 20, _prev, NobodyAlive);
@@ -177,7 +197,7 @@ namespace StickMate.Tests.EditMode
             SessionExitMarker.WriteCleanExit(AppShutdownTrigger.SessionEnding);
 
             CollectionAssert.AreEquivalent(before, SnapshotOutside(_ours),
-                "우리 폴더 밖의 파일(원본 Player-prev.log 포함)의 내용·크기·수정 시각·속성이 바뀌었거나 사라졌거나 새로 생겼다 — 원칙 3 위반.");
+                "우리 폴더 밖의 파일(원본 Player-prev.log 포함)의 내용·크기·수정 시각·읽기 전용/숨김 속성이 바뀌었거나 사라졌거나 새로 생겼다 — 원칙 3 위반.");
             foreach (string written in Directory.GetFiles(_ours))
             {
                 string name = Path.GetFileName(written);
@@ -187,13 +207,19 @@ namespace StickMate.Tests.EditMode
         }
 
         /// <summary>
-        /// ★ 원칙 3 — 원본을 <b>읽는 동안</b>에도 다른 핸들(Unity·사용자·다른 프로그램)의 읽기·쓰기 열기와 이름 바꾸기(삭제 공유)를 막지 않는다.
+        /// ★ 원칙 3 — 원본을 <b>읽는 동안</b>에도 다른 핸들(Unity·사용자·다른 프로그램)의 <b>읽기·쓰기 열기</b>를 막지 않는다.
         /// 원본이 열린 순간 프로덕션이 부르는 탐침(<c>SourceOpenedForTesting</c>)에서 실제로 열어 본다.
-        /// <para>4차(verify-change 3차 V4b): 원본을 <c>FileShare.None</c>으로 여는 변이가 초록이었다. ★ 한계: 이 실행은 에디터의 Mono에서
-        /// 돈다(Mono는 같은 프로세스 안의 공유 모드를 흉내 낸다). Windows 커널의 공유 검사는 실기에서만 관측된다.</para>
+        /// <para>4차(verify-change 3차 V4b): 원본을 <c>FileShare.None</c>으로 여는 변이가 초록이었다.</para>
+        /// <para><b>★ 5차 정정 — 이 러너가 재는 축은 열기(읽기·쓰기)뿐이다.</b> 4차 이름은 "…읽기_쓰기_이름바꾸기를_막지_않는다"였고 주석은 "Mono는 같은 프로세스
+        /// 안의 공유 모드를 흉내 낸다"였다. verify-change 4차 하니스 실측으로 둘 다 틀렸다: Unity Mono(macOS)는 공유 모드를 <b>열기</b>에서만 흉내 내고,
+        /// <c>FileShare.None</c> 핸들을 쥔 채로도 <c>File.Move</c>(이름 바꾸기)를 허용한다. 옛 이름 바꾸기 탐침은 어떤 공유 모드에서도 "ok"라 아무것도 재지
+        /// 않았고, 삭제 공유를 뺀 두 번째 핸들을 쥐는 N4 변이가 초록이었다. 이름 바꾸기·삭제(<c>FileShare.Delete</c>) 축은 <b>Windows 실기 항목</b>이다
+        /// (앱이 비정상 종료 다음 실행에서 <c>Player-prev.log</c>를 복사하는 동안 탐색기에서 그 파일 이름 바꾸기). 이 머신에서 그 축에 할 수 있는 것은
+        /// 형태 감사뿐이다(원본 핸들의 공유 모드 형태 + 파일 핸들 수 — 소스 감사 테스트).</para>
+        /// <para>음성 대조는 축마다 따로 둔다 — 독점 핸들을 쥔 채 같은 탐침이 막혀야 그 축의 "ok"가 공허하지 않다.</para>
         /// </summary>
         [Test]
-        public void 원칙3_원본을_읽는_동안_다른_핸들의_읽기_쓰기_이름바꾸기를_막지_않는다()
+        public void 원칙3_원본을_읽는_동안_다른_핸들의_읽기_쓰기_열기를_막지_않는다()
         {
             File.WriteAllText(_prev, "원본 로그\n");
             SessionExitMarker.RunStartup(_ours, 50, _prev, NobodyAlive);
@@ -205,25 +231,21 @@ namespace StickMate.Tests.EditMode
                 calls++;
                 outcomes.Add(Probe("읽기", () => { using (new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete)) { } }));
                 outcomes.Add(Probe("쓰기", () => { using (new FileStream(path, FileMode.Open, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete)) { } }));
-                outcomes.Add(Probe("이름바꾸기", () =>
-                {
-                    string moved = path + ".probe";
-                    File.Move(path, moved);
-                    File.Move(moved, path);
-                }));
             };
             SessionExitMarker.StartupResult r = SessionExitMarker.RunStartup(_ours, 51, _prev, NobodyAlive);
 
             Assert.AreEqual(1, calls, "전제: 원본을 연 동안 탐침이 실제로 돌았어야 한다(아래 단언이 공허하지 않게).");
             Assert.IsNotNull(r.CopiedFileName, "전제: 이 실행은 실제로 복사했어야 한다.");
-            CollectionAssert.AreEqual(new[] { "읽기:ok", "쓰기:ok", "이름바꾸기:ok" }, outcomes,
-                "원본을 읽는 동안 남의 읽기·쓰기·이름 바꾸기를 막았다 — 사용자가 로그를 열거나 옮기는 것을 우리가 방해한다(원칙 3).");
+            CollectionAssert.AreEqual(new[] { "읽기:ok", "쓰기:ok" }, outcomes,
+                "원본을 읽는 동안 남의 읽기·쓰기 열기를 막았다 — 사용자가 로그를 열어 보거나 Unity가 쓰는 것을 우리가 방해한다(원칙 3).");
 
-            // 음성 대조 — 탐침 자체가 막힘을 알아보는가: 독점 핸들을 쥔 채 같은 탐침을 돌리면 막혀야 한다.
+            // 음성 대조(축마다) — 탐침 자체가 막힘을 알아보는가: 독점 핸들을 쥔 채 같은 탐침을 돌리면 막혀야 한다.
             using (new FileStream(_prev, FileMode.Open, FileAccess.Read, FileShare.None))
             {
                 Assert.AreNotEqual("읽기:ok", Probe("읽기", () => { using (new FileStream(_prev, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete)) { } }),
-                    "대조 실패 — 이 런타임은 같은 프로세스 안 공유 모드를 흉내 내지 않는다. 위 단언은 공허하다(한계로 보고할 것).");
+                    "읽기 축 대조 실패 — 이 런타임은 열기 공유 모드를 흉내 내지 않는다. 위 읽기 단언은 공허하다(한계로 보고할 것).");
+                Assert.AreNotEqual("쓰기:ok", Probe("쓰기", () => { using (new FileStream(_prev, FileMode.Open, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete)) { } }),
+                    "쓰기 축 대조 실패 — 이 런타임은 쓰기 열기 공유 모드를 흉내 내지 않는다. 위 쓰기 단언은 공허하다(한계로 보고할 것).");
             }
         }
 
@@ -296,6 +318,35 @@ namespace StickMate.Tests.EditMode
         private static string MarkerSource() =>
             File.ReadAllText(Path.Combine(Application.dataPath, "_Project", "Scripts", "Platform", "SessionExitMarker.cs")).Replace("\r\n", "\n");
 
+        /// <summary>
+        /// 파일 메타데이터 <b>세터</b>(속성·읽기 전용·세 시각). ★ 5차(verify-change 4차 N3): 4차 금지 목록은 <c>"SetAttributes"</c> 글자만 봐서
+        /// <c>new FileInfo(p).Attributes |= FileAttributes.NotContentIndexed;</c>가 비껴갔다. 비교(<c>==</c>)·람다(<c>=&gt;</c>)·읽기는 세터가 아니다.
+        /// </summary>
+        private static readonly Regex FileMetadataSetter = new Regex(
+            @"\.\s*@?(?:Attributes|IsReadOnly|LastWriteTime(?:Utc)?|CreationTime(?:Utc)?|LastAccessTime(?:Utc)?)\s*(?:=(?![=>])|\|=|&=|\^=)",
+            RegexOptions.CultureInvariant);
+
+        /// <summary>파일 핸들을 여는 <c>FileStream</c> 생성. ★ 5차(verify-change 4차 N4): <c>(FileAccess)1</c> 캐스트로 <c>"FileAccess.Read,"</c> 계수를 비껴간 두 번째 핸들을 개수로 막는다.</summary>
+        private static readonly Regex FileStreamConstruction = new Regex(@"(?<![\w@])new\s+FileStream\s*\(", RegexOptions.CultureInvariant);
+
+        /// <summary>
+        /// <c>FileStream</c>이 아닌 열기·통째 읽기/쓰기·암호화 형태 — 공유 모드를 코드가 정하지 못하거나(<c>File.ReadAllText</c>는 <c>FileShare.Read</c>로 열어
+        /// 남의 쓰기를 막는다) 핸들 수 계수를 비껴간다.
+        /// </summary>
+        private static readonly Regex ExtraOpenForms = new Regex(
+            @"(?<![\w@])File\s*\.\s*(?:Open|OpenRead|OpenWrite|OpenText|ReadAll\w*|ReadLines|WriteAll\w*|AppendAll\w*|AppendText|Create|CreateText|Encrypt|Decrypt)\s*\(" +
+            @"|\.\s*(?:Open|OpenRead|OpenWrite|OpenText|Encrypt|Decrypt)\s*\(" +
+            @"|(?<![\w@])new\s+Stream(?:Reader|Writer)\s*\(",
+            RegexOptions.CultureInvariant);
+
+        /// <summary>
+        /// ★ 원칙 3 소스 감사 — 표지 코드에 삭제·이동·속성/시각 변경·독점 열기·추가 핸들이 없고, 원본은 읽기 전용 공유 모드로만 연다.
+        /// <para><b>★ 이 감사가 형태로만 막는 축(5차).</b> 이 러너가 실행으로 못 재는 두 축 — ReadOnly·Hidden 밖의 속성(N3), 남의 이름 바꾸기·삭제를 막는
+        /// 공유 모드(N4) — 은 여기서 <b>형태</b>로만 막는다. 실제 동작(Windows 파일 시스템·커널 공유 검사)은 Windows 실기 항목이다.</para>
+        /// <para><b>★ 텍스트 감사의 원리적 한계(리더 판정 2026-09-14: 쫓지 않는다 — C# 파서를 들여오지 않는다).</b> 유니코드 이스케이프 식별자
+        /// (<c>File.SetAttributes(…)</c> — 컴파일러에게는 같은 이름, 글자 비교에게는 다른 글자), 계산된 이름의 리플렉션
+        /// (<c>typeof(File).GetMethod("Set" + "Attributes")</c>), <c>dynamic</c>·표현식 트리. 일부러 꼬아야만 생기는 형태다.</para>
+        /// </summary>
         [Test]
         public void 원칙3_소스_감사_표지_코드는_삭제_이동_속성변경_독점열기_없이_원본을_읽기_전용으로만_연다()
         {
@@ -307,12 +358,42 @@ namespace StickMate.Tests.EditMode
             {
                 StringAssert.DoesNotContain(forbidden, code, $"표지 코드에 '{forbidden}'가 있다 — 원칙 3(유저 자산 불변) 감사 대상.");
             }
+            Assert.AreEqual(0, FileMetadataSetter.Matches(code).Count,
+                "표지 코드에 파일 속성·시각 세터가 있다(예: FileInfo.Attributes |= …) — 원본 속성을 바꾸면 원칙 3 위반이고, ReadOnly·Hidden 밖의 속성은 이 러너의 실행 테스트가 못 본다(N3).");
+            Assert.AreEqual(0, ExtraOpenForms.Matches(code).Count,
+                "표지 코드에 FileStream이 아닌 열기·통째 읽기/쓰기 형태가 있다 — 공유 모드를 코드가 정하지 못하고 핸들 수 계수를 비껴간다.");
+            Assert.AreEqual(4, FileStreamConstruction.Matches(code).Count,
+                "파일 핸들은 표지 읽기·표지 쓰기·원본 읽기·복사본 쓰기 넷뿐이어야 한다 — 다섯 번째 핸들이 원본을 삭제 공유 없이 열면 Windows에서 사용자의 " +
+                "이름 바꾸기·삭제를 막는데 이 러너(Mono)는 그 축을 재지 못한다(N4).");
             // 대조 — 스캐너가 코드를 지우지 않았고, 쓰기는 우리 파일 두 곳(표지·복사본)뿐이다.
             Assert.AreEqual(2, Regex.Matches(code, @"FileAccess\s*\.\s*Write\b").Count, "쓰기로 여는 곳은 표지와 복사본 두 곳뿐이어야 한다.");
             Assert.AreEqual(2, Regex.Matches(code, @"FileMode\s*\.\s*Create\s*,").Count, "우리 파일은 통째로 다시 쓴다(덮어쓰기).");
             Assert.AreEqual(2, Regex.Matches(code, @"FileAccess\s*\.\s*Read\s*,").Count, "원본(Player-prev.log)과 표지는 읽기 전용으로 연다.");
             Assert.IsTrue(Regex.IsMatch(code, @"FileAccess\s*\.\s*Read\s*,\s*FileShare\s*\.\s*ReadWrite\s*\|\s*FileShare\s*\.\s*Delete\s*\)"),
-                "원본은 남의 읽기·쓰기·이름 바꾸기를 막지 않는 공유 모드로 연다.");
+                "원본은 남의 읽기·쓰기·이름 바꾸기를 막지 않는 공유 모드로 연다(이름 바꾸기 축의 실제 동작은 Windows 실기 항목).");
+        }
+
+        /// <summary>교정 — 위 감사의 탐지식이 변이 원형(N3·N4)과 그 이웃 표기를 실제로 잡고, 읽기·비교·주석·문자열은 잡지 않는다.</summary>
+        [Test]
+        public void 원칙3_소스_감사_탐지식은_속성_세터와_추가_핸들을_잡고_읽기와_비교와_주석은_잡지_않는다()
+        {
+            string snippet =
+                "new FileInfo(p).Attributes |= FileAttributes.NotContentIndexed;\n" +                                   // N3 원형
+                "info.IsReadOnly = true;\n" +
+                "fi . LastWriteTimeUtc\n    = t;\n" +
+                "x.CreationTime= t;\n" +
+                "var a = info.Attributes; if (info.Attributes == a) { } Func<FileInfo, FileAttributes> g = f => f.Attributes;\n" +
+                "bool ro = fi.IsReadOnly; var w = fi.LastWriteTime;\n" +
+                "// f.Attributes = x;\n" +
+                "Log(\"f.IsReadOnly = true\"); Log($\"{fi.LastAccessTime}\");\n" +
+                "using (new FileStream(fullSource, FileMode.Open, (FileAccess)1, FileShare.ReadWrite)) { }\n" +          // N4 원형
+                "var s = File.OpenRead(p); var r = new StreamReader(p); var t2 = File . ReadAllText(p);\n" +
+                "var m = FileMode.Open; bool e = File.Exists(p);\n";
+            string code = SourceTextScanner.BlankCommentsAndStrings(snippet, null, blankInterpolationHoles: true);
+
+            Assert.AreEqual(4, FileMetadataSetter.Matches(code).Count, "세터 넷(N3 원형 |= · IsReadOnly = · 줄바꿈 낀 LastWriteTimeUtc = · 붙여 쓴 CreationTime=)만 잡아야 한다.");
+            Assert.AreEqual(1, FileStreamConstruction.Matches(code).Count, "N4 원형의 FileStream 생성 하나를 잡아야 한다.");
+            Assert.AreEqual(3, ExtraOpenForms.Matches(code).Count, "File.OpenRead · new StreamReader · 공백 낀 File.ReadAllText 셋만 잡아야 한다(FileMode.Open·File.Exists는 아니다).");
         }
 
         [Test]

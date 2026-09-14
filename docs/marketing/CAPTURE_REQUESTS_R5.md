@@ -105,9 +105,14 @@
 >    곧 들어갈 세이브 복구 규칙(H2′)과 겹쳐 **"지웠는데 캐릭터가 돌아온다"**가 날 수 있다.
 >    절차 정본: `CAPTURE_PROTOCOL.md` 2-3(① 인스턴스 전부 종료 → ② Windows 작업표시줄 흔적 확인 → ③ 옮기기 → ④ 대조 → ⑤ 되돌리기).
 >    ★ **지우지 마라 — 되돌릴 수 있어야 한다.**
-> 2. ★ **PlayerPrefs**: `~/Library/Preferences/unity.Vibelab.StickMate.plist` → **옮긴다**(`.bak`).
+> 2. ~~★ **PlayerPrefs**: `~/Library/Preferences/unity.Vibelab.StickMate.plist` → **옮긴다**(`.bak`).
 >    ★ **구경로도 확인**: `unity.DefaultCompany.StickMate.plist`가 **따로 실재한다.**
->    빌드의 `companyName`에 따라 읽는 파일이 갈린다 — **어느 회사명으로 빌드했는지 먼저 확인.**
+>    빌드의 `companyName`에 따라 읽는 파일이 갈린다 — **어느 회사명으로 빌드했는지 먼저 확인.**~~
+>    ★★ **R12 (2026-09-14) 정정 — 이 줄을 따르지 마라.** ① 빌드된 앱이 읽는 자리는 `unity.*`가 아니라 **번들 ID 이름의 `com.Vibelab.StickMate`**다(Unity 6 문서 + 빌드 번들 ID 실측).
+>    `unity.*`는 **에디터 것으로 추정**(실측 — 문서와는 어긋난다)이라 촬영과 무관하다
+>    ② plist **파일을 옮기는 것 자체가 Apple이 경고한 형태**다 — `defaults`로만 다룬다 ③ 안내는 뜨는 순간 기록돼 **테이크마다 다시 비워야 한다.**
+>    Windows(`HKCU\Software\Vibelab\StickMate`)는 **키를 통째로 지우지 않는다**(곧 작업표시줄 원복 소유 표식이 같은 키에 들어간다).
+>    절차 정본: `CAPTURE_PROTOCOL.md` 2-3 **R5**.
 > 3. 촬영 후 **둘 다 되돌린다.**
 >
 > ★ **이 절차 없이 찍은 「첫 실행」 영상은 거짓 소재다.** 신규 사용자는 **온보딩 알약을 본다.**
@@ -115,6 +120,8 @@
 
 ★ **Windows에도 같은 함정이 있을 것으로 판단한다**(Unity PlayerPrefs = 레지스트리
 `HKCU\Software\<회사>\<제품>`). **나는 확인하지 못했다 — 미확인.** Windows 회차 담당이 확인한다.
+〔R12 (2026-09-14): 자리는 Unity 6 1차 문서로 확인됐다 — `HKCU\Software\Vibelab\StickMate`(에디터는 `HKCU\Software\Unity\UnityEditor\…`로 다른 자리).
+**Windows 실기는 여전히 미확인.** 절차는 `CAPTURE_PROTOCOL.md` 2-3 R5 Windows 절차〕
 
 ---
 

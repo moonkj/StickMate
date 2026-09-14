@@ -4654,6 +4654,10 @@ namespace StickMate.Tests.EditMode
                 //   ★ 한계(정직하게): C#에는 "이 메서드 안에서만 부를 수 있다"는 접근 한정이 없다(최소 단위가 타입). 그래서 적합 틱 밖 호출을
                 //   <b>컴파일러로</b> 불가능하게 만들지는 못했고, 그 자리를 이 토큰 계수가 막는다. 적합 틱 <b>안에서</b> 판정 입력(within·wroteThisTick)을
                 //   거짓 값으로 바꾸는 변경은 무장 자리의 문제가 아니라 적합 동작 자체의 변경이라 이 감사의 범위 밖이다.
+                //   ★ 텍스트 감사의 원리적 한계(verify-change 4차 N1·N1w·N2 — 두 플랫폼 초록 생존, 리더 판정 2026-09-14: 쫓지 않는다, C# 파서를 들여오지 않는다):
+                //   (N1) 유니코드 이스케이프 식별자 `_fullScreenFitLatch.Evaluate(true, false)` — 컴파일러에게는 같은 필드·메서드지만 토큰 정규식에게는 다른 글자다.
+                //   (N2) 계산된 이름의 리플렉션 `GetType().GetField("_fullScreen" + "FitLatch", …)` → `GetMethod("Eval" + "uate").Invoke(…)` — 이름이 코드 토큰에도
+                //   평문 리터럴에도 없다(아래 리터럴 검사는 이름 통째 문자열만 본다). 둘 다 일부러 꼬아야만 생기는 형태다.
                 var enforcerLiterals = new List<string>();
                 string tokens = SourceTextScanner.BlankCommentsAndStrings(ReadSource(path), enforcerLiterals, blankInterpolationHoles: true);
                 const string latchField = "_fullScreenFitLatch";

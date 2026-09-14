@@ -65,14 +65,16 @@
 **시스템에 쓰지 않고** 흔적만 닫는다.
 
 ★ 2026-09-14 — 이 원복은 **두 입구**에서 온다. 둘 다 `Platform/AppShutdownSequence.cs`의 같은 순서
-(`Order`: **⓪ 종료 시작 표지 → ① 작업표시줄 원복 → ② 동결 워치독 정지 → ③ 정상 종료 표지**)를 돈다.
+(`Order`: **⓪ 종료 시작 표지 → ① 작업표시줄 원복 → ② 동결 워치독 정지 → ③ 진행 저장 → ④ 정상 종료 표지**)를 돈다.
+③ 진행 저장은 5차에 들어온 **합류 자리**다 — 저장 계층이 `AppShutdownSequence.RegisterSaveHandler`(단일 슬롯 `AppShutdownSaveHandler`)로
+처리기를 등록했을 때만 돌고, 등록이 없으면 아무것도 하지 않는다. 등록은 coder 라운드 몫이다(5차 커밋 시점 미등록).
 
-**⓪이 원복보다 앞이어도 되는가 — 판단(2026-09-14 4차).** R-1이 원복 앞에서 막은 것은 **기다리는 단계**(워치독 합류 최대 1초)다. ⓪은 우리 폴더(`FreezeForensics/session-exit-marker.txt`)의 한 줄을 OS에 넘기고 끝나며 디스크 동기화(`Flush(true)`)를 하지 않는다 — 프로세스가 끊겨도 OS가 받은 쓰기는 남고, 잃는 것은 전원 차단뿐이다. 사용자 설정·시스템을 바꾸지 않으므로 **"시스템을 바꾸는 단계 중 원복이 맨 앞"**은 그대로다(`SessionEndShutdownTests.종료_순서는_…`가 `Order[1]`로 잠근다). ⓪이 필요한 이유: 셸이 먼저 내려가 ①의 동기 셸 호출이 돌아오지 않은 채 강제 종료되면(추정 경로, 실기 미확인) ③이 영영 남지 않아 그 실행이 크래시와 구별되지 않는다. 대가는 원복 전 파일 쓰기 한 번(Windows 실측 없음). 디스크 쓰기 자체가 멈추는 환경이면 원복도 늦어지고, 그때는 2-3의 흔적이 다음 실행에서 갚는다.
+**⓪이 원복보다 앞이어도 되는가 — 판단(2026-09-14 4차).** R-1이 원복 앞에서 막은 것은 **기다리는 단계**(워치독 합류 최대 1초)다. ⓪은 우리 폴더(`FreezeForensics/session-exit-marker.txt`)의 한 줄을 OS에 넘기고 끝나며 디스크 동기화(`Flush(true)`)를 하지 않는다 — 프로세스가 끊겨도 OS가 받은 쓰기는 남고, 잃는 것은 전원 차단뿐이다. 사용자 설정·시스템을 바꾸지 않으므로 **"시스템을 바꾸는 단계 중 원복이 맨 앞"**은 그대로다(`SessionEndShutdownTests.종료_순서는_…`가 `Order[1]`로 잠근다). ⓪이 필요한 이유: 셸이 먼저 내려가 ①의 동기 셸 호출이 돌아오지 않은 채 강제 종료되면(추정 경로, 실기 미확인) ④가 영영 남지 않아 그 실행이 크래시와 구별되지 않는다. 대가는 원복 전 파일 쓰기 한 번(Windows 실측 없음). 디스크 쓰기 자체가 멈추는 환경이면 원복도 늦어지고, 그때는 2-3의 흔적이 다음 실행에서 갚는다.
 
 | 입구 | 언제 | 누가 부르나 | 워치독 합류 대기 |
 |---|---|---|---|
 | `Application.quitting` | 앱이 스스로 끝날 때(트레이 「종료」·단축키·설정창) | `AppShutdownSequence.EnsureQuitHookInstalled()`가 **한 번만** 건 구독 | 최대 1초 |
-| `WM_ENDSESSION`(wParam=TRUE) | Windows 로그오프·시스템 종료·재시작, Restart Manager(`ENDSESSION_CLOSEAPP`) | 우리 **숨은 호스트 창**의 프로시저가 **동기로** `AppShutdownSequence.HandleSessionEnding(lParam)` — 같은 순서를 돈 뒤 **앱 종료를 요청** | 0(신호만) |
+| `WM_ENDSESSION`(wParam=TRUE) | Windows 로그오프·시스템 종료·재시작, Restart Manager(`ENDSESSION_CLOSEAPP`) | 우리 **숨은 호스트 창**의 프로시저가 **맨 앞에서 동기로** `AppShutdownSequence.TryHandleSessionEndMessage(message, wParam, lParam)` 한 줄만 부른다 — 판정이 참이면(lParam 값과 무관) `HandleSessionEnding(lParam)`이 같은 순서를 돈 뒤 **앱 종료를 요청**(5차: 분기 규칙을 중립 함수로 옮겨 lParam 조합을 실행으로 잠금) | 0(신호만) |
 
 **왜 두 번째 입구가 필요한가.** Windows는 `WM_ENDSESSION` 처리가 끝나면 언제든 프로세스를 끊는다
 (MS 문서: *"the session can end any time after all applications have returned from processing this message"*).
@@ -84,7 +86,11 @@ Unity가 그 전에 `Application.quitting`을 부르는지는 **실기 미확인
   자동 숨김이 돌아온다.
 - `WM_QUERYENDSESSION`은 건드리지 않는다(DefWindowProc = 종료 허용). 우리는 종료를 막지 않는다.
 - ★ **처리한 뒤 앱이 스스로 끝난다(2026-09-14 4차, X1).** MS 문서상 wParam=TRUE면 *"the session can end any time after all applications have returned"*, `ENDSESSION_CLOSEAPP`(Restart Manager)는 *"If wParam is TRUE, the application must shut down"*, `ENDSESSION_CRITICAL`은 *"forced to shut down"* — 플래그와 무관하게 끝나야 한다. 그런데 Restart Manager 경로나 사용자가 종료를 취소한 경로에서는 프로세스가 **살아남을 수 있고**(실기 미확인), 그러면 실행 중인데 자동 숨김이 원복된 상태("실행 중에만 해제" 조건이 뒤집힘)와 "정상 종료" 표지가 남는다. 살아남은 뒤 해제를 **다시 거는** 복귀 경로는 두지 않았다 — 복귀 직후 실제로 끊기면 작업표시줄이 앱 없이 드러난 채 남기 때문이다. 대신 원복·표지 뒤 `Application.Quit()`을 요청해 **살아남은 상태 자체를 없앤다**(승인된 `ABM_SETSTATE` 형태는 늘지 않는다). lParam 플래그는 진단 로그(`[종료순서]`)에만 남긴다.
-- 두 입구가 모두 와도(세션 종료 뒤 quitting) **시스템에 두 번 쓰지 않는다** — 원복은 "이번 실행이 바꿨는가" 상태로 멱등이다.
+- 두 입구가 모두 와도(세션 종료 뒤 quitting) **시스템에 두 번 쓰지 않는다** — 원복은 "이번 실행이 바꿨는가" 상태로 멱등이다(첫 원복이 실패했으면 두 번째 순서가 다시 시도한다).
+- ★ **표지는 한 실행에 한 번 끝낸다(5차).** 두 번째 순서는 이번 실행이 ④ 정상 종료 표지를 **이미 썼으면 ⓪·④ 두 표지 단계만 건너뛴다**
+  (`AppShutdownSequence.ShouldRunStep` ← `SessionExitMarker.CleanExitWrittenThisRun`). 4차까지는 두 번째 순서의 ⓪이 첫 순서가 남긴 `clean-exit`을
+  `exit-started trigger=ApplicationQuitting`으로 덮어써, 그 틈에 끊기면 판정이 "원복 도중 끊김"과 구별되지 않았다(verify-change 4차 실측).
+  ①·②·③은 두 번째 순서에서도 돈다 — ③ 처리기는 두 번 불리므로 **멱등은 처리기 책임**이다. 첫 순서가 ④를 못 썼으면(쓰기 실패·끊김) 두 번째 순서가 다시 쓴다.
 - 셸(탐색기)이 먼저 끝나 원복이 반영되지 않으면 **흔적을 닫지 않는다** — 다음 실행이 먼저 갚는다(2-3 (b)).
 
 **수신 창 — 누가 `WM_ENDSESSION`을 받나.** Unity 창은 서브클래싱하지 않는다. 받는 것은
@@ -93,26 +99,36 @@ Unity가 그 전에 `Application.quitting`을 부르는지는 **실기 미확인
 | 트레이 | 수신 창 |
 |---|---|
 | 켜짐(기본) | 트레이 아이콘의 호스트 창이 그대로 받는다 |
-| 끔(`STICKMATE_NO_TRAY_ICON`) | **아이콘 없는 숨은 창만** 세운다 — 이번 실행이 자동 숨김을 실제로 바꿨거나, 정상 종료 표지가 켜져 있을 때 (`SessionEndPolicy.NeedsReceiverWithoutTray`). 둘 다 아니면 창도 만들지 않는다 |
+| 끔(`STICKMATE_NO_TRAY_ICON`) | **아이콘 없는 숨은 창만** 세운다 — 이번 실행이 자동 숨김을 실제로 바꿨거나, 정상 종료 표지가 켜져 있을 때. 둘 다 아니면 창도 만들지 않는다. 결정 경로 전체(프로세스당 한 번 판정 · 조건 · 창 생성 호출)는 중립 `SessionEndReceiverGate.EnsureReceiverWithoutTray`에 있고, 트레이 파일은 옵트아웃 여부와 창을 만드는 손만 넘긴 뒤 결과로 로그만 고른다(5차 — 트레이 줄 앞에 조건 한 줄로 이 사용자의 수신 창이 사라지던 구멍) |
 
 숨은 창을 세워도 원칙 3의 쓰기 형태(`ABM_SETSTATE`)는 한 줄도 늘지 않고, 트레이 예외 API
 (`SetForegroundWindow`/`PostMessage`/`DestroyWindow`)도 새로 부르지 않는다. 창 생성이 실패하면 수신자가 없고, 그때도
 흔적이 남아 다음 실행이 먼저 갚는다.
 
-**③ 정상 종료 표지는 무엇인가.** `persistentDataPath/FreezeForensics/session-exit-marker.txt` 한 줄(우리 파일)이다.
+**④ 정상 종료 표지는 무엇인가.** `persistentDataPath/FreezeForensics/session-exit-marker.txt` 한 줄(우리 파일)이다.
 다음 실행이 "실행 중"으로 남은 표지를 보면 직전 실행이 비정상으로 끝났다고 보고 `Player-prev.log`를 같은 폴더로
 **복사**해 둔다(원본은 읽기만, 상한 4MB 끝부분, 슬롯 3개 링, 알림 UI 없음 — `Platform/SessionExitMarker.cs`).
-표지를 이 순서 안에 두는 이유는 위와 같다 — Unity가 로그오프·시스템 종료에서 quitting을 부르지 않는다면(실기 미확인) quitting에만 찍은 표지로는 Windows 밤 종료가 매일 비정상으로 오판된다. ⓪ "종료 시작"이 남은 채 끊긴 실행(원복 도중 강제 종료 — 추정 경로)은 비정상으로 보지 않고 복사하지 않는다.
+표지를 이 순서 안에 두는 이유는 위와 같다 — Unity가 로그오프·시스템 종료에서 quitting을 부르지 않는다면(실기 미확인) quitting에만 찍은 표지로는 Windows 밤 종료가 매일 비정상으로 오판된다. ⓪ "종료 시작"이 남은 채 끊긴 실행(⓪과 ④ 사이에서 끊김 — ①원복·②워치독 정지·③진행 저장 중 **어디서인지는 표지로 가를 수 없다**, 추정 경로는 셸 선종료로 원복 도중 강제 종료)은 비정상으로 보지 않고 복사하지 않는다. 판독 규칙은 6절 8번.
 
 **이 순서에 들어오지 않는 종료 정리.** 트레이 아이콘 제거, 작업표시줄 버튼 제거기·오디오·가상 데스크톱 탐침의 COM 해제,
 스팀 종료는 각자 `Application.quitting`에만 붙어 있고 세션 종료에서는 돌지 않는다 — 세션이 끝나면 그 상대(탐색기·스팀
 클라이언트)도 함께 끝나 남는 흔적이 없다. 진행 저장(`Interaction/CharacterProgressionDirector.OnApplicationQuit`)은
-세션 종료에서 돌아야 할 수 있어 **결정 미정**으로 러너에 건너뜀으로 띄워 두었다. 파일별 결정·사유는
+세션 종료에서 돌아야 할 수 있어, 5차에 순서 안의 **③ 합류 자리**(`AppShutdownSaveHandler` 단일 슬롯 — `RegisterSaveHandler`는 슬롯이 비었을 때만,
+`UnregisterSaveHandler`는 등록한 대리자 참조일 때만 성공)를 넣었다. **처리기 등록과 `OnApplicationQuit` 제거는 coder 라운드**이고, 그 전까지 대장은
+**결정 미정**으로 러너에 건너뜀으로 띄워 둔다. 계약: 처리기가 실패를 알리거나 던져도 순서는 ④까지 간다(표지는 "순서를 끝까지 돌았다"만 말한다),
+세션 종료 뒤 quitting에서 **두 번 불린다**(멱등·쓰기 보류는 처리기 책임). 파일별 결정·사유는
 `SessionEndShutdownTests`의 종료 구독 대장이 잠근다(새 종료 훅이 생기면 빨개진다).
 
 (`세션_종료는_WM_ENDSESSION이고_wParam이_참일_때만이다`, `종료_순서는_작업표시줄_원복이_워치독_정지보다_먼저다`,
 `세션_종료_원복_뒤_quitting이_또_와도_시스템에_두_번_쓰지_않는다`, `셸이_먼저_끝나_원복이_반영되지_않으면_흔적을_열어_둔다`,
-`R6_두_종료_입구_모두_정상_종료_표지를_남겨_다음_실행이_비정상으로_오판하지_않는다`)
+`R6_두_종료_입구_모두_정상_종료_표지를_남겨_다음_실행이_비정상으로_오판하지_않는다`,
+5차: `X1g_WM_ENDSESSION_wParam이_참이면_lParam과_무관하게_세션_종료_처리를_정확히_한_번_부른다`,
+`V5g_표지만_켜진_옵트아웃_사용자에게도_수신_창을_세우고_판정은_한_번뿐이다`,
+`G2_세션_종료_처리가_남기는_최종_표지는_SessionEnding_정상_종료다`,
+`R7_세션_종료_뒤_quitting_순서가_다시_돌아도_정상_종료_표지를_덮어쓰지_않는다`,
+`R7_두_번째_순서가_원복_단계에서_끊겨도_다음_실행은_정상_종료로_본다`,
+`C_진행_저장은_종료_시작_표지_뒤_정상_종료_표지_앞에서_경로와_함께_한_번_불린다` — 트레이 파일에 남은 줄은
+`트레이_프로시저가_세션_종료를_동기로_처리하고_옵트아웃에도_수신자가_있다`가 모양 전체를 허용 형태와 비교한다)
 
 ### 2-3. ★ 크래시 — 이 기능의 핵심
 
@@ -287,7 +303,18 @@ Windows는 비트 하나를 되돌리면 끝이다. macOS는 **파일을 고쳐 
 8. **★ 로그오프·다시 시작(세션 종료, `WM_ENDSESSION`) 원복.** 체크표 `docs/verify/WINDOWS_CHECK_SESSION.md` **§R**(CW-2 재부팅 판독 — 다시 시작·로그아웃 2회)을 그대로 따른다(체크표는 qa-regression 소유 — 판독 문자열·순서는 그쪽이 정본이다).
    → 로그인 뒤 작업표시줄이 원래 자동 숨김인가, 흔적 파일이 `active = false`인가.
    → 다음 실행 로그에 `★ 복구 —` 줄이 **없는가**(있으면 세션 종료 원복이 돌지 않은 것이다).
-   → (4차 이후 빌드) 직전 실행 로그에 `[종료순서] Windows 세션 종료 통보(lParam=…)` 줄이 있는가, 다음 실행의 `[동결기록] 직전 실행 판정=` 값이 `CleanExit`인가(`AbnormalExit`면 세션 종료 표지 누락, `ExitStartedNotFinished`면 원복 도중 끊김).
+   → (4차 이후 빌드) 직전 실행 로그에 `[종료순서] Windows 세션 종료 통보(lParam=…)` 줄이 있는가, 다음 실행의 `[동결기록] 직전 실행 판정=` 값이 `CleanExit`인가.
+      ★ 판독 규칙(5차 정정 — 4차 판독문 "`ExitStartedNotFinished`면 원복 도중 끊김"은 **너무 좁았다**):
+      - `CleanExit` — 마지막으로 표지를 쓴 종료 순서가 ⓪→④를 끝까지 돌았다. **작업표시줄이 실제로 돌아왔는지는 이 값이 말하지 않는다**(실제 자동 숨김 상태와 흔적 `active`로 따로 본다).
+      - `AbnormalExit` — 표지가 "실행 중"으로 남았다 = 종료 순서가 ⓪을 한 번도 쓰지 못했다(세션 종료 통보를 못 받았거나 받기 전에 끊김, 또는 ⓪ 쓰기 실패 — `WriteExitStarted`는 실패를 로그 없이 삼키므로 이 둘은 가를 수 없다).
+      - `ExitStartedNotFinished` — **⓪은 썼고 ④에 닿기 전에 끊겼다.** ①원복·②워치독 정지·③진행 저장 중 **어디서인지는 이 값으로 가를 수 없다.** 원복까지 끝났는지는 흔적 파일이 말한다
+        (`active = true`면 원복이 반영되지 않은 채 끊김 — 추정 경로는 셸 선종료, `active = false`면 원복·흔적 닫기는 끝났고 그 뒤에서 끊김).
+        어느 입구의 순서였는지는 **앱을 켜기 전에** 표지 파일 줄의 `trigger=`를 읽는다(앱을 켜면 기동이 표지를 "실행 중"으로 덮어쓴다).
+      - ★ **5차 이후 빌드**: 세션 종료 순서가 ④(`clean-exit trigger=SessionEnding`)를 쓴 뒤 종료 요청으로 도는 quitting 순서는 표지 두 단계를 건너뛰므로
+        (`AppShutdownSequence.ShouldRunStep`), **그 두 번째 순서가 끊겨도 판정은 `CleanExit` 그대로다.** 따라서 `exit-started trigger=ApplicationQuitting`은
+        "이번 실행에서 ④를 먼저 쓴 순서가 없었다 — 세션 종료 통보가 오지 않았거나, 세션 종료 순서가 ④를 못 쓴 채 quitting 순서가 이어 돌았다"로 읽는다.
+      - ★ **4차 빌드(5차 가드 전)**: 두 번째 quitting 순서가 `clean-exit`을 `exit-started trigger=ApplicationQuitting`으로 덮어쓸 수 있어, 이 값만으로는
+        "원복을 마친 뒤 재실행 중 끊김"과 구별되지 않는다(verify-change 4차 실측) — 체크표 `docs/verify/WINDOWS_CHECK_SESSION.md` §R의 4차 판독 표를 따른다.
    → 트레이를 끈(`STICKMATE_NO_TRAY_ICON=1`) 상태로 한 번 더.
 
 ---

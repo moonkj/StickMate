@@ -1,6 +1,7 @@
 # 캡처 규율 — 홍보 소재는 이렇게만 찍는다
 
 작성: marketing / 2026-09-02 · **R11 갱신 2026-09-14**(2-3 저장 초기화를 **폴더 단위**로 교체. R5·R6·R9 추가분도 본문에 있다)
+· **R12 갱신 2026-09-14**(2-3 R5 `PlayerPrefs` 절차 교체 — 빌드 대상은 `com.Vibelab.StickMate`, macOS는 `defaults`로만, **테이크마다** 다시 비움, Windows 키 통째 삭제·남의 `.reg` 금지)
 **★ 아직 한 장도 찍지 않았다.** 이 문서는 **찍기 전에 리더 승인을 받기 위한 절차서**다.
 사람이 할 일 / 자동화할 일의 분리와 우선순위는 `ROADMAP.md` §4·§6.
 
@@ -93,9 +94,11 @@
       (`docs/TASKBAR_REVEAL.md` 2-3). ★ **정지 장면은 소재가 아니다.** 판정·진단용으로만 보관하고 파일명에 용도를 적는다
 
 **(다) 앱 상태 — Windows판 함정**
-- [ ] ★★ **`PlayerPrefs`가 레지스트리에 있다**(`HKCU\Software\<회사>\<제품>`). 「첫 실행」을 찍으려면
-      세이브 JSON만으로는 **안 된다** — 온보딩 「봤음」 기록이 거기 있다.
-      **★ 이 경로는 아직 실측 미확인이다. 회차 담당이 먼저 확인하고, 지우지 말고 내보내기(export)로 백업한다**
+- [ ] ★★ **`PlayerPrefs`가 레지스트리에 있다** — 빌드된 앱은 **`HKCU\Software\Vibelab\StickMate`**
+      (〔R12〕 Unity 6 1차 문서로 확인. 에디터는 `HKCU\Software\Unity\UnityEditor\…`로 **다른 자리**다. **Windows 실기 미확인**).
+      「첫 실행」을 찍으려면 저장 폴더만으로는 **안 된다** — 온보딩 「봤음」 기록이 거기 있다. 절차는 **2-3 R5 Windows 절차**.
+      ★★★ **이 키를 통째로 지우거나 다른 기계의 `.reg`로 덮지 않는다** — 곧 작업표시줄 원복 **소유 표식**이 같은 키에 저장된다.
+      지우면 그 설치의 원복 소유 판정이 끊긴다
 - [ ] ★★ **빌드 신선도**: `StickMate.exe` 날짜를 보지 마라(그건 Unity 런처 스텁이다).
       **`StickMate_Data\Managed\StickMate.Runtime.dll`의 날짜**를 본다
 - [ ] ★★ **09-03 08:32 빌드로 보관함·카드를 찍지 마라** — 그 빌드는 **유령 단축키 `F`/`J`/`H`를
@@ -173,7 +176,7 @@
         3. 촬영 폴더는 **지우지 말고** 이름을 바꿔 치운다(`StickMate.capture-shot-<시각>`) — 촬영 중 멈춤이 있었다면 그 안의 `FreezeForensics/`가 판정 자료다. 필요 없다고 판정된 뒤 사용자가 지운다
         4. 백업 폴더 이름을 `StickMate`로 되돌린다
         5. 확인: `stickmate_character.json`의 크기·수정 시각이 옮기기 전과 같은가
-        6. 아래 R5 `PlayerPrefs`도 되돌린다 — **폴더만 되돌리면 온보딩 「봤음」 기록이 빠진 채 남는다**
+        6. 아래 R5 `PlayerPrefs`도 되돌린다(R5 macOS·Windows 절차 4·5번) — **폴더만 되돌리면 온보딩 「봤음」 기록이 빠진 채 남는다**
       - ★ **레벨 30 / 중간 진행 세이브를 쓰는 컷도 같은 방식이다** — ③까지 한 뒤 **촬영용 폴더를 통째로** `StickMate` 자리에 둔다.
         사용자 폴더 안에서 본체만 바꿔 끼우지 마라 — 사용자 본체를 덮게 되고, 사용자의 `prev.json`·임시 파일이 촬영용 본체 옆에 남아 섞인다.
         ★ **촬영용 폴더를 만들거나 다른 기계·다른 사용자 계정에서 가져올 때 넣지 않는 것** 〔R11-b 2026-09-14 — `game-architect` 「작업표시줄 원복 흔적의 기계 경계」 판정 반영〕
@@ -188,17 +191,103 @@
           Windows: `Test-Path "$env:USERPROFILE\AppData\LocalLow\Vibelab\StickMate\stickmate_character.json"` → `True` · 같은 폴더 `stickmate_reserved_bar_restore.json` → `False`.
           ★ 둘 다 `False`면 경로를 잘못 본 것이다 — 「흔적 없음」 하나만 보고 통과시키지 마라
         ★ 여기서 「복사」가 아니라 「옮기기」를 쓰는 것은 일부러다(같은 문서 S-7-6 1번은 사용자 이전 안내라 「복사」다) — 원래 경로가 **비어야** 첫 실행이 되고, 이름 바꾸기는 형제 폴더로 복구 지점을 남긴다
-- [ ] ★★ **R5 — 「첫 실행」은 저장 파일만 지워서는 안 된다.** 온보딩 안내 「봤음」 기록은
+- [ ] ★★ **R5 — 「첫 실행」은 저장 폴더만 옮겨서는 안 된다.** 온보딩 안내 「봤음」 기록은
       **`PlayerPrefs`**에 있다(`GearRadialMenuWidget`의 `OnboardingSeenKey` =
       `StickMate.GearMenu.OnboardingSeen.v1`). 이 머신 실측: **이미 `= 1`로 기록돼 있다.**
-      - 함께 옮긴다(**지우지 말고 `.bak`**): `~/Library/Preferences/unity.Vibelab.StickMate.plist`
-      - ★ **구경로도 확인**: `unity.DefaultCompany.StickMate.plist`가 **따로 실재한다.**
-        빌드의 `companyName`에 따라 **읽는 파일이 갈린다** — 어느 회사명으로 빌드했는지 먼저 확인
-        (현행 macOS 빌드는 `codesign` 실측상 아직 `com.DefaultCompany.StickMate`다)
-      - 촬영 후 **둘 다 되돌린다**
+      〔★★ **R12 (2026-09-14) 전면 교체** — R5~R11의 *"`unity.Vibelab.StickMate.plist`를 `.bak`으로 옮긴다"*는 **폐기.**
+      이유 셋: ① 빌드된 앱이 읽는 파일이 **그게 아니다**(아래 (가)) ② plist 파일을 직접 옮기는 것은 **Apple이 경고한 형태**다(아래 (나))
+      ③ 안내는 **뜨는 순간** 기록돼 **테이크마다 다시 소모된다**(아래 (다)). 발견: `test-engineer`(`docs/verify/RESERVED_BAR_OWNER_TOKEN_TEST_SPEC.md` G-1, 리더가 이 맥에서 두 파일 실재 확인)〕
+      - **(가) 어느 자리인가 — Unity 6 1차 문서**(`ScriptReference/PlayerPrefs`, 6000.0 · 이 프로젝트 `6000.0.82f1`)
+
+        | 누가 | 문서가 적은 자리 | 이 프로젝트 |
+        |---|---|---|
+        | ★ **빌드된 앱 · macOS** | `~/Library/Preferences/<BundleIdentifier>.plist` (기본값 `com.<회사>.<제품>`, Player settings에서 바꿀 수 있다) | **`com.Vibelab.StickMate`** |
+        | ★ **빌드된 앱 · Windows** | `HKCU\Software\<회사>\<제품>` | **`HKCU\Software\Vibelab\StickMate`** |
+        | 에디터 Play 모드 · macOS | `~/Library/Preferences/com.<회사>.<제품>.plist` | 문서대로면 `com.Vibelab.StickMate` — **빌드와 같은 이름.** ★ **실측은 `unity.Vibelab.StickMate`를 가리킨다**(아래) |
+        | 에디터 Play 모드 · Windows | `HKCU\Software\Unity\UnityEditor\<회사>\<제품>` | 빌드와 **다른 자리** |
+
+        - **촬영 대상 = `com.Vibelab.StickMate`** — 문서 + 이 머신 실측 셋이 맞는다: `Builds/macOS/StickMate.app`의 `CFBundleIdentifier`와
+          `codesign` Identifier가 둘 다 `com.Vibelab.StickMate`(빌드 09-09 13:32:28) · 그 plist 수정 시각 09-09 13:33:07 ·
+          창 설정 계열 `Screenmanager …` 키가 **이 파일에만** 있다
+        - ★ **`unity.Vibelab.StickMate.plist` = 에디터 것으로 추정 — 촬영과 무관.** 〔문서와 실측이 갈린다. **실측을 우선하고 둘 다 적는다**(리더 판정)〕
+          - 문서: 에디터 Play 모드 = `com.<회사>.<제품>.plist`. `unity.*`라는 이름은 문서에 **아예 없다**
+          - 실측(`test-engineer` 제출 · marketing이 다른 방법으로 재확인): `unity.*` 수정 시각 **09-14 10:36:58** = 리더의 **에디터 배치모드 Windows 빌드**
+            출력 `Builds/Windows/StickMate_Data/Managed`의 **10:37:00** 2초 전(Windows 빌드라 macOS 플레이어가 돌 수 없는 시각) · 그 에디터 세션 동안 `com.*`은 09-09 그대로 ·
+            `unity.*`에는 창 설정 키(`Screenmanager …`)가 없다 · 에디터 바이너리에는 `unity.%s.%s` 형식 문자열이 있고 빌드의 `UnityPlayer.dylib`에는 없다
+          - 등급은 **추정**이다 — Unity 1차 문서의 확인이 아니다. 그래서 대상 판정은 문서가 **명시한** 빌드 쪽(`com.*`)으로만 내리고, `unity.*`는 **건드리지 않는다**
+            (에디터가 켜진 동안 건드리면 진행 중인 테스트 러너의 설정 자리를 흔든다)
+        - ⇒ **백업·비우기·되돌리기 대상은 `com.Vibelab.StickMate` 하나.**
+        - **빌드마다 번들 ID부터 읽는다**(읽기만): `/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "<앱>/Contents/Info.plist"`.
+          `com.Vibelab.StickMate`가 아니면 **이 절의 도메인 이름이 전부 틀린 것이다** — 멈추고 리더에게.
+          〔R11까지의 *"현행 macOS 빌드는 `codesign`상 아직 `com.DefaultCompany.StickMate`"*는 **낡았다** — 09-09 빌드부터 `com.Vibelab.StickMate`.
+          `com.DefaultCompany.*`·`unity.DefaultCompany.*`는 회사명 변경 전 빌드·에디터의 자리다〕
+      - **(나) ★ macOS — plist 파일을 옮기거나 지우지 않는다. `defaults`로만 다룬다**
+        - 1차 출처 — Apple `UserDefaults` 문서의 Warning: *"Don't access the files of the defaults database directly from the file system.
+          Modifying one of the underlying files directly may cause data loss, a delay in changes being available, or an app crash.
+          In macOS, use the `defaults` command-line utility to safely view or modify the defaults database outside of your app."*
+        - 우리에게 무슨 뜻인가: 파일을 `.bak`으로 옮겨도 **옛 값(`= 1`)이 다음 실행에 넘어갈 수 있다**(delay) → 알약 없는 「첫 실행」 = **조용한 거짓 소재.**
+          또는 **사용자 기록이 사라진다**(data loss)
+        - ★ 경고 문장은 **앱이 켜져 있는지를 조건으로 두지 않는다** — 앱을 종료한 뒤에도 파일 직접 조작은 금지다.
+          (캐시를 쥔 것이 시스템 데몬 `cfprefsd`라는 설명은 **1차 문서 미확인** — 이 머신에 `cfprefsd` 프로세스가 떠 있는 것만 봤다)
+        - 우리 빌드가 이 데이터베이스를 타는가: **Unity 문서 명시 없음(`NSUserDefaults`라고 적은 것은 iOS뿐) — 추론.**
+          근거는 바이너리다: 이 빌드의 `UnityPlayer.dylib`가 `NSUserDefaults` 클래스와 `CFPreferencesCopyAppValue` 등을 가져다 쓴다(`nm -u`)
+        - **1차 출처로 확인된 방법은 `defaults` 하나다**(위 Warning). ★ `killall cfprefsd` 류는 **1차 문서에서 찾지 못했다 — 쓰지 않는다**(시스템 전체 데몬이라 다른 앱에도 걸린다)
+        - ★ **미확인**: `defaults delete`가 **다음 실행에 곧바로 반영되는지**는 문서가 약속하지 않고 이 기계에서도 재지 않았다
+          (`delete domain key`: *"Removes the default named key from domain"*뿐). → 켜기 전 `defaults read` 대조(아래 3번)는 **파일이 아니라 같은 데이터베이스를 읽는 확인**이고,
+          **최종 판정은 테이크 안에서 알약이 눈에 보이고 로그가 1줄인가**로 한다(아래 (다))
+        - `defaults import`가 도메인을 **통째로 바꾸는지 합치는지 미확인**(`defaults help`: *"writes the plist at path to domain"*뿐) → **평상시 되돌리기에 쓰지 않는다.** 비상 복구는 리더 승인 뒤
+      - **(다) ★ 테이크마다 다시 비운다 — 안내는 뜨는 순간 기록된다**
+        - `GearRadialMenuWidget.cs:929-938` — *"본 사실은 뜨는 순간 기록한다"*. 부채꼴을 **처음 펼치는 순간** 알약이 뜨고 **그 자리에서** `SetInt(…, 1)` + `Save()`
+        - ⇒ 2-4 「최소 3테이크」를 **한 번 비우고** 찍으면 **2·3테이크는 알약 없는 화면**이다. 첫 테이크가 만든 캐릭터도 남는다.
+          **테이크마다** 2-3 ①(종료) → (Windows 자동 숨김 기계면 촬영 폴더 흔적 ⑤-2) → 촬영 폴더를 `capture-shot-<시각>`으로 치움(⑤-3) → 아래 절차 2·3번 → ④ 를 다시 돈다
+        - **판정은 눈 + 로그 둘 다**(2-5): 테이크마다 **알약이 화면에 보이고** `[부채꼴] 최초 1회 안내를 띄웁니다`(`:940`)가 **정확히 1줄.**
+          둘 중 하나라도 아니면 첫 실행 테이크가 아니다 → 폐기. 〔눈은 「비우기가 실제로 반영됐는가」(위 (나) 미확인)의 대조이고, 로그는 눈이 놓친 두 번 발동·0회를 잡는다〕
+          ★ 부채꼴을 **펼치기 전에는** 알약이 원래 없다 — 「켰는데 안내가 없다」만으로 절차 실패를 판정하지 않는다
+          ★★ **「촬영 전에 한 번 펼쳐 알약이 뜨는지 먼저 본다」는 하지 않는다** — 그 확인이 기록을 소모해 **바로 다음 녹화가 알약 없는 화면**이 된다.
+          확인은 **녹화가 이미 돌고 있는 테이크 안에서** 한다. 미리 보고 싶으면 본 뒤 절차 2·3번을 다시 돈다
+      - **macOS 절차** (2-3 ① 종료 · `pgrep -x StickMate` 0줄 뒤)
+        1. **백업** — 파일 복사가 아니라 `defaults`로 내보낸다. 자리는 2-3 ③과 같은 부모 폴더(바탕화면 금지):
+           `B="$HOME/Library/Application Support/Vibelab"; T=$(date +%Y%m%d-%H%M%S)`
+           `defaults export com.Vibelab.StickMate "$B/prefs-com.capture-backup-$T.plist"`
+           키 **이름만** 기록: `python3 -c 'import plistlib,sys; print("\n".join(sorted(plistlib.load(open(sys.argv[1],"rb")))))' "$B/prefs-com.capture-backup-$T.plist"`
+           (`unity.Vibelab.StickMate`는 내보내지도 비우지도 않는다 — (가))
+           ★ 백업 안에는 `unity_connect.installation_id` 같은 **식별자 값**이 있다 — 메모·채팅에 **내용을 붙이지 않는다.** 이름만 적는다
+        2. **비우기 — 키 하나만**: `defaults delete com.Vibelab.StickMate StickMate.GearMenu.OnboardingSeen.v1`
+           (도메인 통째 `defaults delete com.Vibelab.StickMate`를 쓰지 않는다 — 아래 Windows는 통째로 지우면 안 되므로 **같은 모양의 절차**로 둔다. 플랫폼마다 절차를 고르면 언젠가 틀린 쪽을 고른다)
+        3. **켜기 전 대조 둘**: `defaults read com.Vibelab.StickMate StickMate.GearMenu.OnboardingSeen.v1` → **실패**(does not exist)
+           **그리고** `defaults read-type com.Vibelab.StickMate UnityGraphicsQuality` → **성공**(도메인은 살아 있다).
+           ★ 둘 다 실패면 **도메인 이름을 잘못 친 것이다** — 「없음」 하나만 보고 통과시키지 마라
+        4. **촬영 뒤**: 마지막 테이크가 알약을 띄웠으면 앱이 이미 다시 써 두었다 → `defaults read com.Vibelab.StickMate StickMate.GearMenu.OnboardingSeen.v1` → `1`.
+           **없으면** 사용자 폴더를 되돌린(⑤-4) 뒤 앱을 한 번 켜 부채꼴을 한 번 펼치고(로그 1줄) 앱 안에서 종료한다.
+           ★ **손으로 `defaults write`하지 않는다** — Unity가 쓰는 값 형식을 1차 문서로 확인하지 못했다
+        5. **대조**: `com.Vibelab.StickMate`의 키 이름 목록이 1번 기록과 **같다.**
+           다르면 **`defaults import`로 덮지 말고** 리더에게(import 의미 미확인)
+      - **Windows 절차** — `HKCU\Software\Vibelab\StickMate` (Unity 6 문서로 확인 · **Windows 실기 미확인**)
+        - ★★★ **이 키를 통째로 지우지 않는다. 다른 기계·다른 계정에서 만든 `.reg`를 가져오지 않는다.**
+          곧 들어갈 작업표시줄 원복 **소유 표식(무작위 설치 토큰)이 바로 이 키에 저장된다**
+          (`Tasklist.md` 「[game-architect] 무작위 설치 토큰안 구조 확인」 · 리더 판정 「원칙 3 원복 조건 변경 채택」).
+          **지우면 그 설치의 원복 소유 판정이 끊기고**(그 PC의 열린 흔적을 아무도 갚지 않는다), **남의 `.reg`로 덮으면 다른 설치의 표식을 이 PC가 제 것으로 읽는다.**
+          토큰이 아직 없는 빌드도 **같은 절차로** 찍는다
+          - 금지 형태: `Remove-Item HKCU:\Software\Vibelab\StickMate` · `reg delete HKCU\Software\Vibelab\StickMate /f` · `reg delete … /va` ·
+            다른 기계 `.reg`의 `reg import` · 레지스트리 정리 도구 · 촬영 중 `docs/COMPANY_RENAME_MIGRATION.md` §2-(2) 레지스트리 복사
+          - ★ **촬영 중 새로 생긴 값도 지우지 않는다**(토큰일 수 있다) — 촬영 폴더의 흔적이 그 토큰으로 만들어졌을 수 있다(⑤-2)
+          - 에디터 자리 `HKCU\Software\Unity\UnityEditor\Vibelab\StickMate`는 빌드가 읽지 않는다(문서) — 건드리지 않는다
+        - ★ 값 이름에 **`_h<숫자>` 꼬리**가 붙는다(Unity 6 문서 예: *"DeckBase_h3232628825"*) — 정확한 이름으로는 못 찾는다. **패턴으로** 찾는다
+        0. `$k = 'HKCU:\Software\Vibelab\StickMate'; Test-Path -LiteralPath $k` → `False`면 이 계정에 기록이 없다(이미 첫 실행 상태 — `docs/verify/WINDOWS_CHECK_SESSION.md` 0-2). 비울 것이 없다.
+           ★ 단 **회사명 칸부터 확인한다** — 2-3 확인 줄(`[동결기록] 활성 — 폴더 …\Vibelab\StickMate`)이 `Vibelab`이 아니면 경로를 잘못 본 「없음」이다
+        1. **백업**(비상용 — 평상시 되돌리기에 쓰지 않는다): `$B = "$env:USERPROFILE\AppData\LocalLow\Vibelab"; $T = Get-Date -Format yyyyMMdd-HHmmss; reg export "HKCU\Software\Vibelab\StickMate" "$B\prefs.capture-backup-$T.reg"`
+           ★ 이 파일에는 **토큰 값이 들어간다** — **이 PC 밖으로 옮기지 않는다**, 내용을 메모·채팅에 붙이지 않는다.
+           값 **이름만** 기록: `(Get-Item -LiteralPath $k).Property | Sort-Object`
+        2. **비우기 — 온보딩 값만**: `(Get-Item -LiteralPath $k).Property | Where-Object { $_ -like 'StickMate.GearMenu.OnboardingSeen.v1_h*' } | ForEach-Object { Remove-ItemProperty -LiteralPath $k -Name $_ }`
+        3. **켜기 전 대조 둘**: 같은 `Where-Object` 일치 수 **= 0** **그리고** `Screenmanager*_h*` 일치 수 **≥ 1**(같은 키가 살아 있다).
+           ★ `Screenmanager` 계열이 Windows에도 있는지는 **미확인**(macOS 빌드 plist에서만 실측) — 0이면 판독 무효로 리더에게
+        4. **촬영 뒤**: 일치 수 **= 1**(마지막 테이크가 다시 씀). 0이면 macOS 4번처럼 **앱 경로로** 채운다 — `New-ItemProperty`로 손으로 만들지 않는다(값 형식 미확인)
+        5. **대조**: 값 이름 목록이 1번과 **같다.** 새 이름이 생겼으면(토큰일 수 있다) **지우지 말고** 메모에 「새 이름 N개」로 적어 리더에게
+      - **캡처 메모(4절)에 더 적는다**: macOS 번들 ID · 백업 파일 이름 · 테이크별 `[부채꼴] 최초 1회 안내` 로그 줄 수
+      - 남는 차이(미확인): 온보딩 값만 비우므로 Unity 창 설정 계열(`Screenmanager …`)은 남는다. 첫 실행의 창 배치에 영향이 있는지 모른다 →
+        **첫 실행 컷으로 「창 크기·위치」를 주장하지 않는다**
       - ★ **이 절차 없이 찍은 「첫 실행」은 거짓 소재다** — 신규 사용자는 온보딩 알약을 보는데
         우리 화면에는 안 뜬다. **다른 제품을 찍는 것이다**
-      - ★ **Windows판(레지스트리 `HKCU\Software\<회사>\<제품>`)은 미확인** — 회차 담당이 확인한다
 - [ ] 캐릭터 배율: 배포 기본값 사용. 개인 저장값(과거 0.35 사례)이 섞이면 실측이 어긋난다
 - [ ] `verboseDiagnosticsLogging` **OFF**(진단 문자열이 화면/로그에 남는다)
 - [ ] 디버그 잠금 해제(`EquipmentDebugUnlock`) **OFF** — 릴리즈 게이트 확인
@@ -229,6 +318,7 @@
 | `[화면클램프]` | **0건** | 나왔다면 캐릭터가 화면 밖으로 나가려 해 되돌려진 것 = 구도 실패. **이 로그는 진단 스위치와 무관하게 항상 남는다**(`StickConfig.cs:1534`) — 릴리즈 빌드에서도 검수가 된다 |
 | 프레임 등급 | 구간 내내 **Active**(`renderFrameInterval == 1`) | 위 문단 |
 | 연출 태그 | 해당 태그가 **정확히 1회**(`[활쏘기]` / `[윈도우크래시]` / `[그라피티]` …) | 두 번 발동하면 잘린 극이 찍힌다 |
+| 〔R12〕 첫 실행 컷만 — `[부채꼴] 최초 1회 안내를 띄웁니다` | **테이크마다 정확히 1줄** | `GearRadialMenuWidget.cs:929-940` — 뜨는 순간 기록돼 **다음 테이크에서는 안 뜬다**(2-3 R5 (다)). 0줄 = 알약 없는 「첫 실행」 = 거짓 소재 |
 | 예외 | **0건** | — |
 
 ★ **이 검수기에는 양성 대조를 반드시 붙인다.** 일부러 화면 끝으로 밀어 `[화면클램프]`가 찍힌

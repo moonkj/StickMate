@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using UnityEngine;
 
 namespace StickMate.Platform
@@ -24,10 +25,31 @@ namespace StickMate.Platform
         MarkCleanExit = 2,
         /// <summary>
         /// ★ 4차 — 종료 시작 표지(<see cref="SessionExitMarker.WriteExitStarted"/>, 디스크 동기화 <b>없음</b>). 순서의 <b>맨 앞</b>.
-        /// 원복 도중 끊겨도 다음 실행이 "비정상 종료"로 오판하지 않게 한다.
+        /// 순서 도중 끊긴 실행을 다음 실행이 "비정상 종료"로 오판하지 않게 한다.
         /// </summary>
         MarkExitStarted = 3,
+        /// <summary>
+        /// ★ 5차 — 진행 저장 합류 자리(coder 설계 채택안). <see cref="AppShutdownSequence.RegisterSaveHandler"/>로 등록된 처리기를 부른다.
+        /// 등록된 처리기가 없으면 아무것도 하지 않는다. 워치독 정지 뒤·정상 종료 표지 앞.
+        /// </summary>
+        FlushProgressSave = 4,
     }
+
+    /// <summary>
+    /// ★ 5차 — 진행 저장 합류 계약(단일 슬롯). 종료 순서의 <see cref="AppShutdownStep.FlushProgressSave"/> 단계가 부른다.
+    ///
+    /// <para><b>반환값</b>: 저장했거나 저장할 것이 없었으면 <c>true</c>, 저장을 시도했는데 실패했으면 <c>false</c>(진단 로그 한 줄만 남긴다).
+    /// <b>실패해도 순서는 멈추지 않고 정상 종료 표지까지 간다</b> — 표지는 "종료 순서를 끝까지 돌았다(크래시가 아니다)"를 말할 뿐이고,
+    /// 저장 누락 판단은 저장 계층의 몫이다. 던져도 같다.</para>
+    ///
+    /// <para><b>두 번 불릴 수 있다</b>: Windows 세션 종료(<paramref name="trigger"/>=<see cref="AppShutdownTrigger.SessionEnding"/>)를 처리한 뒤
+    /// 앱 종료를 요청하므로 Unity <c>Application.quitting</c>이 같은 순서를 한 번 더 돌린다(<see cref="AppShutdownTrigger.ApplicationQuitting"/>).
+    /// <b>멱등·재진입 가드는 처리기 책임이다</b>(표지 단계만 순서가 스스로 건너뛴다 — <see cref="AppShutdownSequence.ShouldRunStep"/>).</para>
+    ///
+    /// <para><b>스레드</b>: 두 입구 모두 Unity 메인 스레드다(quitting / 메인 스레드가 만든 창의 프로시저). 세션 종료 입구는 처리 직후
+    /// 프로세스가 끊길 수 있다 — 동기로 끝내라(MS 문서상 세션 종료 예산 5초, Windows 실측 없음).</para>
+    /// </summary>
+    public delegate bool AppShutdownSaveHandler(AppShutdownTrigger trigger);
 
     /// <summary>
     /// ★ 2026-09-14 — 종료 순서의 <b>단 한 곳</b>(플랫폼 중립).
@@ -36,20 +58,27 @@ namespace StickMate.Platform
     /// 동결 워치독 정지는 합류를 최대 1초 기다렸다. 실행 순서가 구독 순서라는 우연에 기대고 있었고, 무엇보다
     /// Windows 세션 종료(<c>WM_ENDSESSION</c>)는 처리 직후 프로세스가 끊긴다 — 원복보다 워치독 대기가 먼저
     /// 오면 원복이 누락된다. 그래서 순서를 <see cref="Order"/> 한 줄로 명시하고 두 경로(정상 종료 / 세션 종료)가
-    /// 같은 순서를 쓴다. <c>SessionEndShutdownTests</c>가 순서와 멱등을 실행으로 잠근다.</para>
+    /// 같은 순서를 쓴다. <c>SessionEndShutdownTests</c>가 순서와 재실행 동작을 실행으로 잠근다.</para>
     ///
     /// <para><b>범위 — "한 곳"은 이 순서의 단계에 한한다(3차 정정).</b> 2차 보고의 "quitting 구독 1곳"은 틀린 문장이었다.
     /// 이 순서가 모은 것은 <see cref="AppShutdownStep"/>의 단계뿐이고, 프로덕션에는 이 순서 밖의 종료 훅이 더 있다
     /// (파일별 결정·사유는 <c>SessionEndShutdownTests</c>의 종료 구독 대장). 새 훅이 생기면 그 대장이 빨개져 결정을 강제한다.</para>
     ///
-    /// <para><b>멱등.</b> 두 경로가 모두 올 수 있다(세션 종료 뒤 Unity가 quitting까지 부르는 경우). 원복은
-    /// <c>ReservedBarRevealDirector</c>의 "이번 실행이 바꿨는가" 상태로 두 번째 호출이 시스템에 쓰지 않고, 워치독
-    /// 정지는 여러 번 불러도 안전하고, 표지는 같은 줄을 다시 쓸 뿐이다.</para>
+    /// <para><b>두 번 돌 때 — 단계마다 다르다(5차 정정).</b> 두 경로가 모두 올 수 있다(세션 종료를 처리한 뒤 앱 종료를 요청하므로
+    /// Unity가 quitting에서 같은 순서를 한 번 더 돌린다). 4차까지 이 자리에 "표지는 같은 줄을 다시 쓸 뿐"이라 적혀 있었는데
+    /// <b>거짓이었다</b>(verify-change 4차 하니스 D) — 두 번째 순서의 맨 앞 "종료 시작"이 첫 순서가 남긴 "정상 종료"를 덮어쓰고, 그 틈에
+    /// 끊기면 다음 실행의 판정이 "원복 도중 끊김"과 구별되지 않았다. 5차부터:
+    /// (1) 원복 — <c>ReservedBarRevealDirector</c>의 "이번 실행이 바꿨는가" 상태로, 이미 원복했으면 시스템에 쓰지 않고 <b>첫 원복이
+    /// 실패했으면 두 번째 순서가 다시 시도한다</b>. (2) 워치독 정지 — 여러 번 불러도 안전하다. (3) 진행 저장 — 처리기가 다시 불린다
+    /// (멱등은 처리기 책임, <see cref="AppShutdownSaveHandler"/>). (4) 표지 두 단계 — <b>이번 실행이 정상 종료 표지를 이미 썼으면
+    /// 건너뛴다</b>(<see cref="ShouldRunStep"/>). 첫 순서가 정상 종료 표지를 못 썼으면(쓰기 실패·끊김) 두 번째 순서가 다시 쓴다.</para>
     ///
     /// <para><b>표지 두 번(3차 D·4차).</b> 맨 끝 "정상 종료"(R-6: quitting에만 찍으면 Unity가 로그오프·시스템 종료에서
     /// quitting을 부르지 않는 경우 — 실기 미확인 — 매일 밤 Windows 종료가 비정상으로 오판된다). 4차에서 맨 앞에 "종료 시작"을
     /// 더했다: 셸이 먼저 내려가 원복 단계의 동기 셸 호출(<c>SHAppBarMessage</c>)이 돌아오지 않은 채 강제 종료되면(추정 경로)
-    /// 맨 끝 표지가 영영 안 남는다 — 그때 "실행 중"이 아니라 "종료 시작"이 남아 비정상으로 오판하지 않는다.</para>
+    /// 맨 끝 표지가 영영 안 남는다 — 그때 "실행 중"이 아니라 "종료 시작"이 남아 비정상으로 오판하지 않는다. "종료 시작"이 남았다는 것은
+    /// "맨 앞 표지와 맨 끝 표지 사이에서 끊겼다"까지만 말한다 — 원복·워치독 정지·진행 저장 중 어디서인지는 표지로 가를 수 없다
+    /// (원복 여부는 흔적 파일 <c>active</c>가 말한다, <c>docs/TASKBAR_REVEAL.md</c> 6절 8번).</para>
     ///
     /// <para><b>"종료 시작"이 원복보다 앞이어도 되는가 — 판단(4차).</b> R-1이 원복 앞에서 막은 것은 <b>기다리는 단계</b>(워치독 합류
     /// 최대 1초)다. 종료 시작 표지는 우리 폴더의 한 줄을 OS에 넘기고 끝나며 <c>Flush(true)</c>를 하지 않는다(프로세스가 끊겨도
@@ -58,17 +87,19 @@ namespace StickMate.Platform
     /// 한 번(보안 소프트웨어 검사가 붙으면 수 ms 추정 — Windows 실측 없음). 디스크 쓰기 자체가 멈추는 환경이면 원복도 늦어진다
     /// — 그 경우는 흔적 파일(2-3)이 다음 실행에서 갚는다.</para>
     ///
-    /// <para><b>진행 저장이 합류할 자리(coder 설계 예고, 4차 기록).</b> 종료 시작 표지 → 원복 → 워치독 정지 → <b>(진행 저장)</b> → 정상 종료 표지.
+    /// <para><b>진행 저장 자리(5차, coder 설계 채택안).</b> 종료 시작 표지 → 원복 → 워치독 정지 → <b>진행 저장</b> → 정상 종료 표지.
     /// 원복은 시스템을 바꾸는 단계 중 맨 앞이어야 하고(R-1), 정상 종료 표지는 모든 단계가 끝난 뒤여야 한다. 진행 저장 중 끊기면 표지는
-    /// "종료 시작"으로 남는다(다음 실행이 비정상으로 보지 않는다 — 저장 누락 여부는 저장 계층이 따로 판단해야 한다).</para>
+    /// "종료 시작"으로 남는다(다음 실행이 비정상으로 보지 않는다 — 저장 누락 여부는 저장 계층이 따로 판단해야 한다). 계약은
+    /// <see cref="AppShutdownSaveHandler"/> 단일 슬롯이고, 의존 방향은 저장 계층(Interaction) → 이 순서(Platform)다.</para>
     /// </summary>
     public static class AppShutdownSequence
     {
         private static readonly AppShutdownStep[] s_order =
         {
-            AppShutdownStep.MarkExitStarted,      // ★ 맨 앞 — 동기화 없는 한 줄. 원복 도중 끊겨도 "비정상"으로 남지 않는다(4차).
+            AppShutdownStep.MarkExitStarted,      // ★ 맨 앞 — 동기화 없는 한 줄. 순서 도중 끊겨도 "비정상"으로 남지 않는다(4차).
             AppShutdownStep.RestoreReservedBar,   // ★ 시스템을 바꾸는 단계 중 맨 앞 — 세션 종료는 곧 강제 종료된다.
             AppShutdownStep.StopFreezeWatchdog,
+            AppShutdownStep.FlushProgressSave,    // ★ 5차 — 등록된 처리기가 없으면 아무것도 하지 않는다.
             AppShutdownStep.MarkCleanExit,        // ★ 맨 끝 — 앞 단계가 전부 돈 뒤에야 "정상 종료"다.
         };
 
@@ -84,10 +115,13 @@ namespace StickMate.Platform
 
         private static bool s_quitHookInstalled;
 
+        /// <summary>진행 저장 처리기 슬롯(단일). <see cref="Interlocked"/>로만 바꾼다.</summary>
+        private static AppShutdownSaveHandler s_saveHandler;
+
         /// <summary>로그 꼬리표.</summary>
         public const string LogTag = "[종료순서]";
 
-        /// <summary>테스트 전용 — 단계 실행을 가로챈다(순서 검증용).</summary>
+        /// <summary>테스트 전용 — 단계 실행을 가로챈다(순서 검증용). 표지 재실행 가드(<see cref="ShouldRunStep"/>)는 가로채기 <b>앞에서</b> 걸린다.</summary>
         internal static Action<AppShutdownStep, AppShutdownTrigger> ExecutorOverrideForTesting;
 
         /// <summary>테스트 전용 — 세션 종료 처리 뒤의 앱 종료 요청을 가로챈다(에디터에서 <c>Application.Quit</c>은 무시되므로 관측이 필요하다).</summary>
@@ -103,11 +137,55 @@ namespace StickMate.Platform
 
         private static void OnApplicationQuitting() => Run(AppShutdownTrigger.ApplicationQuitting);
 
+        // ------------------------------------------------------------------ 진행 저장 합류 계약 (5차)
+
+        /// <summary>
+        /// 진행 저장 처리기를 등록한다. <b>슬롯이 비었을 때만</b> <c>true</c> — 이미 누가(같은 처리기라도) 차지했거나 <c>null</c>이면 <c>false</c>이고
+        /// 아무것도 바꾸지 않는다. 해제할 때 <b>등록한 대리자 인스턴스 그대로</b>를 넘겨야 하므로 필드에 보관하라
+        /// (메서드 그룹을 다시 쓰면 새 인스턴스가 만들어져 <see cref="UnregisterSaveHandler"/>가 거절한다).
+        /// </summary>
+        public static bool RegisterSaveHandler(AppShutdownSaveHandler handler)
+        {
+            if (handler == null) return false;
+            return Interlocked.CompareExchange(ref s_saveHandler, handler, null) == null;
+        }
+
+        /// <summary>
+        /// 진행 저장 처리기를 해제한다. 슬롯에 든 것이 <b>같은 참조</b>일 때만 <c>true</c> — 같은 메서드를 가리키는 다른 대리자 인스턴스
+        /// (<see cref="Delegate.Equals(object)"/>는 참)는 거절한다. 남이 등록한 처리기를 실수로 떼지 않게 하려는 것이다.
+        /// </summary>
+        public static bool UnregisterSaveHandler(AppShutdownSaveHandler handler)
+        {
+            if (handler == null) return false;
+            return ReferenceEquals(Interlocked.CompareExchange(ref s_saveHandler, null, handler), handler);
+        }
+
+        /// <summary>테스트 전용 — 슬롯을 비운다.</summary>
+        internal static void ResetSaveHandlerForTesting() => Interlocked.Exchange(ref s_saveHandler, null);
+
+        // ------------------------------------------------------------------ 순서
+
+        /// <summary>
+        /// ★ 5차 — 이 단계를 이번 순서에서 돌리는가(순수 규칙). <b>표지 두 단계만</b>, 이번 실행이 정상 종료 표지를 <b>이미 썼으면</b> 건너뛴다.
+        /// 원복·워치독 정지·진행 저장은 항상 돈다 — 특히 원복은 첫 순서에서 실패했으면 두 번째 순서가 재시도해야 한다(기존 설계).
+        /// </summary>
+        /// <param name="step">단계.</param>
+        /// <param name="cleanExitAlreadyMarkedThisRun">이번 실행(기동 표지 이후)이 정상 종료 표지를 이미 디스크에 썼는가 —
+        /// <see cref="SessionExitMarker.CleanExitWrittenThisRun"/>.</param>
+        public static bool ShouldRunStep(AppShutdownStep step, bool cleanExitAlreadyMarkedThisRun)
+        {
+            bool markerStep = step == AppShutdownStep.MarkExitStarted || step == AppShutdownStep.MarkCleanExit;
+            return !(markerStep && cleanExitAlreadyMarkedThisRun);
+        }
+
         /// <summary>정해진 순서로 전 단계를 돈다. 한 단계가 던져도 다음 단계는 돈다(종료를 막지 않는다).</summary>
         public static void Run(AppShutdownTrigger trigger)
         {
+            // 순서 시작 시점의 사실 한 번 — 이 순서 안에서 스스로 쓴 정상 종료 표지는 맨 끝 단계라 뒤에 가릴 표지 단계가 없다.
+            bool cleanExitAlreadyMarked = SessionExitMarker.CleanExitWrittenThisRun;
             foreach (AppShutdownStep step in s_order)
             {
+                if (!ShouldRunStep(step, cleanExitAlreadyMarked)) continue;
                 try
                 {
                     Action<AppShutdownStep, AppShutdownTrigger> overrideExecutor = ExecutorOverrideForTesting;
@@ -122,7 +200,24 @@ namespace StickMate.Platform
         }
 
         /// <summary>
-        /// ★ 4차(coder 설계 교차 발견 X1) — Windows <c>WM_ENDSESSION</c>(wParam=TRUE) 처리의 <b>유일한</b> 진입점(트레이 창 프로시저가 동기로 부른다).
+        /// ★ 5차(verify-change 4차 X1g) — 창 프로시저의 세션 종료 분기(메시지 판정 + 처리). Windows 트레이 호스트 창 프로시저가
+        /// <b>맨 앞에서 이 함수 하나만</b> 부르고 돌려받은 값만 쓴다. <c>WM_ENDSESSION</c>이고 wParam이 참이면 <b>lParam 값과 무관하게</b>
+        /// <see cref="HandleSessionEnding"/>을 정확히 한 번 부르고 <c>true</c>(프로시저는 0을 돌려준다), 아니면 아무것도 하지 않고 <c>false</c>
+        /// (프로시저는 다음 분기·DefWindowProc로 넘긴다).
+        ///
+        /// <para><b>왜 옮겼나.</b> 4차에는 트레이 파일이 판정과 호출을 직접 이었고, 거기에 <c>if (lParam.ToInt64() == 0)</c> 한 조건을 붙여
+        /// 로그오프·Restart Manager·강제 종료에서 원복·표지를 건너뛰는 변경이 전량 초록이었다(Windows 파일은 이 머신에서 실행되지 않는다).
+        /// 분기 규칙을 여기로 옮겨 EditMode가 lParam 조합으로 <b>실행해</b> 잠그고, 트레이 쪽은 "이 한 줄만 부른다"를 형태로 본다.</para>
+        /// </summary>
+        public static bool TryHandleSessionEndMessage(uint message, long wParam, long lParam)
+        {
+            if (!SessionEndPolicy.IsSessionEndingNow(message, wParam)) return false;
+            HandleSessionEnding(lParam);
+            return true;
+        }
+
+        /// <summary>
+        /// ★ 4차(coder 설계 교차 발견 X1) — Windows <c>WM_ENDSESSION</c>(wParam=TRUE) 처리(창 프로시저는 <see cref="TryHandleSessionEndMessage"/>를 거쳐 온다).
         /// 종료 순서를 돌고, <b>이어서 앱 종료를 요청한다</b>.
         ///
         /// <para><b>왜 종료를 요청하나.</b> MS 문서(WM_ENDSESSION): wParam이 TRUE면 "the session can end any time after all applications have
@@ -134,7 +229,9 @@ namespace StickMate.Platform
         ///
         /// <para><b>복귀 경로를 두지 않은 이유.</b> 살아남은 뒤 자동 숨김 해제를 다시 거는 경로는, 복귀 직후 실제로 끊기면 작업표시줄이
         /// 앱 없이 드러난 채 남는다 — 끊길지 계속될지를 미리 알 방법이 없다. 그래서 <b>살아남은 상태 자체를 없앤다</b>: 원복·표지 뒤 앱이
-        /// 스스로 끝난다. Unity <c>Application.quitting</c>이 같은 순서를 한 번 더 돌지만 멱등이다. 승인된 <c>ABM_SETSTATE</c> 형태는 늘지 않는다.</para>
+        /// 스스로 끝난다. 그 종료 요청으로 Unity <c>Application.quitting</c>이 같은 순서를 한 번 더 돈다 — 원복은 이미 끝났으면 시스템에
+        /// 쓰지 않고, <b>표지 두 단계는 건너뛰어</b> 이 처리가 남긴 <c>clean-exit trigger=SessionEnding</c>이 그대로 남으며(5차,
+        /// <see cref="ShouldRunStep"/>), 진행 저장 처리기는 한 번 더 불린다(멱등은 처리기 책임). 승인된 <c>ABM_SETSTATE</c> 형태는 늘지 않는다.</para>
         ///
         /// <para><b>lParam으로 분기하지 않는 이유.</b> 위 인용대로 wParam=TRUE면 플래그와 무관하게 끝나야 하므로 판정이 달라지지 않는다.
         /// 플래그는 원인 진단용으로 로그에만 남긴다(<see cref="SessionEndPolicy.DescribeEndSessionFlags"/>). 로그는 순서 <b>뒤에</b> 찍는다 — 원복 앞에 쓰기를 늘리지 않는다.</para>
@@ -181,9 +278,36 @@ namespace StickMate.Platform
                     // 종료 중에는 프레임이 멈춘다 — 워치독을 세워 거짓 정지 줄을 막는다.
                     FreezeWatchdog.Stop(WatchdogJoinMilliseconds(trigger));
                     break;
+                case AppShutdownStep.FlushProgressSave:
+                    RunSaveHandler(trigger);
+                    break;
                 case AppShutdownStep.MarkCleanExit:
                     SessionExitMarker.WriteCleanExit(trigger);
                     break;
+            }
+        }
+
+        private static void RunSaveHandler(AppShutdownTrigger trigger)
+        {
+            AppShutdownSaveHandler handler = Volatile.Read(ref s_saveHandler);
+            if (handler == null) return;   // 등록 전 — 아무것도 하지 않는다(로그 없음: 24시간 상주 앱, 무의미한 줄 금지).
+            try
+            {
+                if (!handler(trigger))
+                {
+                    Debug.LogWarning($"{LogTag} 진행 저장 처리기가 실패를 알렸습니다(경로={trigger}) — 종료 순서는 계속합니다.");
+                }
+            }
+            catch (Exception e)
+            {
+                try
+                {
+                    Debug.LogWarning($"{LogTag} 진행 저장 처리기가 예외를 던졌습니다(경로={trigger}, {e.GetType().Name}) — 종료 순서는 계속합니다.");
+                }
+                catch (Exception)
+                {
+                    // 로그 실패가 다음 단계를 막지 않는다.
+                }
             }
         }
     }
@@ -242,12 +366,63 @@ namespace StickMate.Platform
             => trayOptedOut && (reservedBarChangedThisSession || sessionExitMarkerStarted);
 
         /// <summary>
-        /// ★ 4차(verify-change 3차 V5) — 트레이 파일이 부르는 <b>유일한</b> 판정. 사실 두 가지(이번 실행이 작업표시줄을 바꿨는가,
-        /// 정상 종료 표지가 켜졌는가)를 <b>여기서</b> 읽는다. 3차에는 트레이 파일이 두 사실을 인자로 모아 넘겼는데, 표지 인자를
-        /// <c>false</c>로 바꿔도 초록이었다(같은 파일 로그 문자열이 감사 니들을 채웠다). 이제 트레이는 옵트아웃 여부만 넘기고,
-        /// 사실 수집은 이 중립 함수가 해서 EditMode가 <b>실행해</b> 잠근다.
+        /// ★ 4차(verify-change 3차 V5) — 두 사실(이번 실행이 작업표시줄을 바꿨는가, 정상 종료 표지가 켜졌는가)을 <b>여기서</b> 읽는다.
+        /// 5차부터 트레이 파일은 이 함수도 직접 부르지 않는다 — <see cref="SessionEndReceiverGate.EnsureReceiverWithoutTray"/>가 부른다.
         /// </summary>
         public static bool ShouldCreateReceiverWithoutTrayNow(bool trayOptedOut)
             => NeedsReceiverWithoutTray(trayOptedOut, ReservedBarRevealDirector.ChangedThisSession, SessionExitMarker.IsStarted);
+    }
+
+    /// <summary>수신 창 확보 한 번의 결과(트레이 파일은 이 값으로 로그만 고른다).</summary>
+    public enum SessionEndReceiverOutcome
+    {
+        /// <summary>이 프로세스에서 이미 판정했다 — 아무것도 하지 않았다.</summary>
+        AlreadyEvaluated = 0,
+        /// <summary>세울 필요가 없다(트레이가 켜져 있거나, 세션 종료에서 할 일이 없다) — 창을 만들지 않았다.</summary>
+        NotNeeded = 1,
+        /// <summary>숨은 수신 창을 세웠다.</summary>
+        Created = 2,
+        /// <summary>세워야 했는데 만들지 못했다(생성기가 거짓을 돌려줬거나 던졌다).</summary>
+        CreateFailed = 3,
+    }
+
+    /// <summary>
+    /// ★ 5차(verify-change 4차 V5g) — 트레이를 끈 사용자의 세션 종료 수신 창을 <b>세울지 결정하는 경로 전체</b>(한 번만 판정 · 옵트아웃 ·
+    /// 두 사실 · 생성 호출). Windows 트레이 파일은 옵트아웃 여부와 "창을 만드는 손"만 넘기고 돌려받은 결과로 로그를 고를 뿐이다.
+    ///
+    /// <para><b>왜 옮겼나.</b> 4차에는 한 번만 판정하는 걸쇠와 판정 호출 줄이 트레이 파일에 있었고, 그 줄 <b>앞에</b>
+    /// <c>if (!ReservedBarRevealDirector.ChangedThisSession) return;</c> 한 줄을 넣으면 "트레이를 끈 사용자의 밤 종료가 매일 비정상으로 오판"되는
+    /// 결함(V5)이 되살아나는데 전량 초록이었다(판정 줄 형태만 봤다). 경로 전체를 여기로 옮겨 EditMode가 <b>실행해</b> 잠근다
+    /// (<c>SessionEndShutdownTests</c>). 트레이 쪽 남은 몇 줄은 이 머신에서 실행되지 않으므로 허용 형태(모양 전체)로 본다.</para>
+    ///
+    /// <para><b>한 번만 판정하는 이유.</b> 두 사실은 기동(<c>BeforeSceneLoad</c> 원복 판정 / <c>AfterSceneLoad</c> 표지)에서 정해지고, 트레이 첫
+    /// <c>Update</c>보다 먼저 끝난다. 매 프레임 다시 볼 이유가 없고, 24시간 상주 앱의 틱에 판정을 남기지 않는다.</para>
+    /// </summary>
+    public static class SessionEndReceiverGate
+    {
+        private static int s_evaluated;
+
+        /// <param name="trayOptedOut">트레이 아이콘을 끈 사용자인가(<c>STICKMATE_NO_TRAY_ICON</c>).</param>
+        /// <param name="createHiddenReceiverWindow">숨은 수신 창을 실제로 만드는 손(플랫폼 사실). 세워야 할 때만 한 번 불린다.
+        /// 성공이면 <c>true</c>. 던지면 <see cref="SessionEndReceiverOutcome.CreateFailed"/>로 삼킨다(Tick을 깨지 않는다).</param>
+        public static SessionEndReceiverOutcome EnsureReceiverWithoutTray(bool trayOptedOut, Func<bool> createHiddenReceiverWindow)
+        {
+            if (Interlocked.Exchange(ref s_evaluated, 1) != 0) return SessionEndReceiverOutcome.AlreadyEvaluated;
+            if (!SessionEndPolicy.ShouldCreateReceiverWithoutTrayNow(trayOptedOut)) return SessionEndReceiverOutcome.NotNeeded;
+
+            bool created;
+            try
+            {
+                created = createHiddenReceiverWindow != null && createHiddenReceiverWindow();
+            }
+            catch (Exception)
+            {
+                created = false;
+            }
+            return created ? SessionEndReceiverOutcome.Created : SessionEndReceiverOutcome.CreateFailed;
+        }
+
+        /// <summary>테스트 전용 — "아직 판정하지 않았다"로 되돌린다.</summary>
+        internal static void ResetForTesting() => Interlocked.Exchange(ref s_evaluated, 0);
     }
 }

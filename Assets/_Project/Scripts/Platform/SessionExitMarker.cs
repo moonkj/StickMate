@@ -41,9 +41,16 @@ namespace StickMate.Platform
     /// "비정상 종료"로 오판된다. 그래서 <see cref="AppShutdownSequence"/> 안에 두어 두 입구가 같이 찍는다.</para>
     ///
     /// <para><b>표지 세 상태(4차).</b> 기동 "실행 중"(디스크 동기화) → 종료 순서 맨 앞 "종료 시작"(동기화 <b>없음</b> — 원복 앞에
-    /// 기다리는 단계를 두지 않는다) → 종료 순서 맨 끝 "정상 종료"(동기화). 원복 도중 끊기면 "종료 시작"이 남는다.</para>
+    /// 기다리는 단계를 두지 않는다) → 종료 순서 맨 끝 "정상 종료"(동기화). 두 표지 사이(원복·워치독 정지·진행 저장)에서 끊기면 "종료 시작"이 남는다
+    /// — 어느 단계에서인지는 표지로 가를 수 없다.</para>
     ///
-    /// <para><b>원칙 3.</b> 원본(<c>Player-prev.log</c>)은 읽기만 하고 남의 읽기·쓰기·이름 바꾸기를 막지 않는다(공유 모드). 쓰는
+    /// <para><b>한 실행에 한 번 끝낸다(5차).</b> 세션 종료 처리 뒤 앱 종료 요청으로 종료 순서가 한 번 더 돌 때, 이번 실행이 정상 종료 표지를 이미 썼으면
+    /// 두 번째 순서는 표지 두 단계를 건너뛴다(<see cref="CleanExitWrittenThisRun"/> → <see cref="AppShutdownSequence.ShouldRunStep"/>). 4차까지는 두 번째 순서가
+    /// "정상 종료"를 "종료 시작"으로 덮어써, 그 틈에 끊기면 판정이 원복 도중 끊김과 구별되지 않았다.</para>
+    ///
+    /// <para><b>원칙 3.</b> 원본(<c>Player-prev.log</c>)은 읽기만 하고, 남의 읽기·쓰기·이름 바꾸기를 막지 않는 공유 모드(<c>FileShare.ReadWrite | FileShare.Delete</c>)로 연다 —
+    /// ★ 5차 정정: 이 공유 모드가 실제로 막지 않는지 이 개발 머신(Unity Mono)이 <b>실행으로 확인하는 것은 열기(읽기·쓰기) 축뿐</b>이고, 이름 바꾸기·삭제 축은
+    /// 형태 감사 + Windows 실기 항목이다(<c>SessionExitMarkerTests</c> 문서). 쓰는
     /// 곳은 우리 폴더(<c>persistentDataPath/FreezeForensics</c>)의 표지 파일 1개와 복사본 슬롯 <see cref="CopySlotCount"/>개뿐이고,
     /// 슬롯은 덮어쓰기 링이라 삭제·이동이 없다. 사용자에게 알림 UI를 띄우지 않는다(로그 한 줄뿐).</para>
     /// </summary>
@@ -152,14 +159,28 @@ namespace StickMate.Platform
         private static readonly object Gate = new object();
         private static string s_directory;
         private static int s_pid;
+        private static bool s_cleanExitWritten;
 
-        /// <summary>테스트 전용 — 원본을 연 <b>동안</b> 불린다(원본 경로). 남의 핸들을 막지 않는지 실행으로 재는 탐침 자리.</summary>
+        /// <summary>
+        /// 테스트 전용 — 원본을 연 <b>동안</b> 불린다(원본 경로). 남의 핸들을 막는지 실행으로 재는 탐침 자리.
+        /// ★ 5차 정정: 이 러너(Unity Mono)가 그 탐침으로 잴 수 있는 축은 열기(읽기·쓰기)뿐이다 — <c>SessionExitMarkerTests</c> 문서.
+        /// </summary>
         internal static Action<string> SourceOpenedForTesting;
 
         /// <summary>이번 실행의 표지가 켜졌는가(기동이 "실행 중" 표지를 썼다).</summary>
         public static bool IsStarted
         {
             get { lock (Gate) return s_directory != null; }
+        }
+
+        /// <summary>
+        /// ★ 5차 — 이번 실행(마지막 기동 표지 이후)이 정상 종료 표지를 <b>디스크에 실제로 썼는가</b>. 종료 순서가 두 번 돌 때(세션 종료 처리 →
+        /// 앱 종료 요청 → quitting) 두 번째 순서가 표지 두 단계를 건너뛰는 근거다(<see cref="AppShutdownSequence.ShouldRunStep"/>).
+        /// 쓰기에 실패했으면 거짓으로 남아 두 번째 순서가 다시 쓴다. 기동(<see cref="RunStartup(string,int,string,Func{int,bool})"/>)이 거짓으로 되돌린다.
+        /// </summary>
+        public static bool CleanExitWrittenThisRun
+        {
+            get { lock (Gate) return s_cleanExitWritten; }
         }
 
         /// <summary>기동: 직전 표지 판정 → (비정상이면) 직전 로그 복사 → 이번 실행의 "실행 중" 표지. 던지지 않는다.</summary>
@@ -200,6 +221,7 @@ namespace StickMate.Platform
                 {
                     s_directory = directory;
                     s_pid = pid;
+                    s_cleanExitWritten = false;   // 새 "실행 중" 표지 — 이 실행은 아직 정상 종료 표지를 쓰지 않았다(5차).
                 }
             }
             catch (Exception e)
@@ -237,6 +259,11 @@ namespace StickMate.Platform
             {
                 WriteMarker(Path.Combine(directory, SessionExitMarkerPolicy.MarkerFileName),
                     SessionExitMarkerPolicy.FormatCleanExit(pid, trigger, DateTime.UtcNow), flushToDisk: true);
+                lock (Gate)
+                {
+                    // 쓰기가 돌아온 뒤에만 — 실패했으면 두 번째 종료 순서가 다시 쓴다(5차, AppShutdownSequence.ShouldRunStep).
+                    if (string.Equals(s_directory, directory, StringComparison.Ordinal)) s_cleanExitWritten = true;
+                }
                 return true;
             }
             catch (Exception)
@@ -270,6 +297,7 @@ namespace StickMate.Platform
             {
                 s_directory = null;
                 s_pid = 0;
+                s_cleanExitWritten = false;
             }
             SourceOpenedForTesting = null;
         }

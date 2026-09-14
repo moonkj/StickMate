@@ -283,6 +283,9 @@ python3: dll.count("놔줘 놔줘".encode("utf-16-le"))
 > 〔R11 (2026-09-14) 주: 여기서 말한 「세이브 JSON만 지우는 절차」는 **폐기됐다** — 세이브는 이제 **저장 폴더 단위로** 옮기고 되돌린다
 > (`CAPTURE_PROTOCOL.md` 2-3. 본체만 치우면 곧 들어갈 세이브 복구 규칙 H2′와 겹친다). **이 절의 결론(`PlayerPrefs`는 따로 옮긴다)은 그대로다.**
 > 감사 본문은 R5 시점 기록이라 고치지 않았다〕
+>
+> 〔★ R12 (2026-09-14) 주: 위 선행 조건의 **대상 파일과 방법이 둘 다 틀렸다** — 따르지 마라. 빌드된 앱의 자리는 Unity 6 문서상 번들 ID 이름(`com.Vibelab.StickMate`)이고,
+> `unity.Vibelab.StickMate`는 에디터 것으로 추정된다(실측 — Unity 6 문서의 「에디터 = `com.<회사>.<제품>`」과 어긋난다). plist 파일 옮기기는 Apple이 경고한 형태라 `defaults`로만 다룬다. 정본은 `CAPTURE_PROTOCOL.md` 2-3 R5〕
 
 ---
 
@@ -338,7 +341,7 @@ R4에서 이 문장의 상태는 *"지금은 참, 그러나 무방비"*였다. *
 |---|---|
 | `ProjectSettings/ProjectSettings.asset` `submitAnalytics` | **0** ✅ (R4에서 확인, 이번에 재확인) |
 | `Packages/manifest.json` `com.unity.modules.unityanalytics` | **여전히 있다**(빌트인이라 존재 자체는 정상) |
-| ★ **이 키들을 누가 썼는가** | **나는 가르지 못했다.** 에디터 PlayMode와 출하 플레이어가 **같은 plist를 쓴다** |
+| ★ **이 키들을 누가 썼는가** | **나는 가르지 못했다.** 에디터 PlayMode와 출하 플레이어가 **같은 plist를 쓴다** 〔★ R12 주: 이 전제는 흔들렸다 — Unity 6 문서상 빌드된 앱은 `com.<번들 ID>`(= `com.Vibelab.StickMate.plist`)를 쓰고, 위에 적은 `unity.*` 파일은 에디터 것으로 추정된다(실측, 문서와 어긋남). **다만 반증 표면은 줄지 않는다** — 이 맥의 `com.Vibelab.StickMate.plist`에도 `unity_connect.installation_id`·`unity_connect.session_id`·`unity_connect.mega_session_id` 키가 **이름으로 실재**한다(`unity.cloud_userid`는 없다). 키 이름만 확인했고 값은 옮기지 않았다〕 |
 | ★ **아웃바운드 실측** | **여전히 0건** |
 
 > ### ★ 이게 왜 위험한가 — 트래픽 문제가 아니라 **이름 문제**다

@@ -25,6 +25,12 @@ namespace StickMate.Tests.EditMode
     ///
     /// <para>평문(보간 아님) 문자열 리터럴의 <b>내용</b>은 <c>plainLiterals</c>로 돌려준다 — 리플렉션으로 이름을 넘기는
     /// 우회(<c>GetProperty("renderFrameInterval")</c>)를 잡거나, 문자열 내용 자체를 단언해야 할 때 쓴다.</para>
+    ///
+    /// <para><b>★ 원리적 한계 — 이 스캐너 위의 모든 감사에 공통(2026-09-14 5차 명시).</b> 이것은 C# 파서가 아니라 글자 스캐너다.
+    /// (1) 유니코드 이스케이프 식별자(<c>Evaluate</c>)는 컴파일러에게는 같은 식별자지만 여기서는 다른 글자다. (2) 계산된 이름의 리플렉션
+    /// (<c>GetMethod("Eval" + "uate")</c>)은 이름이 토큰에도 평문 리터럴(통째)에도 없다. (3) <c>dynamic</c>·표현식 트리·<c>#if</c>로 갈린 반대편 코드의 의미.
+    /// verify-change 4차 N1·N2가 두 플랫폼 초록으로 살아남았고, 리더 판정은 <b>쫓지 않는다</b>(일부러 꼬아야만 생기는 형태 — 파서를 들여오는 비용 대비
+    /// 가치가 없다). 실제로 생길 법한 회귀는 판정을 순수 함수로 빼서 <b>실행</b>으로 잠그는 것이 우선이다(<c>SessionEndShutdownTests</c> 5차).</para>
     /// </summary>
     internal static class SourceTextScanner
     {
