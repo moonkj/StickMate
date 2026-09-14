@@ -168,13 +168,21 @@ namespace StickMate.Tests.PlayMode
 
             if (_agent != null)
             {
+                // ★ 2026-09-14 (E-4) — B9·B10·B11이 사용자 숨김·가출 은신을 켠다. 풀지 않으면 뒤 테스트가 물려받는다.
+                if (_agent.IsUserHidden) _agent.SetUserHidden(false, "테스트 정리");
                 if (PanelRetreatField != null) PanelRetreatField.SetValue(_agent, false);
                 if (FullscreenAxisField != null && ApplyDecisionMethod != null)
                 {
                     FullscreenAxisField.SetValue(_agent, false);
                     ApplyDecisionMethod.Invoke(_agent, null);
                 }
+                if (_agent.Blackboard != null && _agent.Blackboard.Machine != null
+                    && _agent.Blackboard.Machine.CurrentStateId == StickmanStateId.Runaway)
+                {
+                    _agent.Blackboard.Machine.ChangeState(StickmanStateId.Idle, isForcedInterrupt: true);
+                }
             }
+            if (SpectacleEventLock.IsActive) SpectacleEventLock.Release(SpectacleEventLock.CurrentOwner);
 
             // ★ 가로챈 적이 없으면 되돌리지도 않는다 — 도중 실패 시 «저장된 값»이 기본값이라 그것이 오염이 된다.
             if (_hijacked)
@@ -184,6 +192,27 @@ namespace StickMate.Tests.PlayMode
                 ScreenCoordinateConverter.OverlayOriginOsScreen = _savedOverlayOrigin;
                 _hijacked = false;
             }
+            // ★ 2026-09-14 (V1·V3 잠금) — 단축키 서비스·리마인더 설정·할 일 목록·리마인더 상태를 되돌린다.
+            if (_keysHijacked)
+            {
+                if (_control != null && KeyServiceField != null) KeyServiceField.SetValue(_control, _savedKeyService);
+                _keysHijacked = false;
+                _savedKeyService = null;
+            }
+            if (_reminderHijacked && _config != null)
+            {
+                _config.todoReminderChance = _savedReminderChance;
+                _config.todoReminderCheckInterval = _savedReminderInterval;
+            }
+            _reminderHijacked = false;
+            TodoListModel.ResetForTesting();
+            if (_agent != null && _agent.Blackboard != null && _agent.Blackboard.Machine != null
+                && _agent.Blackboard.Machine.CurrentStateId == StickmanStateId.TodoReminder)
+            {
+                _agent.Blackboard.Machine.ChangeState(StickmanStateId.Idle, isForcedInterrupt: true);
+            }
+            if (SpectacleEventLock.IsActive) SpectacleEventLock.Release(SpectacleEventLock.CurrentOwner);
+
             // StickConfig는 <b>배포 에셋</b>이라 반드시 원복한다.
             if (_configHijacked && _config != null) _config.fullscreenPollInterval = _savedPollInterval;
             _configHijacked = false;
@@ -527,6 +556,343 @@ namespace StickMate.Tests.PlayMode
 
             Debug.Log($"{LogPrefix} B7 확인 — 등급 2에서 우클릭이 {frames}프레임 동안 한 번도 부채꼴을 펴지 않았고 허가·반응도 없었습니다" +
                 $"(같은 씬 등급 None에서는 열렸습니다, 커서∈몸={cursorOverBody}).");
+        }
+
+        // ==================== E-4 — 보이지 않는 캐릭터 자리 우클릭은 부채꼴을 열지 않는다(§16-2c B9 · B10 · B11) ====================
+
+        /// <summary>보이지 않는 몸 자리 우클릭 한 번이 부채꼴·허가·반응을 만들지 않음을 벽시계 관측으로 단언한다.
+        /// 0항(기하)은 숨은 몸에서도 참이라는 전제를 먼저 세운다 — 없으면 «안 열림»이 «커서가 밖이라서»와 구별되지 않는다.</summary>
+        private IEnumerator AssertRightClickOpensNothingOnInvisibleBody(string what)
+        {
+            AssertCursorInside();
+            RightDown();
+            Assert.IsFalse(_menu.IsVisible, $"{LogPrefix} ★ {what} — 보이지 않는 몸 자리 우클릭이 부채꼴을 폈습니다(§16-2c).");
+            Assert.IsFalse(_agent.IsUserSummonGrantActive, $"{LogPrefix} ★ {what} — 보이지 않는 몸 자리 우클릭이 허가를 냈습니다.");
+            Assert.IsFalse(_control.IsReactionHoldActive, $"{LogPrefix} ★ {what} — 화면에 없는 캐릭터가 호명 반응 비트를 걸었습니다(원칙 1).");
+
+            float deadline = Time.realtimeSinceStartup + GearRadialMenuWidget.ExpandTotalSeconds + ObserveSlackSeconds;
+            bool everVisible = false;
+            int frames = 0;
+            while (Time.realtimeSinceStartup < deadline)
+            {
+                if (_menu.IsVisible) everVisible = true;
+                frames++;
+                yield return null;
+            }
+            RightUp();
+            Assert.Greater(frames, 1, $"{LogPrefix} {what} — 관측 프레임이 {frames}개뿐입니다.");
+            Assert.IsFalse(everVisible, $"{LogPrefix} ★ {what} — 관측 {frames}프레임 중 부채꼴이 한 번이라도 보였습니다.");
+        }
+
+        private IEnumerator ForceRunawayIntoHiding(string what)
+        {
+            RunawayDirector runaway = Object.FindFirstObjectByType<RunawayDirector>(FindObjectsInactive.Include);
+            Assert.IsNotNull(runaway, $"{LogPrefix} {what} — 씬에 RunawayDirector가 없습니다.");
+            StickmanStateId state = _agent.Blackboard.Machine.CurrentStateId;
+            if (state != StickmanStateId.Idle && state != StickmanStateId.Walk)
+            {
+                _agent.Blackboard.Machine.ChangeState(StickmanStateId.Idle, isForcedInterrupt: true);
+                yield return Wait(SettleSeconds);
+            }
+            CommandAvailability availability = runaway.GetForcedRunawayAvailability();
+            Assert.IsTrue(availability.IsReady, $"{LogPrefix} {what} — 가출 강제 발동 불가(\"{availability.Reason}\").");
+            Assert.IsTrue(runaway.TryForceRunawayNow(LogPrefix), $"{LogPrefix} {what} — 가출이 시작되지 않았습니다.");
+            yield return TestClock.WaitUntil(() => _agent.Blackboard.IsCharacterHiddenByRunaway,
+                _config.runawayFleeDurationSeconds + 3f, "가출 은신(Hidden)에 들어가지 않았습니다");
+            Assert.IsFalse(_agent.IsSuspended, $"{LogPrefix} {what} — 가출 은신인데 Suspend가 켜졌습니다.");
+        }
+
+        [UnityTest]
+        [Timeout(180000)]
+        public IEnumerator B9_사용자_숨김_중_보이지_않는_몸_자리_우클릭은_부채꼴을_열지_않고_톱니가_첫_홉이다()
+        {
+            yield return LoadScene();
+            _agent.SetUserHidden(true, "B9 — 사용자 숨김");
+            yield return Wait(SettleSeconds);
+            Assert.IsTrue(_agent.IsSuspended && _agent.IsUserHiddenOnly, $"{LogPrefix} B9 전제 — 사용자 숨김 단독이 아닙니다.");
+            Assert.IsTrue(_gear.IsIconVisible,
+                $"{LogPrefix} B9 — 숨긴 동안 첫 홉인 톱니가 서지 않았습니다(사유: {_gear.StandbyGearReason}) — 우클릭을 막으면 마우스 입구가 0이 됩니다.");
+
+            yield return AssertRightClickOpensNothingOnInvisibleBody("B9 사용자 숨김");
+
+            // 양성 대조 — 숨김을 풀면 같은 자리 우클릭이 연다.
+            _agent.SetUserHidden(false, "B9 양성 대조");
+            yield return Wait(SettleSeconds);
+            AssertCursorInside();
+            RightDown();
+            yield return Wait(GearRadialMenuWidget.ExpandTotalSeconds + ObserveSlackSeconds);
+            RightUp();
+            Assert.IsTrue(_menu.IsVisible, $"{LogPrefix} B9 양성 대조 실패 — 숨김을 풀었는데 같은 자리 우클릭이 열리지 않았습니다(위 «안 열림» 무의미).");
+            Debug.Log($"{LogPrefix} B9 확인 — 사용자 숨김 중 보이지 않는 몸 자리 우클릭은 열리지 않고 톱니가 서 있으며, 풀자 열렸습니다.");
+        }
+
+        [UnityTest]
+        [Timeout(180000)]
+        public IEnumerator B10_등급1_더하기_사용자_숨김_중_보이지_않는_몸_자리_우클릭은_부채꼴도_허가도_내지_않는다()
+        {
+            yield return LoadScene();
+            SetPanelRetreat(true);
+            _agent.SetUserHidden(true, "B10 — 등급 1 + 사용자 숨김");
+            yield return Wait(SettleSeconds);
+            Assert.IsTrue(_agent.IsUserHiddenOnly && _agent.ArePanelsSuppressed, $"{LogPrefix} B10 전제 — 등급 1 + 사용자 숨김이 아닙니다.");
+            Assert.IsFalse(_agent.IsUserSummonGrantActive, $"{LogPrefix} B10 전제 — 허가가 이미 살아 있습니다.");
+            Assert.IsTrue(_gear.IsIconVisible, $"{LogPrefix} B10 — 숨긴 동안 첫 홉인 톱니가 서지 않았습니다(사유: {_gear.StandbyGearReason}).");
+
+            yield return AssertRightClickOpensNothingOnInvisibleBody("B10 등급 1 + 사용자 숨김");
+
+            // 양성 대조 — 숨김만 풀면(등급 1 유지) 같은 자리 우클릭이 허가를 받아 연다(B3).
+            _agent.SetUserHidden(false, "B10 양성 대조");
+            yield return Wait(SettleSeconds);
+            AssertCursorInside();
+            RightDown();
+            Assert.IsTrue(_agent.IsUserSummonGrantActive, $"{LogPrefix} B10 양성 대조 실패 — 숨김을 푼 등급 1에서 우클릭이 허가를 내지 않았습니다.");
+            yield return Wait(GearRadialMenuWidget.ExpandTotalSeconds + ObserveSlackSeconds);
+            RightUp();
+            Assert.IsTrue(_menu.IsVisible, $"{LogPrefix} B10 양성 대조 실패 — 부채꼴이 열리지 않았습니다.");
+            Debug.Log($"{LogPrefix} B10 확인 — 등급 1 + 숨김에서 보이지 않는 몸 자리 우클릭은 부채꼴도 허가도 내지 않았고, 숨김을 풀자 허가를 받아 열렸습니다.");
+        }
+
+        [UnityTest]
+        [Timeout(180000)]
+        public IEnumerator B11_가출_은신_중_보이지_않는_캐릭터_자리_우클릭은_부채꼴을_열지_않는다()
+        {
+            yield return LoadScene();
+            yield return ForceRunawayIntoHiding("B11");
+            Assert.IsTrue(_gear.IsIconVisible, $"{LogPrefix} B11 — 가출 은신 중 첫 홉인 톱니가 서지 않았습니다(사유: {_gear.StandbyGearReason}).");
+
+            yield return AssertRightClickOpensNothingOnInvisibleBody("B11 가출 은신");
+            Assert.IsTrue(_agent.Blackboard.IsCharacterHiddenByRunaway,
+                $"{LogPrefix} B11 — 관측이 끝났을 때 은신이 풀려 있습니다. 위 «안 열림»이 은신 상태에서 잰 것인지 알 수 없습니다.");
+            Debug.Log($"{LogPrefix} B11 확인 — 가출 은신 중 보이지 않는 캐릭터 자리 우클릭은 부채꼴을 열지 않았고 톱니가 서 있습니다.");
+        }
+
+        /// <summary>
+        /// ★★ <b>항별 입력값 단언</b>(E-4 필수 조건) — 여섯째 항이 들어간 뒤에는 B7에서 넷째·여섯째 항이 <b>둘 다</b> 닫으므로
+        /// 결과(«안 열림»)만 보면 넷째 항 회귀(MW1·MW2)가 조용히 초록이 된다. 게이트가 실제로 쓴 표본의 항별 값으로
+        /// «B7에서 넷째 항이 참», «B9·B10·B11에서 넷째 항은 거짓이고 여섯째 항이 닫는다»를 따로 못박는다.
+        /// <para>이 테스트만 E-4가 더한 표본 API를 쓴다 — 수정 전 박제 실행에서는 이 메서드만 걷는다.</para>
+        /// </summary>
+        [UnityTest]
+        [Timeout(240000)]
+        public IEnumerator 항별_입력값_B1_B7_B9_B10_B11에서_게이트가_어느_항으로_닫혔는지()
+        {
+            yield return LoadScene();
+
+            // ---------- B1 평상시 — 전 항 통과 · 열림 ----------
+            AppControlDirector.RightClickFanGateSample s = SampleOneRightClick("B1");
+            Assert.IsTrue(s.Opened && s.CursorOverCharacter && s.CharacterOnScreen && !s.UserSummonBlocked && s.SwallowAllowsOpen && !s.PrimaryButtonHeld,
+                $"{LogPrefix} B1 표본이 «전 항 통과 · 열림»이 아닙니다: {s}");
+            _menu.Collapse(GearMenuCollapseMode.User, "항별 입력값 — B1 정리");
+            yield return Wait(GearRadialMenuWidget.CollapseUserSeconds + ObserveSlackSeconds);
+
+            // ---------- B9 사용자 숨김 — 넷째 항 거짓 · 여섯째 항이 닫는다 ----------
+            _agent.SetUserHidden(true, "항별 입력값 — B9");
+            yield return Wait(SettleSeconds);
+            s = SampleOneRightClick("B9");
+            Assert.IsTrue(!s.Opened && s.CursorOverCharacter && !s.UserSummonBlocked && !s.CharacterOnScreen,
+                $"{LogPrefix} ★ B9 표본 — 기대: 0항 참(기하) · 4항 거짓 · 6항 거짓 · 닫힘. 실제: {s}");
+            _agent.SetUserHidden(false, "항별 입력값 — B9 정리");
+            yield return Wait(SettleSeconds);
+
+            // ---------- B10 등급 1 + 사용자 숨김 — 넷째 항 거짓(허가 가능) · 여섯째 항이 닫는다 ----------
+            SetPanelRetreat(true);
+            _agent.SetUserHidden(true, "항별 입력값 — B10");
+            yield return Wait(SettleSeconds);
+            s = SampleOneRightClick("B10");
+            Assert.IsTrue(!s.Opened && s.CursorOverCharacter && !s.UserSummonBlocked && !s.CharacterOnScreen,
+                $"{LogPrefix} ★ B10 표본 — 기대: 0항 참 · 4항 거짓 · 6항 거짓 · 닫힘. 실제: {s}");
+            Assert.IsFalse(_agent.IsUserSummonGrantActive, $"{LogPrefix} ★ B10 — 닫힌 게이트 뒤에서 허가가 났습니다.");
+            _agent.SetUserHidden(false, "항별 입력값 — B10 정리");
+            SetPanelRetreat(false);
+            yield return Wait(SettleSeconds);
+
+            // ---------- B7 등급 2 — ★ 넷째 항이 따로 참(원칙 2의 독립 잠금) · 여섯째 항도 거짓 ----------
+            SetPanelRetreat(true);
+            SetGameAxis(true);
+            yield return Wait(SettleSeconds);
+            s = SampleOneRightClick("B7");
+            Assert.IsTrue(s.UserSummonBlocked,
+                $"{LogPrefix} ★★ B7 표본 — 등급 2에서 넷째 항(허가를 받아도 억제되는가)이 거짓입니다. 여섯째 항이 대신 닫아 결과는 «안 열림»이지만 " +
+                $"원칙 2의 독립 잠금이 사라졌습니다(변이 MW1·MW2 형태). 실제: {s}");
+            Assert.IsTrue(!s.Opened && s.CursorOverCharacter && !s.CharacterOnScreen,
+                $"{LogPrefix} B7 표본 — 기대: 0항 참(숨은 몸도 기하는 참) · 6항 거짓 · 닫힘. 실제: {s}");
+            SetGameAxis(false);
+            SetPanelRetreat(false);
+            yield return Wait(SettleSeconds);
+
+            // ---------- B11 가출 은신 — 캐릭터 축은 서 있지 않고(넷째 항 거짓) 여섯째 항이 닫는다 ----------
+            yield return ForceRunawayIntoHiding("항별 입력값 — B11");
+            s = SampleOneRightClick("B11");
+            Assert.IsTrue(!s.Opened && s.CursorOverCharacter && !s.UserSummonBlocked && !s.CharacterOnScreen,
+                $"{LogPrefix} ★ B11 표본 — 기대: 0항 참 · 4항 거짓 · 6항 거짓 · 닫힘. 실제: {s}");
+
+            Debug.Log($"{LogPrefix} 항별 입력값 확인 — B1 전 항 통과, B7은 넷째 항이 따로 참, B9·B10·B11은 넷째 항 거짓·여섯째 항이 닫음(게이트가 쓴 표본 기준).");
+        }
+
+        /// <summary>우클릭 상승 엣지 한 번을 태우고 그 평가의 표본을 돌려준다. 평가가 실제로 일어났는지 계수로 확인한다(옛 표본을 읽지 않게).</summary>
+        private AppControlDirector.RightClickFanGateSample SampleOneRightClick(string what)
+        {
+            AssertCursorInside();
+            int before = _control.RightClickGateEvaluationCount;
+            RightDown();
+            RightUp();
+            Assert.AreEqual(before + 1, _control.RightClickGateEvaluationCount,
+                $"{LogPrefix} {what} — 우클릭 한 번에 게이트 평가가 {_control.RightClickGateEvaluationCount - before}번 일어났습니다(기대 1). 아래 표본이 이번 평가가 아닐 수 있습니다.");
+            AppControlDirector.RightClickFanGateSample sample = _control.LastRightClickGateSample;
+            Debug.Log($"{LogPrefix} {what} 게이트 표본 — {sample}");
+            return sample;
+        }
+
+        // ==================== verify-change 생존 변이 V1 · V2 · V3 잠금 (2026-09-14) ====================
+        //
+        // E-1·E-2 독립 재측정에서 세 변이가 EditMode·PlayMode 전량을 통과했다(탐침에만 빨강).
+        //   V1 할일 리마인더의 닫기 가드를 열기 판정으로 → 무허가 등급 1에서 리마인더 발동(원칙 2)
+        //   V2 설정창 닫기 가드를 같은 값의 다른 식(HidesScreenSurfaces)으로 → 등급 1 전에 연 설정창·차단막이 남는다
+        //   V3 ⌃⌥⌘I 디렉터 본체가 비허가 진입점을 부름 → 단축키 경로에서 허가가 안 난다
+        // 아래 세 테스트는 그 탐침을 옮긴 것이다. 셋 다 이미 커밋된 API만 쓴다(수정 전 박제 = 초록).
+
+        private static readonly FieldInfo KeyServiceField =
+            typeof(AppControlDirector).GetField("_keyService", BindingFlags.Instance | BindingFlags.NonPublic);
+
+        private static readonly MethodInfo TickHotkeysMethod =
+            typeof(AppControlDirector).GetMethod("TickHotkeys", BindingFlags.Instance | BindingFlags.NonPublic);
+
+        /// <summary>가짜 전역 키 상태 — 조합키 셋과 I만 세운다(조회는 항상 성공). 디렉터 본체(TickHotkeys → 상승 엣지 → 동작)를 그대로 태우기 위한 것.</summary>
+        private sealed class ScriptedKeys : IGlobalKeyStateService
+        {
+            public bool Chord;
+            public bool I;
+
+            public bool TryGetKeyPressed(GlobalKey key, out bool pressed)
+            {
+                pressed = key == GlobalKey.I
+                    ? I
+                    : Chord && (key == GlobalKey.Control || key == GlobalKey.Option || key == GlobalKey.Command);
+                return true;
+            }
+        }
+
+        private object _savedKeyService;
+        private bool _keysHijacked;
+        private float _savedReminderChance;
+        private float _savedReminderInterval;
+        private bool _reminderHijacked;
+
+        private void TickHotkeys() => TickHotkeysMethod.Invoke(_control, null);
+
+        [UnityTest]
+        [Timeout(180000)]
+        public IEnumerator V2_등급1_전에_사용자가_연_설정창과_차단막은_등급1_진입_순간_회수된다()
+        {
+            yield return LoadScene();
+
+            _settings.Open("V2 — 등급 없음에서 사용자가 연다");
+            yield return Wait(SettleSeconds);
+            Assert.IsTrue(_settings.IsOpen && _settings.IsClickBlockerEnabled,
+                $"{LogPrefix} 양성 대조 실패 — 등급 없음에서 설정창이 열리지 않았습니다(아래 «회수됐다»가 «원래 안 열렸다»와 구별되지 않습니다).");
+            Assert.IsFalse(_agent.IsUserSummonGrantActive,
+                $"{LogPrefix} 전제 — 등급 없음에서 허가가 났습니다(허가는 등급 1이 이미 켜져 있을 때만 난다).");
+
+            SetPanelRetreat(true);
+            yield return Wait(SettleSeconds + UserSurfaceSummonPolicy.LeaseSeconds * 3f);
+
+            Assert.IsTrue(_agent.ArePanelsSuppressed, $"{LogPrefix} 등급 1을 세웠는데 표면 억제가 켜지지 않았습니다.");
+            Assert.IsFalse(_settings.IsOpen,
+                $"{LogPrefix} ★ V2 — 등급 1 전에 연 설정창이 등급 1 진입 뒤에도 남았습니다. 닫기 가드가 표면 억제가 아니라 " +
+                "«허가를 받아도 억제되는가»와 같은 값(등급 2에서만 참)을 읽고 있습니다(원칙 2, §16-2b B2).");
+            Assert.IsFalse(_settings.IsClickBlockerEnabled,
+                $"{LogPrefix} ★ V2 — 설정창 클릭 차단막이 등급 1 진입 뒤에도 켜져 있습니다(발표 화면 위에서 그 사각형의 클릭을 먹습니다).");
+            Debug.Log($"{LogPrefix} V2 확인 — 등급 없음에서 연 설정창과 차단막이 등급 1 진입과 함께 회수됐습니다.");
+        }
+
+        [UnityTest]
+        [Timeout(180000)]
+        public IEnumerator V1_무허가_등급1에서는_할일_리마인더가_발동하지_않고_해제하면_발동한다()
+        {
+            yield return LoadScene();
+
+            TodoListModel.Add("E-4 잠금 — 리마인더 후보 할 일", PostItSoftCapForReminder);   // 반환값은 «소프트캡 초과 여부»다(성공 여부 아님).
+            Assert.GreaterOrEqual(TodoListModel.UncompletedCount, 1, $"{LogPrefix} 전제 — 미완료 할 일이 없습니다(리마인더 후보 0).");
+
+            _savedReminderChance = _config.todoReminderChance;
+            _savedReminderInterval = _config.todoReminderCheckInterval;
+            _reminderHijacked = true;
+            _config.todoReminderChance = 1f;            // 확률 문을 항상 열어 «발동 안 함»이 운이 아니게.
+            _config.todoReminderCheckInterval = 1f;     // 점검 주기(초) — 관측 창을 이 값의 배수로 잡는다.
+            float interval = _config.todoReminderCheckInterval;
+
+            SetPanelRetreat(true);
+            float end = Time.realtimeSinceStartup + interval * 3f + ObserveSlackSeconds;
+            int idleWalkFrames = 0;
+            bool fired = false;
+            while (Time.realtimeSinceStartup < end)
+            {
+                StickmanStateId s = _agent.Blackboard.Machine.CurrentStateId;
+                if (s == StickmanStateId.Idle || s == StickmanStateId.Walk) idleWalkFrames++;
+                if (s == StickmanStateId.TodoReminder) fired = true;
+                yield return null;
+            }
+            Assert.Greater(idleWalkFrames, 1,
+                $"{LogPrefix} 전제 — 관측 창 동안 캐릭터가 Idle/Walk에 한 번도 없었습니다(리마인더 점검이 돌 수 없었습니다).");
+            Assert.IsTrue(_agent.ArePanelsSuppressed && !_agent.IsUserSummonGrantActive, $"{LogPrefix} 전제 — 무허가 등급 1이 아니었습니다.");
+            Assert.IsFalse(fired,
+                $"{LogPrefix} ★ V1 — 무허가 등급 1에서 할일 리마인더가 발동했습니다. 사용자가 부르지 않은 연출이 발표·화상회의 화면 위로 나옵니다(원칙 2).");
+
+            // 양성 대조 — 같은 조건에서 등급 1만 풀면 발동한다(측정기 생존).
+            SetPanelRetreat(false);
+            end = Time.realtimeSinceStartup + interval * 6f + ObserveSlackSeconds;
+            bool firedAfter = false;
+            while (Time.realtimeSinceStartup < end && !firedAfter)
+            {
+                if (_agent.Blackboard.Machine.CurrentStateId == StickmanStateId.TodoReminder) firedAfter = true;
+                yield return null;
+            }
+            Assert.IsTrue(firedAfter,
+                $"{LogPrefix} 양성 대조 실패 — 등급 1을 풀어도 리마인더가 {interval * 6f:F1}초 안에 발동하지 않았습니다. 위 «발동 안 함»이 무의미합니다.");
+            Debug.Log($"{LogPrefix} V1 확인 — 무허가 등급 1에서 리마인더가 발동하지 않았고, 등급 1을 풀자 발동했습니다.");
+        }
+
+        /// <summary>리마인더 후보 할 일을 넣을 때 쓰는 소프트캡 인자. 값 자체는 관심사가 아니다(넘치지 않게 크게).</summary>
+        private const int PostItSoftCapForReminder = 99;
+
+        [UnityTest]
+        [Timeout(180000)]
+        public IEnumerator V3_등급1에서_단축키_디렉터_본체로_연_정보창은_허가를_받아_머물고_같은_키로_닫힌다()
+        {
+            yield return LoadScene();
+            Assert.IsNotNull(KeyServiceField, $"{LogPrefix} AppControlDirector._keyService를 찾지 못했습니다 — 단축키 본체 주입 경로가 죽었습니다.");
+            Assert.IsNotNull(TickHotkeysMethod, $"{LogPrefix} AppControlDirector.TickHotkeys()를 찾지 못했습니다.");
+
+            var keys = new ScriptedKeys();
+            _savedKeyService = KeyServiceField.GetValue(_control);
+            KeyServiceField.SetValue(_control, keys);
+            _keysHijacked = true;
+            TickHotkeys();   // 첫 표본은 «기록만» 한다(시작 순간 눌려 있던 키를 명령으로 오인하지 않는 설계).
+
+            SetPanelRetreat(true);
+            yield return Wait(SettleSeconds);
+            Assert.IsTrue(_agent.ArePanelsSuppressed, $"{LogPrefix} 전제 — 등급 1 억제가 켜지지 않았습니다.");
+            Assert.IsFalse(_agent.IsUserSummonGrantActive, $"{LogPrefix} 전제 — 허가가 이미 살아 있습니다.");
+            Assert.IsFalse(_window.IsOpen, $"{LogPrefix} 전제 — 정보창이 이미 열려 있습니다.");
+
+            // ---------- ⌃⌥⌘I 누름 → 뗌 (디렉터 본체: 조합키 판정 → 상승 엣지 → 동작 분기 → 정보창 토글) ----------
+            keys.Chord = true; keys.I = true; TickHotkeys();
+            keys.Chord = false; keys.I = false; TickHotkeys();
+            Assert.IsTrue(_agent.IsUserSummonGrantActive,
+                $"{LogPrefix} ★ V3 — 디렉터 단축키 본체로 정보창을 열었는데 허가가 나지 않았습니다. 본체가 사용자 열기가 아니라 " +
+                "비허가 진입점(자동 복귀용)을 부르고 있습니다 — 등급 1에서 열자마자 닫힙니다.");
+            yield return Wait(UserSurfaceSummonPolicy.LeaseSeconds * 4f);
+            Assert.IsTrue(_window.IsOpen,
+                $"{LogPrefix} ★ V3 — 단축키 본체로 연 정보창이 {UserSurfaceSummonPolicy.LeaseSeconds * 4f:F2}초를 버티지 못했습니다.");
+
+            // ---------- 같은 키로 닫는다(양성 대조: 임대 만료 → 회수 복귀) ----------
+            keys.Chord = true; keys.I = true; TickHotkeys();
+            keys.Chord = false; keys.I = false; TickHotkeys();
+            yield return Wait(UserSurfaceSummonPolicy.LeaseSeconds * 3f);
+            Assert.IsFalse(_window.IsOpen, $"{LogPrefix} 양성 대조 — 같은 키로 닫았는데 정보창이 남아 있습니다(토글 본체가 안 돌았습니다).");
+            Assert.IsFalse(_agent.IsUserSummonGrantActive, $"{LogPrefix} 양성 대조 — 닫았는데 허가가 남았습니다.");
+            Assert.IsTrue(_agent.ArePanelsSuppressed, $"{LogPrefix} 양성 대조 — 허가가 만료됐는데 회수가 돌아오지 않았습니다.");
+            Debug.Log($"{LogPrefix} V3 확인 — ⌃⌥⌘I 디렉터 본체 경로로 연 정보창이 등급 1에서 허가를 받아 머물렀고, 같은 키로 닫혔습니다.");
         }
     }
 }

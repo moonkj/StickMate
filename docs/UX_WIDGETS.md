@@ -2076,13 +2076,13 @@ Platform/MacOS/MacWindowService.cs:311 주석
 | 카드 높이 | **−60pt** | 게이트가 붙어 `reserveCaption` → `RowHeightWithCaption = 60` |
 | 행 ① 라벨 | `지금 즉시` → **`숨기기 / 보이기`** | 「단축키」를 **낱말 단위로 삭제**한다(R3-1-1의 진단) |
 | 행 ① 단축키 칩 | **`ShortcutLabel.Chord("K")` 추가** | `BeginRow`는 이미 `hotkey` 인자를 받는다. `AddButtons`만 `null`을 넘기고 있다(`SettingsControls.cs:1068`) → **시그니처 1줄 + 통과 1줄** |
-| 행 ① 캡션 | `HideEscapeCaption` **그대로** | 44자 / 읽기 예산 3.58초 / 폭 추정 350pt ≤ 상자 480pt(여유 27%) → 줄바꿈·잘림 없음 |
+| 행 ① 캡션 | `HideEscapeCaption` **그대로** | ★ `eb4670d` 기준 문구 「캐릭터만 사라져요. 이 창은 남고 톱니가 떠요. 옆의 [보이기]로 되돌립니다.」(`SettingsWindow.cs:289`) = **43자**(공백 포함) / 읽기 예산 0.28 + 43×0.075 = **3.51초** / 폭 추정 약 342pt(옛 값 44자 = 350pt에서 비례 — 추정) ≤ 상자 480pt(여유 약 29%) → 줄바꿈·잘림 없음. 옛 값 44자·3.58초·350pt는 이전 문구 기준이다 |
 
 **무장(최초 1회만)** — 두 관용구를 그대로 빌린다. 새 개념 0개.
 
 | 항목 | 값 | 근거 |
 |---|---|---|
-| 발동 조건 | **이 컴퓨터에서 처음 숨기는 1회만** | `GearRadialMenuWidget.OnboardingSeenKey` 선례(PlayerPrefs, 스키마 안 올림) |
+| 발동 조건 | **이 컴퓨터에서 처음 숨기는 1회만** | `PlayerPrefsGearMenuOnboardingSeenStore.Key` 선례(PlayerPrefs, 스키마 안 올림 — `36e0a5e`부터 저장소 경계. 옛 위치 `GearRadialMenuWidget.OnboardingSeenKey`) |
 | 무장 시간 | **3.0초** (`QuitConfirmSeconds` 재사용) | 상수를 새로 만들지 않는다 |
 | 무장 중 바뀌는 것 | **캡션만** | ★ 버튼 라벨을 바꾸면 안 된다 — 폭 식이 `26 + 글자수×9`라 라벨이 3자→11자면 버튼이 53→125pt로 커지고 **옆 버튼이 커서 밑에서 72pt 미끄러진다**(이 창이 이미 경계하는 실패) |
 | 무장 문구 상한 | **20자** | 3.0초 ÷ `DialogueBudget` 식 → `(3.0−0.28)/0.075 = 36.2자`가 이론 상한. **여유 1.8배**를 두고 20자 |
@@ -2262,7 +2262,7 @@ KeepAlive()         :  커서가 **버튼 클램프 상자(56×56) 안**일 때�
 ### R3-4-3. ★ 그리고 실패하면 **다시 오지 않는다**
 
 ```
-TryStartOnboardingHint()  →  PlayerPrefs.SetInt(OnboardingSeenKey, 1)   ← 뜨는 순간 기록
+TryStartOnboardingHint()  →  GearMenuOnboardingSeenStore.Current.MarkSeen()  (36e0a5e — 옛: PlayerPrefs.SetInt(OnboardingSeenKey, 1))   ← 뜨는 순간 기록
 ```
 
 이 래치의 근거(*"안내를 0.2초 보고 접은 사용자에게 내일 또 띄우면 그게 방해다"*)는 옳다.

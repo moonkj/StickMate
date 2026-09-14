@@ -38,28 +38,29 @@ namespace StickMate.Tests.EditMode
         private static readonly Vector2 ScreenPoints = new Vector2(1512f, 982f);
 
         // ==================================================================
-        // F1 — 수용 조건 진리표 2⁵ = 32행 전수
+        // F1 — 수용 조건 진리표 2⁶ = 64행 전수 (2026-09-14 E-4: 여섯째 항 «화면에 있는가»)
         // ==================================================================
 
-        /// <summary>다섯 항의 32행을 <b>루프로</b> 만든다 — 손으로 적으면 그 표가 곧 두 번째 구현이 된다.</summary>
+        /// <summary>여섯 항의 64행을 <b>루프로</b> 만든다 — 손으로 적으면 그 표가 곧 두 번째 구현이 된다.</summary>
         private static bool Bit(int row, int index) => ((row >> index) & 1) != 0;
 
         [Test]
-        public void F1_커서가_캐릭터_밖이면_32행_중_16행이_전부_거짓이다()
+        public void F1_커서가_캐릭터_밖이면_64행_중_32행이_전부_거짓이다()
         {
             int falseRows = 0;
             int trueRowsOverall = 0;
 
-            for (int row = 0; row < 32; row++)
+            for (int row = 0; row < 64; row++)
             {
                 bool cursorOver = Bit(row, 0);
                 bool rising = Bit(row, 1);
                 bool swallowAllows = Bit(row, 2);
-                bool suppressed = Bit(row, 3);
+                bool blocked = Bit(row, 3);
                 bool primaryHeld = Bit(row, 4);
+                bool onScreen = Bit(row, 5);
 
                 bool open = AppControlDirector.RightClickFanGatePolicy.ShouldOpenFan(
-                    cursorOver, rising, swallowAllows, suppressed, primaryHeld);
+                    cursorOver, rising, swallowAllows, blocked, primaryHeld, onScreen);
 
                 if (open) trueRowsOverall++;
                 if (cursorOver) continue;
@@ -70,12 +71,12 @@ namespace StickMate.Tests.EditMode
                     "절대 잡히면 안 됩니다(비침해 원칙 2: 남의 앱 위에서 남의 문맥 메뉴를 가로챈다).");
             }
 
-            Assert.AreEqual(16, falseRows, "커서 항이 거짓인 행은 정확히 16개여야 합니다(2⁴).");
+            Assert.AreEqual(32, falseRows, "커서 항이 거짓인 행은 정확히 32개여야 합니다(2⁵).");
 
             // ★ 양성 대조 — 「전부 거짓」이 «조건이 죽어서»가 아님을 같은 실행 안에서 증명한다.
             //   이 단언이 없으면 ShouldOpenFan이 항상 false를 돌려줘도 위 루프가 초록이다.
             Assert.AreEqual(1, trueRowsOverall,
-                "32행 중 참인 행이 정확히 1개여야 합니다(다섯 항이 전부 원하는 값일 때 딱 한 조합). " +
+                "64행 중 참인 행이 정확히 1개여야 합니다(여섯 항이 전부 원하는 값일 때 딱 한 조합). " +
                 "0개면 이 테스트가 아무것도 재지 않은 것입니다.");
         }
 
@@ -83,14 +84,14 @@ namespace StickMate.Tests.EditMode
         public void F1_음성대조_커서항을_상수참으로_바꾸면_최소_한_행이_뒤집힌다()
         {
             int flipped = 0;
-            for (int row = 0; row < 32; row++)
+            for (int row = 0; row < 64; row++)
             {
                 bool real = AppControlDirector.RightClickFanGatePolicy.ShouldOpenFan(
-                    Bit(row, 0), Bit(row, 1), Bit(row, 2), Bit(row, 3), Bit(row, 4));
+                    Bit(row, 0), Bit(row, 1), Bit(row, 2), Bit(row, 3), Bit(row, 4), Bit(row, 5));
 
                 // 커서 항만 상수 true로 치환한 식(= 그 항을 없앤 세상).
                 bool withoutCursorTerm = AppControlDirector.RightClickFanGatePolicy.ShouldOpenFan(
-                    true, Bit(row, 1), Bit(row, 2), Bit(row, 3), Bit(row, 4));
+                    true, Bit(row, 1), Bit(row, 2), Bit(row, 3), Bit(row, 4), Bit(row, 5));
 
                 if (real != withoutCursorTerm) flipped++;
             }
@@ -171,12 +172,12 @@ namespace StickMate.Tests.EditMode
 
                 checkedRows++;
                 Assert.IsFalse(AppControlDirector.RightClickFanGatePolicy.ShouldOpenFan(
-                        cursorOver, rising, swallowAllows, userSummonBlocked: true, primaryButtonHeld: primaryHeld),
+                        cursorOver, rising, swallowAllows, userSummonBlocked: true, primaryButtonHeld: primaryHeld, characterOnScreen: true),
                     $"사용자 소환이 막힌 상태(등급 2 전체화면 게임 · 다른 가상 데스크톱)인데 열립니다(행 {row:00}) — " +
                     "원칙 2 정면 위반입니다.");
 
                 if (AppControlDirector.RightClickFanGatePolicy.ShouldOpenFan(
-                        cursorOver, rising, swallowAllows, userSummonBlocked: false, primaryButtonHeld: primaryHeld))
+                        cursorOver, rising, swallowAllows, userSummonBlocked: false, primaryButtonHeld: primaryHeld, characterOnScreen: true))
                     openWhenUnblocked++;
             }
 
@@ -195,14 +196,14 @@ namespace StickMate.Tests.EditMode
                 characterSuspended: false, panelRetreatActive: true, userSummonGranted: false);
             Assert.IsTrue(AppControlDirector.RightClickFanGatePolicy.ShouldOpenFan(
                     cursorOverCharacter: true, secondaryRisingEdge: true, swallowAllowsOpen: true,
-                    userSummonBlocked: blocked, primaryButtonHeld: false),
+                    userSummonBlocked: blocked, primaryButtonHeld: false, characterOnScreen: true),
                 "★ 게임이 아닌 전체화면 앱(등급 1) 체류 중, 허가가 아직 없는 상태에서 캐릭터 우클릭이 닫혔습니다 — " +
                 "허가는 게이트를 통과한 뒤에야 나므로 이 조합이 닫히면 등급 1 마우스 입구가 0입니다(P1, §15-1).");
 
             // ★ 음성 대조 — 옛 게이트 입력(닫기 판정)을 넣으면 같은 조합이 실제로 닫힌다. 이 단언이 없으면
             //   위 «연다»가 «게이트가 넷째 항을 아예 안 본다»와 구별되지 않는다.
             bool oldInput = UserSurfaceSummonPolicy.SuppressesPanels(false, true, false);
-            Assert.IsFalse(AppControlDirector.RightClickFanGatePolicy.ShouldOpenFan(true, true, true, oldInput, false),
+            Assert.IsFalse(AppControlDirector.RightClickFanGatePolicy.ShouldOpenFan(true, true, true, oldInput, false, true),
                 "옛 입력(SuppressesPanels)으로도 열립니다 — 게이트 넷째 항이 아무 일도 하지 않거나 이 대조가 결함을 재현하지 못합니다.");
         }
 
@@ -215,8 +216,9 @@ namespace StickMate.Tests.EditMode
             for (int row = 0; row < 8; row++)
             {
                 bool s = Bit(row, 2), r = Bit(row, 1), g = Bit(row, 0);
+                // ★ 여섯째 항은 참으로 둔다 — 이 표는 넷째 항 하나가 원칙 2를 따로 잠그는지를 잰다(여섯째 항이 대신 닫으면 안 보인다).
                 bool open = AppControlDirector.RightClickFanGatePolicy.ShouldOpenFan(
-                    true, true, true, UserSurfaceSummonPolicy.BlocksUserSummon(s, r, g), false);
+                    true, true, true, UserSurfaceSummonPolicy.BlocksUserSummon(s, r, g), false, true);
 
                 if (s)
                 {
@@ -241,10 +243,11 @@ namespace StickMate.Tests.EditMode
         public void F18d_게이트_호출부는_열기_판정을_넘기고_닫기_판정을_넘기지_않는다()
         {
             // ★ 변이 M1(호출부만 옛 값으로 되돌림)은 위 순수 판정 테스트로는 안 보인다 — 호출부를 소스로 잰다.
+            // ★ 2026-09-14 (E-4) — 항별 값은 게이트 표본 생성자 한 곳에서 채워지고 게이트는 그 표본만 읽는다
+            //   (F26c가 «게이트가 표본만 읽는다»를 잰다). 그래서 넷째 항의 입력을 잴 자리는 표본 생성자다.
             string director = StripComments(ReadSource("Interaction", "AppControlDirector.cs"));
             string call = CallArgumentsOrFail(director,
-                nameof(AppControlDirector.RightClickFanGatePolicy) + "." +
-                nameof(AppControlDirector.RightClickFanGatePolicy.ShouldOpenFan) + "(");
+                "var gate = new " + nameof(AppControlDirector.RightClickFanGateSample) + "(");
 
             // 존재 대조 — 같은 인자 목록에서 실재하는 이름을 먼저 찾는다(절단기 생존).
             StringAssert.Contains(nameof(AppControlDirector.RightClickFanGatePolicy.SwallowAllowsOpen), call,
@@ -261,35 +264,202 @@ namespace StickMate.Tests.EditMode
                 "게이트만 옛 규칙에 남습니다(§16-2 「파생식으로 두는 이유」).");
         }
 
+        // ------------------------------------------------------------------
+        // ★★ 2026-09-14 (E-4 · verify-change 생존 변이 V1·V2) — 닫기 소비자 명부를 하드코딩하지 않는다.
+        //   옛 F18e는 파일 다섯 개를 손으로 적었고, 실제 닫기 소비자는 일곱이었다(할일 리마인더·창 크랙 누락).
+        //   게다가 소비자가 열기 판정을 «다른 식으로» 쓰면(같은 값의 HidesScreenSurfaces) 글자 니들로는 안 보였다.
+        //   이제 프로덕션 소스 전수를 스캔해 (가) 열기 판정을 읽는 파일 = 게이트 호출부 파일, (나) 표면을 닫는 가드가
+        //   등급 2에서만 참인 값을 읽지 않음을 잰다. 명부는 스캔 결과를 로그로 남길 뿐 적어 두지 않는다.
+        // ------------------------------------------------------------------
+
+        private static readonly System.Text.RegularExpressions.Regex IfHeadRegex =
+            new System.Text.RegularExpressions.Regex(@"(?<![A-Za-z0-9_])if\s*\(");
+
+        /// <summary>표면·연출을 걷는 호출들. 톱니의 <c>ApplySuspendHide</c>처럼 «의도적으로 등급 2에만 걷는» 전용 경로는 여기 없다 —
+        /// 앞 글자 경계(ASCII)로 긴 이름 속 부분 일치를 막는다(한글을 낱말 문자로 치는 <c>\b</c>는 쓰지 않는다).</summary>
+        private static readonly System.Text.RegularExpressions.Regex CloserCallRegex =
+            new System.Text.RegularExpressions.Regex(@"(?<![A-Za-z0-9_])(Close|Hide|CancelOverlay|ForceCloseAll|EnterFullscreenHiding)\s*\(");
+
+        /// <summary>테스트 밖 프로덕션 소스 전수(주석 제거). 파일 명부를 쓰지 않는다 — 파일을 쪼개거나 새 소비자가 생겨도 스캔이 따라간다.</summary>
+        private static System.Collections.Generic.List<(string Rel, string Src)> ProductionSourcesStripped()
+        {
+            var list = new System.Collections.Generic.List<(string Rel, string Src)>();
+            string root = Root.Replace('\\', '/');
+            foreach (string path in Directory.GetFiles(Root, "*.cs", SearchOption.AllDirectories))
+            {
+                string norm = path.Replace('\\', '/');
+                if (!norm.EndsWith(".cs", System.StringComparison.Ordinal)) continue;
+                if (norm.Contains("/Tests/")) continue;
+                list.Add((norm.Substring(root.Length + 1), StripComments(File.ReadAllText(path).Replace("\r\n", "\n"))));
+            }
+            return list;
+        }
+
+        /// <summary><see cref="MatchingCloseOrFail"/>와 같은 규칙이지만 실패를 단언하지 않고 -1을 돌려준다(전수 스캔용 — 실패는 호출부가 센다).</summary>
+        private static int TryMatchingClose(string src, int openIndex, char open, char close)
+        {
+            int depth = 0;
+            for (int i = openIndex; i < src.Length; i++)
+            {
+                char c = src[i];
+                if (c == '"')
+                {
+                    bool verbatim = i > 0 && src[i - 1] == '@';
+                    i++;
+                    while (i < src.Length)
+                    {
+                        if (!verbatim && src[i] == '\\') { i += 2; continue; }
+                        if (src[i] == '"')
+                        {
+                            if (verbatim && i + 1 < src.Length && src[i + 1] == '"') { i += 2; continue; }
+                            break;
+                        }
+                        i++;
+                    }
+                    continue;
+                }
+                if (c == '\'')
+                {
+                    i++;
+                    while (i < src.Length && src[i] != '\'')
+                    {
+                        if (src[i] == '\\') i++;
+                        i++;
+                    }
+                    continue;
+                }
+                if (c == open) depth++;
+                else if (c == close && --depth == 0) return i;
+            }
+            return -1;
+        }
+
+        /// <summary>조건에 <paramref name="token"/>이 들어 있고 본문(블록 또는 한 문장)이 표면을 걷는 호출을 하는 <c>if</c> 가드들의 조건 문자열.</summary>
+        private static System.Collections.Generic.List<string> CloserGuards(string src, string token, ref int parseFailures)
+        {
+            var hits = new System.Collections.Generic.List<string>();
+            foreach (System.Text.RegularExpressions.Match m in IfHeadRegex.Matches(src))
+            {
+                int open = m.Index + m.Length - 1;
+                int close = TryMatchingClose(src, open, '(', ')');
+                if (close < 0) { parseFailures++; continue; }
+                string condition = src.Substring(open + 1, close - open - 1);
+                if (condition.IndexOf(token, System.StringComparison.Ordinal) < 0) continue;
+
+                int j = close + 1;
+                while (j < src.Length && char.IsWhiteSpace(src[j])) j++;
+                string statement;
+                if (j < src.Length && src[j] == '{')
+                {
+                    int end = TryMatchingClose(src, j, '{', '}');
+                    if (end < 0) { parseFailures++; continue; }
+                    statement = src.Substring(j, end - j + 1);
+                }
+                else
+                {
+                    int end = src.IndexOf(';', j);
+                    if (end < 0) { parseFailures++; continue; }
+                    statement = src.Substring(j, end - j + 1);
+                }
+                if (CloserCallRegex.IsMatch(statement)) hits.Add(condition.Trim());
+            }
+            return hits;
+        }
+
         [Test]
         public void F18e_닫기_소비자는_열기_판정을_읽지_않는다()
         {
-            // ★ 변이 M5 — 닫기 소비자 하나를 열기 판정으로 바꾸면 등급 1 진입 순간의 회수가 사라진다(§16-2b B2).
-            string[][] consumers =
-            {
-                new[] { "Interaction", "GearRadialMenuWidget.cs" },
-                new[] { "Interaction", "CharacterInfoWindow.cs" },
-                new[] { "Interaction", "SettingsWindow.cs" },
-                new[] { "Interaction", "PopoverPanel.cs" },
-                new[] { "Interaction", "TodoPostItWidget.cs" },
-            };
-            string closeNeedle = "." + nameof(StickmanAgent.ArePanelsSuppressed);
-            string openNeedle = "." + nameof(StickmanAgent.IsUserSummonBlocked);
+            // ★ 변이 M5 · V1 — 닫기 소비자(표면 회수 · 자동 연출 억제)가 열기 판정을 읽으면 무허가 등급 1에서 회수·억제가 풀린다.
+            //   «닫기 소비자 명부»를 적지 않는다 — 열기 판정을 읽어도 되는 곳은 게이트 호출부뿐이므로 그 밖의 독자 전부가 위반이다.
+            var sources = ProductionSourcesStripped();
+            Assert.Greater(sources.Count, 100, $"프로덕션 소스를 {sources.Count}개밖에 못 읽었습니다 — 경로가 틀렸습니다(스캔 공허).");
 
-            foreach (string[] parts in consumers)
+            string gateHead = nameof(AppControlDirector.RightClickFanGatePolicy) + "." +
+                nameof(AppControlDirector.RightClickFanGatePolicy.ShouldOpenFan) + "(";
+            string openNeedle = "." + nameof(StickmanAgent.IsUserSummonBlocked);
+            string closeNeedle = "." + nameof(StickmanAgent.ArePanelsSuppressed);
+
+            var gateFiles = new System.Collections.Generic.List<string>();
+            var openReaders = new System.Collections.Generic.List<string>();
+            var closeReaders = new System.Collections.Generic.List<string>();
+            foreach ((string rel, string src) in sources)
             {
-                string src = StripComments(ReadSource(parts));
-                StringAssert.Contains(closeNeedle, src,
-                    $"{parts[1]}이 닫기 판정({closeNeedle})을 읽지 않습니다 — 아래 «열기 판정을 안 읽는다»가 " +
-                    "«아무것도 안 읽는다»와 구별되지 않습니다.");
-                Assert.AreEqual(-1, src.IndexOf(openNeedle, System.StringComparison.Ordinal),
-                    $"★ {parts[1]}(닫기 소비자)이 열기 판정({openNeedle})을 읽습니다 — 등급 1 진입 순간 이미 떠 있던 표면이 " +
-                    "회수되지 않습니다(원칙 2 회귀, §16-2b B2 · 변이 M5).");
+                if (src.IndexOf(gateHead, System.StringComparison.Ordinal) >= 0) gateFiles.Add(rel);
+                if (src.IndexOf(openNeedle, System.StringComparison.Ordinal) >= 0) openReaders.Add(rel);
+                if (src.IndexOf(closeNeedle, System.StringComparison.Ordinal) >= 0) closeReaders.Add(rel);
             }
 
-            // ★ 양성 대조 — 같은 니들이 실재하는 자리(게이트 호출부)에서는 실제로 잡힌다(니들 생존).
-            Assert.Greater(CountOccurrences(StripComments(ReadSource("Interaction", "AppControlDirector.cs")), openNeedle), 0,
-                "열기 판정 니들을 게이트 호출부에서도 못 찾았습니다 — 니들이 죽었습니다.");
+            // 존재 대조 — 게이트 호출부를 찾았고, 그 파일은 열기 판정을 실제로 읽는다(니들 생존).
+            Assert.IsNotEmpty(gateFiles, $"게이트 호출({gateHead})을 한 파일에서도 못 찾았습니다 — 스캐너가 죽었습니다.");
+            foreach (string gate in gateFiles)
+                CollectionAssert.Contains(openReaders, gate, $"게이트 호출부({gate})가 열기 판정을 읽지 않습니다 — 아래 «그 밖의 독자 0»이 무의미합니다.");
+            Assert.IsNotEmpty(closeReaders, "닫기 판정을 읽는 프로덕션 파일이 0개입니다 — 스캐너가 죽었습니다.");
+
+            var strays = new System.Collections.Generic.List<string>();
+            foreach (string reader in openReaders)
+                if (!gateFiles.Contains(reader)) strays.Add(reader);
+
+            Debug.Log($"[F18e] 닫기 판정 독자 {closeReaders.Count}곳(스캔 도출): {string.Join(", ", closeReaders)} / " +
+                $"열기 판정 독자: {string.Join(", ", openReaders)} / 게이트 호출부: {string.Join(", ", gateFiles)}");
+            Assert.IsEmpty(strays,
+                $"★ 열기 판정({openNeedle})을 게이트 호출부 밖에서 읽는 프로덕션 파일: {string.Join(", ", strays)} — " +
+                "닫기 소비자가 열기 판정을 읽으면 무허가 등급 1에서 표면 회수·자동 연출 억제가 풀립니다(원칙 2, §16-2b B2 · 변이 M5·V1).");
+        }
+
+        [Test]
+        public void F18f_닫기_가드는_열기_판정과_같은_값을_다른_식으로_쓰지_않는다()
+        {
+            // ★ 변이 V2 — 설정창 닫기 가드를 HidesScreenSurfaces로 바꾸면 값은 열기 판정과 같다(등급 2에서만 참). 글자 니들로는 안 보인다.
+            var sources = ProductionSourcesStripped();
+            string surfaceNeedle = "." + nameof(StickmanAgent.HidesScreenSurfaces);
+            string openNeedle = "." + nameof(StickmanAgent.IsUserSummonBlocked);
+            string closeNeedle = "." + nameof(StickmanAgent.ArePanelsSuppressed);
+
+            int parseFailures = 0;
+            int closeGuards = 0;
+            var offenders = new System.Collections.Generic.List<string>();
+            foreach ((string rel, string src) in sources)
+            {
+                foreach (string c in CloserGuards(src, surfaceNeedle, ref parseFailures)) offenders.Add($"{rel}: if ({c})");
+                foreach (string c in CloserGuards(src, openNeedle, ref parseFailures)) offenders.Add($"{rel}: if ({c})");
+                closeGuards += CloserGuards(src, closeNeedle, ref parseFailures).Count;
+            }
+
+            Assert.AreEqual(0, parseFailures, $"if 가드를 자르지 못한 곳이 {parseFailures}건 — 이 스캔 결과는 무효입니다.");
+            Assert.Greater(closeGuards, 0, "존재 대조 — 닫기 판정으로 표면을 걷는 가드를 한 곳도 못 찾았습니다(스캐너가 죽었습니다).");
+            Debug.Log($"[F18f] 닫기 판정으로 표면을 걷는 가드 {closeGuards}곳 · 다른 식으로 걷는 가드 {offenders.Count}곳.");
+            Assert.IsEmpty(offenders,
+                $"★ 표면을 걷는 가드가 닫기 판정({closeNeedle})이 아니라 등급 2에서만 참인 값을 읽습니다:\n  {string.Join("\n  ", offenders)}\n" +
+                "그 값은 열기 판정과 같아서 등급 1 진입 순간 이미 떠 있던 표면·차단막이 회수되지 않습니다(원칙 2 · 변이 V2). " +
+                "의도적으로 등급 2에만 걷는 표면은 닫기 호출이 아니라 전용 경로를 씁니다(톱니의 ApplySuspendHide).");
+        }
+
+        [Test]
+        public void F18g_닫기_가드_스캐너_자기검증_잡을것만_잡는다()
+        {
+            // 알려진 표본에 먼저 교정한다 — 이게 없으면 F18f의 «0곳»이 «스캐너가 눈이 멀었다»와 구별되지 않는다.
+            string surface = "." + nameof(StickmanAgent.HidesScreenSurfaces);
+            int failures = 0;
+
+            string v2Shape = "void U() { if (_agent != null && _agent.HidesScreenSurfaces)\n{\n _restore = false;\n Close(\"a\");\n return;\n} }";
+            Assert.AreEqual(1, CloserGuards(v2Shape, surface, ref failures).Count, "잡아야 할 형태(블록 안 Close — V2)를 못 잡습니다.");
+
+            string singleStatement = "void L() { if (Agent.HidesScreenSurfaces) Hide(); }";
+            Assert.AreEqual(1, CloserGuards(singleStatement, surface, ref failures).Count, "한 문장 본문의 Hide()를 못 잡습니다.");
+
+            string withInterpolation = "void L() { if (_agent.HidesScreenSurfaces) { Debug.Log($\"{(a ? 1 : 2)} 닫힘\"); CancelOverlay(); } }";
+            Assert.AreEqual(1, CloserGuards(withInterpolation, surface, ref failures).Count, "보간 문자열 뒤의 닫기 호출을 못 잡습니다.");
+
+            string gearDedicatedPath = "void L() { if (_agent.HidesScreenSurfaces)\n{\n ApplySuspendHide(\"x\");\n return;\n} }";
+            Assert.AreEqual(0, CloserGuards(gearDedicatedPath, surface, ref failures).Count, "전용 경로(ApplySuspendHide)를 닫기 호출로 오인합니다.");
+
+            string armOnly = "void U() { if (_agent.HidesScreenSurfaces) ArmReopenAfterSuspend(); }";
+            Assert.AreEqual(0, CloserGuards(armOnly, surface, ref failures).Count, "닫기가 아닌 호출(ArmReopenAfterSuspend)을 닫기로 오인합니다.");
+
+            string otherToken = "void U() { if (_agent.ArePanelsSuppressed) { Close(\"b\"); } }";
+            Assert.AreEqual(0, CloserGuards(otherToken, surface, ref failures).Count, "조건에 없는 토큰을 잡습니다.");
+
+            Assert.AreEqual(0, failures, $"교정 표본에서 파서 실패 {failures}건.");
         }
 
         [Test]
@@ -298,14 +468,142 @@ namespace StickMate.Tests.EditMode
             for (int row = 0; row < 8; row++)
             {
                 Assert.IsFalse(AppControlDirector.RightClickFanGatePolicy.ShouldOpenFan(
-                        Bit(row, 0), Bit(row, 1), Bit(row, 2), userSummonBlocked: false, primaryButtonHeld: true),
+                        Bit(row, 0), Bit(row, 1), Bit(row, 2), userSummonBlocked: false, primaryButtonHeld: true, characterOnScreen: true),
                     "좌버튼으로 잡고 있는 중에 부채꼴이 열립니다 — 던지려던 동작을 메뉴가 가로챕니다.");
             }
 
             // ★ 양성 대조 — 손을 떼면 같은 조합이 열린다.
             Assert.IsTrue(AppControlDirector.RightClickFanGatePolicy.ShouldOpenFan(
                 cursorOverCharacter: true, secondaryRisingEdge: true, swallowAllowsOpen: true,
-                userSummonBlocked: false, primaryButtonHeld: false));
+                userSummonBlocked: false, primaryButtonHeld: false, characterOnScreen: true));
+        }
+
+        // ==================================================================
+        // ★★ 2026-09-14 — E-4: 숨긴 캐릭터 입력(우클릭 여섯째 항 · 좌클릭 공통 입구)
+        //    (docs/ux/SETTINGS_ENTRY_NARROW_WIDTH.md §16-2c, debugger 좌클릭 판독)
+        // ==================================================================
+
+        /// <summary>★ 기대값 상수 표 — <c>CharacterOnScreenForInput</c>. 인덱스 = (캐릭터 축 숨김 &lt;&lt; 1) | 가출 은신 : FF FT TF TT.
+        /// 둘 다 거짓일 때만 «화면에 있다».</summary>
+        private static readonly bool[] ExpectedCharacterOnScreen = { true, false, false, false };
+
+        [Test]
+        public void F26_캐릭터가_화면에_없으면_64행_중_어떤_조합도_열지_않는다()
+        {
+            int closedWhenOffScreen = 0;
+            int openWhenOnScreen = 0;
+            int flipped = 0;
+
+            for (int row = 0; row < 64; row++)
+            {
+                bool onScreen = Bit(row, 5);
+                bool open = AppControlDirector.RightClickFanGatePolicy.ShouldOpenFan(
+                    Bit(row, 0), Bit(row, 1), Bit(row, 2), Bit(row, 3), Bit(row, 4), onScreen);
+
+                if (!onScreen)
+                {
+                    Assert.IsFalse(open,
+                        $"★ 캐릭터가 화면에 없는 행({row:00})이 부채꼴을 엽니다 — 보이지 않는 몸 자리 우클릭이 아래 앱의 메뉴와 겹쳐 뜹니다(§16-2c).");
+                    closedWhenOffScreen++;
+                }
+                else if (open)
+                {
+                    openWhenOnScreen++;
+                }
+
+                // 음성 대조 — 여섯째 항만 참으로 바꾼 식(= 그 항을 없앤 세상)과 비교한다.
+                bool withoutSixthTerm = AppControlDirector.RightClickFanGatePolicy.ShouldOpenFan(
+                    Bit(row, 0), Bit(row, 1), Bit(row, 2), Bit(row, 3), Bit(row, 4), true);
+                if (open != withoutSixthTerm) flipped++;
+            }
+
+            Assert.AreEqual(32, closedWhenOffScreen, "화면에 없는 행은 정확히 32개여야 합니다(2⁵).");
+            Assert.AreEqual(1, openWhenOnScreen,
+                "★ 양성 대조 — 화면에 있는 32행 중 정확히 한 조합(나머지 다섯 항이 전부 원하는 값)이 열려야 합니다. 0이면 측정기가 죽었습니다.");
+            Assert.Greater(flipped, 0, "여섯째 항을 없애도 한 행도 안 바뀝니다 — 그 항이 실제로는 아무 일도 하지 않습니다.");
+        }
+
+        [Test]
+        public void F26b_가시성_사실_4행이_상수_표와_같다()
+        {
+            for (int row = 0; row < 4; row++)
+            {
+                bool suspended = Bit(row, 1);
+                bool hiddenByRunaway = Bit(row, 0);
+                Assert.AreEqual(ExpectedCharacterOnScreen[row],
+                    AppControlDirector.RightClickFanGatePolicy.CharacterOnScreenForInput(suspended, hiddenByRunaway),
+                    $"CharacterOnScreenForInput(숨김={suspended}, 가출은신={hiddenByRunaway})가 상수 표와 다릅니다 — " +
+                    (ExpectedCharacterOnScreen[row]
+                        ? "보이는 캐릭터를 «화면에 없다»로 봅니다(평상시 우클릭 입구가 사라집니다)."
+                        : "★ 보이지 않는 캐릭터를 «화면에 있다»로 봅니다(§16-2c B9·B10·B11 재발)."));
+            }
+        }
+
+        [Test]
+        public void F26c_호출부는_가시성_사실을_여섯째_항으로_따로_넘기고_게이트는_표본만_읽는다()
+        {
+            string director = StripComments(ReadSource("Interaction", "AppControlDirector.cs"));
+
+            // (가) 표본 생성자가 가시성 사실을 캐릭터 축 · 가출 은신 두 공개 사실로 조립한다.
+            string ctor = CallArgumentsOrFail(director, "var gate = new " + nameof(AppControlDirector.RightClickFanGateSample) + "(");
+            string onScreenHead = nameof(AppControlDirector.RightClickFanGatePolicy.CharacterOnScreenForInput) + "(";
+            StringAssert.Contains(onScreenHead, ctor,
+                $"★ 게이트 표본이 가시성 사실({onScreenHead})을 채우지 않습니다:\n  {ctor.Trim()}");
+            string visibility = CallArgumentsOrFail(ctor, onScreenHead);
+            StringAssert.Contains("." + nameof(StickmanAgent.IsSuspended), visibility,
+                "가시성 사실이 캐릭터 축(IsSuspended)을 읽지 않습니다 — 사용자 숨김·등급 2·다른 가상 데스크톱이 빠집니다.");
+            StringAssert.Contains("." + nameof(StickMate.States.StickmanBlackboard.IsCharacterHiddenByRunaway), visibility,
+                "가시성 사실이 가출 은신을 읽지 않습니다 — B11이 빠집니다.");
+
+            // (나) 게이트는 표본의 값만 읽는다 — 진단·테스트가 보는 값이 게이트가 쓴 값이다.
+            string gateArgs = CallArgumentsOrFail(director,
+                nameof(AppControlDirector.RightClickFanGatePolicy) + "." + nameof(AppControlDirector.RightClickFanGatePolicy.ShouldOpenFan) + "(");
+            string[] fields =
+            {
+                nameof(AppControlDirector.RightClickFanGateSample.CursorOverCharacter),
+                nameof(AppControlDirector.RightClickFanGateSample.SwallowAllowsOpen),
+                nameof(AppControlDirector.RightClickFanGateSample.UserSummonBlocked),
+                nameof(AppControlDirector.RightClickFanGateSample.PrimaryButtonHeld),
+                nameof(AppControlDirector.RightClickFanGateSample.CharacterOnScreen),
+            };
+            foreach (string field in fields)
+            {
+                StringAssert.Contains("gate." + field, gateArgs,
+                    $"★ 게이트가 표본의 {field}를 읽지 않습니다 — 표본(진단·테스트가 보는 값)과 게이트가 쓴 값이 갈라집니다:\n  {gateArgs.Trim()}");
+            }
+
+            // (다) 0항에 섞지 않는다 — 커서 판정 본문은 기하만 본다.
+            string cursorBody = MethodBodyOrFail(director, "private bool IsCursorOverCharacter(");
+            StringAssert.Contains("OverlapPoint", cursorBody, "존재 대조 — 커서 판정 본문에서 기하 판정조차 못 찾았습니다(절단 무효).");
+            Assert.AreEqual(-1, cursorBody.IndexOf("." + nameof(StickmanAgent.IsSuspended), System.StringComparison.Ordinal),
+                "★ 0항(커서 ∈ 캐릭터)에 숨김이 섞였습니다 — EditMode가 기하와 가시성을 따로 못 돌리고, 항별 표본도 «커서가 밖»으로 잘못 말합니다.");
+            Assert.AreEqual(-1, cursorBody.IndexOf(nameof(StickMate.States.StickmanBlackboard.IsCharacterHiddenByRunaway), System.StringComparison.Ordinal),
+                "★ 0항에 가출 은신이 섞였습니다.");
+        }
+
+        [Test]
+        public void F27_좌클릭_공통_입구는_캐릭터_축만_보고_잡기_시작보다_먼저_막는다()
+        {
+            string hitbox = StripComments(ReadSource("Interaction", "StickmanClickHitbox.cs"));
+            string begin = MethodBodyOrFail(hitbox, "private void BeginPress(");
+            string suspendedNeedle = "." + nameof(StickmanAgent.IsSuspended);
+
+            int pressed = begin.IndexOf("_pressed = true", System.StringComparison.Ordinal);
+            Assert.Greater(pressed, 0, "존재 대조 — BeginPress 본문에서 «잡기 시작» 대입을 못 찾았습니다(절단 무효).");
+            int gate = begin.IndexOf(suspendedNeedle, System.StringComparison.Ordinal);
+            Assert.GreaterOrEqual(gate, 0,
+                "★ 좌클릭 공통 입구에 숨김 게이트가 없습니다 — 보이지 않는 몸 자리 클릭(아래 앱으로 간 클릭)이 드래그·가출 찾기·과자·활쏘기·스트레스 게이지를 건드립니다.");
+            Assert.Less(gate, pressed, "★ 숨김 게이트가 «잡기 시작» 대입보다 뒤에 있습니다 — 막혀도 눌림 상태가 남습니다.");
+
+            Assert.AreEqual(-1, begin.IndexOf(nameof(StickMate.States.StickmanBlackboard.IsCharacterHiddenByRunaway), System.StringComparison.Ordinal),
+                "★ 좌클릭 입구가 가출 은신까지 막습니다 — 숨바꼭질 「찾기」 좌클릭이 죽습니다(캐릭터 축만 봐야 합니다).");
+            Assert.AreEqual(-1, begin.IndexOf(nameof(AppControlDirector.RightClickFanGatePolicy.CharacterOnScreenForInput), System.StringComparison.Ordinal),
+                "★ 좌클릭 입구가 우클릭의 «화면에 있는가» 식을 씁니다 — 그 식은 가출 은신을 포함해 「찾기」가 죽습니다.");
+
+            string end = MethodBodyOrFail(hitbox, "private void EndPress(");
+            StringAssert.Contains("_pressed = false", end, "존재 대조 — EndPress 본문 절단 무효.");
+            Assert.AreEqual(-1, end.IndexOf(suspendedNeedle, System.StringComparison.Ordinal),
+                "★ 놓기 경로에 숨김 게이트가 들어갔습니다 — 누른 채 숨은 경우 드래그가 끝나지 않습니다(뗄 때 경로는 건드리지 않는다).");
         }
 
         // ==================================================================

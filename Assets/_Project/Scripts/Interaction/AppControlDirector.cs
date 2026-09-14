@@ -795,8 +795,13 @@ namespace StickMate.Interaction
             public static bool SwallowAllowsOpen(bool queried, bool swallowed) => !queried || swallowed;
 
             /// <summary>
-            /// 다섯 항의 곱. 항이 다섯이라 <b>2⁵ = 32행 전수</b>를 EditMode가 루프로 돌 수 있다.
+            /// 여섯 항의 곱. 항이 여섯이라 <b>2⁶ = 64행 전수</b>를 EditMode가 루프로 돌 수 있다.
             /// <para>순서는 docs/UX_RIGHTCLICK_FAN_MENU.md §10-1 #3(2026-09-14 정정본) 그대로다.</para>
+            /// <para>★★ 2026-09-14 (E-4) — 여섯째 항 <paramref name="characterOnScreen"/>(«캐릭터가 화면에 보이는가»)이 붙었다.
+            /// 0항(커서 ∈ 캐릭터)은 콜라이더의 <b>기하</b> 판정이라 숨은 몸에서도 참이다 — 그래서 사용자 숨김(B9) · 등급 1 +
+            /// 숨김(B10) · 가출 은신(B11)에서 보이지 않는 몸 자리 우클릭이 부채꼴을 열었다
+            /// (docs/ux/SETTINGS_ENTRY_NARROW_WIDTH.md §16-2c). 가시성은 0항에 섞지 않는다 — 섞으면 EditMode가 기하와
+            /// 가시성을 따로 못 돌린다. 등급 2(B7)는 넷째 항이 <b>따로</b> 막는다(여섯째 항과 둘 다 닫힌다).</para>
             /// <para>★★ 2026-09-14 (E-1) — 넷째 항이 옛 「지금 억제 중인가」에서 <paramref name="userSummonBlocked"/>
             /// (「허가를 받아도 억제되는가」)로 바뀌었다. 옛 항은 허가 없는 등급 1에서 참이라 허가 발급(아래
             /// <c>TickRightClickFan</c>의 6번)에 닿기 전에 막았다 — 게임이 아닌 전체화면 앱 위에서 캐릭터 우클릭이 조용히
@@ -804,12 +809,83 @@ namespace StickMate.Interaction
             /// 등급 2(전체화면 게임)에서는 그 값이 참이라 <b>계속 닫힌다</b> — 원칙 2의 범위는 한 비트도 넓어지지 않았다.</para>
             /// </summary>
             public static bool ShouldOpenFan(bool cursorOverCharacter, bool secondaryRisingEdge,
-                bool swallowAllowsOpen, bool userSummonBlocked, bool primaryButtonHeld)
+                bool swallowAllowsOpen, bool userSummonBlocked, bool primaryButtonHeld, bool characterOnScreen)
                 => cursorOverCharacter
                 && secondaryRisingEdge
                 && swallowAllowsOpen
                 && !userSummonBlocked
-                && !primaryButtonHeld;
+                && !primaryButtonHeld
+                && characterOnScreen;
+
+            /// <summary>
+            /// ★★ 2026-09-14 (E-4) — <b>입력 판정용 «캐릭터가 화면에 보이는가»</b>. 여섯째 항의 입력이다.
+            /// <para><paramref name="characterSuspended"/>(캐릭터 축: 전체화면 게임 · 사용자 숨김 · 다른 가상 데스크톱)와
+            /// <paramref name="hiddenByRunaway"/>(가출 은신 — Suspend를 쓰지 않는다) 둘 다 거짓일 때만 참이다.
+            /// 화면 변경 유예의 보존 동결은 넣지 않는다 — 그동안 캐릭터는 <b>보인다</b>.</para>
+            /// <para>★ <b>좌클릭(<c>StickmanClickHitbox.BeginPress</c>)에는 이 식을 쓰지 않는다</b> — 가출 은신 「찾기」 좌클릭이 죽는다.
+            /// 좌클릭 입구는 캐릭터 축만 본다.</para>
+            /// <para>규칙을 <c>StickmanAgent</c>에 두지 않은 이유: 그 파일은 화면 변경 경로 증거 목록(N-8) 안에 있다 —
+            /// 여기서 기존 공개 사실(<c>IsSuspended</c> · <c>Blackboard.IsCharacterHiddenByRunaway</c>)로 조립한다.</para>
+            /// </summary>
+            public static bool CharacterOnScreenForInput(bool characterSuspended, bool hiddenByRunaway)
+                => !characterSuspended && !hiddenByRunaway;
+        }
+
+        /// <summary>
+        /// ★★ 2026-09-14 (E-4) — 우클릭 게이트 <b>한 번의 평가에 실제로 쓰인 항별 값</b>. 게이트는 이 표본의 값만 읽는다 —
+        /// 진단 로그·테스트가 보는 값과 게이트가 쓴 값이 갈라지지 않게 하려는 것이다.
+        /// <para>왜 필요한가: 여섯째 항이 들어가면 등급 2(B7)에서 넷째·여섯째 항이 <b>둘 다</b> 닫는다. 결과(«안 열림»)만 보면
+        /// 넷째 항(원칙 2의 독립 잠금)이 망가져도 조용히 초록이다 — 항별 값으로 따로 단언해야 한다(ux-designer §16-2c 5).</para>
+        /// </summary>
+        public readonly struct RightClickFanGateSample
+        {
+            public readonly int Frame;
+            public readonly bool CursorOverCharacter;
+            public readonly bool SwallowAllowsOpen;
+            public readonly bool UserSummonBlocked;
+            public readonly bool PrimaryButtonHeld;
+            public readonly bool CharacterOnScreen;
+            public readonly bool Opened;
+
+            public RightClickFanGateSample(int frame, bool cursorOverCharacter, bool swallowAllowsOpen,
+                bool userSummonBlocked, bool primaryButtonHeld, bool characterOnScreen, bool opened)
+            {
+                Frame = frame;
+                CursorOverCharacter = cursorOverCharacter;
+                SwallowAllowsOpen = swallowAllowsOpen;
+                UserSummonBlocked = userSummonBlocked;
+                PrimaryButtonHeld = primaryButtonHeld;
+                CharacterOnScreen = characterOnScreen;
+                Opened = opened;
+            }
+
+            /// <summary>같은 항별 값에 게이트 결과만 채운 사본.</summary>
+            public RightClickFanGateSample WithOpened(bool opened)
+                => new RightClickFanGateSample(Frame, CursorOverCharacter, SwallowAllowsOpen,
+                    UserSummonBlocked, PrimaryButtonHeld, CharacterOnScreen, opened);
+
+            public override string ToString()
+                => $"프레임 {Frame}: 0항 커서∈몸={CursorOverCharacter} · 2항 삼킴통과={SwallowAllowsOpen} · " +
+                   $"4항 소환막힘={UserSummonBlocked} · 5항 좌버튼={PrimaryButtonHeld} · 6항 화면에있음={CharacterOnScreen} → 열림={Opened}";
+        }
+
+        /// <summary>마지막 우클릭 게이트 평가의 표본(진단/테스트 창구). 평가 전에는 기본값이다 — <see cref="RightClickGateEvaluationCount"/>로 갱신을 확인하라.</summary>
+        public RightClickFanGateSample LastRightClickGateSample { get; private set; }
+
+        /// <summary>우클릭 게이트 평가 횟수(상승 엣지마다 1). 진단/테스트 창구.</summary>
+        public int RightClickGateEvaluationCount { get; private set; }
+
+        private float _lastGateClosedLogUnscaledTime = float.NegativeInfinity;
+
+        /// <summary>커서가 몸 위인데 게이트가 닫힌 경우의 진단 한 줄(같은 줄은 레이트리밋). 상태를 바꾸지 않는다.</summary>
+        private void NoteRightClickGateClosed(RightClickFanGateSample sample)
+        {
+            float now = Time.unscaledTime;
+            if (!ClickHitboxNearMissPolicy.ShouldLog(now, _lastGateClosedLogUnscaledTime)) return;
+            _lastGateClosedLogUnscaledTime = now;
+            Debug.Log($"[앱제어] 캐릭터 우클릭 게이트가 닫혔습니다 — {sample}. " +
+                "4항은 «허가를 받아도 억제되는가»(등급 2 · 다른 가상 데스크톱), 6항은 «캐릭터가 화면에 보이는가»(숨김 · 가출 은신)다. " +
+                $"같은 줄은 {ClickHitboxNearMissPolicy.LogMinIntervalSeconds:F0}초에 한 번.");
         }
 
         /// <summary>삼킴 상태 조회 델리게이트 — <c>out</c> 매개변수라 <c>System.Func</c>로 표현할 수 없다.</summary>
@@ -859,11 +935,26 @@ namespace StickMate.Interaction
             // ★ 넷째 인자는 <b>열기 판정</b>(IsUserSummonBlocked)이다 — 닫기 판정으로 되돌리지 마라.
             //   그 값은 허가 없는 등급 1에서 참이라 아래 6번 허가에 영영 닿지 못한다(2026-09-14 P1, E-1).
             //   닫기 소비자(부채꼴 자동 접힘 등)는 반대로 닫기 판정을 그대로 읽어야 한다(§16-2b B2).
-            if (!RightClickFanGatePolicy.ShouldOpenFan(
-                    IsCursorOverCharacter(), true,
-                    RightClickFanGatePolicy.SwallowAllowsOpen(queried, swallowed),
-                    _agent.IsUserSummonBlocked, primaryHeld))
+            // ★★ 2026-09-14 (E-4) — 여섯째 인자 «캐릭터가 화면에 보이는가». 0항(커서 ∈ 캐릭터)은 콜라이더 기하라 숨은 몸에서도
+            //   참이어서, 사용자 숨김 · 등급 1 + 숨김 · 가출 은신 중 보이지 않는 몸 자리 우클릭이 부채꼴을 열었다(§16-2c).
+            //   가시성은 0항에 섞지 않고 따로 넘긴다. 아래 6번 허가보다 앞에서 막으므로 B10의 허가도 함께 사라진다.
+            //   ★ 항별 값을 표본 하나에 먼저 담고 게이트는 그 표본만 읽는다 — 진단·테스트가 보는 값이 게이트가 쓴 값이다.
+            var gate = new RightClickFanGateSample(Time.frameCount,
+                IsCursorOverCharacter(),
+                RightClickFanGatePolicy.SwallowAllowsOpen(queried, swallowed),
+                _agent.IsUserSummonBlocked, primaryHeld,
+                RightClickFanGatePolicy.CharacterOnScreenForInput(
+                    _agent.IsSuspended,
+                    _agent.Blackboard != null && _agent.Blackboard.IsCharacterHiddenByRunaway),
+                false);
+            bool open = RightClickFanGatePolicy.ShouldOpenFan(
+                gate.CursorOverCharacter, true, gate.SwallowAllowsOpen,
+                gate.UserSummonBlocked, gate.PrimaryButtonHeld, gate.CharacterOnScreen);
+            LastRightClickGateSample = gate.WithOpened(open);
+            RightClickGateEvaluationCount++;
+            if (!open)
             {
+                if (gate.CursorOverCharacter) NoteRightClickGateClosed(LastRightClickGateSample);
                 return;
             }
 

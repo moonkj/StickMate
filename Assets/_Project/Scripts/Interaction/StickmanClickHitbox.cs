@@ -335,8 +335,36 @@ namespace StickMate.Interaction
             return _fan.HitTest(new Vector2(cursorScreen.x, cursorScreen.y)) >= 0;
         }
 
+        /// <summary>숨김 중이라 잡기를 시작하지 않은 누름 횟수(진단/테스트 창구) — <see cref="BeginPress"/>의 첫 게이트.</summary>
+        public int SuspendedPressIgnoredCount { get; private set; }
+
+        private float _lastSuspendedPressLogUnscaledTime = float.NegativeInfinity;
+
         private void BeginPress(string source)
         {
+            // ★★ 2026-09-14 (E-4 좌클릭) — <b>숨은 캐릭터는 잡히지 않는다.</b> 반드시 첫 줄이다(<c>_pressed = true</c>보다 먼저).
+            //   사용자 숨김 · 전체화면 게임(등급 2) · 등급 1 + 숨김 · (Windows) 다른 가상 데스크톱에서 Suspend는 몸의 물리를
+            //   멈추지만 콜라이더의 기하 판정(IsCursorOverHitbox의 OverlapPoint)은 여전히 참이다. 그래서 보이지 않는 몸 자리를
+            //   누른 클릭 — 실제로는 아래 앱으로 간 클릭 — 이 전역 폴링으로 여기까지 와서 드래그 전이·연출 잠금·잡힘 대사를
+            //   만들었다(debugger 판독, Major). 이 입구 하나를 막으면 받는 곳 다섯(드래그 · 가출 찾기 · 과자 · 활쏘기 ·
+            //   스트레스 게이지)이 한꺼번에 막힌다.
+            //   ★ 캐릭터 축(IsSuspended)만 본다 — 가출 은신은 Suspend를 쓰지 않으므로 그 「찾기」 좌클릭은 살아 있어야 한다.
+            //     우클릭 부채꼴의 «화면에 있는가» 식(가출 은신 포함)을 여기 쓰지 마라.
+            //   ★ 뗄 때 경로(EndPress)는 건드리지 않는다 — 누른 채 숨은 경우의 놓기는 기존 경로가 끝낸다.
+            if (_agent != null && _agent.IsSuspended)
+            {
+                SuspendedPressIgnoredCount++;
+                float now = Time.unscaledTime;
+                if (ClickHitboxNearMissPolicy.ShouldLog(now, _lastSuspendedPressLogUnscaledTime))
+                {
+                    _lastSuspendedPressLogUnscaledTime = now;
+                    Debug.Log($"[StickmanClickHitbox] 캐릭터 잡기를 시작하지 않습니다({source}) — 캐릭터가 숨어 있습니다" +
+                        "(사용자 숨김 · 전체화면 게임 · 다른 가상 데스크톱). 보이지 않는 몸 자리의 클릭은 아래 앱의 것입니다(원칙 2). " +
+                        $"누적 {SuspendedPressIgnoredCount}회(같은 줄은 {ClickHitboxNearMissPolicy.LogMinIntervalSeconds:F0}초에 한 번).");
+                }
+                return;
+            }
+
             if (IsCursorOverFanButton())
             {
                 Debug.Log($"[StickmanClickHitbox] 캐릭터 잡기를 시작하지 않습니다({source}) — 커서가 " +

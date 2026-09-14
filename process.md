@@ -1121,3 +1121,18 @@ EditMode 3152 실패 0 · PlayMode 787 알려진 빨강 4 + 판정 불가 2(veri
 
 ### 다음
 커밋(E-1·E-2) → 리더 Windows E-3 증거 빌드(영수증 제외 패키징) → 사용자 전달 → coder-ui E-4 → dev-platform 5-d → test-engineer red7 → 전역 격리 정합 → E-3(좁은 폭) · 스크립트 경로 70개 · L5 pathmap.
+
+## 2026-09-14 밤 ~ 09-15 (계속 5) — `eb4670d` Windows E-3 증거 빌드 전달 · E-4 숨긴 캐릭터 입력 · 페르소나 검증 누락 보완
+
+### 흐름
+- **커밋 `eb4670d`(P1 E-1·E-2)** → 리더 Windows 빌드 `Builds/StickMate-Windows-20260914-eb4670d.zip`(영수증 txt 제외, 타입 표 Win 7/Mac 0, `BlocksUserSummon` 존재) → 사용자에게 비공개 전달 + E-3 절차 안내(모니터 분리 1회, 로그 폴더 비공개 전송).
+- **체크표(qa-regression)**: 지정 빌드 `eb4670d`로 교체(§R 10파일 diff 0 → 5-b·5-c 판독 규칙 유지), F-4 우클릭 선택 항목, **F-1·F-2 리더 판정 정정** — 평상시 톱니는 `0229f52`부터 없는데 체크 항목이 톱니를 전제해 사용자가 거짓 빨강을 적을 자리였다. F-2를 「숨긴 동안 대기 톱니가 등급 1 복귀 통로인가」로 재정의.
+- **빌드 확인 프로브(marketing)**: 리더가 지시한 단일 문자열은 옛 빌드에도 리터럴이 있어 늘 양성인 죽은 프로브 → 두 문자열 판정, 실제 Windows DLL 바이트로 교정. 소스 1·빌드 2는 `const`(Constant 표 + #US 힙) — 리더 확인.
+- **리더 누락 자백 — E-1·E-2 페르소나 검증을 커밋 때 빠뜨림** → 3인 병렬. 핵심 적발: 등급 1에서 사용자가 창을 열어 둔 동안 **자동 표면(메모 카드·리마인더·크랙) 억제까지 풀린다**(`ArePanelsSuppressed`가 허가 임대를 인자로 받음, 춤 축만 이미 분리) → game-architect 구조 판정. 그 밖에 Windows 전경 창 기준 H1 가설·모니터 기준 비대칭(dev-platform), 사전 안내 미구현·게이트 3 창만 닫힘·재오픈 예약 편승(ux-designer), 로그가 캡션과 반대(design-narrative), 매뉴얼 낡은 줄(manual-writer), 전체화면 비침해 주장 한정(marketing).
+- **E-4(coder-ui)**: 좌클릭 입구 숨김 게이트 + 우클릭 여섯째 항 「화면에 있음」. 수정 전 빨강 8 → 초록, 변이 15종 중 14 검출(V4 PlayMode만, MRL 동등 변이 판단). N-8 목록 파일 무수정. 러너 첫 실행이 `pipefail` + `grep -q` SIGPIPE로 거짓 중단(피해 0) — 러너 rc 삼킴 구멍도 함께 수정.
+
+### 상태
+coder-ui 러너(macOS 타깃): EditMode 3158 실패 0, PlayMode 12픽스처 95/95. verify-change 독립(macOS): EditMode 3158 초록, PlayMode 802 = 통과 769 · 실패 6(알려진 4 + 간헐 2: PetBalloon red7 #4 격리 2/3 빨강, CostumeFocusStill 신규 간헐 격리 1/3 — 두 테스트에서 E-4 코드 경로 미실행 로그 확인) · 판정 불가 2(알려진). E-4 커밋. 페르소나 후속 판정: N-20(자동 표면 임대 누수, 1.0 필수·E-1 프리뷰 필수)·N-21(우클릭 사전 안내, 1.0 필수·프리뷰 권고 동반) 등재, 번역 판정 스크립트 거짓 초록 3건 정정 → TEAM.md 「기준과 대상이 같이 낡은 스냅숏」. 문서 묶음은 verify-change 검증 중. 활성 타깃 macOS. Windows 실기 0회(사용자 E-3 대기).
+
+### 다음
+verify-change → 커밋(E-4 + 매뉴얼·체크표·UX_FLOW/WIDGETS) → 문서 묶음(UX 판정·내러티브·systems·platform·marketing) → game-architect 판정 따라 자동 표면 축 분리(coder-ui + test-engineer) → dev-platform 5-d → test-engineer red7 → 전역 격리 정합 → E-3(좁은 폭).

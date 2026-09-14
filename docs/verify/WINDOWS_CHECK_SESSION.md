@@ -7,15 +7,15 @@
 > ★ **세션 전에 먼저 할 것 하나 추가**: 지금 있는 Windows 빌드는 dGPU 패치 적용 **전** 산출물이다
 > (§5-1 참조 대상 아님 — 새 빌드부터 이 표를 쓸 것). 새 빌드 없이 이 표를 돌리면 그 세션 전체가 무효다.
 >
-> **전체 70분.** 시간이 없으면 §0 → §A → §B 까지만 해도 값이 나온다(35분).
+> **전체 약 91분**(§R 20분 포함 — ★ 2026-09-15 정정: 앞 표기 「70분」·「약 71분」은 세션 순서 3번 §R 20분을 빠뜨린 합이었다(verify-change 적발). §F F-2 재정의 +1분 반영 · 선택 F-4 1분·§R 선택 R-3/R-4는 별도). 시간이 없으면 §0 → §A → §B 까지만 해도 값이 나온다(35분).
 > 뒤로 갈수록 「미관」이고 앞이 「우리가 만들 것이 바뀌는 것」이다.
 >
-> ★★★ **2026-09-14 추가 — CW-7(출시 차단 해제 조건) 항목 2개: E-3 · G-1 — 세션 맨 끝 §W.** 이 둘은 **70분 안에 들어 있지 않고,
+> ★★★ **2026-09-14 추가 — CW-7(출시 차단 해제 조건) 항목 2개: E-3 · G-1 — 세션 맨 끝 §W.** 이 둘은 **위 약 91분 안에 들어 있지 않고,
 > 리더가 빌드를 지정한 세션에서만** 따로 돈다(약 25분 — E-3가 통과해 **E-3′**까지 하면 더 걸린다, 추정은 `docs/strategy/ROADMAP.md` §60-8 (라)-2′). **지정이 없으면 건너뛴다 — 건너뛰는 것이 정상이다.**
 > ★ **빌드의 성격(원인 수정 / 완화)을 반드시 함께 적는다** — 완화 빌드의 통과가 「고쳐졌다」로 세어지면 안 된다(§W의 E-3 판정 표 아래).
 > 사유: 사용자 PC가 이 조작으로 **강제 리부팅**됐다(2026-09-14 신고). 근거 `docs/strategy/ROADMAP.md` §60.
 
-작성 2026-09-03 · `qa-regression` · 근거는 전부 저장소 실측(끝의 「출처」 참조) · E-3·G-1(§W)·§H·§R·세션 순서 추가 2026-09-14 · E-3 반복 지침(N-3) · §R 빌드 구분표·4차 표지 판독 · 원장 폴더 판독 정정 2026-09-14 오후 · §R 빌드 커밋별 행(2·3·4·5차)·차수 확인·표지 판독 5차 반영·R-4(복사 중 원본 이름 바꾸기·삭제) 2026-09-14 저녁 · §R 2차 패스(5-b·5-c 행·판정 6종·`active` 세 경우·중첩 `trigger`, 5-c 미러 기준) 2026-09-14 밤
+작성 2026-09-03 · `qa-regression` · 근거는 전부 저장소 실측(끝의 「출처」 참조) · E-3·G-1(§W)·§H·§R·세션 순서 추가 2026-09-14 · E-3 반복 지침(N-3) · §R 빌드 구분표·4차 표지 판독 · 원장 폴더 판독 정정 2026-09-14 오후 · §R 빌드 커밋별 행(2·3·4·5차)·차수 확인·표지 판독 5차 반영·R-4(복사 중 원본 이름 바꾸기·삭제) 2026-09-14 저녁 · §R 2차 패스(5-b·5-c 행·판정 6종·`active` 세 경우·중첩 `trigger`, 5-c 미러 기준) 2026-09-14 밤 · 지정 빌드 `eb4670d`(§R 행·차수 확인·§W) · F-4 우클릭 선택 항목 2026-09-14 밤 늦게
 
 
 ## ★ 세션 순서 (2026-09-14 확정 — 이 순서를 지켜 주세요)
@@ -225,20 +225,31 @@ macOS에서는 plist에 플래그가 남아 「첫 실행」이 **한 번도 재
 
 ---
 
-## §F. 전체화면 앱 위에서 (7분)
+## §F. 전체화면 앱 위에서 (약 8분 · 선택 F-4 +1분)
 
 - [ ] **F-1 · 등급 1(게임 아님)** — **한다**: 엑셀이나 브라우저를 **F11 전체화면**으로.
-  **본다**: 정보창·설정창·**부채꼴**이 물러나는가 / **캐릭터는 남는가** / ★ **톱니는 남는가**.
+  **본다**: 정보창·설정창·**부채꼴**이 물러나는가 / **캐릭터는 남는가**.
   **적는다**: `F-1.png` + 로그 `[전체화면판정]` 줄 + `[부채꼴] 전체화면 감지 —` 줄.
-  **깨지면**: 등급 1에서 **톱니까지 사라지면 안전판이 자기 자신을 지운 것**이다(설계상 부채꼴만 등급 1, 톱니는 등급 2로 남겨 뒀다 — `GearRadialMenuWidget.cs:776-779`). 등급 1은 **실기 0회**다.
-- [ ] **F-2 · ★ 톱니가 복귀 통로로 살아 있는가** — **한다**: F-1 상태(전체화면 그대로) 에서 **톱니를 한 번 클릭**.
-  **본다**: 부채꼴 4개 `[집중 모드][캐릭터][오늘 할일][행동]`이 **한 번의 클릭으로** 열리는가.
-  **적는다**: 「1클릭으로 열림 / N클릭 / 안 열림」 한 줄 + `F-2.png`.
-  **깨지면**: 여기가 막히면 전체화면 앱을 쓰는 동안 사용자가 **앱으로 돌아갈 마우스 경로가 0**이 된다.
+  **깨지면**: 캐릭터까지 사라지면 게임 아닌 전체화면이 게임(등급 2)처럼 처리된 것이다 — `[전체화면판정]` 줄을 그대로 옮긴다. 등급 1은 **실기 0회**다.
+  ★ **평상시 톱니는 설계상 없다**(`0229f52`부터 — 캐릭터를 숨긴 동안에만 뜬다). 이 상태의 마우스 입구 확인은 **F-4**(캐릭터 우클릭), 숨긴 동안의 톱니 통로는 **F-2**.
+- [ ] **F-2 · ★ 캐릭터를 숨긴 동안 뜨는 대기 톱니가 등급 1에서 복귀 통로로 살아 있는가**
+  **한다**: ① (전체화면 **전에**) 작업표시줄 트레이의 StickMate 아이콘 우클릭 → **[캐릭터 숨기기]** → 캐릭터가 사라지고 화면 우상단에 **흐린 톱니**가 뜨는지 본다. ② 브라우저를 **F11 전체화면**으로. ③ 톱니를 **한 번 클릭** → 1초 기다린다. ④ 열린 것이 있으면 톱니를 한 번 더 눌러 닫는다. ⑤ **F11로 전체화면을 빠져나온다.** ⑥ ★ **되돌리기**: 트레이 아이콘 우클릭 → **[캐릭터 다시 보이기]** → 캐릭터가 돌아오고 톱니가 사라지는지 본다. **⑥을 빼먹으면 F-3·F-4와 뒤 절이 전부 숨긴 상태에서 잰 값이 된다.**
+  **본다**: ③에서 톱니가 전체화면 위에 **그대로 보이는가** · 한 번 클릭에 **부채꼴(버튼 5개)**이 열리는가 · **1초 뒤에도 남아 있는가**.
+  **적는다**: 「③ 톱니 보임/안 보임 · 부채꼴 열림(버튼 N개)/안 열림 · 1초 뒤 남음/사라짐」 한 줄 + `F-2.png`(③ 직후) + 로그 `[톱니] 클릭 —` 줄과 `[표면회수] 등급 1 중 사용자가 표면을 직접 불렀습니다(톱니 클릭)` 줄 개수 + 「⑥ 캐릭터 돌아옴 / 안 돌아옴」.
+  **무효**: ①에서 톱니가 안 떴다(트레이 메뉴 글자가 [캐릭터 다시 보이기]로 바뀌었는지로 숨김 여부를 확인) · ②가 전체화면이 아니었다(주소창이 보임).
+  **깨지면**: 톱니가 전체화면 위에서 사라지면 **등급 1의 안전판이 자기 자신을 지운 것**이다(톱니는 게임에서만 걷히게 설계됐다). 톱니는 보이는데 부채꼴이 안 열리거나 1초 안에 사라지면 **캐릭터를 숨긴 채 전체화면 앱을 쓰는 동안 앱으로 돌아갈 마우스 경로가 0**이다. ⑥에서 안 돌아오면 `Ctrl+Alt+Win+K`로 되돌리고 그 사실도 적는다. ★ 부채꼴 5개 안에 [보이기]는 없다 — 되돌리기는 트레이 · `Ctrl+Alt+Win+K` · 설정창 [일반] 「지금 즉시」 [보이기].
+  **코드 근거(HEAD `eb4670d` · 실기 미확인)**: 톱니 게이트 `Interaction/InfoGearIconWidget.cs:806-814` · `:831`(`HidesScreenSurfaces`일 때만 걷음) · `Core/StickmanAgent.cs:315` · `:356`(사용자 숨김 단독이면 `HidesScreenSurfaces` 거짓) · 클릭 → 허가 `InfoGearIconWidget.cs:1791` → `StickmanAgent.cs:394` · `Platform/UserSurfaceSummonPolicy.cs:94-95`(`CanGrant`) · `:116-118`(`SuppressesPanels`) · 펼침 `InfoGearIconWidget.cs:1794` · 로그 `:1797` · 재클릭 닫기 `:1780` · 버튼 수 `Interaction/GearRadialMenuWidget.cs:208` · 부채꼴 등급 1 분기 `:1263` · 자기 임대 갱신 `:1290` · 허가 로그 `StickmanAgent.cs:401` · 트레이 라벨 `Platform/SystemTrayPresencePolicy.cs:178` → `Interaction/SystemTrayCommandBridge.cs:112` · 단축키 `Core/ShortcutLabel.cs:41` + `StickmanAgent.cs:503` · 설정창 `Interaction/SettingsWindow.cs:1487`.
 - [ ] **F-3 · 등급 2(게임)** — **한다**: 전체화면 게임을 실행.
   **본다**: **캐릭터까지 전부** 사라지는가. 게임을 끄면 다시 돌아오는가.
   **적는다**: `F-3.png` + `[전체화면판정]` 줄.
   **깨지면**: 안 사라지면 원칙 2(비침해) 위반이고, 안 돌아오면 사용자가 앱을 잃는다.
+- [ ] **F-4 · (선택 · 1분 · 강제 리부팅 위험 없음) 전체화면 앱 위에서 캐릭터 우클릭 → 부채꼴** — 빌드가 **`eb4670d` 이후**일 때만(E-1·E-2 = 우클릭 입구 복원. 확인은 §R 「차수 확인」 블록의 `BlocksUserSummon = True`). product-strategy N-15 권고.
+  **한다**: ① 브라우저를 **F11 전체화면**으로 → 캐릭터 몸 위에서 **마우스 오른쪽 버튼** 한 번 → 부채꼴이 열렸으면 부채꼴 밖을 눌러 닫는다. ② (전체화면 게임이 있으면) 게임 실행 → 캐릭터가 있던 자리에서 우클릭 한 번 → 게임을 끈다.
+  **본다**: ① 부채꼴이 **열리는가** ② 게임 위에서는 부채꼴이 **열리지 않는가**.
+  **적는다**: `F-4 ① 열림 / 안 열림 / 무효` · `F-4 ② 안 열림 / 열림 / 무효 / 미수행(게임 없음)` + `F-4.png`(① 직후).
+  **무효**: 차수 확인에서 `BlocksUserSummon = False`(E-1 이전 빌드) · 캐릭터가 그 화면에 없었다(숨김 중 · 다른 모니터 · 가출) · 브라우저가 전체화면이 아니었다(주소창이 보임) · 우클릭이 캐릭터 몸 밖이었다.
+  **출시 후보(QG-1) 세션에서는 필수**(N-15 잔여 — PlayMode로 못 보는 축).
+  **깨지면**: ① 안 열림 = **N-15(등급 1 마우스 입구 0)가 실기에 남아 있다** — PlayMode는 우리 창이 등급 1 앱의 우클릭을 삼키는지 못 본다(그래서 이 항목이 있다). ② 열림 = 게임 위에 부채꼴이 뜬다(원칙 2 위반 — **결함으로 적는다**). ★ 2026-09-15 정정(verify-change 적발): 지정 빌드 `eb4670d`에서도 등급 2(게임) 우클릭은 게이트 **넷째 항(소환 막힘)**이 이미 닫는다 — 수정 전 코드로 돌린 PlayMode B7이 통과했다. 그러니 ② 「열림」은 N-17(숨긴 몸 자리 입력 — `eb4670d`에는 미수정, 저장소에는 E-4로 수정)의 증상이 **아니라 넷째 항 잠금의 이상**이다. 로그 `[전체화면판정]` 줄에서 그 순간 등급 2였는지 함께 적는다(등급 2가 아니었으면 무효).
 
 ---
 
@@ -252,8 +263,8 @@ macOS에서는 plist에 플래그가 남아 「첫 실행」이 **한 번도 재
 **열린 작업을 전부 저장한다**(다시 시작·로그아웃은 다른 앱을 닫는다). 작업표시줄 **자동 숨김을 켠다**(§B 상태).
 
 **★ 먼저 — 빌드 커밋마다 있을 수 있는 파일·줄이 다르다 (2026-09-14 오후 추가 · 저녁 개정: 2·3·4·5차 행 · 2차 패스: 5-b·5-c 행).** §R은 **세션을 받은 빌드의 커밋**으로 판독법이 갈린다.
-**지금 받아 둔 시험 빌드 `Builds/StickMate-Windows-20260914-a6b3101.zip`은 2차(`a6b3101`)다 — 정상 종료 표지는 3차에서 생겼으므로 이 빌드는 표지 파일을 만들지 않는다. 「표지가 없다」·「판정 줄이 없다」를 비정상으로 읽지 마라(거짓 빨강).**
-3차(`3cc6753`)·4차(`17f6f38`)·5차(`7900ad0`)는 커밋만 있고, **5-b·5-c는 `34bc4f0`으로 커밋됐다**. **넷 다 지정된 빌드가 없다.** 그 행은 그 빌드가 지정됐을 때만 쓴다.
+**★ 2026-09-14 밤 — 지정 빌드가 `Builds/StickMate-Windows-20260914-eb4670d.zip`(커밋 `eb4670d`)으로 바뀌었다. 종료 순서·표지·판독 규칙은 5-b·5-c(`34bc4f0`)와 같다 — 아래 표 `eb4670d` 행.** 앞서 받은 `a6b3101`(2차)은 정상 종료 표지가 생기기 전 빌드라 표지 파일을 만들지 않는다 — 그 빌드로 판독하면 「표지가 없다」·「판정 줄이 없다」를 비정상으로 읽지 마라(거짓 빨강).
+3차(`3cc6753`)·4차(`17f6f38`)·5차(`7900ad0`)·5-b·5-c(`34bc4f0`)는 **그 커밋으로 만든 빌드가 없다** — 그 행들은 판독 규칙의 정본으로만 쓰고, `eb4670d` 행이 5-b·5-c 행을 그대로 가리킨다.
 
 **빌드 확인 — zip 이름만 믿지 않는다**
 - **로그 안에 빌드(커밋)를 알려 주는 줄: 없음.** 우리 코드는 커밋을 로그에 찍지 않는다. 버전 문자열은 원장 파일 머리에만 쓰이고 값이 모든 빌드에서 같다. 아래 표의 「이 차수부터 있는 줄」이 **보이면** 그 차수 **이상**이라는 뜻일 뿐이고, **안 보인다고 이전 빌드라는 뜻은 아니다**(대부분 특정 사건 때만 찍힌다). **4차·5차·5-b·5-c를 서로 가르는 로그 줄은 평소에 없다**(5-b에서 생긴 `[종료순서] 진행 저장이 이미 진행 중입니다`도 진행 저장 처리기가 등록된 뒤 중첩 때만 찍힌다 — 지금은 처리기 미등록).
@@ -263,19 +274,20 @@ macOS에서는 plist에 플래그가 남아 「첫 실행」이 **한 번도 재
   $dll = ".\StickMate_Data\Managed\StickMate.Runtime.dll"
   "파일 시각 = $((Get-Item $dll).LastWriteTime)"
   $text = [Text.Encoding]::GetEncoding(28591).GetString([IO.File]::ReadAllBytes((Resolve-Path $dll).Path))
-  foreach ($n in 'ReservedBarRevealDirector', 'AppShutdownSequence', 'SessionExitMarker', 'MarkExitStarted', 'ShouldRunStep', 'ProgressSaveInProgress', 'NoSuchIdentQxz7') { "{0,-26} = {1}" -f $n, $text.Contains($n) }
+  foreach ($n in 'ReservedBarRevealDirector', 'AppShutdownSequence', 'SessionExitMarker', 'MarkExitStarted', 'ShouldRunStep', 'ProgressSaveInProgress', 'BlocksUserSummon', 'NoSuchIdentQxz7') { "{0,-26} = {1}" -f $n, $text.Contains($n) }
   ```
   - 빨간 오류가 나오면 폴더가 틀린 것이다. 마지막 `NoSuchIdentQxz7`(일부러 만든 없는 이름)이 `True`면 **판독 무효**(검사가 죽었다). 첫 줄 `ReservedBarRevealDirector`가 `False`여도 **판독 무효**다 — 원인은 **폴더가 틀렸거나, 이 이름이 생기기 전의 옛 빌드(2차보다 옛 빌드)** 둘 중 하나이고 이 블록으로는 가르지 못한다. 그대로 적어 리더에게.
-  - 가운데 다섯은 위에서부터 `True`가 이어지다 끊기는 자리가 차수다: `AppShutdownSequence`까지 → **2차** · `SessionExitMarker`까지 → **3차** · `MarkExitStarted`까지 → **4차** · `ShouldRunStep`까지 → **5차** · `ProgressSaveInProgress`까지 → **5-b 이후**. `False` 뒤에 다시 `True`가 나오면 **판독 무효**. `AppShutdownSequence`부터 `False`면 2차보다 옛 빌드 — §R 대상이 아니니 리더에게.
-  - ★ 이것은 **차수**만 가른다 — 같은 차수 안의 다른 빌드는 구별하지 못한다. 정확한 빌드는 위 `LastWriteTime`으로 본다. ★ **5-b와 5-c는 이 방법으로 가르지 못한다** — 5-c는 새 이름 없이 규칙 한 줄만 바꿨다.
+  - 가운데 여섯은 위에서부터 `True`가 이어지다 끊기는 자리가 차수다: `AppShutdownSequence`까지 → **2차** · `SessionExitMarker`까지 → **3차** · `MarkExitStarted`까지 → **4차** · `ShouldRunStep`까지 → **5차** · `ProgressSaveInProgress`까지 → **5-b·5-c** · `BlocksUserSummon`까지 → **`eb4670d` 이후**(E-1 우클릭 입구 복원 — 종료 순서는 5-b·5-c와 같다). `False` 뒤에 다시 `True`가 나오면 **판독 무효**. `AppShutdownSequence`부터 `False`면 2차보다 옛 빌드 — §R 대상이 아니니 리더에게.
+  - ★ 이것은 **차수**만 가른다 — 같은 차수 안의 다른 빌드는 구별하지 못한다. 정확한 빌드는 위 `LastWriteTime`으로 본다. ★ **5-b와 5-c는 이 방법으로 가르지 못한다** — 5-c는 새 이름 없이 규칙 한 줄만 바꿨다. `eb4670d`는 `BlocksUserSummon`으로 5-b·5-c와 갈린다.
 
 | 빌드 | 세션 종료(다시 시작·로그아웃) 때 도는 순서 | 있을 수 있는 파일 (`…\LocalLow\Vibelab\StickMate\` 아래) | 있을 수 있는 로그 줄 | §R 판독 |
 |---|---|---|---|---|
-| **2차 `a6b3101`** — 시험 지정 빌드 · 완화 | 작업표시줄 원복 → 워치독 정지. 끝나면 그대로 돌아간다(**앱 종료 요청 없음**). 앱 종료 경로(`quitting`)가 **차례로** 뒤이어 오면 같은 두 단계가 한 번 더(이미 원복했으면 시스템에 다시 쓰지 않는다). ★ 한 순서가 셸 호출을 기다리는 사이 다른 순서가 **끼어들면**(중첩 — 실재 미확인) 같은 값을 두 번 쓰고 흔적 닫기·원복 줄도 두 번 남을 수 있다(5차까지 같다 — 막는 장치 없음) | 흔적 `stickmate_reserved_bar_restore.json`(자동 숨김이 켜져 있었을 때만) · `FreezeForensics\freeze-*.log`(**사건이 열렸을 때만** — 평소에는 폴더도 없다). ★ **`session-exit-marker.txt`·`previous-abnormal-player-NN.log`는 이 빌드가 만들지도 읽지도 않는다** — 보이면 **예전에 켠 다른 빌드가 남긴 것**이니 판독하지 않고 파일 시각만 적는다 | `[작업표시줄]` 줄들 · 세션 종료 원복 줄 끝의 `(경로: OS 세션 종료 WM_ENDSESSION …)` · `[동결기록] 활성 — 폴더`. ★ **`[종료순서]` 0줄 · `직전 실행 판정=` 0줄이 정상** | 아래 2×2 + ③ 칸별 기대 줄 — **여기서 끝**(표지 판독 절 전체를 건너뛴다) |
+| **2차 `a6b3101`** — 이전 시험 빌드(2026-09-14 밤 `eb4670d`로 교체) · 완화 | 작업표시줄 원복 → 워치독 정지. 끝나면 그대로 돌아간다(**앱 종료 요청 없음**). 앱 종료 경로(`quitting`)가 **차례로** 뒤이어 오면 같은 두 단계가 한 번 더(이미 원복했으면 시스템에 다시 쓰지 않는다). ★ 한 순서가 셸 호출을 기다리는 사이 다른 순서가 **끼어들면**(중첩 — 실재 미확인) 같은 값을 두 번 쓰고 흔적 닫기·원복 줄도 두 번 남을 수 있다(5차까지 같다 — 막는 장치 없음) | 흔적 `stickmate_reserved_bar_restore.json`(자동 숨김이 켜져 있었을 때만) · `FreezeForensics\freeze-*.log`(**사건이 열렸을 때만** — 평소에는 폴더도 없다). ★ **`session-exit-marker.txt`·`previous-abnormal-player-NN.log`는 이 빌드가 만들지도 읽지도 않는다** — 보이면 **예전에 켠 다른 빌드가 남긴 것**이니 판독하지 않고 파일 시각만 적는다 | `[작업표시줄]` 줄들 · 세션 종료 원복 줄 끝의 `(경로: OS 세션 종료 WM_ENDSESSION …)` · `[동결기록] 활성 — 폴더`. ★ **`[종료순서]` 0줄 · `직전 실행 판정=` 0줄이 정상** | 아래 2×2 + ③ 칸별 기대 줄 — **여기서 끝**(표지 판독 절 전체를 건너뛴다) |
 | **3차 `3cc6753`** — 커밋됨 · 빌드 없음 | 원복 → 워치독 정지 → **정상 종료 표지**. 앱 종료 요청 없음 | 2차 것 + `FreezeForensics\` 폴더가 **기동 때** 생긴다 · 표지 `state=running`(기동) / `state=clean-exit trigger=SessionEnding` 또는 `trigger=ApplicationQuitting` · 직전 실행이 `AbnormalExit`면 다음 기동이 `previous-abnormal-player-00`~`02.log`를 만든다 | 2차 것 + 다음 실행의 `[동결기록] 직전 실행 판정=` — 값은 `NoMarker` · `CleanExit` · `AbnormalExit` · `OtherInstanceAlive` · `Unreadable`. ★ **`ExitStartedNotFinished`는 없다** — 정상 종료 표지 전에 끊기면 표지가 `running`으로 남아 **`AbnormalExit` + 로그 복사**로 나온다. `[종료순서]` 0줄이 정상 | 2×2 + 아래 「표지 판독」 3차 열 |
 | **4차 `17f6f38`** — 커밋됨 · 빌드 없음 · **재실행 가드 없음** | **종료 시작 표지** → 원복 → 워치독 정지 → 정상 종료 표지 → **앱 종료 요청** → `quitting` 순서가 오면 **네 단계 전부 한 번 더**(표지 둘도 다시 쓴다 — 앞 순서가 남긴 `clean-exit`을 덮어쓸 수 있다) | 3차 것 + 표지 `state=exit-started trigger=…` | 3차 것 + 판정 값 `ExitStartedNotFinished` · 세션 종료 순서를 **마친 뒤** `[종료순서] Windows 세션 종료 통보(lParam=…)` 1줄 | 2×2 + 「표지 판독」 4차 열 |
 | **5차 `7900ad0`만**(5-b·5-c 이전) — 커밋됨 · 빌드 없음 | 종료 시작 표지 → 원복 → 워치독 정지 → **진행 저장**(처리기 미등록 — 지금은 아무것도 안 한다) → 정상 종료 표지 → 앱 종료 요청 → `quitting` 순서는 **이번 실행이 정상 종료 표지를 이미 썼으면 표지 두 단계만 건너뛰고** 원복·워치독 정지·진행 저장은 다시 돈다 | 4차와 같다 | 4차와 같다. 5차에서 새로 생긴 줄은 `[종료순서] 진행 저장 처리기가 실패를 알렸습니다` / `…예외를 던졌습니다` 둘뿐이고, **처리기가 없으니 0줄이 정상** | 2×2 + 「표지 판독」 5차 열 |
 | **5-b·5-c 이후** — 커밋 `34bc4f0` · 빌드 없음 | 순서는 5차와 같다(종료 시작 표지 → 원복 → 워치독 정지 → 진행 저장 → 정상 종료 표지 → 앱 종료 요청). 달라진 것: ① 「정상 종료 표지를 이미 썼는가」·「진행 저장이 도는 중인가」를 순서 시작이 아니라 **단계마다 직전에** 읽는다 ② 정상 종료 표지가 이미 쓰였으면 종료 시작 표지·정상 종료 표지와 **(5-c) 진행 저장까지** 건너뛰고 원복·워치독 정지만 다시 돈다 ③ 진행 저장은 **걸쇠**로 한 번에 하나 — 저장 도중 끼어든 순서는 저장과 정상 종료 표지를 건너뛴다(종료 시작 표지는 쓴다) ④ 끼어든 순서도 원복을 건너뛰지 않아 **중첩 때만 같은 값을 두 번** 쓴다 — 바깥 순서는 이미 원복됐으면 흔적을 다시 쓰지 않고 로그도 남기지 않는다 | 5차와 같다 | 5차 것 + `[종료순서] 진행 저장이 이미 진행 중입니다(경로=…, 중첩 종료)` — **처리기 등록 뒤 중첩 때만** 찍혀 **지금은 0줄이 정상**. 원복 성공 줄은 중첩 때도 **한 번만** 남는다 | 2×2 + 「표지 판독」 5-b·5-c 열 |
+| **`eb4670d`** — ★ 지정 빌드(2026-09-14 밤 · `Builds/StickMate-Windows-20260914-eb4670d.zip`) · CW-7 성격 「완화」 | **5-b·5-c 행과 같다.** `34bc4f0` → `eb4670d` 사이에 §R 판독에 걸린 파일 10개(종료 순서 · 표지 · 작업표시줄 원복·흔적·정책 · 워치독 · 원장 둘 · 트레이 · 자동 숨김 제어) 변경 **0줄**. 그 사이에 들어간 것은 온보딩 「봤음」 저장소 격리(`36e0a5e`)와 E-1·E-2 우클릭 입구 복원(`eb4670d`)이다 | 5-b·5-c와 같다 | 5-b·5-c와 같다(새 로그 줄 0) | 2×2 + 「표지 판독」 **5-b·5-c 열 그대로** |
 
 ★ **빌드를 바꿔 가며 켠 PC 주의** — 표지 파일은 옛 빌드를 켜도(2차는 손대지 않는다) 그대로 남는다. ② 출력의 `표지 파일 시각`이 **이번 다시 시작·로그아웃 직전** 시각이 아니면 **옛 실행의 표지**다 → **표지 축만 판독 무효**(2×2는 유효). 3차 빌드가 4차 이후 빌드의 `exit-started` 표지를 읽으면 `Unreadable`이 나온다.
 
@@ -594,8 +606,9 @@ macOS에서는 plist에 플래그가 남아 「첫 실행」이 **한 번도 재
   >    지정이 없으면 **하지 말고** 「E-3 미수행 — 빌드 미지정」 한 줄만 적는다. **그 줄은 실패가 아니다.**
   >    ★ 성격을 못 받았으면 **「완화」로 적는다**(모르는 것을 「수정」으로 올리지 않는다).
   > 1-1. ★★ **반복 지침 (사용자 답변 N-3, 2026-09-14 — 「09-09 빌드에서 켠 채 외장 모니터 분리 1회 중 1회 정지」)**
-  >    - **지정 빌드가 `a6b3101`(완화)이면 아래 「한다」 1~6을 먼저 한 벌 한다 = 분리 조작 2회**((a) 캐릭터가 있는 화면 · (c) 캐릭터가 없는 화면).
-  >    - **통과해도 기록은 「완화 빌드 `a6b3101`에서 E-3 통과 — 원인 미확정」 한 줄로만 적는다**(판정 표 아래 기록 규칙). 「고쳐졌다」·「재현 안 됨」·「해결」 금지.
+  >    - **지정 빌드는 `eb4670d`(완화 — CW-7 원인 미확정. 2026-09-14 밤 `a6b3101`에서 교체)다. 아래 「한다」 1~6을 먼저 한 벌 한다 = 분리 조작 2회**((a) 캐릭터가 있는 화면 · (c) 캐릭터가 없는 화면).
+  >    - ★ **`a6b3101`로 이미 받은 E-3·G-1 결과는 진단용으로만 적는다 — 출시 증거가 아니다**(N-8: 출시 후보와 `docs/verify/DISPLAY_CHANGE_PATH_FILES.md` 목록 diff가 0인 빌드의 E-3만 인정). 형태: 「`a6b3101` 진단 결과 — 출시 증거 아님(N-8)」.
+  >    - **통과해도 기록은 「완화 빌드 `eb4670d`에서 E-3 통과 — 원인 미확정」 한 줄로만 적는다**(판정 표 아래 기록 규칙). 「고쳐졌다」·「재현 안 됨」·「해결」 금지.
   >    - ★★ **반복 규칙 — 결과를 보기 전에 정해 둔다(리더 판정 2026-09-14, 사전 등록). 세션 중에, 결과를 본 뒤에 바꾸지 않는다.**
   >      · E-3 **통과(아래 통과 조건 1~5 전부)** → 같은 세션에서 **E-3 → G-1 → E-3′** 순서로 한 벌 더 한다(§W 끝 **E-3′** 항목, 산출물 이름 `E-3b`). **사용자가 동의할 때만** — 강제 리부팅 위험을 한 번 더 거는 조작이라 **거절도 정상 기록이다.**
   >      · E-3 **멈춤 / 실패 / 보류** → 반복하지 않는다(멈춤은 §H, 나머지는 산출물 그대로 리더에게).
@@ -607,7 +620,7 @@ macOS에서는 plist에 플래그가 남아 「첫 실행」이 **한 번도 재
   >    - **왜 한 벌 통과가 약한가 — 검산**: 「1회 중 1회」는 표본이 1이라 분리 1회당 멈춤 확률 p₀를 1.0으로 못 박지 못한다(1회 관측의 한쪽 95% 하한 p₀ = 0.05 — 0.05¹ = 0.05).
   >      고치지 못한 빌드가 분리 2회를 무사히 넘길 확률 = (1 − p₀)²: p₀ = 1.0 → 0% · 0.5 → 25%(0.5² = 0.25) · 0.2 → 64%(0.8² = 0.64). **N-3 답을 반영한 기대치는 `ROADMAP.md` §60-8 (라)-2′가 정본이다** — 이 표는 그 숫자를 옮겨 적지 않는다(두 곳에 두면 갈라진다).
   >      ⇒ 영상 통과는 **블록 ③의 발동 증거(통과 조건 5)와 묶였을 때만** 기록할 가치가 있다. 그리고 발동 증거는 「완화가 **돌았다**」까지만 말하고 「멈춤을 **막았다**」는 말하지 않는다.
-  >    - 지정 빌드가 `a6b3101`이 **아니면** 이 반복 규칙을 그대로 쓸지도 리더에게 함께 받는다. 못 받았으면 **E-3 한 벌만** 하고 E-3′는 하지 않는다.
+  >    - 지정 빌드가 `eb4670d`가 **아니면** 이 반복 규칙을 그대로 쓸지도 리더에게 함께 받는다. 못 받았으면 **E-3 한 벌만** 하고 E-3′는 하지 않는다.
   > 2. **지정된 빌드인지 먼저 확인한다** — `StickMate.exe`가 있는 폴더에서 PowerShell로
   >    `(Get-Item .\StickMate_Data\Managed\StickMate.Runtime.dll).LastWriteTime` → 리더가 준 시각과 **다르면 하지 않는다.**
   >    (`StickMate.exe` 날짜는 Unity 런처라 빌드 시점이 아니다 — 거짓 통과 7번.)
@@ -711,7 +724,7 @@ macOS에서는 plist에 플래그가 남아 「첫 실행」이 **한 번도 재
   - `사유=SafetyCap`은 **안정을 못 보고 15초 상한으로 강제 해제**됐다는 뜻이다(나머지 `Settled` · `Reverted` · `EarlySignalExpired`). 행동이 통과여도 **보류**로 올린다.
 
   **적는다**: 휴대폰 영상 `E-3.mp4` · `E-3.txt` · **블록 ⓪·②·③의 출력 전부 그대로** · `E-3-FreezeForensics\` 폴더 · 그리고 **머리 줄 여섯**:
-  `빌드 커밋: a6b3101` (리더가 준 값) · `성격: 완화` (또는 `원인 수정`) · `원장 파일: 시작 표시 이후 N개` (블록 ③ 뒤 숫자) ·
+  `빌드 커밋: eb4670d` (리더가 준 값) · `성격: 완화` (또는 `원인 수정`) · `원장 파일: 시작 표시 이후 N개` (블록 ③ 뒤 숫자) ·
   `반복: …` (규칙 1-1의 형태 그대로 — 예 `E-3 + E-3b(사용자 동의)` / `E-3만 — E-3b 거절 — 분리 2회 무사 — p₀ ≥ 0.78만 기각` / `E-3만 — E-3 통과 아님`) ·
   `OS 빌드: …` · `그래픽 드라이버 버전: …` (블록 ⓪ — 안 나오면 「조회 실패」)
   조작마다 한 줄: `(a) 분리: 캐릭터 위치=뽑는 화면 · ①O ②O ③O ④O ⑤없음 / 회복까지 약 N초` — 위치와 초는 **영상에서** 본다.
@@ -741,7 +754,7 @@ macOS에서는 plist에 플래그가 남아 「첫 실행」이 **한 번도 재
   - **완화 빌드의 통과는 CW-7 해제 근거로 쓸 수 있다. 그러나 「수정됨」·「고쳤다」·「해결」로 기록하지 않는다.**
     적는 형태는 **「완화 빌드 `<커밋>`에서 E-3 통과 — 원인 미확정」** 하나다.
   - ★ **분리 횟수·반복 여부는 이 문장에 붙이지 않는다** — 머리 줄 `반복:`에 따로 적는다(규칙 1-1). 「2회 무사」가 문장에 붙으면 표본 1 이야기가 빠진 채 「두 번 확인」으로 옮겨진다.
-  - ★ **반복은 규칙 1-1에 결과 전에 등록돼 있다 — 통과를 본 뒤 바꾸지 않는다.** E-3′의 결과는 같은 4갈래·같은 형태로 **따로** 적는다(「완화 빌드 `a6b3101`에서 E-3b 통과 — 원인 미확정」). **E-3와 E-3′를 합쳐 「통과 2회」 한 줄로 만들지 않는다.**
+  - ★ **반복은 규칙 1-1에 결과 전에 등록돼 있다 — 통과를 본 뒤 바꾸지 않는다.** E-3′의 결과는 같은 4갈래·같은 형태로 **따로** 적는다(「완화 빌드 `eb4670d`에서 E-3b 통과 — 원인 미확정」). **E-3와 E-3′를 합쳐 「통과 2회」 한 줄로 만들지 않는다.**
   - **해제 조건을 충족했는지의 판단은 이 체크표가 하지 않는다** — `docs/strategy/ROADMAP.md` §60(product-strategy)과 리더가 한다.
     이 표가 내는 것은 **행동 관찰 + 산출물 숫자**까지다.
   - 이유: 원인이 미확정이면 **완화 장치가 우연히 트리거를 비껴간 것**과 **원인이 사라진 것**을 이 세션으로는 가를 수 없다. 통과가 「수정」으로 세어지면 출시 문구·신고 회신이 그 말을 그대로 옮긴다.
@@ -872,7 +885,7 @@ macOS에서는 plist에 플래그가 남아 「첫 실행」이 **한 번도 재
 
   **본다 · 통과 · 판정 · 기록**: E-3와 **같다**(①~⑤ · 통과 조건 1~5 · 판정 4갈래 · 완화 기록 규칙). 이름만 `E-3b.mp4` · `E-3b.txt` · `E-3b-FreezeForensics\`.
   머리 줄은 E-3과 같은 여섯 줄이다: `반복: E-3 + E-3b(사용자 동의)`, `OS 빌드`·`그래픽 드라이버 버전`은 E-3과 같으면 「E-3과 같음」. 조작마다 한 줄에 `캐릭터 위치=`도 적는다.
-  **E-3b 결과는 E-3과 따로 한 줄로 적는다**(「완화 빌드 `a6b3101`에서 E-3b 통과 — 원인 미확정」 등). ★ **G-1은 다시 하지 않는다.**
+  **E-3b 결과는 E-3과 따로 한 줄로 적는다**(「완화 빌드 `eb4670d`에서 E-3b 통과 — 원인 미확정」 등). ★ **G-1은 다시 하지 않는다.**
   **깨지면**: 멈춤 → **§H**(H-3 5 그대로 — 다시 시도하지 않는다). H-1의 「어느 조작 직후였나」에 **`E-3b`의 (a)~(d)**로 적는다.
 
 ---
@@ -1024,12 +1037,13 @@ Get-ChildItem $dir    # ← 실제로 들어왔는지 눈으로 확인. 빈 목�
 | 원장 폴더 기동 생성(3차 이후) | `SessionExitMarker.cs:181` `Directory.CreateDirectory(directory)`가 **기동 `RunStartup` 안에** 있다(`3cc6753` `:163`도 같다). `a6b3101`은 `FreezeForensicsLog.cs:241` **첫 쓰기에서만** 폴더를 만든다. 원장 슬롯 이름 `FreezeForensicsPolicy.cs:104` `freeze-watchdog-` / `freeze-forensics-` — 표지(`session-exit-marker.txt`)·복사본(`SessionExitMarker.cs:63` `previous-abnormal-player-`)은 `freeze-*.log` 필터에 걸리지 않는다 |
 | ★ 아래 행(「§R 빌드 식별 — 로그」~「§R 5-b·5-c 이후」)은 **2026-09-14 저녁** 기준이다. 커밋 행은 `git show <커밋>:<경로>`, 5차 행은 **`git show 7900ad0:<경로>`로 줄 번호를 다시 확인했다**(인용한 줄 전부 일치 — 뒤 커밋이 그 파일을 고치면 달라진다). ★ **5-b·5-c 행은 dev-platform 격리 미러(HEAD `7900ad0` + 5-b·5-c 파일 6개) 기준으로 인용했고, 트리 적용 뒤(트리 = 미러 6파일 `cmp` 동일) verify-change 2단계가 트리에서 줄 번호를 다시 대조해 전부 일치를 확인했고, 그 트리가 커밋 `34bc4f0`이다**(verify-change 3단계가 `:1032` 인용 20개를 다시 대조해 일치) | |
 | §R 빌드 식별 — 로그 | **커밋을 찍는 로그 줄 없음.** 비테스트 코드의 `Application.version`은 `Platform/FreezeWatchdog.cs:246` 한 곳이고 원장 파일 머리로만 간다(`FreezeForensicsLog.cs:271-279`) · 값 `ProjectSettings/ProjectSettings.asset:145` `bundleVersion: 1.0` · `Assets/Editor/BuildStandalone.cs`에 `bundleVersion` 쓰기 0건. 4차→5차 로그 문자열 차이(`git diff 17f6f38 --` 트레이·워치독·표지·순서·원복 5파일, `Debug.Log` 줄만): `AppShutdownSequence.cs:298`·`:305` 진행 저장 처리기 경고 2줄뿐(양성 대조: 같은 필터가 `a6b3101..17f6f38` 순서 파일에서 1줄을 잡았다) · 처리기 등록 호출 비테스트 **0건**(같은 grep이 `Tests/EditMode/SessionEndShutdownTests.cs`에서는 맞음) · 5-b 신규 로그 줄 `[종료순서] 진행 저장이 이미 진행 중입니다`(5-c 미러 `AppShutdownSequence.cs:376`, 처리기 등록 뒤 걸쇠에 걸릴 때만) · 처리기 등록 호출은 트리(읽기만)·미러 모두 비테스트 0건(같은 grep이 미러 `SessionEndShutdownTests.cs`에서는 맞음) |
-| §R 빌드 식별 — dll 이름 | 비테스트 `Assets/_Project/Scripts`(런타임 어셈블리 `StickMate.Runtime.asmdef`, 테스트는 별도 asmdef)에서 `git grep -l` 파일 수 — `ReservedBarRevealDirector` ccfaef9 10 · a6b3101 12 · 3cc6753 12 · 17f6f38 12 · 트리 12 / `AppShutdownSequence` 0 · 4 · 5 · 5 · 5 / `SessionExitMarker` 0 · 0 · 4 · 4 · 4 / `MarkExitStarted` 0 · 0 · 0 · 1 · 1 / `ShouldRunStep` 0 · 0 · 0 · 0 · 2 / 가짜 `NoSuchIdentQxz7` 전부 0. **지정 빌드 zip 실측**: `StickMate_Data/Managed/StickMate.Runtime.dll`(1,691,136바이트, 항목 시각 09-14 10:37)을 파이썬으로 바이트 검색 — `ReservedBarRevealDirector` 1 · `AppShutdownSequence` 1 · `RestoreReservedBar` 1 · `SessionExitMarker` 0 · `MarkCleanExit` 0 · `MarkExitStarted` 0 · `ExitStartedNotFinished` 0 · `HandleSessionEnding` 0 · `ShouldRunStep` 0 · `CleanExitWrittenThisRun` 0 · 가짜 0 → **2차로 판독**(형식 이름은 dll에 ASCII로 들어간다 — 같은 이름을 UTF-16으로 찾으면 전부 0). PowerShell 판(`GetEncoding(28591)` + `Contains`)은 같은 바이트 검색이지만 **Windows 실행 미확인** · **5-b 이름**: `ProgressSaveInProgress` · `s_saveInProgress` · `BeforeStepForTesting`(파일 수) — `7900ad0` 0 · 트리 5-b(읽기만) 1 · 5-c 미러 1, 선언은 미러 `AppShutdownSequence.cs:158`·`:161`·`:173`이고 셋 다 순서 안에서 쓰인다(`:257`·`:262`·`:372`). **5-b 빌드 dll 실측 없음**(빌드가 없다). 5-b(트리)→5-c(미러) 코드 차이는 주석 밖으로 `ShouldRunStep`의 `case FlushProgressSave` 한 갈래뿐, 새 이름 0 → **dll 이름으로 5-b와 5-c를 가를 수 없다** |
+| §R 빌드 식별 — dll 이름 | 비테스트 `Assets/_Project/Scripts`(런타임 어셈블리 `StickMate.Runtime.asmdef`, 테스트는 별도 asmdef)에서 `git grep -l` 파일 수 — `ReservedBarRevealDirector` ccfaef9 10 · a6b3101 12 · 3cc6753 12 · 17f6f38 12 · 트리 12 / `AppShutdownSequence` 0 · 4 · 5 · 5 · 5 / `SessionExitMarker` 0 · 0 · 4 · 4 · 4 / `MarkExitStarted` 0 · 0 · 0 · 1 · 1 / `ShouldRunStep` 0 · 0 · 0 · 0 · 2 / 가짜 `NoSuchIdentQxz7` 전부 0. **지정 빌드 zip 실측**: `StickMate_Data/Managed/StickMate.Runtime.dll`(1,691,136바이트, 항목 시각 09-14 10:37)을 파이썬으로 바이트 검색 — `ReservedBarRevealDirector` 1 · `AppShutdownSequence` 1 · `RestoreReservedBar` 1 · `SessionExitMarker` 0 · `MarkCleanExit` 0 · `MarkExitStarted` 0 · `ExitStartedNotFinished` 0 · `HandleSessionEnding` 0 · `ShouldRunStep` 0 · `CleanExitWrittenThisRun` 0 · 가짜 0 → **2차로 판독**(형식 이름은 dll에 ASCII로 들어간다 — 같은 이름을 UTF-16으로 찾으면 전부 0). PowerShell 판(`GetEncoding(28591)` + `Contains`)은 같은 바이트 검색이지만 **Windows 실행 미확인** · **5-b 이름**: `ProgressSaveInProgress` · `s_saveInProgress` · `BeforeStepForTesting`(파일 수) — `7900ad0` 0 · 트리 5-b(읽기만) 1 · 5-c 미러 1, 선언은 미러 `AppShutdownSequence.cs:158`·`:161`·`:173`이고 셋 다 순서 안에서 쓰인다(`:257`·`:262`·`:372`). **5-b 빌드 dll 실측 없음**(빌드가 없다). 5-b(트리)→5-c(미러) 코드 차이는 주석 밖으로 `ShouldRunStep`의 `case FlushProgressSave` 한 갈래뿐, 새 이름 0 → **dll 이름으로 5-b와 5-c를 가를 수 없다** · ★ **E-1 이름 `BlocksUserSummon`**(`eb4670d` 이후) — 아래 「§R `eb4670d`」 행 |
 | §R 2차 `a6b3101` | 트레이 진입 `Platform/Windows/WindowsSystemTrayIcon.cs:524` `AppShutdownSequence.Run(AppShutdownTrigger.SessionEnding);` 뒤 `return IntPtr.Zero`(종료 요청 없음) · 순서 `Platform/AppShutdownSequence.cs:46-47` 원복 → 워치독 정지 · `Run` `:76-91` · 표지 없음(`SessionExitMarker.cs` 파일 부재 — `git ls-tree`) · `[종료순서]` 0건 · 판정 줄 0건(`FreezeWatchdog.cs`에 `직전 실행 판정` 0건) · 활성 줄 `FreezeWatchdog.cs:259` · 세션 종료 원복 꼬리 `ReservedBarRevealDirector.cs:317` |
 | §R 3차 `3cc6753` | 트레이 진입 `WindowsSystemTrayIcon.cs:528` `Run(SessionEnding)`(종료 요청 없음) · 순서 `AppShutdownSequence.cs:58-60` 원복 → 워치독 정지 → 정상 종료 표지 · `Run` `:89-104`(가드 없음) · 표지 상태 `SessionExitMarker.cs:45` `running` · `:46` `clean-exit`(`exit-started` 없음) · 판정 `:89-97` — `clean-exit`·`running` 밖의 상태는 `:94` `Unreadable` · 열거 `:10-22`(`ExitStartedNotFinished` 없음) · 기동 폴더 생성 `:163` · 표지 쓰기 전부 `Flush(true)` `:259` · 복사 공유 모드 `:295` · 판정 줄 `FreezeWatchdog.cs:288`(복사함)·`:295`(안 함) |
 | §R 5차 `7900ad0` 이후 | 트레이 진입 `WindowsSystemTrayIcon.cs:535` `AppShutdownSequence.TryHandleSessionEndMessage(message, wParam.ToInt64(), lParam.ToInt64())` → `AppShutdownSequence.cs:212` → `:242` `HandleSessionEnding` · 순서 `:97-104`(종료 시작 표지 → 원복 → 워치독 정지 → 진행 저장 `:35` → 정상 종료 표지 `:103`) · 가드 `:175` `ShouldRunStep`(표지 두 단계만) · `Run` `:182`, 순서 시작 때 한 번 읽음 `:185` `SessionExitMarker.CleanExitWrittenThisRun` · 통보 줄 `:247`(순서 **뒤**) · 종료 요청 `:258` · 처리기 없으면 무로그 반환 `:293` · 처리기 경고 `:298`·`:305` · 꼬리표 `:122` · `SessionExitMarker.cs:181` `CleanExitWrittenThisRun` · 기동이 거짓으로 `:224` · 정상 종료 표지 쓰기가 **돌아온 뒤에만** 참 `:265` · `exit-started` → `ExitStartedNotFinished` `:115` · 복사는 `AbnormalExit`만 `:121` · 안내 문구 `:215` · 종료 시작 표지 동기화 없음 `:245` · 판정 줄 `FreezeWatchdog.cs:289`·`:296`(이 파일은 `7900ad0`이 바꾸지 않았다 — `17f6f38`과 같다) · 판독 규칙 정본 `docs/TASKBAR_REVEAL.md` §2-2·6절 8번 · ★ 이 행은 5차 빌드 사실이다 — 「순서 시작 때 한 번 읽음」(`:185`)은 **5-b에서 삭제**됐다(아래 「§R 5-b·5-c 이후」 행) |
 | R-4 | (이 행의 `SessionExitMarker.cs` 줄 번호는 `7900ad0` 기준 — 트리(5-b·5-c 적용)에서는 `:70`→`:73` · `:76`→`:79` · `:78`→`:81` · `:121`→`:124` · `:206`→`:211` · `:219`→`:224` · `:227`→`:232` · `:372`→`:377`로 밀린다. `FreezeWatchdog.cs`는 바뀌지 않았다) 복사 원본 열기 `SessionExitMarker.cs:372` `FileAccess.Read, FileShare.ReadWrite \| FileShare.Delete`(3차 `3cc6753:295` · 4차 `17f6f38:344` 같은 형태) · 상한 `:76` 4MB · 복사본 이름 `:70`·`:78` · 복사 조건 `:121` · 기동 순서 판정 `:206` → 복사 → `running` 쓰기 `:219`, 복사가 던지면 `:227` catch로 가서 `running`을 다시 쓰지 않고 판정 줄에 `표지 처리 실패: <예외 이름>`이 붙는다(`FreezeWatchdog.cs:296`) · 복사 성공 줄 `FreezeWatchdog.cs:292` `로 복사했습니다` · 원본 경로 `:279-282` `Application.consoleLogPath` 폴더 · 기동 시점 `:231` `AfterSceneLoad` · 교체 `SessionExitMarker.cs:34` 주석(Unity가 `Player.log`를 `Player-prev.log`로 밀어낸다 — **이름 바꾸기인지 복사인지 미확인**, 그래서 블록은 길이 일치로 감지) · 러너가 못 재는 축 `Tests/EditMode/SessionExitMarkerTests.cs:19`·`:216`(`7900ad0`). **MS 문서** CreateFileW(https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew): `FILE_SHARE_DELETE` 행 *"Enables subsequent open operations on a file or device to request delete access. Otherwise, no process can open the file or device if it requests delete access."* · *"Note Delete access allows both delete and rename operations."* · 같은 문서 *"the DELETE access flag (0x00010000)"* · System Error Codes(https://learn.microsoft.com/en-us/windows/win32/debug/system-error-codes--0-499-): `ERROR_SHARING_VIOLATION` *32 (0x20) "The process cannot access the file because it is being used by another process."* · `ERROR_FILE_NOT_FOUND` 2 · `ERROR_ACCESS_DENIED` 5 (2026-09-14 확인). **설계 추정(문서 인용 없음)**: 점유 탐침은 읽기 권한 + 공유 없음으로 연다 — 앱의 열기와 부딪힐 수 있어 점유 탐침 1회마다 삭제 권한 탐침 9회를 넣어 비율을 낮췄고, 부딪히면 판정 줄의 `표지 처리 실패`로 드러나 무효 칸으로 간다. 속성만 요청하는 열기는 공유 검사에서 빠진다는 Windows 커널 동작을 전제로 읽기 권한을 넣었다. 판정 창 「복사본 첫 발견 ±1초」와 반복 한도 3회는 임의값. **컴파일**: macOS에서 Unity 번들 Mono Roslyn(`MonoBleedingEdge/bin/mono` + `lib/mono/4.5/csc.exe`, `-nostdlib -noconfig -target:library`, 참조 `lib/mono/4.7.1-api/mscorlib.dll`·`System.dll`)으로 블록 R-4에서 뽑은 C# 106줄이 `-langversion:5`·`latest` 둘 다 **에러 0**, 일부러 없는 이름을 넣은 사본은 **`CS0103` 1건만**(verify-change 실측 · qa-regression 재측). ★ 첫 판의 「이 머신에 C# 컴파일러 없음」은 **거짓**이었다 — 크로스 컴파일용 번들 컴파일러는 Unity 실행이 아닌데 금지 범위로 오해했다. **Add-Type 문서**(https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/add-type?view=powershell-5.1): *"compiles the specified source code and generates an in-memory assembly"* · *"By default, `Add-Type` generates the assembly only in memory."* · *"By default, `Add-Type` references `System.dll` and `System.Management.Automation.dll`."* · 기본 언어 `CSharp`(2026-09-14 확인). 컴파일 도중 임시 파일이 생기는지는 문서에 없다 — **미확인**. **Unity 문서**(https://docs.unity3d.com/6000.0/Documentation/Manual/log-files.html)는 Windows 경로 `%USERPROFILE%\AppData\LocalLow\CompanyName\ProductName\Player.log`만 적고 `Player-prev.log`는 언급하지 않는다(2026-09-14 확인) — 다시 켤 때 덮어쓴다는 서술의 근거는 우리 코드 주석(`SessionExitMarker.cs:34`)과 기존 §H-3 운용뿐. **탐색기가 이름 바꾸기·삭제 때 실제로 삭제 권한 열기를 쓰는지는 1차 문서 근거 없음 — 미확인**(블록은 CreateFileW 문서가 말하는 권한 조건만 잰다). **Windows 실행 미확인** |
 | §R 5-b·5-c 이후 (커밋 `34bc4f0`, verify-change 2·3단계 대조 일치) | 순서 `AppShutdownSequence.cs:133-140`(5차와 같은 5단계) · 처리기 계약 `:38-75`(재진입 없음 `:46` · 저장 중 끼어든 순서는 처리기·정상 종료 표지를 건너뜀 `:48` · 5-c 표지 뒤 처리기 안 부름 `:52-54`) · 걸쇠 필드 `:158` `s_saveInProgress` · `:161` `ProgressSaveInProgress` · 테스트 끼어들기 자리 `:173` `BeforeStepForTesting` · 규칙 `:237` `ShouldRunStep(step, 이미 썼는가, 저장 중인가)` — 종료 시작 표지 `:241-242` · 5-c 진행 저장 건너뜀 `:243-244` · 정상 종료 표지는 이미 썼거나 저장 중이면 건너뜀 `:245-246` · 원복·워치독은 항상 `:247-248` · `Run` `:253`, **단계마다 직전에 읽음** `:262`(5차 `7900ad0:185`의 「순서 시작 때 한 번」 삭제) · `TryHandleSessionEndMessage` `:286` · `HandleSessionEnding` `:317` · 통보 줄 `:322` · 종료 요청 `:333` · 처리기 없음 무로그 `:368` · 걸쇠 `:372` · 중첩 로그 `:376` · 경고 `:389`·`:396` · 걸쇠 해제 `:406`(finally). `SessionExitMarker.cs`: `CleanExitWrittenThisRun` `:186` · 기동이 되돌림 `:229` · 쓰기가 돌아온 뒤에만 참 `:270` · `ExitStartedNotFinished` `:118` · 복사는 `AbnormalExit`만 `:124` · 안내 문구 `:220` · 종료 시작 표지 동기화 없음 `:250`. `ReservedBarRevealDirector.cs`: 시스템 쓰기 `:280` · **5-b 중첩 복귀** `:285`(바깥 쓰기가 돌아왔을 때 이미 원복됐으면 흔적 재기록·로그 없이 반환) · 흔적 닫기 `:287` — `active = True` (나)는 `:280`과 `:287` 사이 끊김(`7900ad0`·`a6b3101`은 `:274`→`:276`이고 중첩 복귀 줄이 없다 — 그래서 5차 이하는 중첩 시 흔적 닫기·성공 줄도 두 번 남을 수 있다). 판독 규칙 정본 미러 `docs/TASKBAR_REVEAL.md` `:97-110`(§2-2 재실행·중첩) · `:332-372`(6절 8번). 처리기 등록 호출 비테스트 0건(트리·미러). 미러 무결성: 지정 6파일만 `7900ad0`과 다르고(`FreezeWatchdog.cs`·`WindowsSystemTrayIcon.cs` 0줄), 소스 폴더는 읽기 전용이다. **트리 적용·커밋 뒤 줄 번호 재확인 필요** |
+| §R `eb4670d` (지정 빌드, 2026-09-14 밤) | **종료 경로 변경 없음**: `git diff 34bc4f0 eb4670d --stat -- <파일>` — `Platform/AppShutdownSequence.cs` · `SessionExitMarker.cs` · `ReservedBarRevealDirector.cs` · `ReservedBarRestoreLedger.cs` · `ReservedBarRevealPolicy.cs` · `FreezeWatchdog.cs` · `FreezeForensicsPolicy.cs` · `FreezeForensicsLog.cs` · `Windows/WindowsSystemTrayIcon.cs` · `Windows/WindowsReservedBarAutoHideControl.cs` **출력 0줄**(10파일 모두 `eb4670d`에 실재 — `git cat-file -e`) · 양성 대조: 같은 형태로 `Platform/UserSurfaceSummonPolicy.cs` · `Interaction/AppControlDirector.cs` · `Interaction/CharacterInfoWindow.cs`는 3파일 61+/5− · 범위 전체 91파일 · 사이 커밋 `36e0a5e` · `eb4670d`. **E-1 식별자** `BlocksUserSummon`: 선언 `Platform/UserSurfaceSummonPolicy.cs:138`(`eb4670d`) · 비테스트 소스에서 `34bc4f0` · `a6b3101` **0파일**. **지정 zip 실측**: sha256 앞 16자 `a55b334cced51a14` · 항목 160 · `StickMate_Data/Managed/StickMate.Runtime.dll`(1,705,472바이트, 항목 시각 09-14 23:41:17) 바이트 검색 — `ReservedBarRevealDirector` · `AppShutdownSequence` · `SessionExitMarker` · `MarkExitStarted` · `ShouldRunStep` · `ProgressSaveInProgress` · `BlocksUserSummon` 전부 1 · 가짜 `NoSuchIdentQxz7` 0 → **`eb4670d` 이후로 판독**. 음성 대조: `a6b3101` zip dll(1,691,136바이트)은 앞 둘만 1이고 나머지 다섯·`BlocksUserSummon`은 0. **메서드 표 대조**(바이트 검색과 다른 방법 — 개발 맥에서만): `/Applications/Unity/Hub/Editor/6000.0.82f1/Unity.app/Contents/MonoBleedingEdge/bin/monodis --method <dll>` — `eb4670d` `default bool BlocksUserSummon (bool characterSuspended, bool panelRetreatActive, bool userSummonGranted)` 1줄 · `a6b3101` 0줄(양성 대조: 메서드 표 줄 수 5,091 / 5,013). 사용자 PC용 PowerShell 판(§R 「차수 확인」 — `GetEncoding(28591)` + `Contains`)은 같은 바이트 부분 문자열 검색 — **Windows 실행 미확인** |
 | E-3 반복 지침 · 사전 등록 | 사용자 답변 N-3(리더 전달 2026-09-14): 09-09 빌드 켠 채 외장 분리 **1회 중 1회 정지** · 반복 규칙(E-3 통과 → E-3 → G-1 → E-3′, 거절 시 `분리 2회 무사 — p₀ ≥ 0.78만 기각`, 버리는 조건)은 **리더 판정 2026-09-14**(product-strategy 반론 채택) · 수치·조건 1(캐릭터 위치)·조건 2(드라이버)의 정본 `docs/strategy/ROADMAP.md` §60-8 (라)-2′(`product-strategy` 소관 — 이 체크표는 그 절을 고치지 않고, 수치를 계산하지 않는다) |
 | E-3′ 산출물 이름 `E-3b` | 블록 ①이 `"$dir\$name-표시.txt"`, 블록 ②가 `"$dir\$name.txt"`, 블록 ③이 `"$dir\$name-FreezeForensics"`에 쓴다 — 같은 `$name`이면 E-3 산출물을 덮어쓴다(이 문서의 블록 본문) |
 | 블록 ⓪ OS 빌드 | `ver` — https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/ver : *"Displays the operating system version number. This command is supported in the Windows Command prompt (Cmd.exe), but not in any version of PowerShell."* · 같은 문서 *"If you want to get the operating system version number through Windows PowerShell, type: `$PSVersionTable.BuildVersion`"* (2026-09-14 확인). **Windows 실행 미확인** |
