@@ -111,7 +111,7 @@ R4의 이 문장은 **거짓이었다.** 등급 1(패널 회수)이 켜져 있�
 |---|---|---|
 | C1 | **「전부 돌아온다」가 아니다.** 살아남는 것은 **사용자가 부른 표면**뿐이다. 등급 1 진입 **전부터** 떠 있던 창은 예외 없이 걷히고, 임대가 없으므로 되살아나지 않는다 | `UserSurfaceSummonPolicy` 클래스 문서 「등급 1 진입 시: 전부 회수한다」 |
 | C2 | **놓으면 0.5초 안에 다시 걷힌다.** 마지막 표면을 닫으면 임대가 만료된다 | `UserSurfaceSummonPolicy.LeaseSeconds` |
-| C3 | ★ **`⌃⌥⌘I`(정보창 단축키)는 아직 안 된다.** 등급 1 중 이 경로로 정보창을 열면 **열자마자 닫힌다**. 저장소가 스스로 갭이라고 선언해 두었다 | `FullscreenPanelRetreatTests.미해결_등급1에서_정보창_단축키_경로는_아직_허가를_받지_못한다()` — `Assert.Ignore`. `CharacterInfoWindow.Open`은 `TryGrantUserSummon` 호출부 2곳에 **없다**(전수 grep) |
+| C3 | ★ **`⌃⌥⌘I`(정보창 단축키)는 아직 안 된다.** 등급 1 중 이 경로로 정보창을 열면 **열자마자 닫힌다**. 저장소가 스스로 갭이라고 선언해 두었다 | `FullscreenPanelRetreatTests.미해결_등급1에서_정보창_단축키_경로는_아직_허가를_받지_못한다()` — `Assert.Ignore`. `CharacterInfoWindow.Open`은 `TryGrantUserSummon` 호출부 2곳에 **없다**(전수 grep)(R5 작업 트리 기준 — 지금 `e6b14c2` 발급 4곳, `CharacterInfoWindow.cs:945` 포함. 옛 Ignore 테스트는 2026-09-14 `등급1에서_정보창_단축키_경로도_허가를_받아_열린_채_머문다`로 승격 → 위 R12-11 주석) |
 | C4 | **등급 2(전체화면 게임 / 사용자 직접 숨김)에서는 이 탈출구가 열리지 않는다.** 그건 결함이 아니라 설계다 | `CanGrant`의 `characterSuspended` 조건 |
 | C5 | **현행 배포본 어디에도 이 코드가 없다** | 2절 바이트 실측 |
 
