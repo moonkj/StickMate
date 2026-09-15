@@ -2038,8 +2038,40 @@ Assert.IsTrue(_gear.IsClickBlockerEnabled, "... 보이지만 눌리지 않는 �
 > **생성기(프로덕션 주석)와 검사기(테스트)가 같은 함정에 같이 빠져 서로를 확인해 주지 못한다.**
 > 다른 점은 이번엔 **문장이 틀린 것이 아니라 전제가 틀렸다**는 것뿐이다.
 
-★ **실무상 위험**: 누군가 B를 고치면 `등급1은_창과_팝오버와_부채꼴을_걷고_캐릭터와_톱니는_남긴다`가 **빨개진다.**
-그러면 **테스트가 옳다고 믿고 수정을 되돌릴 것이다.** 이 문단이 그 되돌림을 막기 위해 존재한다.
+~~★ **실무상 위험**: 누군가 B를 고치면 `등급1은_창과_팝오버와_부채꼴을_걷고_캐릭터와_톱니는_남긴다`가 **빨개진다.**~~
+~~그러면 **테스트가 옳다고 믿고 수정을 되돌릴 것이다.** 이 문단이 그 되돌림을 막기 위해 존재한다.~~
+
+〔★ **2026-09-15 정정 — 경고문 폐기**(`game-architect`, qa-regression 스캐너 `docs/verify/PROMISED_TEST_EXISTENCE_SCAN.md` F-6 · 2차: verify-change 반려 반영 — 인용 계수 · 이력 재현법 · B3_B4 범위 · 오디오 절 커밋 · 3차: 재반려 반영 — ③ 근거 플랫폼 한정 · 강조 기호 닫힘 · 날짜 · 교정 범위 · 취소선 원문 보존). **위험의 전제가 `eb4670d`(2026-09-14)에서 사라졌다.**
+- **이 경고가 막으려던 것**: 불변식 R1-I(등급 1 도달성, 아래 판정 B)을 고치는 수정이, 거짓 전제(「등급 1 탈출구는 톱니」)를 잠근 테스트가 빨개진다는 이유로 되돌려지는 것.
+- ~~**가리키던 테스트의 이력**(`git log -S`): `7ed996d`(2026-09-02) 도입 → `eb4670d`에서 **재작성·개명**. 옛 이름의 선언은 그 커밋에서 사라졌고, 지금은 `Tests/PlayMode/FullscreenPanelRetreatTests.cs:352` 문서 주석의 「옛 이름」 인용에만 남는다. 재작성 사유는 그 주석에 있다 — 옛 판은 전역 대기 톱니 우회 세계에서 초록이던 **거짓 통과**(qa-regression A1)였다.~~ 〔2차 정정: 옛 이름으로 `-S`를 돌리면 `7ed996d` 하나만 나온다 — `eb4670d`에서 선언이 문서 주석 인용으로 바뀌어 문자열 개수가 1로 유지됐기 때문이다(verify-change 적발).〕
+- **가리키던 테스트의 이력(재현 방법)** — 파일 `Tests/PlayMode/FullscreenPanelRetreatTests.cs` 한정: `git log -S '<옛 이름>'` → `7ed996d`(2026-09-02 도입) · `git log -S '<새 이름>'` → `eb4670d`(2026-09-14) · `git log -G 'IEnumerator <옛 이름>[(]'` → `eb4670d` · `7ed996d`(선언 도입과 소멸). 커밋별 선언 수: `eb4670d^` 옛 1 · 새 0 → `eb4670d` 옛 0 · 새 1(옛 이름 문자열은 `:352` 문서 주석에 1회 남는다). 재작성 사유는 그 주석에 있다 — 옛 판은 전역 대기 톱니 우회 세계에서 초록이던 **거짓 통과**(qa-regression A1)였다.
+- **같은 검사가 다른 이름으로 있는가 — 이름만 바뀐 같은 검사는 아니다. 단언 방향이 뒤집혔다.** 후신 `등급1은_창과_팝오버와_부채꼴을_걷고_캐릭터와_우클릭_입구는_남긴다`(`FullscreenPanelRetreatTests.cs:364`)는 프로덕션 기본 세계에서 등급 1에 **톱니가 없고**(`:419` `IsIconVisible` 거짓) **캐릭터 우클릭 입구의 열기 판정이 열려 있음**(`:422` `IsUserSummonBlocked` 거짓)을 단언한다. 그래서 지금은 테스트가 결함이 아니라 **고친 상태를 잠근다** — 누가 수정을 되돌리면(등급 1에 톱니를 되살리거나 열기 판정을 막으면) 이 테스트가 빨개진다. 이 경고가 걱정한 되돌림과 방향이 반대다.
+- ~~**불변식 R1-I는 무방비가 아니다**: 네 홉 도달성 자체는 `Tests/PlayMode/PanelsOnlyTierMouseEntryTests.cs:351` `B3_B4_등급1_무허가에서_캐릭터_우클릭으로_부채꼴_정보창_설정창까지_네_홉이_열린다`가, 톱니가 실재하는 사용자 숨김 세계의 톱니 경로는 `FullscreenPanelRetreatTests.cs:631` `등급1_사용자숨김_세계에서_톱니를_누르면_설정창까지_도달한다`가 잰다(선언 실측. 러너 결과는 이 정정에서 재지 않았다).~~ 〔2차 정정: 「네 홉 도달성 자체」는 과장이었다(verify-change 적발).〕
+- **불변식 R1-I는 무방비가 아니다 — 단 일부만 잠겨 있다**: `Tests/PlayMode/PanelsOnlyTierMouseEntryTests.cs:351` `B3_B4_등급1_무허가에서_캐릭터_우클릭으로_부채꼴_정보창_설정창까지_네_홉이_열린다`는 **첫 홉만 실제 입력 경로**다(캐릭터 우클릭 — 프로덕션 폴링 본체, `:373-391`). 둘째 홉은 `_menu.Activate(Character)` 직접 호출(`:394`), 셋째·넷째 홉(정보창 [설정] 칩 → 설정창)은 칩 핸들러와 같은 호출 `_settings.Open(...)`로 대신한다(`:400-403`). **등급 1 스위치(`AutoHideOnFullscreen`)를 끄는 동작은 재지 않는다**(테스트 본문에 0건). 톱니가 실재하는 사용자 숨김 세계의 톱니 경로는 `FullscreenPanelRetreatTests.cs:631` `등급1_사용자숨김_세계에서_톱니를_누르면_설정창까지_도달한다`가 잰다(선언 실측 · 러너 결과는 이 정정에서 재지 않았다). ⇒ 「설정창이 열린다」까지는 잠겨 있고, 「스위치를 끌 수 있다」와 둘째 홉 이후의 실제 클릭 경로는 **잠겨 있지 않다.**
+- ~~**위 9-2-4의 인용 세 곳도 지금 코드에 없다**: 테스트의 「안전판("복구는 톱니 1클릭")」 단언 0건, `InfoGearIconWidget`의 「`ArePanelsSuppressed`로 "정리"하지 마라」 주석 0건(양성 대조 — 같은 `Interaction/` 폴더에서 `ArePanelsSuppressed`는 10파일 적중). §9-2-4는 `1eb0e2b`(2026-09-03) 당시의 기록으로 읽는다.~~ 〔★ **2차 정정 — 거짓이었다**(verify-change 반려). 이 0건은 **죽은 프로브**였다: 니들을 쉘 작은따옴표 안에 `\"정리\"`로 적어 역슬래시가 문자 그대로 들어갔고, 양성 대조는 **다른 단순 토큰**(`ArePanelsSuppressed`)으로 걸어 그 죽음을 보지 못했다(재현: 같은 니들로 `InfoGearIconWidget.cs` 원문 적중 0).〕
+- **9-2-4 인용 세 곳의 실제 상태** — 원문 그대로 계수와 주석·문자열 제거 계수를 둘 다 쟀다. 인용 대상 자체가 주석·문자열이라 **제거 계수는 세 인용 × 네 판에서 전부 0**이고(구조적으로 항상 0 — 판정에 쓰지 않는다), 판정은 원문 계수로 한다. 어휘기 교정: 합성 표본에서 코드 토큰은 남고 주석·문자열 속 낱말은 지워짐을 확인했다. 제거 뒤 코드 토큰 잔존 대조: `RenewUserSummonGrant` HEAD **`Assets/` 전체 기준** 원문 9 · 제거 6(`InfoGearIconWidget.cs` 하나만 보면 원문 2 · 제거 1).
+
+| # | 인용 | `7ed996d` | `1eb0e2b` | HEAD · 작업 트리 | `git log -S`(Assets) |
+|---|---|---|---|---|---|
+| ① | 테스트 단언 문구 「자기 자신을 지웠습니다」 | 원문 1(`FullscreenPanelRetreatTests.cs:285`) | **원문 0** | 원문 0 | `7ed996d` 도입 · **`1eb0e2b` 소멸** |
+| ② | 면제 사유 주석 「(아이콘 크기 히트타깃)은 여기 세지 않는다」 | 원문 1(`:213`) | 원문 1(`:243`) | **원문 1 — `FullscreenPanelRetreatTests.cs:314`에 남아 있다**(`:313-316` 주석 블록. 코드 쪽은 `<c>InfoGearClickTarget</c>` 태그가 붙어 문서 인용과 표기가 다르다) | `7ed996d` 하나 — 지워진 적 없음 |
+| ③ | 프로덕션 주석 「이 줄을 ArePanelsSuppressed로 "정리"하지 마라 — 그건 결정을 되돌리는 것이다.」 | 원문 1(`InfoGearIconWidget.cs:693`) | 원문 1(`:753`) | **원문 1 — `InfoGearIconWidget.cs:814`에 한 글자도 안 바뀌고 남아 있다** | `7ed996d` 하나 — 지워진 적 없음 |
+
+- **§9-2-4를 읽는 법**: ②·③은 `1eb0e2b` 당시에도 지금도 코드에 있다. ①만 다르다 — ①은 **9-2-4를 커밋한 `1eb0e2b` 자신에서 이미 사라졌다**(`7ed996d` 1 → `1eb0e2b` 0). 9-2-4가 그 커밋 직전의 작업 판을 인용한 것으로 보인다(추정). 그래서 「`1eb0e2b` 당시의 기록」은 ①에는 맞지 않는다.
+- **③ 주석은 지금 코드와 맞는가 — 결론은 여전히 옳고, 근거 (1)과 머리 한 줄이 낡았다.**
+  - 그 주석이 지키는 줄은 지금 `if (_agent.HidesScreenSurfaces)`(`InfoGearIconWidget.cs:831`)다. 같은 블록 머리 `:806` 「톱니만 `IsSuspended`에 남는다」는 2026-09-03 판독 값 변경(`:816-817`)으로 이미 대체됐다. N-20은 이 파일을 건드리지 않았다(작업 트리 diff 0).
+  - 근거 (1) 「등급 1의 안전판이 "복구는 톱니 1클릭"」(`:809-811`)은 **더 이상 참이 아니다**: 캐릭터가 보이는 동안 톱니는 없다 — 결정일은 코드 주석이 적은 2026-09-05(`:876` 「대기 톱니 (2026-09-05)」), 코드 도입은 `0229f52`(2026-09-06, `git log -S "class StandbyGearPolicy"`)다(`StandbyGearPolicy.ShouldShow` = 사용자 숨김 ∨ 가출, `:933-934`), 2026-09-14 `eb4670d`부터 등급 1 입구는 캐릭터 우클릭이다.
+  - ~~그래도 「`ArePanelsSuppressed`로 정리하지 마라」는 **여전히 옳다** — 대기 톱니는 **우클릭할 몸이 없는 세계**(사용자 숨김·가출)에서만 서는 **유일한 마우스 입구**다. 이 줄을 `ArePanelsSuppressed`(또는 N-20의 `SuppressesUnsummonedSurfaces`)로 바꾸면 「등급 1 + 사용자 숨김」에서 톱니가 걷혀 마우스 입구가 0이 되고 R-1 루프가 돌아온다(그 경로를 `FullscreenPanelRetreatTests.cs:631`이 잰다). 톱니는 사용자 입구라 N-20의 자동 표면 축과도 무관하다.~~ 〔3차 정정(verify-change 재반려): 「유일한 마우스 입구」와 「입구 0」은 **macOS · 사용자 숨김**에서만 맞다.〕
+  - 그래도 「`ArePanelsSuppressed`로 정리하지 마라」는 **여전히 옳다**. 근거를 플랫폼·세계별로 나눈다(전부 코드 판독):
+    - ~~**macOS · 사용자 숨김** — 대기 톱니가 **유일한 마우스 입구**다. macOS에는 메뉴 막대 상태 항목이 없고(`SystemTrayPresencePolicy.MacOsGapReason`), 코드 스스로 「이 구멍은 macOS 전용」이라 적는다(`InfoGearIconWidget.cs:890-891`).~~ 〔4차 정정: 「유일」은 등급 1이 겹칠 때만이다 — 등급 1이 아닌 사용자 숨김 단독에서는 열려 있던 창·부채꼴이 남는다 ~~(`StickmanAgent.cs:1887-1889` 로그 문구)~~ (규칙 정본: `HidesScreenSurfaces => _isSuspended && !IsUserHiddenOnly` — `Core/StickmanAgent.cs:356` — 는 사용자 숨김 단독에서 거짓이고, 그 값을 첫 인자로 받는 `SuppressesPanels`(`Platform/UserSurfaceSummonPolicy.cs:121-123`, 호출 `StickmanAgent.cs:241`)도 거짓이라 창을 걷지 않는다. 보조: `:1887-1889` 로그 문구).〕
+    - **macOS · 등급 1 + 사용자 숨김(가출이 겹쳐도 같다)** — 대기 톱니가 **유일한 마우스 입구**다: macOS에는 메뉴 막대 상태 항목이 없고(`SystemTrayPresencePolicy.MacOsGapReason` · 코드 스스로 「이 구멍은 macOS 전용」 `InfoGearIconWidget.cs:890-891`), 숨은 캐릭터의 히트박스는 `IsSuspended`에서 막히며(`StickmanClickHitbox.cs:349-354`), 등급 1은 열려 있던 창·부채꼴을 걷는다 ~~(P 참)~~ (`SuppressesPanels = characterSuspended || (panelRetreatActive && !userSummonGranted)` — `Platform/UserSurfaceSummonPolicy.cs:121-123`). 이 줄을 `ArePanelsSuppressed`(또는 N-20의 `SuppressesUnsummonedSurfaces`)로 바꾸면 「등급 1 + 사용자 숨김」에서 톱니가 걷혀 마우스 입구가 0이 되고 R-1 루프가 돌아온다. 그 경로의 테스트 `FullscreenPanelRetreatTests.cs:631`은 `:662` 전제 단언(톱니가 서 있고 눌린다)에서 빨개진다. 키보드 ⌃⌥⌘K는 남는다(발견 가능성 문제는 §9-2-3).
+    - **Windows · 사용자 숨김** — 트레이 메뉴에 캐릭터 숨기기/다시 보이기와 설정 열기가 있다(`Platform/SystemTrayPresencePolicy.cs:149-153` → `Interaction/SystemTrayCommandBridge.cs:103-126`). 톱니가 걷혀도 마우스 입구가 0이 되지 않는다. ~~단 트레이를 끈 사용자(환경변수 `STICKMATE_NO_TRAY_ICON`, `SystemTrayPresencePolicy.cs:71`)는 macOS와 같다.~~ 〔4차 정밀화〕 단 환경변수 `STICKMATE_NO_TRAY_ICON`이 비어 있지 않고 `"0"`이 아니면 트레이가 없다(`Platform/Windows/WindowsSystemTrayIcon.cs:689-698` `ResolveOptOut`) — 그 사용자는 macOS와 같다.
+    - ~~**가출(양 플랫폼)** — 톱니만 입구가 아니다. 간식 클릭(`Interaction/RunawayRenderer.cs:377` `OfferSnack`)과 「찾기」 좌클릭이 살아 있다. `Interaction/StickmanClickHitbox.cs:351-354`는 `IsSuspended`만 막고, 가출은 Suspend를 쓰지 않는다(`RunawayDirector.cs`의 `.Suspend(` 호출 0 · 같은 형태 양성 대조 `StickmanAgent.cs` 12).~~ 〔4차 정정(verify-change): 대조가 같은 형태가 아니었다 — `StickmanAgent.cs`의 `.Suspend(`는 0이고 12는 점 없는 `Suspend(`다. 그리고 「가출 중 입구」는 가출 단독일 때만 맞다.〕
+    - **가출 단독(~~사용자 숨김·등급 2가 겹치지 않을 때~~ 사용자 숨김·등급 2·(Windows) 다른 가상 데스크톱이 겹치지 않을 때, 양 플랫폼)** — 톱니만 입구가 아니다. 간식 클릭(`Interaction/RunawayRenderer.cs:368-377` — 히트박스 눌림 이벤트를 구독)과 「찾기」 좌클릭이 살아 있다. 히트박스 게이트(`Interaction/StickmanClickHitbox.cs:349-354`)는 `IsSuspended`만 막는데, 에이전트 숨김 식 `bool shouldSuspend = _fullscreenAutoHide || _userHidden || _offCurrentVirtualDesktop;`(`Core/StickmanAgent.cs:1671`, `ApplySuspendDecision`)에 **가출 항이 없다** — 가출만으로는 숨김 판정이 서지 않는다.
+    - **사용자 숨김 + 가출(양 플랫폼 — `StandbyGearPolicy.Describe`의 실재 세계, `InfoGearIconWidget.cs:940`)** — `_userHidden` 때문에 에이전트가 숨고, 히트박스 게이트가 찾기·과자까지 막는다(그 게이트가 받는 곳 다섯을 스스로 적는다 `StickmanClickHitbox.cs:349-350`). 입구는 사용자 숨김과 같다: macOS는 대기 톱니(등급 1이면 유일), Windows는 트레이 메뉴(옵트아웃이 아니면).
+    - 톱니는 사용자 입구라 N-20의 자동 표면 축과도 무관하다.
+  - ~~**담당 제안(코드 수정 아님)**: `coder-ui` — `:806-814` 주석의 근거 (1)을 「우클릭할 몸이 없는 세계에서 대기 톱니가 유일한 마우스 입구」로 바꾸고, `:806` 「`IsSuspended`에 남는다」를 현재 판독 값(`HidesScreenSurfaces`)과 맞춘다. 결론 문장 `:814`는 유지한다.~~ 〔3차 정정: 이 제안 문구가 같은 과장을 코드 주석으로 옮길 뻔했다.〕
+  - **담당 제안(코드 수정 아님)**: `coder-ui` — `:806-814` 주석의 근거 (1)을 다음 문장으로 바꾼다. ~~「macOS에서 사용자가 캐릭터를 숨긴 동안에는 대기 톱니가 유일한 마우스 입구다. Windows는 트레이 메뉴가 같은 일을 한다(트레이를 끈 경우 제외). 가출 중에는 간식·찾기 클릭도 입구다.」~~ 〔4차 정정: 등급 1 한정 · 가출 단독 한정 · 트레이 옵트아웃 조건〕 「macOS에서 등급 1(게임이 아닌 전체화면)과 사용자 숨김이 겹친 동안에는, 가출이 함께여도, 대기 톱니가 유일한 마우스 입구다. Windows는 트레이 메뉴가 같은 일을 한다(환경변수 `STICKMATE_NO_TRAY_ICON`이 비어 있지 않고 "0"이 아니면 트레이가 없다). 사용자 숨김·등급 2·(Windows) 다른 가상 데스크톱이 겹치지 않은 가출 단독에서는 간식·찾기 클릭도 입구다.」 그리고 `:806` 「`IsSuspended`에 남는다」를 현재 판독 값(`HidesScreenSurfaces`)과 맞춘다. 결론 문장 `:814`는 유지한다.〕
 
 ### 9-2-5. 【답 B】 판정 — ux-designer 세 갈래 중 **어느 것도 단독으로는 R-1을 닫지 못한다**
 
@@ -2739,6 +2771,8 @@ office가 $0로 확정됐으므로 오피스 자세가 공짜로 열리는 것�
 실측: **오디오를 실제로 재생하는 코드는 여전히 0줄이다.** `PlatformParityAuditTests`의
 `미해결_오디오_네이티브_개폐가_양_플랫폼_모두_미구현이다`가 `Assert.Ignore`로 살아 있고,
 `Platform/MacOS`·`Platform/Windows` 어디에도 `IAudioOutputDevice` 구현이 없다.
+
+〔★ 2026-09-15 병기(`game-architect`, 스캐너 F-6 전수 확인) — 위 `Assert.Ignore` 테스트 이름과 아래 표의 `Platform/AudioActivationPolicy.cs` · `Tests/EditMode/AudioActivationPolicyTests.cs`는 **`1f7e139`(2026-09-05)에서 이 계획대로 사라졌다**(이름: `git log -S`, 파일: `git log --diff-filter=D`). ~~이 절의 「살아 있고」는 작성 시점(`1eb0e2b`)의 사실이다.~~ ★ 2차 정정(verify-change 적발) — 커밋을 잘못 짚었다. 이 절의 제목(`## 11-1.`)과 「`Assert.Ignore`로 살아 있고」 문장은 문서 `git log -S` · blame 모두 `1f7e139`에서 들어왔고, 그 테스트 선언과 파일을 지운 커밋도 **같은 커밋**(`1f7e139`)이다(선언 수: `1f7e139^` = `1eb0e2b` 1 → `1f7e139` 0). 즉 **측정은 `1eb0e2b` 판, 문장 커밋은 `1f7e139`, 같은 커밋이 삭제** — 이 문장은 커밋된 순간부터 거짓이었다(스캐너 F-3과 같은 형태).〕
 
 | 대상 | 판정 | 근거 |
 |---|---|---|

@@ -72,13 +72,56 @@ W = max(0.048 × 0.75, 2pt / 35.25) / (0.22 × 0.75) = 0.343864 R
 | **위반 0 최소 배율** | — | ★ **0.7120**. 출하 기본 0.75까지 여유가 **0.0380**뿐이다 → **12절**. 12-3 수정 뒤 LOD를 넣으면 **0.5861** |
 | 쌍별 실루엣 차 | > 1.0 W | HEAD 1.84 / EYES 1.67 / NECK 1.98 / BACK 2.21 / **HAIR 4.60** |
 
+> ★ (2026-09-15 · design-equipment · `ad49497` 기준) 위 표의 **규칙 3-2(보조색)·규칙 5(정원)** 두 줄은 2026-09-01 검산 스크립트가 잰
+> **당시 결과**다. 두 규칙은 계약 v2(`0229f52`)에서 폐지됐고, 지금 이 30종에 정원을 거는 테스트는 없다 —
+> 아래 「브리핑 정정 1」의 정정을 보라(폐지 결정의 기록 위치와 2026-09-15 사후 확정도 거기 「후신 없음」 항목에 적었다).
+
 검산 스크립트는 `AccessoryStrokeBudgetTests.DescribeRuleOneViolation` 과 `AccessorySilhouetteMetrics.ProfileOf`
 를 **같은 식으로** 옮겨 썼다(72구간 × 5도, 변 조밀 표본 64분할, 꺾임 문턱 45도).
 
 > ★ 브리핑 정정 1 — 배정문의 "규칙 5 정원 2~3개"는 오독이다. `docs/UX_FLOW.md` 37-6 규칙 5 원문은
-> **"합계 2~4개"** 이고, `EyesVisorOpacityTests.구성_정원과_보조색_개수를_지킨다` /
-> `AccessoryStrokeBudgetTests.머리카락이_두피에_붙어있고_채워져_있다` 둘 다 `Is.InRange(2, 4)` 로 잠근다.
+> **"합계 2~4개"** 이고, ~~`EyesVisorOpacityTests.구성_정원과_보조색_개수를_지킨다` /
+> `AccessoryStrokeBudgetTests.머리카락이_두피에_붙어있고_채워져_있다` 둘 다 `Is.InRange(2, 4)` 로 잠근다.~~
 > **정원은 4개다.** 리더 시안의 배낭 5개만 초과였고, 이 스펙은 4개로 줄였다(8-4절).
+>
+> ★★ **정정 (2026-09-15 · design-equipment · `ad49497` 기준) — 취소선 문장은 지금 거짓이다. 두 단언 모두 `0229f52`에서 지워졌다.**
+> - ~~구성_정원과_보조색_개수를_지킨다~~ (`0229f52`에서 사라짐) — EYES 6종에 정원 `Is.InRange(2, 4)`와 보조색 개수
+>   `Assert.AreEqual(1, accents, …)`를 걸던 검사다. 선언이 통째로 지워졌고, `EyesVisorOpacityTests.cs`에는
+>   「계약 v2(R16 리더 결정 (h))」 묘비 주석만 남았다(잃는 것: 조각 수·보조색 수 상한 / 인계본 조각 수 선글라스 6 · 동그란안경 7 · 고글 7 · 외알안경 4).
+> - `AccessoryStrokeBudgetTests.머리카락이_두피에_붙어있고_채워져_있다` — **선언은 실재**한다. 같은 커밋에서 그 안의
+>   정원(`Is.InRange(2, 4)`)과 보조색 개수(`Assert.AreEqual(1, accentCount, …)`) 단언만 지워졌다.
+>   지금 이 검사가 재는 것은 규칙 2(채움 있음) · 규칙 4(두피 부착) · 초상화 액자 상한이다.
+> - **같은 커밋이 지운 정원 단언은 위 둘을 합쳐 4건이다.** 나머지 둘:
+>   `AccessoryBeaniePomTests.폼폼은_유일한_보조색_채움으로_남는다`의 털모자 정원(`Is.InRange(2, 4)` — 선언은 실재하고 지금은 `SkipIfHandoff` 뒤에 있다) ·
+>   `AccessoryHatBandAndBellTests.방울_목걸이의_구성이_정원과_보조색_규칙을_지킨다`의 정원(`Is.InRange(2, 4)`)과 보조색 개수(`Assert.AreEqual(1, accent, …)`) — 남은 본문은 아래 「이름만 보고 인용하지 마라」.
+>   계수(리비전 blob 읽기 · 고정 문자열 `Is.InRange(2, 4)`): 이 두 파일도 앞의 두 파일과 같이 각각 `0229f52^` 1 → `0229f52` 0 → `ad49497` 0.
+>   테스트 폴더(EditMode·PlayMode) 전체로는 `0229f52^` 5파일 → `ad49497` 1파일(`AppearanceShapeBudgetTests.cs` — PET, 아래).
+> - **후신 없음 — 사고가 아니라 결정이다.** 다만 결정 당일의 원래 기록은 저장소에 없고 인용만 있다 — 코드 주석 6줄(`CardShapeContractTests.cs` 머리 등) · 건너뜀 사유 문자열 1줄(`AccessoryHatBandAndBellTests.cs` 「보조색 「정확히 1」 폐지, R16 (h)」) · 문서 1곳(`EQUIPMENT_SHAPE_SPEC_PACK_DETAIL_R2.md` 「계약 v2(2026-09-05 R16 (h))는 그 두 게이트를」) — 2026-09-15 리더 판정으로 사후 확정(인계본 동일 구현 원칙: 14-6 #9·#14).
+>   판정 줄 앵커: `Tasklist.md`의 `` [verify-change] 묶음 ⑧ `EQUIPMENT_SHAPE_SPEC.md` — 조건부 통과 ``(고정 문자열 1회 적중).
+>   계수(고정 문자열): `Assets/_Project/Scripts`의 `.cs`에서 `R16`과 `(h)`가 한 줄에 함께 있는 곳 7줄(테스트 6파일 — 주석 6줄 · `AccessoryHatBandAndBellTests.cs`의 건너뜀 사유 문자열 1줄) ·
+>   `ad49497` 판 `Tasklist.md`의 `R16 (h)` 0 · 전체 커밋 메시지의 `R16` 0(같은 명령의 양성 대조 `인계본` 걸림) · `docs/EQUIPMENT_HANDOFF_PORT_SPEC.md`의 `(h)` 0(양성 대조 `R16` 9).
+>   근거: `docs/EQUIPMENT_HANDOFF_PORT_SPEC.md` 14-6 표 #9(보조색 「정확히 1」→ 폐지) ·
+>   #14(정원 2–4 · 보조색 1은 인계본 표면에 안 맞는다), `CardShapeContractTests.cs` 머리 주석 `옛 정원(2~4)·보조색(정확히 1) 게이트는 <b>리더 결정으로 폐지</b>됐다(R16 (h))`.
+>   지금 남은 같은 모양의 단언은 **범위가 다르다**:
+>   `AppearanceShapeBudgetTests.PET은_정원과_보조색_규칙을_그대로_지킨다`(PET만) ·
+>   `AccessoryFallbackBodyParityTests.모든_아이템의_몸_보조색은_정확히_한_조각이다`(보조색만, 인계본 아이템은 `IsHandoffItem`으로 건너뜀) ·
+>   `AccessoryBeaniePomTests.폼폼은_유일한_보조색_채움으로_남는다`(v1 털모자 전용 — 털모자는 인계본이라 건너뜀).
+>   ★ 이름만 보고 인용하지 마라 — `AccessoryHatBandAndBellTests.방울_목걸이의_구성이_정원과_보조색_규칙을_지킨다`는 이름에 「정원」이 있지만
+>   `0229f52` 이후 본문이 `Assert.Greater(shapes.Count, 0, …)` 하나뿐이고, `모자_보조색은_화면에서_읽히는_순_색면을_갖는다`는 자기 주석에 `v1 교리(정원 2~4 · 보조색 정확히 1 · 낱선 1.5획)가 아니라`고 적혀 있다(원문은 두 줄에 걸친다 — 줄 앵커 `v1 교리(정원 2~4 · 보조색 정확히 1 ·` · `낱선 1.5획)가 아니라`).
+> - ⇒ **이 스펙 30종의 「정원 2–4」는 지금 어떤 테스트도 재지 않는다.** 「보조색 정확히 1」은 v1으로 남은 아이템에서만 위 폴백 대조 검사가 전제로 잰다.
+>   인계본과 v1을 가르는 설계 근거는 `CardShapeGolden.txt`의 ITEM 행이다. ITEM 행은 **16행**이고 전부 HEAD·EYES·NECK·BACK 슬롯의 인덱스 0–3(슬롯마다 4종)이며, HAIR 행은 0이다(PIECE·BODY 행의 아이템 집합도 같은 16종).
+>   그래서 행이 없는 아이템은 30 − 16 = **14종**이다:
+>   HEAD 4·5 베레모·밀짚모자(`HeadBeret`·`HeadStraw`) / EYES 4·5 뿔테 안경·안대(`EyesBrowline`·`EyesPatch`) / NECK 4·5 펜던트 목걸이·반다나(`NeckPendant`·`NeckBandana`) /
+>   BACK 4·5 판초·요정 날개(`BackPoncho`·`BackFairyWings`) / HAIR 0–5 머리카락 6종(`HairCowlick`·`HairNeat`·`HairCurly`·`HairBald`·`HairBowl`·`HairPonytail`).
+>   (인덱스 4·5 상수는 `AccessoryShapeBuilder.cs`의 `internal const int HeadBeret = 4, HeadStraw = 5;`부터 다섯 줄이고, 표시 이름은 `ItemCatalogGolden.txt`의 `name=` 줄이다.)
+>   실제 판정은 이름이나 행이 아니라 런타임 `IsHandoff`(몸 조각의 명목 획 > 0)다. 그 검사는 러너 결과에서 **Passed**(건너뜀 아님)다 —
+>   출처는 로컬 러너 로그 `Logs/vc-n20/full_edit.xml`(저장소 미추적 · 2026-09-15 05:06 KST 시작 · 그 테스트 파일은 09-06 커밋 뒤 바뀐 적이 없고 지금 작업 트리 변경도 없다).
+>   다만 NUnit 결과는 루프가 v1 아이템을 실제로 몇 종 쟀는지 적지 않으므로, 그 수는 **미확인**이다.
+> - **담당 제안**: v1 아이템에 정원 상한을 되살릴지는 위 폐지 결정(2026-09-15 사후 확정)과 부딪치므로 **리더 판정 사안**이다. 되살리기로 하면 **test-engineer**가
+>   v1 전용(인계본 건너뜀) 검사로 설계하기를 제안한다. 되살리지 않으면 이 문서의 규칙 5 · 규칙 3-2는 **설계 당시(2026-09-01) 기준**으로만 읽는다.
+> - 계수(원문 그대로 · 고정 문자열 · 리비전 blob 읽기): 선언 `public void 구성_정원과_보조색_개수를_지킨다(` — `0229f52^` 1 · `0229f52` 0 · `ad49497` 0.
+>   `Is.InRange(2, 4)` — `EyesVisorOpacityTests.cs` `0229f52^` 1 → `ad49497` 0 · `AccessoryStrokeBudgetTests.cs` `0229f52^` 1 → `ad49497` 0.
+>   ★ 이름만 세면 `ad49497`에서도 **1**이다(묘비 주석) — 이름 계수로는 사라짐을 못 본다. 선언 형태로 세야 한다.
 >
 > ★ 브리핑 정정 2 — 배정문의 "착용 시 머리 지름 32pt"는 이 앱에 존재하지 않는 크기다.
 > `ReferencePointsPerWorldUnitApprox = 846/24 = 35.25 pt/unit` 이므로 머리 지름은
@@ -128,7 +171,18 @@ HairlineEdgeRatio    = -0.06f →  폐기한다
 `HairSilhouette`의 바깥 윤곽은 **반경이 일정한 극좌표 호**다. 스팬을 −16°/196°에서 −75°/255°로 늘리면
 옆머리는 내려오지만 `radius`가 그대로여서 **머리에 딱 붙은 껍질**이 된다. 참고 이미지의 머리카락은
 "머리를 감싼 껍질"이 아니라 **머리보다 넓은 덩어리**다. 반경을 키우면 이번엔 정수리가 초상화 액자
-(1.75 R, `AccessoryStrokeBudgetTests`가 잠근다)를 넘는다.
+(~~1.75 R, `AccessoryStrokeBudgetTests`가 잠근다~~)를 넘는다.
+
+> ★ 정정 (2026-09-15 · design-equipment · `ad49497` 기준) — 액자 상한을 재는 검사는 `AccessoryStrokeBudgetTests.머리카락이_두피에_붙어있고_채워져_있다`로
+> 실재하지만, **1.75 R이라는 숫자는 잠그지 않는다.** 그 검사는 `CharacterPortraitStage.TallestAccessoryAboveHeadCenterInR`을 소스에서 읽어
+> 비교한다(`PortraitFrameTopInR()`). 그 상수는 이 문장이 들어온 `2051739`에서 이미 **1.80f**였고, `0229f52`에서 **2.551f**가 됐다(`ad49497`도 2.551f).
+> (`AccessoryStrokeBudgetTests.cs`의 `1.75f` 계수가 `2051739`·`ad49497`에서 1인 것은 단언이 아니라 `여기 1.75f가 <b>하드코딩</b>돼 있었다` 정정 주석이다.)
+> **1.75 R이 코드에 남은 자리는 `AccessoryShapeBuilder.HairCapMaxRatio = 1.75f` 하나이고, 그것은 액자가 아니다.**
+> `AccessoryStrokeBudgetTests.cs` 주석이 그 상수를 `HairCapMaxRatio는 <c>capRatio</c>(<b>돔 반경</b> 파라미터)의 범위 문서`라고 적고, 반경과 액자가 자르는 높이는 `차원이 다른 두 양`이며
+> 그 상수는 `한 번도 강제되지 않는다`고 적는다(계수: `.cs` 전체에서 `HairCapMaxRatio`는 선언 1 · `<param>` 주석 1 · 테스트 주석 2 — 코드에서 값을 읽는 곳 0).
+> 상수 바로 위 요약 주석은 아직 `돔 반경의 <b>상한</b> = 초상화 액자(1.75R)`라고 적는데, 이것은 낡은 코드 주석이다(리더가 code-inspection 백로그로 분류했고, 이 문서는 `.cs`를 고치지 않는다).
+> 이 문서에서 1.75 R을 액자라고 부르는 곳은 이 괄호(취소선) · 아래 「새 상수」 블록의 `// 초상화 액자 상한(그대로)` · 4-3 곱슬 문단의 `마루 ≤ 1.75 R(액자)` 셋이고, 각 자리에 정정을 붙였다.
+> 위 본문의 「반경을 키우면 이번엔」 문장은 액자 1.75 R을 전제한 설계 당시 논증이다. 지금 액자(2.551 R)에서도 성립하는지는 얼마나 키우느냐에 달려 있어 이 라운드에서 재지 않았다(**미확인**).
 
 그래서 **구성을 바꾼다**: 하나의 원호가 아니라 **돔 + 커튼 2개 + 두피 안쪽 경계**다.
 
@@ -138,6 +192,10 @@ HairlineEdgeRatio    = -0.06f →  폐기한다
   HairCapMinRatio      = 1.52f   // 돔 반경 하한 = 1.0R + 1.5W. 이 값이 '뚜껑'을 없앤다
   HairCapMaxRatio      = 1.75f   // 초상화 액자 상한(그대로)
 ```
+
+> ★ 정정 (2026-09-15 · design-equipment · `ad49497` 기준) — 위 블록의 `// 초상화 액자 상한(그대로)`는 **지금 거짓이다**(코드 블록 안이라 취소선을 걸 수 없어 블록 밖에 적는다).
+> 값 `HairCapMaxRatio = 1.75f`는 코드에 그대로 있지만 액자가 아니라 돔 반경 문서값이고, 코드에서 강제하지 않는다.
+> 액자 상수는 이 블록이 들어온 `2051739`에서 이미 1.80f였고 지금은 2.551f다(근거는 4-2 「반경을 키우면」 문단 아래 정정).
 
 경계를 도는 순서는 **6종 전부 같다**. 이 순서가 어긋나면 폴리곤이 자기교차하고 귀 자르기가 깨진다.
 
@@ -171,10 +229,14 @@ HairlineEdgeRatio    = -0.06f →  폐기한다
 | 5 | 포니테일 | 1.56 | 12°~200° | (−1.34,−0.84) | (+1.10,−0.72) | 1.63 획 | −1.42 R | 뒤로 뻗은 묶음(끝 −2.42 R, 뾰족) |
 
 - **곱슬은 정수리가 아니라 커튼이 물결친다.** 이유는 산술이다: 웨이브를 정수리에 실으면
-  마루가 `cap + amp`, 골이 `cap − amp`가 되는데, 골 ≥ 1.516 R(뚜껑 방지)이고 마루 ≤ 1.75 R(액자)이라
+  마루가 `cap + amp`, 골이 `cap − amp`가 되는데, 골 ≥ 1.516 R(뚜껑 방지)이고 ~~마루 ≤ 1.75 R(액자)이라~~
   진폭이 **0.117 R(0.34 획)** 이하여야 한다. 그런데
   `AccessoryStrokeBudgetTests.곱슬은_획보다_큰_물결을_갖고...`는 진폭 ≥ 0.75 획(0.258 R)을 요구한다.
   **동시에 만족 불가능**하므로 물결을 세로 방향(커튼)으로 옮겼다. 세로에는 상한이 없다.
+  ★ 정정 (2026-09-15 · design-equipment · `ad49497` 기준) — 취소선 전제는 지금 거짓이다. 1.75 R은 액자가 아니라 `HairCapMaxRatio`(돔 반경 문서값, 코드에서 강제 없음)이고,
+  액자 상한 `TallestAccessoryAboveHeadCenterInR`은 이 문단이 들어온 `2051739`에서 1.80 R, 지금 2.551 R이다(4-2 정정).
+  같은 산술로 마루 하한 = 골 하한 1.516 R + 2 × 진폭 하한 0.258 R = **2.032 R**이다. 그래서 「동시에 만족 불가능」은 액자가 2.032 R보다 낮던 판(설계 전제 1.75 R · 당시 코드 1.80 R)에서는 참이었고,
+  지금 액자 2.551 R만으로는 나오지 않는다(획 반폭과 반경·높이 차이를 넣지 않은 산술). 물결을 커튼으로 옮긴 결정을 되돌릴지는 이 라운드에서 판정하지 않았다.
 - 정확한 점 좌표는 부록 A.
 - `HairCapSegments = 12`, 두피 안쪽 호 `= 7` 분할, 바가지 돔 `= 14`(현행 유지).
 
@@ -207,6 +269,14 @@ HairlineEdgeRatio    = -0.06f →  폐기한다
 
 전 종이 `hmin.y > −1.0 R`(턱 위)과 `1.0 < hmax.y < 2.551 R`을 지킨다
 (`CharacterAppearanceLayerTests`의 두 단언).
+
+> ★ 정정 (2026-09-15 · design-equipment · `ad49497` 기준) — 그 단언은 `CharacterAppearanceLayerTests.신규_아이템이_모든_배율에서_몸의_제자리에_붙어있다`
+> (PlayMode · 배율 1.0/0.75/0.5)에 **실재**하지만 두 곳이 위 문장과 다르다.
+> ① 모자 루프가 `i < 4`라 **HEAD 0–3(야구모자·털모자·중절모·왕관)만** 잰다. 베레모·밀짚모자의 경계를 잠그는 테스트는 이 라운드에서 찾지 않았다(**미확인**).
+> ② 상한은 `2.551 R` 숫자가 아니라 `headTop + m.TotalHeight * 0.15f` 형태다(그 파일에서 `2.551` 계수 0 · `0.15f` 계수 2). 기준 비율로 환산하면 **사실상 같은 값이다**:
+>   `StickmanMetrics`에서 `HeadTopLocalY`는 전신 높이 H이고 머리 중심은 H − R이라, 머리 중심 기준 상한은 1 + 0.15 H / R이다.
+>   R/H = 0.22 / 2.2746944(`BaselineHeadRadiusRatio`)를 넣으면 **2.55093 R**이고 2.551과의 차이는 −7.2e-5 R이다(verify-change 측정, 이 라운드 재계산 일치).
+>   단 런타임 R은 `ReadRingRadius(head) * rootScaleY`(두피 링 실측)이고 기준 비율은 그 값이 0에 가까울 때의 대체 경로라, 런타임 `StickmanMetrics`의 링 반경 실측값이 기준 비율과 같은지는 여전히 **미확인**이다.
 
 ### 5-3. 부피 — 챙은 닫힌 띠다
 
@@ -288,7 +358,7 @@ sx = −1 (진행 반대쪽 = 가려지지 않은 눈)
 
 ### 6-4. 기존 테스트와의 관계 — ★ 중요
 
-`EyesVisorOpacityTests.채움이_눈_자리를_덮는다`는 외알/안대에 대해
+~~`EyesVisorOpacityTests.채움이_눈_자리를_덮는다`~~(`2051739`에서 개명 → `EyesVisorOpacityTests.가리개_채움이_눈_자리를_덮는다`)는 외알/안대에 대해
 **"뒤쪽 눈 자리(−0.3409, +0.0909)가 채움에 덮이면 안 된다"**를 단언한다.
 드러난 눈은 (−0.62, 0)에 있고 반폭이 0.34라서 그 점을 **포함하지 않는다**(실측: 정규화 거리 1.26 > 1).
 
@@ -297,6 +367,13 @@ sx = −1 (진행 반대쪽 = 가려지지 않은 눈)
 > 프로브 대상을 "모든 채움"이 아니라 **"가리개 도형(이름이 `*Eye`가 아닌 채움)"** 으로 좁히고,
 > 그 대신 **"`*Eye` 채움이 정확히 1개 있고 진행 반대쪽에 있다"**를 새로 단언해라.
 > 그러지 않으면 다음 사람이 눈 좌표를 조금만 옮겨도 "가리개가 뒤 눈을 덮었다"는 **엉뚱한 실패 메시지**를 본다.
+>
+> ★ 정정 (2026-09-15 · design-equipment · `ad49497` 기준) — 위 지시는 **이 문장이 들어온 같은 커밋 `2051739`에서 반영됐다.**
+> 옛 이름 선언은 그 커밋에서 사라졌고(선언 계수 `2051739^` 1 → `2051739` 0 → `ad49497` 0), 가리개로 좁힌 검사가
+> `EyesVisorOpacityTests.가리개_채움이_눈_자리를_덮는다`로, 위 지시의 「`*Eye` 채움이 정확히 1개 있고 진행 반대쪽에 있다」(x < 0)가
+> `EyesVisorOpacityTests.한쪽만_가리는_물건만_반대쪽_눈을_보여준다`로 실재한다. 이후 `0229f52`에서 인계본 외알안경의 드러난 눈 톤은
+> 보조색이 아니라 `AccessoryTone.InkContrast`로 바뀌었다(v1 안대는 보조색 그대로). 위 좌표(−0.3409 · −0.62 · 1.26)가
+> 인계본 외알안경에서도 그대로인지는 **미확인**.
 
 `규칙 2`(EYES 실루엣은 반드시 채움)는 **그대로 유효하다.** 6-2가 증명하듯 투명 렌즈는 그릴 수 없으므로
 "채움은 옵션이 아니다"라는 규칙의 근거가 오히려 강해졌다. 규칙 2에 한 줄만 덧붙일 것을 권고한다 —
@@ -1085,6 +1162,11 @@ ResolveCanvasScaleFactor(_config)`(화면 DPI)만 받는다. **카드 44px · �
    `MonocleEye` `PatchEye` `BowTieKnot` `Bell` `PackBuckle` `HairPart`.
    ★ `MonocleEye` / `PatchEye`는 **보조색 정원 1개를 갖고 있다**(6-5절) — 끄면 그 아이템의
    보조색이 0이 된다. **LOD 구간에서는 규칙 3-2를 면제하는 문장이 함께 필요하다.**
+   ★ (2026-09-15 · design-equipment · `ad49497` 기준) 규칙 3-2는 계약 v2(`0229f52`)에서 폐지됐다(§2 「브리핑 정정 1」의 정정 — 원래 결정 기록은 없고 코드 주석·사유 문자열·`EQUIPMENT_SHAPE_SPEC_PACK_DETAIL_R2.md` 인용만 있어 2026-09-15 리더 판정으로 사후 확정).
+   드러난 눈 톤도 인계본 외알안경은 `AccessoryTone.InkContrast`이고 v1 안대만 보조색이다
+   (`EyesVisorOpacityTests.한쪽만_가리는_물건만_반대쪽_눈을_보여준다`의 기대 톤 분기). 그래서 「면제하는 문장이 함께 필요하다」는 지금 v1 안대에만
+   걸릴 수 있다. LOD가 들어올 때 보조색 개수를 전제로 삼는 v1 검사(`AccessoryFallbackBodyParityTests.모든_아이템의_몸_보조색은_정확히_한_조각이다`)가
+   LOD 배율의 도형을 읽는지는 **미확인**.
 2. **면제 대장** — `AccessoryRuleOneCoverageTests.Waivers`가 이 9건을 어떻게 다룰지는
    test-engineer/리더 몫이다. **미확인.**
 3. 0.50 이하(34건)는 9-5절의 "실루엣 전용 구간" 판정을 유지한다.
@@ -1535,6 +1617,11 @@ L304·L308 → `(0.31373,0.45882,0.70980,1.00000)` / L330·L333 → `(0.34510,0.
 | 4 | 낡은 주석 2곳 | `× 0.62` | `× 0.30` — `Tests/EditMode/FillOutlineStrokeFloorTests.cs:18` · `Tests/EditMode/AccessoryFillAreaRuleTests.cs:168`. (★ `AccessoryShapeBuilder.cs`의 `FillOutlineColor` 요약문에는 숫자가 **없다** — 처음에 3곳이라고 적었다가 `grep`으로 정정했다) |
 | 5 | 낡은 주석 1곳 | `PackPaletteGateTests.cs:425` `"#955CCC(요정날개·날개·종이비행기)"` | 종이비행기가 빠졌다 → `(요정날개·날개)`. **단언이 아니라 TestCase 설명 문자열이라 빨개지지 않는다 — 그래서 더 위험하다** |
 
+> ★ (2026-09-15 · design-equipment · `ad49497` 기준) #4·#5는 **이 절이 들어온 커밋 `1eb0e2b`에서 함께 반영됐다.**
+> 계수(원문 그대로): `0.62` — `FillOutlineStrokeFloorTests.cs` · `AccessoryFillAreaRuleTests.cs` 각각 `1eb0e2b^` 1 → `1eb0e2b` 0 → `ad49497` 0.
+> `(요정날개·날개·종이비행기)` — `PackPaletteGateTests.cs` `1eb0e2b^` 1 → `1eb0e2b` 0 → `ad49497` 0(정정 문구 `#955CCC(요정날개·날개)`는 `ad49497` 1).
+> 표의 `:18` · `:168` · `:425`는 **반영 전 판의 줄**이다. 지금 `:168`은 `wOut` 계산 줄이고 `:425`는 `continue` 줄이며, 설명 문자열은 526행에 있다.
+
 ★★ **`0.62f`를 일괄 치환하지 마라 — `AccessoryShapeBuilder.cs`에 `0.62f`가 23곳 있고
 그중 그늘 배수는 2565행의 3개뿐이다.** 나머지는 전부 좌표·비율이다
 (`DrawnEyeOffsetRatio` L111 · `CapeCollarBackRatio` L165 · `RoundLensOffsetRatio` L439 +
@@ -1782,8 +1869,11 @@ BeanieCuff  4점 · loop = true · filled = TRUE · tone = Shade(2)  ← tone은
 
    **코다리 2종을 다 고쳐도 최소 배율은 0.7070 → 0.6993, Δ 0.0077뿐이다.**
    0.60에 닿으려면 **최소 9개 도형**이 함께 움직여야 하고 그중 `MonocleEye`/`PatchEye`는 이미
-   1-C 면제 대장에, `BeaniePom`은 초상화 액자 상한에 묶여 있다. ⇒ **둘 다 고치거나 둘 다 두거나**이고,
+   1-C 면제 대장에, ~~`BeaniePom`은 초상화 액자 상한에 묶여 있다~~. ⇒ **둘 다 고치거나 둘 다 두거나**이고,
    앞쪽은 이 라운드 범위가 아니다.
+   ★ (2026-09-15 · design-equipment · `ad49497` 기준) 취소선 부분은 지금 거짓이다. 그 묶음을 잠그던 `AccessoryBeaniePomTests.폼폼_꼭대기가_액자_상한에_그대로_머문다`는
+   `SkipIfHandoff`로 건너뛰고(로컬 러너 로그 `Logs/vc-n20/full_edit.xml`에서 Skipped), 인계본 털모자에는 폼폼이 없다.
+   `AccessoryShapeBuilder.cs`의 폼폼 주석도 `죽은 v1 폼폼의 산술이다`라고 적는다. 그 테스트 메시지의 `초상화 액자가 1.80R까지만 담습니다`는 `0229f52` 전 값이고, 지금 액자 상수는 2.551f다.
 
 **창을 넓히는 유일한 길**(참고): 렌즈 **안쪽-아래 x**를 −0.32에서 함께 옮기면 위 벽이 움직인다.
 
@@ -1871,6 +1961,17 @@ BeanieCuff  4점 · loop = true · filled = TRUE · tone = Shade(2)  ← tone은
 |---|---|---|
 | `AccessoryFilledBandRuler.cs:302` `자_선택은_오직_Filled_하나로_갈린다`<br/>(`BeanieCuff` 참조는 **311행**, 부재 단언은 **322행**) | `FedoraBand.Filled == true` **와** `BeanieCuff.Filled == false`를 같은 검사 안에서 맞세운다 | 낱선 쪽을 **`EquipmentSlot.Shoulders` 짧은망토 `"CapeFold"`**로. 같은 `tone: Shade` 낱선이라 성격이 같다 |
 | `AccessoryFillRenderingTests.cs:221` `양성대조_낱선은_표식도_채움도_없다`<br/>(`BeanieCuffShapeName` 상수는 **37행**, `Assert.Contains`는 **258행**) | 털모자를 걸치고 **표식 없는 선**이 실재함을 보인다. 털모자는 이 변경 뒤 **채움 3개 / 낱선 0개**가 된다 | 걸치는 아이템을 **짧은망토**로, `BeanieCuffShapeName` → `"CapeFold"` |
+
+> ★ (2026-09-15 · design-equipment · `ad49497` 기준) 두 테스트의 **선언은 실재**한다(`자_선택은_오직_Filled_하나로_갈린다` 302행 그대로 ·
+> `양성대조_낱선은_표식도_채움도_없다`는 PlayMode `IEnumerator` 선언 258행). 달라진 것은 둘이다.
+> ① **줄이 밀렸다** — `AccessoryFilledBandRuler.cs`의 `"BeanieCuff"` 참조 312행 · 부재 단언 메시지 324행 /
+> `AccessoryFillRenderingTests.cs`의 `BeanieCuffShapeName` 상수 39행 · `Assert.Contains` 321행.
+> ② **둘 다 지금 인계본 게이트 뒤에 있다** — 앞의 것은 `HandoffTestGate.SkipIfHandoff(… HeadFedora …)`(계수 `1f7e139` 0 → `ad49497` 1),
+> 뒤의 것은 `HandoffPlayModeGate.SkipIfHandoffRendered(…)`다. 중절모·털모자는 둘 다 `CardShapeGolden.txt` ITEM 행에 있는 인계본이라,
+> 「낱선이 실재한다」는 증인은 러너에서 **건너뜀**으로 나온다 — 로컬 러너 로그(저장소 미추적) `Logs/vc-n20/full_edit.xml`의 `AccessoryFilledBandRulerTests.자_선택은_오직_Filled_하나로_갈린다`와
+> `Logs/vc-n20/full_play.xml`의 `AccessoryFillRenderingTests.양성대조_낱선은_표식도_채움도_없다`가 둘 다 `result="Skipped"` · `label="Ignored"`이고, 건너뜀 메시지는 위 두 게이트의 사유 문자열이다
+> (2026-09-15 05:06 · 05:08 KST 시작. 두 테스트 파일은 09-06 커밋 뒤 바뀐 적이 없고 지금 작업 트리 변경도 없다).
+> 뒤의 테스트는 게이트 사유에 스스로 「대체 불변식 미수립」이라 적어 두었다. 위 #4의 착지 여부는 이 라운드에서 확인하지 않았다.
 
 ★ 함께 낡는 주석 2곳(단언 아님, 조용히 썩는다):
 `AccessoryFillAreaRuleTests.cs:20` *"지금은 60개 — 2026-09-02 털모자 단이 낱선이 됐다"* →

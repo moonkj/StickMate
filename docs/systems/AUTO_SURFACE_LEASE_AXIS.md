@@ -414,9 +414,50 @@ if (_agent != null && UserSurfaceSummonPolicy.SuppressesUnsummonedSurfaces(
 - **실기 0회, 러너 0회, 변이 0회.** 제안한 R1이 수정 전에 실제로 빨간지는 **미확인**이다 — 박제로 확인할 것.
 - 포스트잇 깜빡임은 코드 판독이다. 화면에서 체감되는 길이(부채꼴 펼침 0.3초 + 무입력 6초 이내)는 미측정이다.
 - Windows H1 실재 여부(`dev-platform` 배정 중).
-- 개발 전용 강제 발동(`ForceTriggerNow`, ⌃⌥⌘J 등): 등급 1에서 크랙 오버레이가 즉시 취소되는 쪽으로 바뀐다. 개발 전용이라 판정에서 제외했다.
+- ~~개발 전용 강제 발동(`ForceTriggerNow`, ⌃⌥⌘J 등): 등급 1에서 크랙 오버레이가 즉시 취소되는 쪽으로 바뀐다. 개발 전용이라 판정에서 제외했다.~~ 〔★ 2026-09-15 정정 — **전제가 거짓이었다**(작성자 오류). 정정 본문은 §9-1〕
 - `TodoPostItWidget` 로그 두 줄(`[투두] 전체화면 감지`/`종료`)이 우클릭마다 찍히던 스팸은 수정 뒤 사라질 것으로 **추론**한다. 미측정이다.
 - 에디터 스크립트(`Assets/Editor` 등)는 스캔 범위에 넣었고 독자 0이었다. 패키지 내부는 보지 않았다.
+
+### 9-1. ★ 정정 — 명령 크랙(행동 명령창 [창 부수기] · ⌃⌥⌘X)은 개발 전용이 아니다 (2026-09-15, `ad49497` 커밋 뒤)
+
+발단: `persona-immersion`(소은) 코드 판독 지적 → 판정(리더 배정). 코드 줄은 `ad49497` 기준이다. 〔2026-09-15 재확인 · verify-change A 조건부 반영: 작업 트리 `Interaction/WindowCrashDirector.cs`에는 A1 가드가 **미커밋**으로 들어와 있다(HEAD 대비 +25줄). 이 절의 크랙 줄 번호는 여전히 HEAD 기준이다. A 1 · 2 · 3 정정은 이 절 안에 취소선과 함께 있다〕
+
+**무엇이 틀렸나 — 자백**
+- 위 §9 줄은 `Interaction/WindowCrashDirector.cs:60-63`의 `ForceTriggerNow` 문서 주석(「강제 발동 … 데모 경로」)만 믿었고 **호출자를 세지 않았다.**
+- 실제 호출자는 둘이고 둘 다 사용자 입구다: 행동 명령창 타일(`Interaction/ActionCommandPopover.cs:530`, 그 창 스스로 「개발 전용 항목 0」 `:59`) · 전역 단축키 ⌃⌥⌘X(`Interaction/AppControlDirector.cs:652`). ⌃⌥⌘X는 **개발 게이트 밖**이다(`:297` `bool x = chord && …` — 같은 파일 D·H·S·J·F만 `dev &&`, `:315-319`).
+- 적힌 키 ⌃⌥⌘J도 틀렸다 — ~~J는 크랙이 아니라 개발 게이트 키다(`:318`).~~ 〔★ 2026-09-15 정정(verify-change A-2) — 「게이트 키」는 게이트를 여닫는 키로 읽혀 틀렸다〕 J는 크랙 키가 아니다. J는 **개발 게이트 뒤에 있는** 키다 — 게이트가 닫혀 있으면 키를 조회하지도 않는다(`:318` `bool j = dev && chord && IsKeyDown(GlobalKey.J);`). 하는 일은 **할일 리마인더 데모**다: `:368` `else if (jRise) Invoke(ControlAction.TodoReminder` → `:481-482` → `:730` `private void ForceTodoReminder(string source)` → `TodoReminderDirector.ForceTriggerNow`(그 메서드 문서가 스스로 「개발 전용 ⌃⌥⌘J」라고 적는다).
+
+**N-20이 만든 것**
+- 등급 1에서 사용자가 부채꼴 → [행동] 명령창을 연 동안 부채꼴이 매 프레임 임대를 갱신한다(`Interaction/GearRadialMenuWidget.cs:1290`, 팝오버가 열린 동안 `_phase` Open 유지 `:1277-1278`). 그 상태에서 [창 부수기]는 **「준비됨」으로 보이고**(가능 판정 `WindowCrashDirector.cs:79-104`에 등급 조건 없음), 누르면 캐릭터가 휘두르지만 새 가드(`:170-171`)가 **다음 프레임에 오버레이를 취소**한다 → 「결과 없는 휘두르기」, 원칙 1 싱크 위반.
+- N-20 전(가드가 `ArePanelsSuppressed || IsSuspended`)에는 임대 칸에서 P가 거짓이라 금이 `windowCrashOverlayDurationSeconds = 3`(에셋) 동안 보였다 — 조건: 그 3초 동안 명령창·부채꼴이 떠 있을 것.
+- ⌃⌥⌘X를 등급 1 무허가에서 누르는 경로는 **N-20 전부터** 같은 결함이다(P 참 → 즉시 취소).
+
+**분류 — (나)**: 사용자 명령 크랙은 (가) 사용자 표면이 아니다. ① 임대의 목적은 설정 스위치 도달뿐이고 연출에는 허가를 내지 않는다(`Core/StickmanAgent.cs:380-381` · `:403-404`) ② 대상이 최상위 실제 창 = 등급 1에서는 발표 화면 자체다(`WindowCrashDirector.cs:227-242`, 2026-09-02 판단 「그 자체가 침해」 `:160-163`) ③ 닫는 조작이 없는 3초 자체 수명 오버레이다. (§2-2 #9 「자동」은 자율 경로 기준이고, 같은 파일에 명령 경로가 있다.)
+
+**대응안**
+
+| 안 | 내용 | 판정 |
+|---|---|---|
+| **A1** | 가능 판정 `GetAvailability`에 N-20 창구 가드(`SuppressesUnsummonedSurfaces(P, g)`) → 타일 회색 + 사유. ⌃⌥⌘X도 `ForceTriggerNow`가 같은 판정으로 건너뛴다(`:109-115`) | **채택 권고** — 원칙 1·2 모두 선다. 한 파일, N-8 목록 밖. 사유 문구는 등급 1과 FFT 양쪽에서 참이어야 한다(`design-narrative`) |
+| A2 | 자율 `TickAutoTrigger` 맨 앞 호출형 가드 | **백로그** — 출하 확률 0(`windowCrashChance: 0`)이라 사용자 체감 0. §4-6 리더 판정(N-20 밖) 유지. 범위 확장 판정은 `docs/systems/UNSUMMONED_EFFECTS_INVARIANT.md` 층 1 |
+| B | 명령 크랙은 취소 조건에서 제외 | **기각** — 발표 위 금 3초(원칙 2) · 임대 계약 확장 · 무허가 ⌃⌥⌘X로 등급 1 억제 우회 · T-B 파일 단위 (나) 분류가 거짓이 된다 |
+
+**테스트 요구**
+- PlayMode R5: 등급 1 + 명령창 열림(임대 갱신 중) → 크랙 타일 `IsReady` 거짓 · 사유 상수 일치 · `ForceTriggerNow` false · `WindowCrash` 전이 0 · 오버레이 이벤트 0. 음성 대조: 등급 0 · 명령창 열림 → `IsReady` 참 · 오버레이 3초 관측. FFT 1건(등급 1 해제 뒤 명령창 열린 채 → 회색, 사유가 거짓말하지 않는지).
+- EditMode T-B: `GetAvailability` 메서드 단위 항목(본문에 새 창구 호출 존재 단언).
+- 변이 M-f(A1 가드 삭제) → R5 · T-B 빨강. M-f2(가드를 P 단독으로) → R5 빨강.
+
+~~**N-20 해제 조건 추가 제안(리더 판정)**: 「6. 크랙 가능 판정이 `SuppressesUnsummonedSurfaces`를 따른다 — PlayMode R5 GREEN + 변이 M-f 빨강」.~~ 〔★ 2026-09-15 정정(verify-change A-1) — 번호가 틀렸다〕
+
+**ROADMAP N-20 해제 조건 7로 반영됨(리더 채택).**
+- 위치: `docs/strategy/ROADMAP.md` 작업 트리의 「N-20 해제 조건」 목록. 조건 7 앵커는 `행동 명령창 [창 부수기]와 ⌃⌥⌘X의 가능 여부 판정에 같은 창구 가드`다.
+- 조건 6은 A1이 아니라 QG-1이다(앵커 `6. **증거는 QG-1 기준으로 센다**`).
+- **번호 체계가 다르다**: 이 문서 §5 「해제 조건 제안」은 5항목(1 착지 · 2 EditMode · 3 PlayMode · 4 변이 · 5 QG-1)이다. ROADMAP은 리더 수용 때 「verify-change 독립 재측정 뒤 리더 커밋」을 5로 따로 세웠고, 그래서 QG-1이 6이 되고 A1이 7로 붙었다. §5의 번호로 ROADMAP 조건을 부르지 않는다.
+- 확장 **7-b**(창 도둑 · 그라피티 명령 가드)는 **ROADMAP N-20 해제 조건 7-b로 등재(묶음 ⑧)** 됐다(앵커 `창 도둑 · 그라피티 명령의 가능 여부 판정에 같은 창구 가드`). 판정 근거는 `docs/systems/UNSUMMONED_EFFECTS_INVARIANT.md` 「6-2. 1.0」이다.
+
+**백로그**
+- 취소 로그 사유 누락: `Interaction/WindowCrashRenderer.cs:169` 「취소(대상 창 닫힘/최소화, 전체화면 게임 감지, 긴급정지)」에 **등급 1**(2026-09-02부터의 원인)과 **임대 칸**(N-20부터)이 없다 → `coder`(원인을 이벤트에 실어 보내거나 문구를 원인 전체로).
+- 부수 발견(담당 제안만): 크랙 알파 0.45 → 1 튐(`WindowCrashRenderer.cs:346` · `:354`가 페이드 첫 프레임에 알파 1로 덮음) → `coder` + `design-art`. 해머 스윙 포즈 부재 — `TimedSpectacleState`를 쓰는 연출 4종 공통, 포즈 파일 참조 0 → `design-motion`.
 
 ---
 

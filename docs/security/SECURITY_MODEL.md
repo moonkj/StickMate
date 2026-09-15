@@ -42,8 +42,13 @@
   **첫 0건을 그대로 보고했다면 그것이 오늘의 10번째 거짓 통과였다.**
 - **이미 있는 자동 잠금**: `Tests/EditMode/OfflineFirstNetworkAuditTests.cs`가 소스 파일을 직접 읽어
   금지 API를 스캔하고, **네거티브 컨트롤**(가짜 위반 소스를 같은 스캔 함수에 흘려 잡히는지 확인)까지
-  갖췄으며, 전송 계열 화이트리스트가 0건임을 별도 테스트로 고정한다. **좋은 감사다.** 아래 1-2가 그
+  갖췄으며, ~~전송 계열 화이트리스트가 0건임을 별도 테스트로 고정한다.~~ **좋은 감사다.** 아래 1-2가 그
   감사의 사각지대다.
+  > ★ **2026-09-15 정정(product-strategy 검증 m3)** — 취소선 문장은 `7ed996d`(09-02)에 쓰였다(`git log -S`, 음성 대조 0).
+  > 쓸 때는 참이었다. 옛 테스트 `전송계열_화이트리스트는_현재_비어_있다`가 `767c985`(09-01)에 들어와 있었다.
+  > **`1f7e139`(09-05)부터 거짓이다**: 그 커밋이 옛 테스트를 지우고 `전송계열_화이트리스트는_승인된_예외_1건과_정확히_같다`(`OfflineFirstNetworkAuditTests.cs:530`, 명부 `:534`)로 개작했다.
+  > **지금 사실**: 전송 계열 명부는 0건이 아니라 `SteamPackEntitlementSource.cs` **1건과 정확히 같게** 잠겨 있다. 두 번째 전송 예외가 들어오면 빨개진다.
+  > 그 1건은 `#if STICKMATE_STEAMWORKS_INSTALLED` 안에서 휴면이고, 공개 빌드 바이너리에서도 휴면이다(X-1).
 
 ## 1-2. ★ 정정 1 — "네트워크 0"은 **우리 코드**에 대해서만 참이다. 출하되는 플레이어는 미확인이다
 
@@ -1866,3 +1871,141 @@ Learn의 `IVirtualDesktopManager` 페이지는 메서드를 **알파벳순**으�
   4. **`Application.quitting += ReleaseManager`는 구독 해제가 없다.** 프로브가 재생성되면
      델리게이트가 누적된다 — `_quitHookInstalled`가 인스턴스 필드라서다. 현재 생성 지점은
      `Win32WindowService` 1곳뿐이라 실害 없음. **신뢰성 항목이지 보안 항목이 아니다.**
+
+---
+---
+
+# X절 — Steamworks 휴면 실측 + 정의를 켠 빌드의 공개 문구 한정 (2026-09-15, 제안·미결)
+
+`product-strategy`가 `docs/strategy/CHANNEL_PRICING_DECISIONS.md` F-3 정정(15-3절 인용 블록)에서 요청한 두 건에 답한다. ★ 그 F-3 정정 블록은 **HEAD에 없고 작업 트리에만 있다** — 이 파일과 같은 묶음 ⑧로 함께 커밋되므로 이 인용은 **작업 트리(묶음 ⑧ 함께 커밋) 기준**이다.
+(b) 이미 나간 공개 빌드에서도 휴면이 참인가, (a) 정의를 켠 출시 빌드에서 공개 문구를 어떻게 한정하는가.
+측정 기준: `3751a10` 위 작업 트리. HEAD는 그 뒤 `761f5cb`(이 파일의 T-11-a를 커밋)로 올라갔다. 이 절이 **인용한 파일 10개**는 `3751a10`→`ad49497`(현재 HEAD, 묶음 ⑦) 사이 diff가 **파일 단위로** 0이라, 인용은 `ad49497`에서도 그대로 참이다. 10개는 어댑터 `SteamPackEntitlementSource.cs` · `PackEntitlement.cs` · `StickPackManifestSO.cs` · `OfflineFirstNetworkAuditTests.cs` · `BuildStandalone.cs` · `ProjectSettings.asset` · `Packages/manifest.json` · `packages-lock.json` · `STEAMWORKS_ENTITLEMENT_EXCEPTION.md` · `ENTITLEMENT_CONTRACT.md`다. **폴더 전체가 무변인 것은 아니다** — `ad49497`은 `Assets/` 안에서 인용 밖 파일 10개(`SettingsWindow.cs` 등)를 바꿨다. **단 전략 문서 F-3 인용은 이 문장에서 제외한다** — 위 줄대로 작업 트리 기준이다. 앱 실행·빌드·`.cs` 수정은 0이고, 판정 스크립트는 scratchpad에만 있다(저장소 밖).
+
+## X-1. 사실 확인 — **판정: 휴면은 참이다. 공개된 빌드 중 확인 가능한 것 전부에서.**
+
+**전제 사실(소스)**:
+- `Store/SteamPackEntitlementSource.cs`는 파일 전체가 `#if UNITY_STANDALONE_WIN || UNITY_STANDALONE_OSX` 안에 있다. `using Steamworks;`와 실제 구현은 `#if STICKMATE_STEAMWORKS_INSTALLED` 안이고, `#else`는 `Query => Unknown` 한 줄이다.
+  즉 **휴면 빌드의 모양은 「타입은 있고 Steamworks 흔적은 0」**이다. 그래서 스텁 타입이 잡히는 것 자체가 「어댑터가 들어온 뒤의 dll을 보고 있다」는 양성 대조가 된다.
+- 정의는 한 번도 켜진 기록이 없다. `ProjectSettings.asset`은 `scriptingDefineSymbols: {}`이고, `git log -S STICKMATE_STEAMWORKS_INSTALLED -- ProjectSettings Packages`는 0커밋이다(양성 대조: 같은 검색을 `Assets/Editor/BuildStandalone.cs`에 걸면 `0229f52`가 잡힌다). `Packages/manifest.json`·`packages-lock.json`의 `steam`도 0이다.
+- 브리프 사실 1: `OfflineFirstNetworkAuditTests.cs:530`은 테스트 메서드 선언이고, 명부 `{ "SteamPackEntitlementSource.cs" }`는 `:534`, 화이트리스트 항목은 `:308`이다. **참.**
+
+**공개 빌드 식별**: `gh release list`(읽기만) 기준 공개 릴리스는 **Windows 28개**이고 macOS 릴리스는 0개다.
+(모집단: gh 릴리스는 **29개**다. 29번째 `design`(09-02)은 자산이 `redesign.zip` 30,348바이트 1개로 앱 빌드가 아니라 모집단에서 뺐다. 28개 전부 태그가 `windows-preview-*`이고 zip 자산 1개다.)
+어댑터가 들어온 커밋은 `1f7e139`(09-05)다. 그 뒤에 게시된 것은 `windows-preview-20260907b`부터 **`windows-preview-20260909b`(Latest)**까지 **19개**다.
+19개 자산을 전부 받아 **자산 크기 = 받은 파일 크기 19/19**를 확인했다.
+
+**세 방법**:
+- ① monodis 메타 표: `--typedef`·`--assemblyref`·`--typeref`·`--fields`·`--moduleref`에서 Steam 흔적을 찾는다.
+- ② dll 바이트 직접 검색: UTF-8(`#Strings`)으로 `Steamworks`·`SteamApps`·`SteamAPI`·`AppId_t`·`BIsDlcInstalled`·`_initSucceeded`·`_nextInitAttemptTime` 7종, UTF-16LE(`#US`·상수)로 `Steamworks`·`[스팀엔타이틀먼트]`·`BIsDlcInstalled` 3종.
+  이 토큰들은 **런타임 어셈블리 범위(`Assets/_Project/Scripts`에서 `Tests/` 제외)에서** 어댑터 파일에만 코드로 있다. `Core/PackEntitlement.cs` 10-11행에도 나오지만 주석이라 dll에 들어가지 않는다. `Assets/_Project/Scripts` 안에서는 **8파일**(런타임 2 + 테스트 6 — 테스트는 dll에 안 들어간다)이고, `Assets/Editor/BuildStandalone.cs`까지 넣으면 **9파일**이다(에디터 전용이라 런타임 dll에 안 들어간다).
+- ③ 빌드 폴더·zip 목록에서 이름에 `steam`(대소문자 무시)이 든 파일. 예상 이름은 Windows `steam_api64.dll`, macOS는 예외 문서 :584의 `steam_api.bundle`과 `libsteam_api` 계열 둘 다다(macOS 쪽 실제 파일명은 정의 ON 빌드가 없어 미실측).
+
+| 대상 | 식별 근거 | dll 시각 | ① 메타 Steam | ② 문자열 10종 | ③ 네이티브 | 양성 대조 · 음성 대조 |
+|---|---|---|---|---|---|---|
+| **공개 19개** `20260907b`–`20260909b` | gh 자산 크기 일치 19/19 | zip 내부 09-07 10:50 – 09-09 00:34 | typedef 0 · asmref 0 · typeref 0 · fields 0(E1 `PackStoreChannel.Steam` 제외) · moduleref 0 | **0** | **0** | 스텁 `SteamPackEntitlementSource` typedef 1·UTF-8 1 · `Win32WindowService` typedef 1 · `UnityEngine.CoreModule` asmref 1 · `UnityEngine.Application` typeref 1 · 필드 `_cachedDayOfWeek` 1 · UTF-16 `[기록] 근속 ` 1 · ModuleRef 7행(`LibUniWinC`·`user32`·`kernel32`·`dwmapi`·`advapi32`·`shell32`·`wtsapi32`, 전부 steam 0) · ③ zip 목록에서 이름이 `UnityPlayer.dll`로 끝나는 항목 1–2개(ModuleRef가 아니라 ③ 파일 목록의 셈. 2개인 빌드는 `0908h`–`0908m`이고, 두 번째 항목은 `__MACOSX/Windows/._UnityPlayer.dll` — 맥에서 압축할 때 끼는 AppleDouble 메타 파일이지 실행 파일이 아니다. `0908h`를 다시 받아 확인) / 음성: 없는 이름 UTF-8·UTF-16 0 — **19개 전부 동일하게 성립**. ★ 자백: 처음에 이 칸을 「ModuleRef 8행」으로 적었다. monodis 머리줄 `ModuleRef Table (1..7)`까지 센 값이었다(verify-change 적발) |
+| 공개 3개 `20260902`·`20260902b`·`20260903` | 저장소 `Builds/` zip 크기 = gh 자산 크기 3/3 | 09-02 07:54 · 12:42 · 09-03 08:32 | 0(`0903`은 E1 `PackStoreChannel.Steam` 제외) | 0 | 0 | 어댑터 도입 전이라 스텁 0(예상대로). 나머지 양성 대조는 성립 |
+| 공개 6개 `20260830`–`20260901d` | 다시 받아 크기 = gh 자산 크기 6/6 | — | **dll 미분석** | **dll 미분석** | **0**(zip 목록 대소문자 무시 `steam` 부분일치 0, 2026-09-15 재확인) | 게시 시각이 `1f7e139` 전이라 **구조상 부재** |
+| 비공개 `Builds/` Windows `20260914-a6b3101` · `20260914-eb4670d`(= `Builds/Windows`, 해시 동일) | 공개 기록 없음 | 09-14 10:37 · 23:41 | 0(E1 `PackStoreChannel.Steam` 제외) | 0 | 0 | 스텁 1 · 나머지 동일 |
+| 비공개 `Builds/macOS` | gh에 macOS 릴리스 0 | 파일 09-09 13:19 | 0(E1 `PackStoreChannel.Steam` 제외 · ModuleRef 6행 전부 시스템 라이브러리) | 0 | 0 | 스텁 1 · `MacWindowService` typedef 6 · 필드·문자열 양성 동일 |
+
+- **자백 3**:
+  ① 첫 `--field` 프로브는 모든 dll에서 rc 1·0줄로 **죽어 있었다**. 옵션 이름이 `--fields`다. 고친 뒤 양성 대조(`_cachedDayOfWeek` 1)를 붙여 다시 쟀다.
+  ② 양성 대조 문자열의 소스 실재 확인에서 zsh의 `$r:A` 수식어가 `커밋:경로`를 절대경로로 바꿔 **0을 냈다**. 파이썬 인자 목록으로 다시 확인했다(4커밋 각 1건, 없는 커밋은 rc 128).
+  ③ X-1 판정에 쓴 표 5종(`--typedef`·`--assemblyref`·`--typeref`·`--fields`·`--moduleref`)의 monodis 종료코드는 전부 0이었다. **판정은 종료코드가 아니라 같은 호출의 양성 대조로 했다.** (정정: 처음엔 「전부 0」이라고만 적었다. 뒤에 돌린 `--method`는 종료코드가 0이 아니었다 — 아래 제외 표 뒤 문단.)
+  ④ 2차 수정 보고에서 「X절 단일 `~` 전수 0」이라고 썼다. 실제로는 짝 없는 단일 `~`가 3개 남아 있었다(verify-change 적발). 내 검사기는 **한 줄(표는 칸)에 단일 `~`가 2개 이상인 곳 = 짝**만 세도록 짜여서, 칸마다 1개씩인 짝 없는 `~`는 구조적으로 셀 수 없었다. 「짝 0」을 「전수 0」으로 옮겨 적은 것이다.
+- **이 절이 보장하지 않는 것**: dll·폴더에 Steam이 **없다**는 것까지다. 공개 빌드의 **아웃바운드 0은 여전히 미실측**이다(§1-2 · `STORE_PAGE.md`의 보류 사유와 같다). `UnityPlayer.dll` 내부는 보지 않았다.
+
+## X-2. 제안(미결) — 정의를 켠 스팀 빌드의 공개 문구
+
+**원칙: 주장 범위 = 우리가 잠근 범위.** 선 1을 지키는 것과 선 1을 **말하는 것**은 다르다. `STEAMWORKS_ENTITLEMENT_EXCEPTION.md` §8-3(「숨기지 않는다」)을 문구에 적용한다.
+
+| 주장 | 정의 OFF (오늘의 공개 빌드) | 정의 ON (스팀 출시 빌드) |
+|---|---|---|
+| 우리 매니지드 코드의 네트워크 API | 0 (감사로 잠금) | **0 유지** — 허용 심볼 5개에 네트워크 API가 없다(`STEAMWORKS_ENTITLEMENT_EXCEPTION.md` §7-6) |
+| 우리 프로세스에 적재되는데 **내부를 못 보는** 통신 모듈 | **Steam 모듈 없음(X-1 ③) · `UnityPlayer.dll`(엔진) 내부는 미확인**(X-1은 이름에 steam이 든 파일만 봤다. 출하 플레이어는 §1-2가 미확인으로 둔다) | Steam 모듈 추가: Windows `steam_api64.dll` / macOS `steam_api.bundle`(예외 문서 :584) 또는 `libsteam_api` 계열 — 어댑터가 OSX에도 컴파일된다. **+ `UnityPlayer.dll` 미확인은 그대로** |
+| 「인터넷에 접속하지 않습니다」 | **보류**(§1-2 아웃바운드 미실측 · `unity_connect.*` 키 판정 대기) | **보류 + 스팀 한정** → 무조건형은 **금지** |
+| OS 권한 요청 0 | 우리 코드 기준 참 | 우리 코드 기준 참. **방화벽 프롬프트 여부는 미확인**(`STEAMWORKS_ENTITLEMENT_EXCEPTION.md` §11 미확인 목록 2번에 확인 방법이 있다. 그 문서 §7-6 표가 적은 「§11-3」은 제목으로 실재하지 않는다 — 가리키는 곳은 그 2번이다) |
+| 서버 검증 · 계정 | 없음 | 없음(`CheckAppOwnership` 안 씀, `ENTITLEMENT_CONTRACT.md` E-5). 스팀 계정은 스팀의 것이다 |
+
+**제안 문안 (채택·수정은 `marketing`, 판정은 리더)**:
+- **한국어 본문형**: 「StickMate에는 자체 서버도 계정도 없습니다. 유료 팩을 쓸 수 있는지는 PC에서 실행 중인 Steam에게 물어 확인합니다. 그 확인에 쓰는 Steam 구성 요소의 통신은 Steam이 관리합니다.」
+- **영어 본문형**: "StickMate has no servers and no accounts of its own. To check which paid packs are available to you, it asks the Steam client running on your PC; network activity of that Steam component is handled by Steam."
+- ★ **긴장 기록(installed ≠ owned)**: 어댑터가 묻는 것은 `SteamApps.BIsDlcInstalled` — **「설치」이지 「소유」가 아니다**(예외 문서 §6-4, Valve 원문 *"simple client side checks"*). 그래서 처음 안의 「가지고 있는지 / which paid packs you own」을 「쓸 수 있는지 / available to you」로 좁혔다.
+  「installed」를 문구에 직접 쓰지 않은 이유: 이 6팩은 depot이 빈 「라이선스만」 DLC라 사용자에게 「설치」가 뜻이 없다.
+  §6-4의 미확인(빈 depot을 `true`로 보고하는가)이 스팀 실기로 풀리기 전에는, **소유를 우리가 판정한다는 인상을 주는 낱말**(「소유 확인」「구매 검증」「own」「verify purchase」)을 쓰지 않는다.
+- **짧은 형(배지·한 줄)**: 「자체 서버 0 · 계정 0」. 「OS 권한 요청 0」은 스팀 빌드에서 방화벽 프롬프트 0을 확인한 뒤에만 붙인다.
+
+**스팀 빌드에서 쓰지 않는 문구**:
+- 「네트워크 0」「인터넷 연결 없음」「완전 오프라인」「아무 데이터도 나가지 않음」 같은 무조건형. 우리 프로세스에 적재되는 네이티브 모듈 내부를 증명할 수 없다.
+- 「스팀 없이도 팩을 쓸 수 있다」. 스팀이 꺼져 있으면 새 착용은 거부된다 — `STEAMWORKS_ENTITLEMENT_EXCEPTION.md` §9-2 마찰, 입고 있던 것은 유지.
+
+**조건부로 올릴 수 있는 문구**: 「StickMate 프로세스는 인터넷에 직접 연결하지 않습니다」.
+- 조건: **정의를 켠 그 출시 바이너리**로, 깨끗한 별도 환경에서 **프로세스 단위** 아웃바운드를 실측해 0이어야 한다.
+- 스팀을 켠 상태와 끈 상태, 부팅 자동 실행 경로를 모두 잰다. 스팀 클라이언트와의 로컬 통신이 루프백 소켓인지는 **미확인**이라 루프백은 따로 기록한다.
+- 실측 전에는 쓰지 않는다. 앱 실행이라 리더 승인 사항이고, 사용자 머신에서 하지 않는다.
+
+**문구 선택 규칙(제안)**: 문구는 빌드 이름이 아니라 **바이너리 판정**으로 고른다.
+- 출시 체크에 아래 **토큰 정의 그대로** X-1의 세 방법과 양성 대조를 넣는다. 대상은 `StickMate_Data/Managed/StickMate.Runtime.dll`(Windows) / `Contents/Resources/Data/Managed/StickMate.Runtime.dll`(macOS)과 그 빌드 폴더 전체다.
+  ★ **monodis는 반드시 그 `Managed/` 폴더 안의 dll에 실행한다**(따로 복사한 사본 금지). 사본에서는 의존 어셈블리를 못 찾아 `--method`가 중단되고, `--fields`는 종료코드 0인 채 형 이름이 깨진다(아래 제외 표 뒤 표).
+  `--fields` 호출에는 양성 대조 「BROKEN CLASS 0줄」을 붙인다(같은 폴더에 `UnityEngine.CoreModule.dll`이 있는지도 함께 확인).
+- ★ **토큰 정의 (2026-09-15 실측으로 확정. dll 6개(어댑터 이전 `0902`·`0903` 2개 포함 — 이 둘은 H1 = 0이라 판정 불가) — `0902`·`0903`·`0907b`·`0909b`·`0914-eb4670d`·`Builds/macOS` — 에서 대소문자 무시 `steam`이 든 항목을 monodis 표 7종과 UTF-8·UTF-16 바이트에서 전수 나열해 정했다)**
+
+  **휴면 = H1–H5 전부 참**
+
+  | # | 어디서 | 무엇을 | 대소문자 | 기대 |
+  |---|---|---|---|---|
+  | H1 | `monodis --typedef` 행 | 전체 이름이 **정확히** `StickMate.Store.SteamPackEntitlementSource` | 구분(완전 일치) | **1** (스텁 — 어댑터가 들어간 dll이라는 양성 대조) |
+  | H2 | `monodis --assemblyref`의 `Name=` 값 | `steamworks` 부분일치 | **무시** — 실제 패키지 이름이 소문자 `com.rlabrecque.steamworks.net`이다(예외 문서 :84, 대소문자 구분이면 활성 빌드에서도 0이 나온다) | **0** |
+  | H3 | `monodis --typeref` 행 | 이름공간이 `Steamworks`인 형(`Steamworks.SteamAPI`·`Steamworks.SteamApps`·`Steamworks.AppId_t`) — 구현은 `steamworks` 부분일치 | 무시 | **0** |
+  | H4 | dll 바이트 | UTF-8 `SteamAPI`·`SteamApps`·`AppId_t`·`BIsDlcInstalled`·`_initSucceeded`·`_nextInitAttemptTime` / UTF-16LE `[스팀엔타이틀먼트]` | **구분**(아래 제외 E3 때문에 무시로 세면 안 된다) | **0** |
+  | H5 | 빌드 폴더(하위 전체) 파일 이름 | **`steam` 부분일치 — 예외 없음.** 알려진 이름 예시(판정 목록이 아니다): `steam_api64.dll`·`steam_api.dll`·`steam_api.bundle`·`libsteam_api.dylib`·`com.rlabrecque.steamworks.net.dll`·`Steamworks.NET.dll` | 무시 | **0** |
+
+  ★ **H5를 완전 일치에서 부분일치로 바꾼 이유(verify-change 변이 M5)**: 휴면 dll 폴더에 `Steamworks.NET.dll` 하나만 넣은 합성 변이가 옛 완전 일치 목록에 안 걸려 「휴면」으로 샜다.
+  부분일치로 넓혀도 휴면 판정은 막히지 않는다. 공개 28개 zip 목록 전부(19개 + 로컬 zip 3개 + 이번에 다시 받은 6개)와 로컬 빌드 폴더(`Builds/Windows`·`Builds/macOS`, 0914 zip 2개)에서 부분일치가 **0**이었다.
+  파일 이름에는 E1–E3 같은 정상 흔적이 없어서 **제외 목록이 필요 없다.**
+
+  **제외 — 휴면 빌드에 정상으로 있는 `steam` 흔적. 대소문자 무시 `steam` 부분일치로 구현하면 이 셋이 걸려 멀쩡한 휴면 빌드가 「판정 불가 → 출시 중단」이 된다**(verify-change 첫 판정 7건이 실제로 그렇게 나왔다)
+
+  | # | 흔적 | 어디서 보이나 | 정체 | 처음 나온 공개 빌드 |
+  |---|---|---|---|---|
+  | E1 | 필드 `Steam` | `--fields` 행 `valuetype StickMate.Core.PackStoreChannel Steam: public static literal` · UTF-8 `Steam` | 열거형 멤버 `PackStoreChannel.Steam`(`Core/StickPackManifestSO.cs:17`) | `0903`(어댑터 이전) |
+  | E2 | `SteamPackEntitlementSource` | `--typedef` · `--method` 섹션 머리줄 · UTF-8 | 스텁 자신(= H1). **정확히 이 이름 1개만** 허용 | `0907b` |
+  | E3 | `STEAMWORKS_ENTITLEMENT_EXCEPTION.md` | UTF-8(특성 blob) | `entitlementId` 필드의 `[Tooltip]` 문자열(`Core/StickPackManifestSO.cs:43-45`) | `0907b` |
+
+  dll 6개(어댑터 이전 `0902`·`0903` 2개 포함 — 이 둘은 H1 = 0이라 판정 불가)에서 대소문자 무시 `steam`의 전수는 **E1–E3뿐이었다**(`0902`는 0건, `0903`은 E1만). UTF-16에서는 0이다.
+  `--method`는 판정에 쓰지 않고, **종료코드로도 판정하지 않는다.** 종료코드를 가르는 원인은 **분석하는 dll 옆에 의존 어셈블리(`UnityEngine.CoreModule` 등)가 있느냐**다. 3/3 결정적으로 재현됐다(verify-change). security도 같은 해시의 dll 두 개로 다시 재현했다:
+
+  | dll | 실행 위치 | `--method` | `--fields` |
+  |---|---|---|---|
+  | Windows `eb4670d` | `StickMate_Data/Managed/` 안 | rc 0 · 6388줄 | rc 0 · 8261줄 · BROKEN 0 |
+  | 〃 (같은 해시) | 따로 복사한 사본 | rc −6(= 셸 134, SIGABRT) · 5091줄에서 끊김 | rc 0 · 8261줄 · **형 이름 752줄이 BROKEN CLASS** |
+  | macOS | `Contents/Resources/Data/Managed/` 안 | rc 0 · 5901줄 | rc 0 · 7706줄 · BROKEN 0 |
+  | 〃 (같은 해시) | 따로 복사한 사본 | rc −6 · 4678줄에서 끊김 | rc 0 · 7706줄 · **748줄이 BROKEN CLASS** |
+
+  사본에서의 오류 문구(`Could not load file or assembly 'UnityEngine.CoreModule'` → `Assertion at dump.c:604`)는 verify-change 인용이다. security의 stderr 필터로는 0건이라 문구 자체는 재확인하지 못했다.
+  파이프로 받든 파일로 받든, 작업 디렉터리를 옮기든 결과는 같았다(verify-change). **앞선 두 실측이 갈린 이유가 이것이다** — security는 zip에서 꺼낸 사본을, verify-change는 일부를 `Managed/` 안에서 돌렸다.
+  ★ **새 사실(권장 ③)**: 사본에서도 `--fields`는 rc 0에 줄 수도 같다. 그러나 **필드 형 이름**이 `<BROKEN CLASS … Could not load UnityEngine.CoreModule>`로 바뀐다.
+  필드 **이름**은 8261/8261 · 7706/7706 동일하므로 X-1 ①(이름 판정, zip에서 꺼낸 사본으로 실행)은 유효하다.
+  그러나 **필드 형으로 판정하는 검사를 만들면 사본에서 조용히 거짓 통과한다** — 종료코드도 줄 수도 정상으로 보이기 때문이다. → 아래 출시 체크 규칙에 실행 위치를 넣었다.
+
+  **활성 = A1–A3 전부 참 — ★ 기대 흔적이고 실측이 아니다**(정의 ON 빌드는 존재한 적이 없다. 켜는 첫 빌드에서 이 표를 실측으로 교체한다)
+
+  | # | 무엇 | 근거 |
+  |---|---|---|
+  | A1 | H2가 **≥1** (`com.rlabrecque.steamworks.net`) | 예외 문서 §7-7 참조 목록 |
+  | A2 | H3가 **≥1**, H1 = 1 | 어댑터가 `SteamAPI`·`SteamApps`·`AppId_t`를 참조한다 |
+  | A3 | H5(대소문자 무시 `steam` 부분일치)가 **≥1**. 기대 이름은 Windows `steam_api64.dll` 또는 macOS `steam_api.bundle`/`libsteam_api` 계열 + `com.rlabrecque.steamworks.net.dll` | 예외 문서 :584 · §7-7 |
+
+  ★ 우리 `StickMate.Runtime.dll`의 `--moduleref`는 **활성 신호로 쓰지 않는다**(추정). 네이티브 호출 선언은 Steamworks.NET 어셈블리 쪽에 있어서 활성 빌드에서도 우리 dll의 ModuleRef에는 `steam_api`가 안 나올 수 있다.
+
+  **판정**: H1–H5 전부 → **휴면(OFF 문구)** / A1–A3 전부 → **활성(ON 문구)** / 그 밖의 조합(H1 = 0 포함) → **판정 불가, 출시를 멈춘다**(`BuildStandalone.ShouldStopBuild`의 S-14 사고와 같은 형태 — 산출물로 구분 못 하는 빌드를 내보내지 않는다). 어댑터 도입 전 빌드(`0902`·`0903`)는 H1 = 0이라 이 규칙의 대상이 아니다(과거 기록용).
+- **GitHub 프리뷰(정의 OFF)용 문구를 스팀 페이지에 복사하지 않는다.** 같은 문장이 빌드에 따라 참과 거짓으로 갈린다.
+
+**인계(리더 경유)**:
+- `marketing`: 묶음 ⑦ 이후 위 문안의 채택 여부를 정한다. 이번에 marketing 파일은 읽기만 했다.
+  **충돌 목록(수정하지 않음, marketing에 넘김)**: `docs/marketing/STORE_PAGE.md:350`(「계정도, 로그인도 없습니다」) · `:351`(「OS 권한을 요구하지 않습니다」 — 스팀 빌드는 방화벽 프롬프트 미확인) · `docs/marketing/TRUTH_INVENTORY.md:1054`(「인터넷에 접속하지 않습니다 / 네트워크 0」 조건부 허용 — 정의 ON 빌드에서는 X-2 금지 문구). ★ 줄 번호는 **HEAD `ad49497` 기준**(묶음 ⑦ 커밋)이다. 그 전 커밋 `761f5cb`에서는 `STORE_PAGE.md:348`·`:349`, `TRUTH_INVENTORY.md:1006`이다. 줄은 움직이니 앵커 문자열(따옴표 속 문구)로 찾아라.
+- `product-strategy`: F-3의 (a)(b)에 대한 답이 이 절이다.
+- 출시 게이트 담당: 바이너리 판정 절차를 체크리스트에 등재한다.
+
+**Windows 영향**: 공개 빌드 전부가 Windows이고 X-1에서 휴면을 확인했다. 정의를 켜면 `steam_api64.dll` 1개가 추가되고, 방화벽 프롬프트는 미확인이다.
+**macOS 영향**: 로컬 macOS 빌드도 휴면이다. 정의를 켜면 어댑터가 OSX에서도 컴파일되어 네이티브 모듈이 붙는다. 서명·공증(하드닝 런타임 라이브러리 검증) 영향은 **미확인**이고, 켜는 라운드에 `ENTITLEMENT_CONTRACT.md` S-1 재검토가 필요하다.
