@@ -43,10 +43,14 @@ namespace StickMate.Tests.PlayMode
     ///   <item><b>R3</b> 이력 칸 FFT — 등급 1이 끝나도 사용자 창이 떠 있으면 카드는 기다리고, 창을 모두 닫으면 임대 수명 + 1프레임 안에 돌아온다.</item>
     ///   <item><b>R4a · R4b</b> 적발 ③ — 등급 2에서 빼앗긴 설정창의 자동 재오픈 예약이 2→1 복귀 뒤 사용자의 우클릭(R4a)·정보창 열기(R4b)
     ///     허가에 편승하지 않는다. 대조: 사용자 표면을 닫고 전체화면이 끝나면 유예 안에 재오픈된다.</item>
+    ///   <item><b>R5a · R5b · R5c · R5d</b> 해제 조건 A1(명령 크랙, 설계 §9-1) — 사용자가 연 행동 명령창의 [창 부수기]와 ⌃⌥⌘X 경로
+    ///     (<c>ForceTriggerNow</c>)가 FTT(R5a) · FFT(R5b) 칸에서 회색 + 사유이고 휘두르기 전이 · 금 오버레이가 0이다.
+    ///     R5c는 음성 대조(등급 없음 → 가능 · 금이 설정 수명 동안 취소 없이 보인다), R5d는 가드 위치(숨김 게이트 뒤 · 락 검사 앞)를 잠근다.</item>
     /// </list>
     ///
     /// <para>★ <b>수정 전 박제</b>: 이 파일은 새 정책 함수를 참조하지 않는다 — 수정 전 트리(HEAD)에서도 컴파일되어
-    /// R1·R3·R4가 빨강임을 먼저 박제하기 위해서다(ROADMAP N-20 「R1은 수정 전 빨강 박제를 같이 낸다」).</para>
+    /// R1·R3·R4가 빨강임을 먼저 박제하기 위해서다(ROADMAP N-20 「R1은 수정 전 빨강 박제를 같이 낸다」).
+    /// 예외 1곳: R5의 <c>ExpectedCrackLeaseReason</c>은 A1 사유 상수를 참조한다 — 그 박제는 이 한 줄을 표지 문자열로 바꾼 판으로 했다(그 속성 문서).</para>
     ///
     /// <para><b>시간은 전부 벽시계(초)</b>이고 예산은 프로덕션 상수식이다(CLAUDE.md) — <see cref="UserSurfaceSummonPolicy.LeaseSeconds"/>,
     /// <see cref="GearRadialMenuWidget.ExpandTotalSeconds"/>, <see cref="SettingsWindow.DefaultReopenAfterSuspendGraceSeconds"/>.
@@ -132,6 +136,16 @@ namespace StickMate.Tests.PlayMode
         private bool _bypassAtFixtureStart;
         private bool _fixtureStartCaptured;
 
+        // ---- R5(명령 크랙) 하네스 ----
+        private WindowCrashDirector _crash;
+        private ActionCommandPopover _popover;
+        private IMovementIntentSource _savedIntent;
+        private bool _intentHijacked;
+        private bool _crackObserverAttached;
+        private bool _testHoldsLock;
+        private bool _userHiddenByTest;
+        private readonly CrackTally _crack = new CrackTally();
+
         private static readonly FieldInfo ButtonServiceField =
             typeof(AppControlDirector).GetField("_buttonService", BindingFlags.Instance | BindingFlags.NonPublic);
 
@@ -194,6 +208,25 @@ namespace StickMate.Tests.PlayMode
             if (_settings != null && _settings.IsOpen) _settings.Close("테스트 정리");
             if (_window != null && _window.IsOpen) _window.Close("테스트 정리");
 
+            // R5 하네스 — 락 · 숨김 · 관측 구독 · 의도 소스를 되돌린다(단언이 중간에 터져도 여기서 풀린다).
+            if (_testHoldsLock) SpectacleEventLock.Release(this);
+            _testHoldsLock = false;
+            if (_userHiddenByTest && _agent != null) _agent.SetUserHidden(false, "테스트 정리");
+            _userHiddenByTest = false;
+            if (_crackObserverAttached)
+            {
+                StickmanEventBus.WindowCrashOverlayChanged -= OnCrackOverlayChanged;
+                StickmanEventBus.StateTransitioned -= OnCrackStateTransitioned;
+            }
+            _crackObserverAttached = false;
+            if (_intentHijacked && _agent != null && _agent.Blackboard != null) _agent.Blackboard.IntentSource = _savedIntent;
+            _intentHijacked = false;
+            if (_agent != null && _agent.Blackboard != null && _agent.Blackboard.Machine != null
+                && _agent.Blackboard.Machine.CurrentStateId == StickmanStateId.WindowCrash)
+            {
+                _agent.Blackboard.Machine.ChangeState(StickmanStateId.Idle, isForcedInterrupt: true);
+            }
+
             if (_agent != null)
             {
                 if (PanelRetreatField != null) PanelRetreatField.SetValue(_agent, false);
@@ -241,6 +274,9 @@ namespace StickMate.Tests.PlayMode
             _postIt = null;
             _config = null;
             _savedButtonService = null;
+            _crash = null;
+            _popover = null;
+            _savedIntent = null;
             yield return null;
         }
 
@@ -720,6 +756,400 @@ namespace StickMate.Tests.PlayMode
                 () => _window.Close("R4b 대조 — 사용자가 정보창을 닫는다"),
                 0f);
             Debug.Log($"{LogPrefix} R4b 확인 — 정보창 허가에 재오픈이 편승하지 않았고, 창을 닫고 전체화면이 끝나자 유예 안에 재오픈됐습니다.");
+        }
+
+        // ==================== R5 — 해제 조건 A1: 명령 크랙(행동 명령창 [창 부수기] · ⌃⌥⌘X) ====================
+        //
+        // 설계: docs/systems/AUTO_SURFACE_LEASE_AXIS.md §9-1 · 판정 game-architect JUDGMENT ③ A1.
+        // 결함: 등급 1에서 사용자가 연 명령창이 임대를 갱신하는 동안 [창 부수기]가 «준비됨»으로 보이고, 누르면 캐릭터는 휘두르지만
+        //       금 오버레이는 다음 프레임에 N-20 가드(TickOverlay)가 취소한다 — 「결과 없는 휘두르기」(원칙 1).
+        // 대상 창: 에디터 널 서비스의 더미 발판(최상위 · 핸들 ≥ 0)이 «앞에 있는 창»이다. 발판을 갈아 끼우지 않는다.
+
+        /// <summary>
+        /// ★ A1 사유 — 프로덕션 상수를 <b>참조</b>한다(CLAUDE.md — 문구를 베끼지 않는다).
+        /// <para>수정 전 박제(2026-09-15, HEAD <c>ad49497</c> 프로덕션)에서는 그 상수가 없어 이 한 줄만 어떤 프로덕션 문구와도 같을 수 없는
+        /// 표지 문자열로 두고 돌렸다(null이면 «가능 = 사유 null»과 우연히 같아진다). 박제 결과: R5a · R5b 빨강(가능 · 클릭과 ForceTriggerNow 모두
+        /// 휘두르기 1 · 금 Started 1 → 1프레임 뒤 Cancelled 1), R5c 초록(금 3.000초), R5d 빨강((ii) 락 사유가 먼저).</para>
+        /// </summary>
+        private static string ExpectedCrackLeaseReason => WindowCrashDirector.UnsummonedSurfacesSuppressedReason;
+
+        /// <summary>캐릭터가 명령을 받을 수 있는 상태(Idle/Walk · 락 비움)에 오기까지 기다리는 벽시계 예산(초).</summary>
+        private const float CommandReadyBudgetSeconds = 6f;
+
+        private const ActionCommandPopover.Command CrackCommand = ActionCommandPopover.Command.WindowCrash;
+
+        /// <summary>제자리에 서 있게 하는 의도 소스 — 배회 AI가 점프 · 등반으로 상태 조건을 흔들지 않게 한다(판정 대상은 상태가 아니다).</summary>
+        private sealed class StillIntent : IMovementIntentSource
+        {
+            public float MoveInputX => 0f;
+            public bool JumpRequested => false;
+            public bool LedgeHangRequested => false;
+            public bool HopDownRequested => false;
+            public bool StepUpRequested => false;
+        }
+
+        /// <summary>명령 크랙 관측 계수 — 이벤트 버스에서 직접 센다(렌더러를 거치지 않는다).</summary>
+        private sealed class CrackTally
+        {
+            public int WindowCrashTransitions;
+            public int Started;
+            public int Cancelled;
+            public int Completed;
+            public int UnknownPhase;
+            public int StartedFrame = -1;
+            public int CancelledFrame = -1;
+            public float StartedAt = -1f;
+            public float CancelledAt = -1f;
+            public float CompletedAt = -1f;
+
+            public void Reset()
+            {
+                WindowCrashTransitions = Started = Cancelled = Completed = UnknownPhase = 0;
+                StartedFrame = CancelledFrame = -1;
+                StartedAt = CancelledAt = CompletedAt = -1f;
+            }
+
+            public CrackTally Snapshot() => (CrackTally)MemberwiseClone();
+
+            public override string ToString() =>
+                $"휘두르기 전이 {WindowCrashTransitions} · 금 Started {Started} · Cancelled {Cancelled} · Completed {Completed} · 미상 단계 {UnknownPhase}" +
+                (Started > 0 && Cancelled > 0 ? $" · Started→Cancelled {CancelledFrame - StartedFrame}프레임/{CancelledAt - StartedAt:F3}초" : string.Empty);
+        }
+
+        /// <summary>한 칸에서 잰 것 전부. 단언보다 먼저 로그로 남긴다 — 수정 전 박제에서 «무엇이 일어났는가»가 첫 실패 단언에 가려지지 않게.</summary>
+        private sealed class CrackCommandReport
+        {
+            public StickmanStateId StateAtMeasure;
+            public bool CouldTakeCommand;
+            public float StableSeconds;
+            public CommandAvailability Director;
+            public CommandAvailability TileJudgement;
+            public bool TileReady;
+            public string TileReason;
+            public string Caption;
+            public int OtherReadyTiles;
+            public CrackTally AfterClick;
+            public bool ForceResult;
+            public CrackTally AfterForce;
+            public bool LeaseAtEnd;
+            public bool PopoverOpenAtEnd;
+
+            public override string ToString() =>
+                $"잴 때 상태 {StateAtMeasure}(명령 받을 수 있음={CouldTakeCommand}, 안정 {StableSeconds:F2}초) · " +
+                $"판정(감독) 가능={Director.IsReady} 사유=«{Director.Reason}» · 타일 가능={TileReady} 사유=«{TileReason}» · " +
+                $"헤더=«{Caption}»(다른 가능 타일 {OtherReadyTiles}) · 클릭 뒤 [{AfterClick}] · ForceTriggerNow={ForceResult} 뒤 [{AfterForce}] · " +
+                $"끝 허가={LeaseAtEnd} · 끝 명령창={PopoverOpenAtEnd}";
+        }
+
+        private void OnCrackOverlayChanged(WindowCrashOverlayEvent e)
+        {
+            switch (e.Phase)
+            {
+                case SpectacleOverlayPhase.Started:
+                    _crack.Started++;
+                    _crack.StartedFrame = Time.frameCount;
+                    _crack.StartedAt = Time.realtimeSinceStartup;
+                    return;
+                case SpectacleOverlayPhase.Cancelled:
+                    _crack.Cancelled++;
+                    _crack.CancelledFrame = Time.frameCount;
+                    _crack.CancelledAt = Time.realtimeSinceStartup;
+                    return;
+                case SpectacleOverlayPhase.Completed:
+                    _crack.Completed++;
+                    _crack.CompletedAt = Time.realtimeSinceStartup;
+                    return;
+                default:
+                    // 정상값은 위 셋이다. 여기 오면 단계가 늘었는데 이 관측기가 모른다 — 조용히 버리지 않고 세서 단언이 드러낸다.
+                    _crack.UnknownPhase++;
+                    Debug.LogWarning($"{LogPrefix} 알 수 없는 크랙 오버레이 단계({(int)e.Phase}) — 관측기를 함께 고치십시오.");
+                    return;
+            }
+        }
+
+        private void OnCrackStateTransitioned(StateTransitionEvent e)
+        {
+            if (e.To == StickmanStateId.WindowCrash) _crack.WindowCrashTransitions++;
+        }
+
+        private bool CharacterCanTakeCommand()
+        {
+            StickmanStateId s = _agent.Blackboard.Machine.CurrentStateId;
+            return (s == StickmanStateId.Idle || s == StickmanStateId.Walk) && !SpectacleEventLock.IsActive;
+        }
+
+        /// <summary>감독 · 명령창을 찾고, 의도 소스를 정지로 바꾸고, 관측을 붙이고, 캐릭터가 명령을 받을 수 있는 상태가 될 때까지 기다린다.</summary>
+        private IEnumerator PrepareCrackHarness(string what)
+        {
+            _crash = Object.FindFirstObjectByType<WindowCrashDirector>(FindObjectsInactive.Include);
+            Assert.IsNotNull(_crash, $"{LogPrefix} {what} — 씬에 WindowCrashDirector가 없습니다.");
+            _popover = _agent.GetComponent<ActionCommandPopover>();
+            Assert.IsNotNull(_popover, $"{LogPrefix} {what} — 캐릭터에 ActionCommandPopover가 없습니다(부채꼴 [행동]이 여는 창).");
+
+            _savedIntent = _agent.Blackboard.IntentSource;
+            _agent.Blackboard.IntentSource = new StillIntent();
+            _intentHijacked = true;
+
+            StickmanEventBus.WindowCrashOverlayChanged += OnCrackOverlayChanged;
+            StickmanEventBus.StateTransitioned += OnCrackStateTransitioned;
+            _crackObserverAttached = true;
+            _crack.Reset();
+
+            yield return WaitUntilOrTimeout(CharacterCanTakeCommand, CommandReadyBudgetSeconds);
+            Assert.IsTrue(CharacterCanTakeCommand(),
+                $"{LogPrefix} {what} 전제 — {CommandReadyBudgetSeconds:F0}초 안에 캐릭터가 Idle/Walk + 락 비움에 오지 않았습니다" +
+                $"(상태 {_agent.Blackboard.Machine.CurrentStateId}, 락 {SpectacleEventLock.IsActive}). 아래 판정이 다른 사유에 가려집니다.");
+        }
+
+        /// <summary>사용자 경로 그대로 연다: 캐릭터 우클릭 → 부채꼴 → [행동]. 타일이 한 번 갱신될 만큼 기다린다.</summary>
+        private IEnumerator OpenCommandPopoverFromFan(string what, bool expectGrant)
+        {
+            AssertCursorInside();
+            RightDown();
+            RightUp();
+            Assert.IsTrue(_menu.IsVisible, $"{LogPrefix} {what} 전제 — 캐릭터 우클릭이 부채꼴을 펴지 않았습니다.");
+            Assert.AreEqual(expectGrant, _agent.IsUserSummonGrantActive,
+                $"{LogPrefix} {what} 전제 — 우클릭 뒤 허가가 {_agent.IsUserSummonGrantActive}입니다(기대 {expectGrant}).");
+
+            _menu.Activate((int)GearMenuButton.Action);
+            Assert.IsTrue(_popover.IsOpen, $"{LogPrefix} {what} 전제 — 부채꼴 [행동]이 명령창을 열지 않았습니다.");
+
+            yield return Wait(SettleSeconds);   // 명령창 안전 폴링(타일 갱신)이 한 번은 돈다.
+            Assert.IsTrue(_popover.IsOpen && _menu.IsVisible, $"{LogPrefix} {what} 전제 — 명령창이나 부채꼴이 걷혔습니다(창 {_popover.IsOpen} · 부채꼴 {_menu.IsVisible}).");
+            Assert.AreEqual(expectGrant, _agent.IsUserSummonGrantActive,
+                $"{LogPrefix} {what} 전제 — 명령창이 열린 뒤 허가가 {_agent.IsUserSummonGrantActive}입니다(기대 {expectGrant}). 부채꼴 임대 갱신이 끊겼거나 새로 났습니다.");
+        }
+
+        private float CrackObserveSeconds() =>
+            Mathf.Max(_config.windowCrashSwingDuration, UserSurfaceSummonPolicy.LeaseSeconds) + ObserveSlackSeconds;
+
+        private IEnumerator ObserveCrack(float seconds)
+        {
+            float end = Time.realtimeSinceStartup + seconds;
+            while (Time.realtimeSinceStartup < end) yield return null;
+        }
+
+        /// <summary>임대 칸에서 명령 크랙을 잰다 — 판정 · 타일 · 실제 클릭 · ⌃⌥⌘X와 같은 <c>ForceTriggerNow</c>.</summary>
+        private IEnumerator MeasureCrackCommand(string what, CrackCommandReport r)
+        {
+            // ★ 판정이 상태 조건에 가려지지 않게 잰다 — 캐릭터가 Idle/Walk + 락 비움을 SettleSeconds 동안 유지해
+            //   명령창 안전 폴링이 그 상태로 타일을 한 번 갱신한 뒤. (수정 전 박제 1회차에서 우클릭 직후 LandingCrouch에
+            //   걸려 타일이 «착지 중» 사유로 회색이었고, 그래서 타일 절반이 결함을 재지 못했다.)
+            float stableSince = -1f;
+            float deadline = Time.realtimeSinceStartup + CommandReadyBudgetSeconds;
+            while (Time.realtimeSinceStartup < deadline)
+            {
+                if (CharacterCanTakeCommand()) { if (stableSince < 0f) stableSince = Time.realtimeSinceStartup; }
+                else stableSince = -1f;
+                if (stableSince >= 0f && Time.realtimeSinceStartup - stableSince >= SettleSeconds) break;
+                yield return null;
+            }
+            r.StateAtMeasure = _agent.Blackboard.Machine.CurrentStateId;
+            r.CouldTakeCommand = CharacterCanTakeCommand();
+            r.StableSeconds = stableSince >= 0f ? Time.realtimeSinceStartup - stableSince : 0f;
+            r.Director = _crash.GetAvailability();
+            r.TileJudgement = _popover.GetAvailability(CrackCommand);
+            r.TileReady = _popover.IsCommandReady(CrackCommand);
+            r.TileReason = _popover.CommandReason(CrackCommand);
+            r.Caption = _popover.StatusCaption;
+            for (int i = 0; i < ActionCommandPopover.CommandCount; i++)
+                if ((ActionCommandPopover.Command)i != CrackCommand && _popover.IsCommandReady((ActionCommandPopover.Command)i)) r.OtherReadyTiles++;
+
+            _crack.Reset();
+            _popover.FeedClickForTests(_popover.CommandScreenRect(CrackCommand).center);
+            yield return ObserveCrack(CrackObserveSeconds());
+            r.AfterClick = _crack.Snapshot();
+
+            // 수정 전 트리에서는 방금 휘두르기가 끝나야 상태 조건에 막히지 않는다. 수정 뒤에는 전이가 없어 기다리지 않고 통과한다.
+            yield return WaitUntilOrTimeout(CharacterCanTakeCommand, CommandReadyBudgetSeconds);
+            _crack.Reset();
+            r.ForceResult = _crash.ForceTriggerNow($"{what} — ⌃⌥⌘X와 같은 경로");
+            yield return ObserveCrack(CrackObserveSeconds());
+            r.AfterForce = _crack.Snapshot();
+
+            r.LeaseAtEnd = _agent.IsUserSummonGrantActive;
+            r.PopoverOpenAtEnd = _popover.IsOpen;
+            Debug.Log($"{LogPrefix} {what} — {r}");
+        }
+
+        private void AssertCrackCommandSuppressed(string what, CrackCommandReport r)
+        {
+            Assert.IsTrue(r.CouldTakeCommand && r.StableSeconds >= SettleSeconds,
+                $"{LogPrefix} {what} 전제 — 잴 때 캐릭터가 명령을 받을 수 있는 상태로 안정되지 않았습니다({r}). 아래 «회색»이 상태 · 락 때문일 수 있습니다.");
+            Assert.IsFalse(r.Director.IsReady,
+                $"{LogPrefix} ★ {what} — [창 부수기] 판정이 «가능»입니다({r}). 사용자가 연 창의 임대에 명령 크랙이 편승합니다(A1).");
+            Assert.AreEqual(ExpectedCrackLeaseReason, r.Director.Reason,
+                $"{LogPrefix} ★ {what} — 불가 사유가 A1 사유가 아닙니다({r}). 다른 사유로 우연히 막힌 것이면 그 사유가 사라지는 순간 다시 뚫립니다.");
+            Assert.AreEqual(r.Director.IsReady, r.TileJudgement.IsReady, $"{LogPrefix} {what} — 명령창이 부른 판정과 감독 판정이 다릅니다(진실 두 벌, 36-7).");
+            Assert.IsFalse(r.TileReady, $"{LogPrefix} ★ {what} — 타일이 회색이 아닙니다({r}).");
+            Assert.AreEqual(ExpectedCrackLeaseReason, r.TileReason, $"{LogPrefix} ★ {what} — 타일 설명 자리의 사유가 A1 사유가 아닙니다({r}).");
+
+            Assert.AreEqual(0, r.AfterClick.UnknownPhase + r.AfterForce.UnknownPhase, $"{LogPrefix} {what} — 관측기가 모르는 오버레이 단계가 나왔습니다({r}).");
+            Assert.AreEqual(0, r.AfterClick.WindowCrashTransitions, $"{LogPrefix} ★ {what} — 회색 타일을 눌렀는데 캐릭터가 휘둘렀습니다({r}).");
+            Assert.AreEqual(0, r.AfterClick.Started, $"{LogPrefix} ★ {what} — 회색 타일을 눌렀는데 금 오버레이가 시작됐습니다({r}).");
+            Assert.AreEqual(0, r.AfterClick.Cancelled, $"{LogPrefix} ★ {what} — 타일 클릭 뒤 금 오버레이 취소가 관측됐습니다 — 시작했다가 걷힌 것입니다({r}).");
+            Assert.IsFalse(r.ForceResult, $"{LogPrefix} ★ {what} — ⌃⌥⌘X와 같은 경로(ForceTriggerNow)가 발동했다고 답했습니다({r}).");
+            Assert.AreEqual(0, r.AfterForce.WindowCrashTransitions, $"{LogPrefix} ★ {what} — ForceTriggerNow 뒤 휘두르기 전이가 있었습니다({r}).");
+            Assert.AreEqual(0, r.AfterForce.Started, $"{LogPrefix} ★ {what} — ForceTriggerNow 뒤 금 오버레이가 시작됐습니다({r}).");
+            Assert.AreEqual(0, r.AfterForce.Cancelled, $"{LogPrefix} ★ {what} — ForceTriggerNow 뒤 금 오버레이 취소가 관측됐습니다({r}).");
+
+            Assert.IsTrue(r.LeaseAtEnd, $"{LogPrefix} {what} — 관측 끝에서 허가가 죽어 있습니다(임대 칸을 재지 못했습니다).");
+            Assert.IsTrue(r.PopoverOpenAtEnd, $"{LogPrefix} {what} — 명령창이 관측 중 닫혔습니다(사용자 표면 회귀 또는 전제 붕괴).");
+        }
+
+        [UnityTest]
+        [Timeout(180000)]
+        public IEnumerator R5a_프로덕션_톱니세계_등급1에서_사용자가_연_행동_명령창의_창_부수기는_회색과_사유이고_눌러도_단축키_경로로도_휘두르기와_금이_0이다()
+        {
+            yield return LoadScene();
+            yield return PrepareCrackHarness("R5a");
+            yield return EnterTierOne("R5a");
+            yield return OpenCommandPopoverFromFan("R5a", expectGrant: true);
+
+            Assert.IsTrue((bool)PanelRetreatField.GetValue(_agent), $"{LogPrefix} R5a 전제 — 축 3이 꺼졌습니다(FTT 칸이 아닙니다).");
+            Assert.IsFalse(_agent.ArePanelsSuppressed, $"{LogPrefix} R5a 전제 — 옛 창구가 참입니다. 명령창이 떠 있을 수 없는 칸입니다.");
+
+            var r = new CrackCommandReport();
+            yield return MeasureCrackCommand("R5a(등급 1 · 명령창 열림 · FTT 칸)", r);
+            AssertCrackCommandSuppressed("R5a(등급 1 · 명령창 열림 · FTT 칸)", r);
+            Debug.Log($"{LogPrefix} R5a 확인 — FTT 칸에서 [창 부수기]는 회색 + A1 사유, 클릭 · ForceTriggerNow 모두 휘두르기 0 · 금 0.");
+        }
+
+        [UnityTest]
+        [Timeout(180000)]
+        public IEnumerator R5b_프로덕션_톱니세계_이력칸_등급1이_끝나도_그때_연_명령창이_떠_있으면_창_부수기는_회색이고_연_것을_다_닫으면_사유가_사라진다()
+        {
+            yield return LoadScene();
+            yield return PrepareCrackHarness("R5b");
+            yield return EnterTierOne("R5b");
+            yield return OpenCommandPopoverFromFan("R5b", expectGrant: true);
+
+            SetPanelRetreat(false);   // 전체화면 앱이 끝났다. 부채꼴 · 명령창은 그대로 — FFT 칸.
+            yield return Wait(SettleSeconds);
+            Assert.IsFalse((bool)PanelRetreatField.GetValue(_agent), $"{LogPrefix} R5b 전제 — 축 3이 아직 켜져 있습니다.");
+            Assert.IsFalse(_agent.ArePanelsSuppressed, $"{LogPrefix} R5b 전제 — 옛 창구가 참입니다(FFT 칸이 아닙니다).");
+            Assert.IsTrue(_agent.IsUserSummonGrantActive, $"{LogPrefix} R5b 전제 — 허가가 죽었습니다(부채꼴 갱신이 끊김).");
+            Assert.IsTrue(_popover.IsOpen && _menu.IsVisible, $"{LogPrefix} R5b 전제 — 명령창이나 부채꼴이 걷혔습니다.");
+
+            var r = new CrackCommandReport();
+            yield return MeasureCrackCommand("R5b(등급 1 종료 · 명령창 열림 · FFT 칸)", r);
+            AssertCrackCommandSuppressed("R5b(등급 1 종료 · 명령창 열림 · FFT 칸)", r);
+
+            // ---------- 사유가 약속한 조건(전체화면이 끝나고 연 창과 버튼을 다 닫음)을 채우면 이 사유가 사라지는가 ----------
+            _menu.ForceCloseAll("R5b — 전체화면이 끝난 뒤 연 창과 버튼을 다 닫는다");
+            yield return Wait(UserSurfaceSummonPolicy.LeaseSeconds * 3f);
+            Assert.IsFalse(_popover.IsOpen || _menu.IsVisible, $"{LogPrefix} R5b 약속 확인 전제 — 닫았는데 명령창이나 부채꼴이 남았습니다.");
+            Assert.IsFalse(_agent.IsUserSummonGrantActive, $"{LogPrefix} R5b 약속 확인 전제 — 다 닫았는데 허가가 {UserSurfaceSummonPolicy.LeaseSeconds * 3f:F2}초 뒤까지 남았습니다.");
+
+            yield return WaitUntilOrTimeout(CharacterCanTakeCommand, CommandReadyBudgetSeconds);
+            yield return OpenCommandPopoverFromFan("R5b 약속 확인(등급 없음에서 다시 연 명령창)", expectGrant: false);
+            yield return WaitUntilOrTimeout(() => _popover.IsCommandReady(CrackCommand), CommandReadyBudgetSeconds);
+            CommandAvailability after = _crash.GetAvailability();
+            Debug.Log($"{LogPrefix} R5b 약속 확인 — 다시 연 명령창의 [창 부수기] 가능={after.IsReady} 사유=«{after.Reason}» · 타일 가능={_popover.IsCommandReady(CrackCommand)}");
+            Assert.AreNotEqual(ExpectedCrackLeaseReason, after.Reason,
+                $"{LogPrefix} ★ R5b — 사유가 약속한 조건을 다 채웠는데 같은 사유가 다시 나옵니다. 문구가 거짓 약속이 됩니다.");
+            Assert.IsTrue(after.IsReady && _popover.IsCommandReady(CrackCommand),
+                $"{LogPrefix} R5b — 조건을 채우고 다시 연 명령창에서 [창 부수기]가 가능해지지 않았습니다(사유 «{after.Reason}»). 위 «회색»이 «원래 못 누르는 세계»와 구별되지 않습니다.");
+            Debug.Log($"{LogPrefix} R5b 확인 — FFT 칸에서 회색 + A1 사유, 휘두르기 0 · 금 0. 연 것을 다 닫고 다시 열자 [창 부수기]가 가능해졌습니다.");
+        }
+
+        [UnityTest]
+        [Timeout(180000)]
+        public IEnumerator R5c_음성대조_프로덕션_톱니세계_등급없음에서_명령창의_창_부수기는_가능하고_누르면_금이_설정_수명_동안_취소_없이_보인다()
+        {
+            yield return LoadScene();
+            yield return PrepareCrackHarness("R5c");
+            yield return OpenCommandPopoverFromFan("R5c", expectGrant: false);
+            Assert.IsFalse(_agent.ArePanelsSuppressed || _agent.IsUserSummonGrantActive || (bool)PanelRetreatField.GetValue(_agent),
+                $"{LogPrefix} R5c 전제 — 등급 없음 · 무허가가 아닙니다.");
+
+            yield return WaitUntilOrTimeout(() => _popover.IsCommandReady(CrackCommand) && _crash.GetAvailability().IsReady, CommandReadyBudgetSeconds);
+            CommandAvailability before = _crash.GetAvailability();
+            Assert.IsTrue(before.IsReady && _popover.IsCommandReady(CrackCommand),
+                $"{LogPrefix} ★ R5c 음성 대조 실패 — 등급 없음에서 [창 부수기]가 가능하지 않습니다(사유 «{before.Reason}», 타일 {_popover.IsCommandReady(CrackCommand)}). R5a · R5b · R5d의 «회색»은 무효입니다.");
+
+            _crack.Reset();
+            float duration = _config.windowCrashOverlayDurationSeconds;
+            float budget = duration * 2f + ObserveSlackSeconds;
+            float clickedAt = Time.realtimeSinceStartup;
+            int popoverClosedFrames = 0;
+            _popover.FeedClickForTests(_popover.CommandScreenRect(CrackCommand).center);
+            while (Time.realtimeSinceStartup < clickedAt + budget && _crack.Completed == 0 && _crack.Cancelled == 0)
+            {
+                yield return null;
+                if (!_popover.IsOpen) popoverClosedFrames++;
+            }
+            float shown = _crack.CompletedAt >= 0f && _crack.StartedAt >= 0f ? _crack.CompletedAt - _crack.StartedAt : -1f;
+            Debug.Log($"{LogPrefix} R5c — 등급 없음 클릭: [{_crack}] · 금이 보인 벽시계 {shown:F3}초(설정 수명 {duration:F2}초) · 명령창 닫힘 프레임 {popoverClosedFrames}");
+
+            Assert.AreEqual(0, _crack.UnknownPhase, $"{LogPrefix} R5c — 관측기가 모르는 오버레이 단계가 나왔습니다.");
+            Assert.AreEqual(1, _crack.Started, $"{LogPrefix} ★ R5c 음성 대조 실패 — 가능한 타일을 눌렀는데 금 오버레이가 시작되지 않았습니다([{_crack}]). 관측기가 죽었을 수 있습니다.");
+            Assert.AreEqual(1, _crack.WindowCrashTransitions, $"{LogPrefix} ★ R5c 음성 대조 실패 — 휘두르기 전이가 {_crack.WindowCrashTransitions}회입니다(기대 1).");
+            Assert.AreEqual(0, _crack.Cancelled, $"{LogPrefix} ★ R5c — 등급 없음에서 금이 취소됐습니다([{_crack}]). 이 세계에서 금이 원래 안 남으면 R5의 «0»은 무효입니다.");
+            Assert.AreEqual(1, _crack.Completed, $"{LogPrefix} ★ R5c — 벽시계 {budget:F2}초 안에 금이 수명을 채우고 끝나지 않았습니다([{_crack}]).");
+            Assert.GreaterOrEqual(shown, duration - Time.maximumDeltaTime,
+                $"{LogPrefix} ★ R5c — 금이 {shown:F3}초만 보였습니다(설정 수명 {duration:F2}초, 허용 오차 = 한 프레임 상한 {Time.maximumDeltaTime:F3}초).");
+            Assert.AreEqual(0, popoverClosedFrames, $"{LogPrefix} R5c — 금이 보이는 동안 명령창이 닫혔습니다(2026-09-02 «메뉴가 유지되어야함» 회귀).");
+            Debug.Log($"{LogPrefix} R5c 확인 — 등급 없음에서 [창 부수기]는 가능했고, 누르자 휘두르기 1회 · 금이 {shown:F2}초 동안 취소 없이 보였습니다(측정기 생존).");
+        }
+
+        [UnityTest]
+        [Timeout(180000)]
+        public IEnumerator R5d_가드위치_등급1에서_숨김이면_숨김_사유가_먼저이고_락이_잡혀_있으면_A1_사유가_락_사유보다_먼저다()
+        {
+            yield return LoadScene();
+            yield return PrepareCrackHarness("R5d");
+            yield return EnterTierOne("R5d");
+            yield return OpenCommandPopoverFromFan("R5d", expectGrant: true);
+
+            // ---------- (i) 숨김 + 등급 1: 숨김 사유가 나와야 한다(숨김은 A1 사유 문구를 채워도 풀리지 않는 지속 사유라서 먼저 보여야 한다) ----------
+            _agent.SetUserHidden(true, "R5d — 등급 1에서 명령창을 연 채 캐릭터를 숨긴다");
+            _userHiddenByTest = true;
+            yield return Wait(SettleSeconds);
+            Assert.IsTrue(_agent.IsSuspended, $"{LogPrefix} R5d 전제 — 숨김이 IsSuspended로 이어지지 않았습니다.");
+            Assert.IsTrue(_agent.ArePanelsSuppressed || _agent.IsUserSummonGrantActive, $"{LogPrefix} R5d 전제 — A1 가드 조건(옛 창구 ∨ 허가)이 거짓입니다(가드 순서를 재지 못합니다).");
+            CommandAvailability hidden = _crash.GetAvailability();
+            bool popoverOpenWhileHidden = _popover.IsOpen;
+            string hiddenTileReason = popoverOpenWhileHidden ? _popover.CommandReason(CrackCommand) : null;
+            Debug.Log($"{LogPrefix} R5d(i) 숨김 + 등급 1 — 가능={hidden.IsReady} 사유=«{hidden.Reason}» · 명령창 열림={popoverOpenWhileHidden} 타일 사유=«{hiddenTileReason}»");
+            Assert.IsFalse(hidden.IsReady, $"{LogPrefix} ★ R5d(i) — 숨김 + 등급 1인데 [창 부수기]가 가능입니다.");
+            Assert.AreEqual(HiddenCharacterCommandGate.HiddenReason, hidden.Reason,
+                $"{LogPrefix} ★ R5d(i) — 숨김 + 등급 1에서 사유가 숨김 사유가 아닙니다(«{hidden.Reason}»). A1 가드가 숨김 게이트보다 앞에 있습니다 — 숨김은 A1 사유 문구를 채워도 풀리지 않는 지속 사유라서 먼저 보여야 합니다.");
+            if (popoverOpenWhileHidden)
+                Assert.AreEqual(HiddenCharacterCommandGate.HiddenReason, hiddenTileReason, $"{LogPrefix} ★ R5d(i) — 타일 사유가 숨김 사유가 아닙니다.");
+
+            _agent.SetUserHidden(false, "R5d — 숨김 해제");
+            _userHiddenByTest = false;
+            yield return Wait(SettleSeconds);
+            Assert.IsFalse(_agent.IsSuspended, $"{LogPrefix} R5d 전제 — 숨김이 풀리지 않았습니다.");
+
+            // ---------- (ii) 등급 1 + 락 점유: A1 사유가 락 사유보다 먼저여야 한다(기다리면 될 것처럼 보였다가 아니게 되지 않게) ----------
+            Assert.IsTrue((bool)PanelRetreatField.GetValue(_agent), $"{LogPrefix} R5d(ii) 전제 — 축 3이 꺼졌습니다.");
+            Assert.IsFalse(SpectacleEventLock.IsActive, $"{LogPrefix} R5d(ii) 전제 — 테스트가 잡기 전에 이미 락이 잡혀 있습니다.");
+            Assert.IsTrue(SpectacleEventLock.TryAcquire(SpectacleEventKind.Archery, this), $"{LogPrefix} R5d(ii) 전제 — 테스트가 락을 잡지 못했습니다.");
+            _testHoldsLock = true;
+            CommandAvailability locked = _crash.GetAvailability();
+            SpectacleEventLock.Release(this);
+            _testHoldsLock = false;
+            string busy = StickMateDisplayNames.BusyText(SpectacleEventKind.Archery);
+            Debug.Log($"{LogPrefix} R5d(ii) 등급 1 + 락 — 가능={locked.IsReady} 사유=«{locked.Reason}» (락 사유 문형 «{busy}»)");
+            Assert.IsFalse(locked.IsReady, $"{LogPrefix} ★ R5d(ii) — 락이 잡혀 있는데 가능입니다.");
+            Assert.AreEqual(ExpectedCrackLeaseReason, locked.Reason,
+                $"{LogPrefix} ★ R5d(ii) — 등급 1 + 락에서 사유가 A1 사유가 아닙니다(«{locked.Reason}»). A1 가드가 락 검사보다 뒤에 있습니다.");
+
+            // ---------- 대조: 등급 없음 · 무허가에서 같은 락이면 락 사유가 나온다(락 판정이 살아 있고 위 비교가 가를 수 있다) ----------
+            _menu.ForceCloseAll("R5d 대조 — 연 것을 다 닫는다");
+            SetPanelRetreat(false);
+            yield return Wait(UserSurfaceSummonPolicy.LeaseSeconds * 3f);
+            Assert.IsFalse(_agent.ArePanelsSuppressed || _agent.IsUserSummonGrantActive, $"{LogPrefix} R5d 대조 전제 — 등급 없음 · 무허가가 아닙니다.");
+            Assert.IsTrue(SpectacleEventLock.TryAcquire(SpectacleEventKind.Archery, this), $"{LogPrefix} R5d 대조 전제 — 테스트가 락을 잡지 못했습니다.");
+            _testHoldsLock = true;
+            CommandAvailability control = _crash.GetAvailability();
+            SpectacleEventLock.Release(this);
+            _testHoldsLock = false;
+            Debug.Log($"{LogPrefix} R5d 대조 등급 없음 + 락 — 가능={control.IsReady} 사유=«{control.Reason}»");
+            Assert.AreEqual(busy, control.Reason, $"{LogPrefix} R5d 대조 실패 — 등급 없음 + 락에서 락 사유가 나오지 않습니다(«{control.Reason}»). 위 (ii) 비교가 아무것도 가르지 못합니다.");
+            Debug.Log($"{LogPrefix} R5d 확인 — 숨김이면 숨김 사유, 등급 1 + 락이면 A1 사유, 등급 없음 + 락이면 락 사유.");
         }
     }
 }

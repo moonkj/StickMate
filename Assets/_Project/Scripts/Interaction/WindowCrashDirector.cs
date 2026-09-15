@@ -73,6 +73,21 @@ namespace StickMate.Interaction
         public const string NoForegroundWindowReason = "지금 앞에 있는 창이 없어요";
 
         /// <summary>
+        /// ★★ 2026-09-15 (N-20 해제 조건 A1) — 사용자가 부르지 않은 표면을 억제하는 동안(<see cref="UserSurfaceSummonPolicy.SuppressesUnsummonedSurfaces"/>)의 문구.
+        /// 문구 정본: <c>docs/narrative/CRACK_COMMAND_DISABLED_REASON.md</c> §0(design-narrative, 리더 확정 2026-09-15). 영어 초안도 그 문서에 있다
+        /// (프로덕션 영어 UI 경로는 아직 없다).
+        /// <para>원인이 아니라 <b>이 사유가 사라지는 충분조건</b>을 말한다. 이 사유가 화면에 보이는 칸은 FTT(전체화면 앱 위에서 연 명령창)와
+        /// FFT(전체화면이 끝났는데 그때 연 창·부채꼴이 남음) 둘뿐이고, 두 칸 모두에서 참이다(같은 문서 §1-2 · §4).</para>
+        /// <para>테스트는 이 상수를 <b>참조</b>한다 — 글자를 베끼지 않는다(CLAUDE.md).</para>
+        /// </summary>
+        public const string UnsummonedSurfacesSuppressedReason = "전체화면이 끝나고 연 창과 버튼을 다 닫으면 돼요";
+
+        /// <summary>미리 만든 결과 하나 — 명령창이 0.25초마다 다시 묻는다(<see cref="CommandAvailability"/> 문서의 할당 0 계약,
+        /// <see cref="HiddenCharacterCommandGate.WhileHidden"/>과 같은 형태).</summary>
+        private static readonly CommandAvailability WhileUnsummonedSurfacesSuppressed =
+            CommandAvailability.Blocked(UnsummonedSurfacesSuppressedReason);
+
+        /// <summary>
         /// ★ 지금 창 부수기를 시킬 수 있는가 — 회색 처리와 실제 실행이 함께 쓰는 단 하나의 판정
         /// (docs/UX_FLOW.md 36-7). 27-4의 대상 조건(IsTopmost인 실제 창)까지 여기서 본다.
         /// </summary>
@@ -86,6 +101,16 @@ namespace StickMate.Interaction
             //   가드 값은 <c>IsSuspended</c>다 — <c>HidesScreenSurfaces</c>로 바꾸면 사용자 명시
             //   숨김에서 안 막히고, 그게 정확히 이 줄이 고치는 결함이다.
             if (HiddenCharacterCommandGate.BlocksNow(_player)) return HiddenCharacterCommandGate.WhileHidden;
+
+            // ★★ 2026-09-15 (N-20 해제 조건 A1, docs/systems/AUTO_SURFACE_LEASE_AXIS.md §9-1) — 명령 크랙은 사용자 표면이 아니다.
+            //    등급 1에서 사용자가 연 명령창·부채꼴이 임대를 갱신하는 동안 이 판정이 «가능»이면, 누르는 순간 캐릭터는 휘두르고
+            //    금은 다음 프레임에 TickOverlay의 같은 창구 가드가 취소한다(결과 없는 휘두르기, 원칙 1). ⌃⌥⌘X도 ForceTriggerNow가
+            //    이 함수를 부르므로 함께 막힌다. 호출형은 TickOverlay · 리마인더와 같다(UnsummonedSurfaceAxisTests T-B가 잠근다).
+            //    ★ 자리가 계약이다(리더 확정): <b>숨김 게이트 바로 뒤</b> — 숨김은 이 사유 문구를 채워도 풀리지 않는 지속 사유라서
+            //      먼저 보여야 한다. <b>오버레이·락·상태 검사보다 앞</b> — 뒤에 두면 «지금 ○○ 중이에요»가 먼저 떠
+            //      기다리면 될 것처럼 보였다가 아니게 된다. 캐릭터 축(IsSuspended)은 바로 위 게이트가 이미 봤으므로 여기 다시 붙이지 않는다.
+            if (UserSurfaceSummonPolicy.SuppressesUnsummonedSurfaces(_player.ArePanelsSuppressed, _player.IsUserSummonGrantActive))
+                return WhileUnsummonedSurfacesSuppressed;
 
             if (_overlayActive)
                 return CommandAvailability.Blocked(OverlayBusyReason);

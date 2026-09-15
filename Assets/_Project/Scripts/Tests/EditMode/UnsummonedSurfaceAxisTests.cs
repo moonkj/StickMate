@@ -601,6 +601,48 @@ namespace StickMate.Tests.EditMode
             Assert.IsEmpty(report.Problems,
                 "★ 자동 표면 임대 축 위반:\n  " + string.Join("\n  ", report.Problems) +
                 "\n자동 표면이 옛 창구(또는 등급 2 전용 값)를 읽으면 등급 1에서 사용자가 창을 연 동안 발표 화면 위로 되살아납니다(원칙 2 · N-20).");
+
+            AssertCrackCommandJudgementUsesUnsummonedAxis(files);
+        }
+
+        /// <summary>
+        /// ★ 해제 조건 A1(설계 §9-1) — <b>메서드 단위 존재 단언</b>. 위 표의 #9는 형 전체 (나)라서, 크랙 오버레이 가드(TickOverlay)만 새 창구를
+        /// 읽어도 통과한다. 명령 크랙 판정(<c>GetAvailability</c> — 명령창 타일과 ⌃⌥⌘X의 <c>ForceTriggerNow</c>가 함께 부른다)에서 가드가
+        /// 빠지면(변이 M-f) 그 스캔은 눈이 멀기 때문에 이 메서드 본문을 따로 잰다. 표에 메서드 항목으로 넣지 않는 이유: 한 형에 형 전체 항목과
+        /// 메서드 항목을 섞으면 분류기가 거부한다(<see cref="Classify"/>).
+        /// <para>식별자는 전부 <c>nameof</c>로 조립하고, 서명과 순서 앵커가 본문에서 <b>실재함</b>을 같은 자리에서 먼저 단언한다(CLAUDE.md 니들 규칙).
+        /// 순서: 숨김 게이트 &lt; A1 가드 &lt; 락 검사 — 숨김은 A1 사유 문구를 채워도 풀리지 않는 지속 사유라서 먼저 보이고, 락·상태 사유는
+        /// A1 사유보다 뒤에 보인다(PlayMode R5d가 런타임으로 같은 것을 잰다).</para>
+        /// </summary>
+        private static void AssertCrackCommandJudgementUsesUnsummonedAxis(IList<(string Rel, string San)> files)
+        {
+            string label = nameof(WindowCrashDirector) + "." + nameof(WindowCrashDirector.GetAvailability);
+            string signature = "public " + nameof(CommandAvailability) + " " + nameof(WindowCrashDirector.GetAvailability) + "(";
+
+            List<(string Rel, string San)> owners = files.Where(f => DeclaresType(f.San, nameof(WindowCrashDirector))).ToList();
+            Assert.AreEqual(1, owners.Count, $"{label} — {nameof(WindowCrashDirector)} 선언 파일이 {owners.Count}개입니다(기대 1).");
+            (string rel, string san) = owners[0];
+            Assert.AreEqual(1, CountOrdinal(san, signature), $"{label} — 서명 «{signature}»이 정확히 한 곳이 아닙니다({rel}). 아래 판정 무효.");
+            Assert.IsTrue(TryMethodBody(san, signature, out int open, out int close), $"{label} — 본문을 자르지 못했습니다({rel}). 아래 판정 무효.");
+            string body = san.Substring(open, close - open + 1);
+
+            ScopeReport scope = AnalyzeUnsummonedScope(body);
+            Debug.Log($"[T-B] {label}: 새 창구 호출 {scope.ValidCalls}/{scope.Calls} · 옛 창구 읽기 {scope.PanelReads} · 위반 {scope.Violations.Count} · 괄호 실패 {scope.ParseFailures}");
+            Assert.AreEqual(0, scope.ParseFailures, $"{label} — 괄호를 자르지 못한 곳이 있습니다(판정 무효).");
+            Assert.AreEqual(1, scope.ValidCalls,
+                $"★ {label} — 명령 크랙 판정에 새 창구 호출(인자에 {PanelsRead.Substring(1)}와 {GrantRead.Substring(1)}가 둘 다)이 {scope.ValidCalls}곳입니다(기대 1). " +
+                "없으면 등급 1에서 사용자가 연 명령창의 [창 부수기]가 «가능»으로 보이고, 누르면 휘두르기만 하고 금은 다음 프레임에 취소됩니다(A1 · 원칙 1).");
+            Assert.IsEmpty(scope.Violations, $"★ {label} — " + string.Join(" / ", scope.Violations));
+
+            int call = UnsummonedCallRegex.Match(body).Index;
+            string hiddenAnchor = nameof(HiddenCharacterCommandGate) + "." + nameof(HiddenCharacterCommandGate.BlocksNow);
+            string lockAnchor = nameof(SpectacleEventLock) + "." + nameof(SpectacleEventLock.IsActive);
+            int hidden = body.IndexOf(hiddenAnchor, System.StringComparison.Ordinal);
+            int lockCheck = body.IndexOf(lockAnchor, System.StringComparison.Ordinal);
+            Assert.GreaterOrEqual(hidden, 0, $"{label} — 순서 앵커 «{hiddenAnchor}»가 본문에 없습니다(앵커가 죽었습니다 — 순서 판정 무효).");
+            Assert.GreaterOrEqual(lockCheck, 0, $"{label} — 순서 앵커 «{lockAnchor}»가 본문에 없습니다(앵커가 죽었습니다 — 순서 판정 무효).");
+            Assert.Less(hidden, call, $"★ {label} — A1 가드가 숨김 게이트보다 앞입니다. 숨김은 A1 사유 문구를 채워도 풀리지 않는 지속 사유라서 먼저 보여야 합니다.");
+            Assert.Less(call, lockCheck, $"★ {label} — A1 가드가 락 검사보다 뒤입니다. «지금 ○○ 중이에요»가 먼저 떠 기다리면 될 것처럼 보였다가 아니게 됩니다.");
         }
 
         /// <summary>② 단계에서 형을 못 찾거나 서명을 못 잘라 규칙 판정 전에 건너뛴 항목 수(합계 대조용).</summary>
