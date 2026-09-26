@@ -647,7 +647,7 @@ Platform/Mobile/ScreenshotBackdropPlatformService.cs   110줄, 파일 1개
 | 사용자 답 | 결과 |
 |---|---|
 | **되살리지 않는다**(현행 유지) | **아무것도 바뀌지 않는다.** `ECONOMY_SPEC` 4-1의 유예 자동 해금이 그 요구를 이미 흡수했다 — 원형 A(집중모드 0회)도 87일차에 42종 전부 보유한다. 전설의 "대체 획득처"가 필요했던 이유(저참여 유저가 영영 못 가짐)가 구조적으로 사라진다. **신규 인프라 0개** |
-| **되살린다** | 라이벌 인프라(`RivalStickmanAgent` 등) **전체 재구축**이 선행된다 = 큰 신규 라운드. 그리고 유예 자동 해금과 **획득 경로가 중복**되므로 둘 중 하나의 수치를 다시 짜야 한다. `docs/ARCHITECTURE.md`가 이 항목의 난이도를 "큼", 원칙을 "확인 필요"로 표시해 둔 것과 일치한다 |
+| **되살린다** | 라이벌 인프라(`RivalStickmanAgent` 등) **전체 재구축**이 선행된다 = 큰 신규 라운드. 그리고 유예 자동 해금과 **획득 경로가 중복**되므로 둘 중 하나의 수치를 다시 짜야 한다. ~~`docs/ARCHITECTURE.md`가 이 항목의 난이도를 "큼", 원칙을 "확인 필요"로 표시해 둔 것과 일치한다~~ ★ **2026-09-26 정정 — 그 인용은 낡았다**: 당시 판(`767c985` · `7ab0468`)에는 그 행이 「난이도 큼 / 원칙 **확인 필요**」였지만, 지금 `docs/ARCHITECTURE.md`의 그 행은 **제외 확정 — 착수하지 않는다**이고 난이도·원칙 칸은 **—** / **닫힘**이다(같은 문서 머리 정정 3번). **판정은 안 바뀐다**(되살리지 않는다) — 바뀌는 것은 이 칸의 근거를 「다른 문서도 미확인으로 두고 있다」로 쓸 수 없다는 점이다. 이 항목은 **양쪽 문서에서 이미 닫혔다** |
 
 > **아키텍트 권고: 되살리지 않는다.** 유예 모델이 같은 문제를 신규 인프라 0개로 푼다.
 
@@ -2265,7 +2265,9 @@ Assert.IsTrue(_gear.IsClickBlockerEnabled, "... 보이지만 눌리지 않는 �
 | `Assets/_Project/Scripts/Core/PackRegistry.cs` | 2026-09-03 07:42 | 폴더 스캔 발견 경로 · 결함 판정 |
 | `Assets/_Project/Scripts/Core/PackEntitlement.cs` | 2026-09-03 07:08 | 3상태 · 단조 래치 · **저장 안 함** |
 | `Assets/_Project/Scripts/Interaction/FocusWatchDirector.cs` | 2026-09-03 10:19 | 세션 수명 · 포즈 전이 4종 · 락 |
-| `Assets/_Project/Scripts/Interaction/FocusWatchRenderer.cs` | 2026-09-02 09:58 | 발밑 링 · 비율 좌표 · 클릭관통 |
+| ~~`Assets/_Project/Scripts/Interaction/FocusWatchRenderer.cs`~~ **삭제됨**(`912fd8c`, 2026-09-06) | ~~2026-09-02 09:58~~ | ~~발밑 링 · 비율 좌표 · 클릭관통~~ ★ 이 세 사실은 아래 후계 두 행에서 다시 쟀다 |
+| `Assets/_Project/Scripts/Interaction/CostumePropRenderer.cs`(후계) | 2026-09-08 00:20 | 발판선 접지 · `StickmanMetrics` 비율 좌표 · 클릭관통(`raycastTarget` 0건) |
+| `Assets/_Project/Scripts/Core/CostumeManifestSO.cs`(후계) | 2026-09-07 23:43 | `propShapes`/`keyposes` — 프롭 좌표와 자세를 **팩 데이터로** 싣는 자리 |
 | `Assets/_Project/Scripts/Core/StickmanAgent.cs` | 2026-09-03 10:05 | 상태 등록표 657~666행 |
 | `Assets/_Project/Scripts/States/StickmanPoseAnimator.cs` | 2026-09-03 05:07 | `Apply*Pose` 공개 메서드 전수 |
 | `Assets/_Project/Scripts/States/StickmanBlackboard.cs` | 2026-09-02 14:23 | 포즈 분기 if-체인 2020~2130행 |
@@ -2277,6 +2279,12 @@ Assert.IsTrue(_gear.IsClickBlockerEnabled, "... 보이지만 눌리지 않는 �
 **하지 않은 것(= 이 절이 보장하지 않는 것)**: 빌드·실행·캡처를 하지 않았다. 자세가 화면에서
 어떻게 보이는지는 이 문서가 말하지 않는다(`design-motion` 소관). 규모 산정은 **줄 수**로만 했고
 사람-시간으로 환산하지 않았다.
+
+> ★★ **2026-09-26 as-of(`game-architect`)** — 이 절(§10)의 실측 표와 §10-6 · §10-12 · §11-11-1이 인용한
+> `Interaction/FocusWatchRenderer.cs`는 **그 뒤에 삭제됐다**(`912fd8c`, 2026-09-06 사용자 지시 2건).
+> 아래 정정 블록 4곳에서 후계 파일로 다시 쟀다(측정 판 HEAD `fa25570`): §10-0 표 · §10-6 층 2 표와 근거 ·
+> §10-12 Windows 영향 · §11-11-1 소비자 목록.
+> **§10-6의 3층 결론 자체는 유지된다 — 바뀌는 것은 층 2의 매개체 이름이다.**
 
 ---
 
@@ -2484,14 +2492,36 @@ office가 $0로 확정됐으므로 오피스 자세가 공짜로 열리는 것�
 | 층 | 무엇 | 어디 | 팩마다 바뀌나 | 형태 | 7번째 팩 비용 |
 |---|---|---|---|---|---|
 | **1. 리그** | 착석 자세(골반 하강 · 무릎각 · 상체각 · 접지 앵커) | `StickmanPoseAnimator.ApplySeatedFocusPose` **1개** + `StickmanBlackboard` 분기 1개 | **아니오** | 프로덕션 `.cs` — **딱 1회** | 0줄 |
-| **2. 소품** | 왕좌 / 책상 / 벤치 … | `FocusWatchRenderer` 확장 | 예 | **좌표 데이터** | 에셋 1개 |
+| **2. 소품** | 왕좌 / 책상 / 벤치 … | ~~`FocusWatchRenderer` 확장~~ ★ **2026-09-26 정정 — 그 파일은 삭제됐다**(`912fd8c`). 실제 매개체는 **`Interaction/CostumePropRenderer.cs`**(602줄, 2026-09-08 착지)이고 이 표가 요구한 성질을 그대로 갖췄다(바로 아래 정정 블록) | 예 | **좌표 데이터**(`AccessoryWornShapeData` 스트림 · 데이터 경로 `CostumeManifestSO.propShapes`) | 에셋 1개 ★ 단 **「프로덕션 0줄」은 7번째 팩 기준에서만 참이다** — 첫 팩에는 렌더러 602줄이 실제로 들어갔다 |
 | **3. 손짓** | 명령 손짓 / 서류 넘기기 | 층1 위에 얹는 팔 각도 변주 | 예 | **파라미터**(팔 선택 · 진폭 · 주기 · 위상) | 매니페스트 값 |
 
 ### 층 2를 어디에 얹는가 — **새 문법을 만들지 마라**
 
-- `FocusWatchRenderer`가 이미 **정확히 이 자리**다: 발밑에 그리고 · 100% 클릭관통이며 ·
-  `StickmanMetrics` 실측 기반 **비율 좌표**를 쓴다(배율 0.35~1.5에서 안 깨진다) · 창 좌표를 바꾸는
-  API가 이 클래스에 **존재하지 않는다**(원칙 3 안전).
+- ~~`FocusWatchRenderer`가 이미 **정확히 이 자리**다: 발밑에 그리고 · 100% 클릭관통이며 ·~~
+  ~~`StickmanMetrics` 실측 기반 **비율 좌표**를 쓴다(배율~~ `0.35~1.5` ~~에서 안 깨진다) · 창 좌표를 바꾸는~~
+  ~~API가 이 클래스에 **존재하지 않는다**(원칙 3 안전).~~
+  ★ **2026-09-26 정정(`game-architect`, 판 HEAD `fa25570`)** — 그 파일은 2026-09-06 사용자 지시로
+  **삭제됐다**(`912fd8c`: 「지켜보기」 기능 삭제 + 발밑 링 완전 제거). **되살리지 마라.**
+  **그러나 이 제안의 네 근거는 죽지 않았다 — 후계 파일이 같은 자리를 그대로 차지했다.**
+  `Interaction/CostumePropRenderer.cs`(602줄, mtime 2026-09-08 00:20)에서 하나씩 확인했다:
+  ① **발판선 접지** — `bb.SenseGround()`의 `ground.GroundWorldY`를 컨테이너 원점으로 쓴다
+  (`_container.transform.position = new Vector3(anchorX, groundY, 0f)`). 발밑 링보다 오히려 §10-5 2번이
+  요구한 「바닥에 놓이는 것」에 더 가깝다.
+  ② **클릭관통** — `raycastTarget` 0건.
+  ③ **`StickmanMetrics` 비율 좌표** — `AccessoryShapeBuilder.Rig(m.HeadRadius, m.HeadCenterLocalY,
+  m.ShoulderLocalY, m.HipLocalY, 1f)` → `AccessoryShapeBuilder.Frame(rig)`.
+  ④ **창 좌표를 바꾸는 API 없음** — 원칙 3 안전은 그대로다.
+  ⑤ 이 절이 「필요한 신설은 하나뿐」이라 한 **「좌석 프레임」은 새 타입 없이 해결됐다** —
+  `AccessoryWornBasis.Height` 기저가 열리고 `frame.Height`가 신장을 싣는다(프롭 좌표가 H 배수라서다).
+  ⑥ 좌표 문법도 예측대로 재사용됐다 — `AccessoryWornShapeData` + `AccessoryWornShapeReader.TryBuild`
+  (둘 다 `Core/AccessoryDefSO.cs`에 살아 있다) · 데이터 경로는 `CostumeManifestSO.propShapes` →
+  `CostumeCatalog.PropShapes` → 단계 오버라이드 `CostumeStageOverride`.
+  **그래서 판단이 어떻게 바뀌는가**: 층 2의 결론(**새 문법을 만들지 마라 · 좌표 데이터로 얹어라**)은
+  **유지되고 이미 실행됐다.** 바뀌는 것은 **매개체 이름뿐**이다(`FocusWatchRenderer` → `CostumePropRenderer`).
+  ★ 단 **층 1(착석 자세)은 아직 없다** — `ApplySeatedFocusPose` 프로덕션 참조 **0건**(양성 대조:
+  `ApplyFocusPose` · `ApplyFocusWatchStancePose`는 `States/StickmanPoseAnimator.cs`에 실재).
+  착지한 프롭은 **캐릭터 옆에 세우는 것**(램프 · 책상 · 광맥벽 · 마법진)이고, **왕좌·벤치처럼 「앉는」
+  소품은 자세가 없어 아직 못 만든다.** ⇒ §10-6의 3층 중 **층 2·층 3은 착지, 층 1은 열린 항목**이다.
 - 좌표 문법도 이미 있다: `AccessoryWornShapeData` + `AccessoryWornShapeReader`
   (항 스트림 · `loop` · `filled` · `tone` · `sway`/`swingDegrees`). **NECK 6종이 이미 이 경로로
   내려와 있다**(B-2 파일럿). 새 문법을 만들면 **팩 저작 도구가 두 벌**이 된다.
@@ -2654,7 +2684,7 @@ office가 $0로 확정됐으므로 오피스 자세가 공짜로 열리는 것�
 
 | | 내용 |
 |---|---|
-| **Windows 영향** | **없음(구조 공통).** 실측: `grep -c "UNITY_STANDALONE\|UNITY_IOS\|UNITY_ANDROID"` → `FocusWatchDirector.cs` **0** / `FocusWatchRenderer.cs` **0** / `StickmanPoseAnimator.cs` **0** / `StickmanBlackboard.cs` **0** / `TimedSpectacleState.cs` **0** / `StickPackManifestSO.cs` **0** / `PackRegistry.cs` **0** / `AccessoryShapeBuilder.cs` **0**. 자세·소품·매니페스트는 전부 플랫폼 중립이다. ★ **단 간접 영향 1건**: 착석은 **한 발판을 최대 50분 점유**한다 — 그 발판은 남의 창일 수 있고, 창이 닫히면 `TimedSpectacleState.Tick`의 `GroundedTick`이 낙하로 보낸다(= **왕좌째로 떨어지는 그림**). 발판 소멸 감지 주기는 `Win32WindowService`(Windows) / `MacWindowService`(macOS)의 열거 주기에 걸리므로 **양 플랫폼을 같은 라운드에 봐야 한다** |
+| **Windows 영향** | **없음(구조 공통).** 실측: `grep -c "UNITY_STANDALONE\|UNITY_IOS\|UNITY_ANDROID"` → `FocusWatchDirector.cs` **0** / ~~`FocusWatchRenderer.cs` **0**~~ (★ 2026-09-26 — 그 파일은 `912fd8c`에서 삭제됐다. 같은 니들을 후계 파일로 다시 쟀다: `CostumePropRenderer.cs` **0** · `FocusSessionPopover.cs` **0** · `CostumeManifestSO.cs` 계열도 플랫폼 분기 없음. 양성 대조 `Core/StickmanAgent.cs` **9** ⇒ **「없음(구조 공통)」 결론은 유지된다**) / `StickmanPoseAnimator.cs` **0** / `StickmanBlackboard.cs` **0** / `TimedSpectacleState.cs` **0** / `StickPackManifestSO.cs` **0** / `PackRegistry.cs` **0** / `AccessoryShapeBuilder.cs` **0**. 자세·소품·매니페스트는 전부 플랫폼 중립이다. ★ **단 간접 영향 1건**: 착석은 **한 발판을 최대 50분 점유**한다 — 그 발판은 남의 창일 수 있고, 창이 닫히면 `TimedSpectacleState.Tick`의 `GroundedTick`이 낙하로 보낸다(= **왕좌째로 떨어지는 그림**). 발판 소멸 감지 주기는 `Win32WindowService`(Windows) / `MacWindowService`(macOS)의 열거 주기에 걸리므로 **양 플랫폼을 같은 라운드에 봐야 한다** |
 | **macOS 영향** | **위와 동일.** 추가 1건: Dock 위에 앉는 경우 Dock 자동 숨김과 상호작용한다. ★ **원칙 3의 승인된 예외(2026-09-02)에 macOS Dock은 포함되지 않는다** — 여기서 Dock을 건드리는 설계를 하지 마라(별도 판단 대기) |
 | **모바일(iPad/iPhone)** | **부분 영향.** 스크린샷 백드롭 모드에는 **전경 창 전환 개념이 없다** → 딴짓 감지 1차 신호(`FootholdsChanged` + `IsTopmost`)가 구조적으로 죽고 집중 모드는 **순수 타이머**가 된다(2차 신호인 커서 활동도 터치 환경에서는 성립하지 않는다). ★ 그런데 **착석 자세는 오히려 모바일에서 더 잘 맞는다** — 배경이 정적이라 **발판이 사라지지 않는다**(위 Windows 간접 영향이 모바일에는 없다). 즉 이 제안은 모바일 이식을 **어렵게 하지 않는다** |
 
@@ -3214,12 +3244,26 @@ StickConfig.pomodoroStartPoseHoldSeconds = 2.0초 뒤 ChangeState(Idle)로 빠�
 > **정답 신호는 `FocusWatchDirector.IsSessionActive`다**(`Interaction/FocusWatchDirector.cs:45`,
 > `public bool IsSessionActive { get; private set; }`). 세션 시작(`:158`)부터 종료·취소(`:179,185,403`)까지
 > **세션 전 구간에서 true**다. `RemainingSeconds`(`:46`)와 짝으로 이미 UI 3곳이 읽고 있다:
-> `GearRadialMenuWidget.cs:1604` · `FocusSessionPopover.cs:335` · `FocusWatchRenderer.cs:214,274`.
+> ~~`GearRadialMenuWidget.cs:1604` · `FocusSessionPopover.cs:335` · `FocusWatchRenderer.cs:214,274`.~~
+>
+> ★ **2026-09-26 재측정(`game-architect`, 판 HEAD `fa25570`)** — `FocusWatchRenderer.cs`는 **삭제됐다**
+> (`912fd8c`). 그리고 소비자는 **3곳이 아니라 프로덕션 5곳**이다: `Core/AudioReactiveDanceGate.cs:164` ·
+> `States/StickmanBlackboard.cs:2431` · `Interaction/GearRadialMenuWidget.cs:1904` ·
+> `Interaction/FocusSessionPopover.cs:693` · `Interaction/CharacterProgressionDirector.cs:374`.
+> 앵커도 이동했다 — `IsSessionActive` `:45`→`:55` · `RemainingSeconds` `:46`→`:56`.
 >
 > ★ **§10-1의 서술 1건을 여기서 정정한다.** 그때 *"이 프로퍼티를 읽는 곳은
 > `GearRadialMenuWidget.cs:1521` 한 곳뿐"*이라고 썼는데, 오늘 재실측하니 **소비자가 3곳**이다.
-> 다만 **§10-1의 논지는 그대로 살아 있다** — 셋 다 **UI·렌더링**이고, 이 값으로 **캐릭터의 행동을
-> 억제하는 소비자는 여전히 0건**이다. **춤 게이트가 그 첫 번째가 된다.**
+> ~~다만 **§10-1의 논지는 그대로 살아 있다** — 셋 다 **UI·렌더링**이고, 이 값으로 **캐릭터의 행동을~~
+> ~~억제하는 소비자는 여전히 0건**이다. **춤 게이트가 그 첫 번째가 된다.**~~
+>
+> ★ **2026-09-26 — 이 문장은 이제 거짓이다. 그리고 그 이유가 좋은 쪽이다**: 이 절이 예고한
+> *"춤 게이트가 그 첫 번째가 된다"*가 **실제로 착지했다.** `Core/AudioReactiveDanceGate.cs:164`가
+> `focus.IsSessionActive`를 읽어 **캐릭터의 행동(춤)을 억제한다** ⇒ 「행동을 억제하는 소비자 0건」은
+> **1건**이 됐고, `States/StickmanBlackboard.cs:2431`(자세 앰비언트)과
+> `Interaction/CharacterProgressionDirector.cs:374`(유휴 적립 판정)까지 세면 **UI 밖 소비자가 3곳**이다.
+> **그래서 판단이 어떻게 바뀌는가**: §11-11-1의 처방은 **구현 완료**다. 다음에 이 절을 읽는 사람은
+> 「아직 0건」이 아니라 **「이미 배선돼 있다」에서 출발해야 한다** — 같은 게이트를 두 번 만들지 마라.
 
 ### 11-11-2. `HiddenCharacterCommandGate` 재사용 판정 — **절반은 그대로 쓴다, 절반은 모양이 다르다**
 

@@ -462,7 +462,8 @@ public string displayNameKey;   public string descriptionKey;
 
 ## 3-7. `KoreanParticle`은 손대지 않는다
 
-프로덕션 호출부 **4곳 전부 `Debug.Log`**(전수 확인, 화이트리스트에 **일부러 넣지 않았다**).
+~~프로덕션 호출부 **4곳 전부 `Debug.Log`**(전수 확인, 화이트리스트에 **일부러 넣지 않았다**).~~
+★★ **2026-09-26 정정(리더): 위 문장은 거짓이다. 취소선 위는 등재 당시 글자 그대로다.** 호출부는 **7곳**이고 그중 **2곳이 화면으로 나간다**(`Interaction/CharacterInfoWindow.Shop.cs`의 상세 본문 경로 — `ShopDetailBodyText()`와 `ShopWaitClause()`가 반환하는 값). 나머지 5곳은 `Debug.Log*` 인자 안이 맞다(★ 그중 하나는 `Debug.LogWarning`이라 **「전부 `Debug.Log`」는 그 점에서도 부정확했다**). 근거·상세는 `docs/localization/PLAN_1.0.md` §3-7 정정 블록. ⇒ **화이트리스트 판단은 다시 봐야 한다.**
 영어에 조사 개념이 없으므로 **언어 분기를 조사 함수에 넣지 마라** — 갈라지는 곳은 **문장 템플릿**이다.
 
 ---

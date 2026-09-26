@@ -15,6 +15,11 @@
 #                                                       탐지 경로가 살아 있는지 증명한다.
 #     rc=0 통과 / rc=4 탐지경로 죽음 / rc=5 판정불가(다른 에러가 섞였다)
 #     ★ «에러가 났다»만 보면 안 된다 — 주입한 그 오류가 **유일한 에러**여야 한다(TEAM.md 격리 미러 규약).
+#
+# ★ 절차 서술의 정본은 CLAUDE.md 「플랫폼 동시 검토」 절이다(리더 판정 2026-09-26). 어긋나면 그 절이 맞다.
+# 실측 2026-09-26(perf-doc): 컴파일러는 Unity 동봉 dotnet + DotNetSdkRoslyn/csc.dll, 단위는 5개(xcheck.sh 와 같음).
+#   쓰는 곳은 <출력루트>/<타깃>.<pid>/ 뿐이다 — 저장소 Library/ 에는 쓰지 않는다(marker 대조: 실행 뒤 저장소 변경 0건).
+#   osx·win 양쪽 5/5 유닛 errors=0 을 2026-09-26 에 실제로 돌려 확인했다.
 set -Eeuo pipefail
 
 REPO=/Users/kjmoon/App/StickMate

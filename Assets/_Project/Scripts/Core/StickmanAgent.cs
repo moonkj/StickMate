@@ -96,6 +96,18 @@ namespace StickMate.Core
         //                              .canJoinAllSpaces로 모든 Space에 따라붙으므로 「남의 Space에
         //                              남겨진다」는 상태 자체가 없다. 그 비대칭은 SessionVisibilityPolicy의
         //                              DisplayAsleep/SessionLocked 표와 같은 종류이고, <b>정상</b>이다.
+        //                              ★★ 2026-09-26 — 이 줄은 <b>비교 비유</b>일 뿐 배선이 아니다.
+        //                              그 게이트의 <b>실제 배선</b>은 이 파일 아래
+        //                              TickFullscreenSuspend의 등급 폴링 게이트 한 곳뿐이다(S1).
+        //                              ★ 그래서 <b>grep 개수로 「배선 있음」을 판정하지 마라</b> — 이
+        //                              파일의 SessionVisibilityPolicy 인용은 <b>대부분 주석</b>(비교
+        //                              비유와 이 설명 자체)이다. 판정하려면 <b>주석을 걷고</b> 세야 한다
+        //                              (PlatformParityAuditTests의 「등급 폴러가 세션 게이트를 부르고…」
+        //                              검사가 StripLineComments로 그렇게 한다).
+        //                              S1 이전에는 이 파일의 인용이 주석뿐이라 개수만 보면 「배선 있음」
+        //                              으로 오독됐다(debugger S3 규명 · coder 실측 확인).
+        //                              ★ 여기에 <b>개수를 숫자로 적지 마라</b> — 초판이 「2회」라고 적었고
+        //                              그 문장 자신이 개수를 늘려 즉시 거짓이 됐다(실측 5회, coder 자백).
         //                              ★ 이 축에는 설정창 게이트가 <b>없다</b>. AutoHideOnFullscreen은
         //                              「전체화면 <b>게임</b> 감지」라는 오탐 있는 판정을 사용자가 끄는
         //                              스위치이고, 이쪽은 OS가 «지금 이 창은 안 보인다»고 직접 답한 것이라
@@ -213,6 +225,27 @@ namespace StickMate.Core
         /// ============================================================================
         /// 불변식 — <b>이 값은 <see cref="IsSuspended"/>를 항상 포함한다</b>
         /// ============================================================================
+        /// ★★★ <b>2026-09-26 정정(code-inspection) — 바로 위 한 줄은 2026-09-03부터 거짓이다.</b>
+        /// 그날 축 2가 갈라져 나가면서 이 프로퍼티의 첫 항이 <c>_isSuspended</c>에서
+        /// <see cref="HidesScreenSurfaces"/>(= <c>_isSuspended &amp;&amp; !IsUserHiddenOnly</c>)로 바뀌었다.
+        /// 그래서 <b>사용자 명시 숨김 단독</b>에서는 <see cref="IsSuspended"/>가 참인데 이 값이 <b>거짓</b>이다
+        /// (축 1·4가 꺼져 있으면 <see cref="IsUserHiddenOnly"/>가 참 → <see cref="HidesScreenSurfaces"/>가 거짓
+        /// → 등급 1도 없으면 이 값도 거짓). 그것은 결함이 아니라 사용자 확정 설계다("캐릭만 가리고" —
+        /// 축별 결론표는 <see cref="HidesScreenSurfaces"/> 문서에 있다).
+        ///
+        /// <para><b>어느 축에서 성립하고 어느 축에서 안 되는가</b>(위 전칭 주장을 축별로 다시 적은 것):
+        /// 축 1(전체화면 게임)·축 4(다른 가상 데스크톱)로 숨은 경우에는 포함관계가 <b>성립한다</b>.
+        /// <b>축 2 단독에서만 깨지고</b>, 그때는 표면이 <b>보이는 채로</b> 남으므로 이 문단이 걱정하는
+        /// "안 보이는데 클릭만 먹는" 형태가 아니다(되돌릴 버튼이 누른 자리에 남는 것이 그 설계의 요점이다).
+        /// 포함관계를 그대로 쓰는 문장은 <c>UserSurfaceSummonPolicy.SuppressesPanels</c>의 <b>첫 인자</b>에
+        /// 대해서만 참이고, 그 파일의 「불변식 — 등급 2를 항상 포함한다」는 인자 이름이
+        /// <c>characterSuspended</c>라서 <b>지금도 참</b>이다. 낡은 것은 여기서 그 인자를
+        /// <see cref="IsSuspended"/>라고 부른 부분뿐이다.</para>
+        ///
+        /// <para>★ <b>이 낡은 한 줄이 실제로 반대 결론을 유도했다</b>(페르소나 검증, 2026-09-26):
+        /// 이 문장만 믿으면 "사용자 숨김 단독에서는 이 값도 참"이 되어 <b>헤더 2단(숨김)은 도달 불가능한
+        /// 죽은 단</b>이라는 <b>정반대</b>의 판정이 나온다. 식에서 직접 유도해야 살아난다.
+        /// 전칭 주장(「항상」·「유일」)은 깨지는 순간 다음 사람을 반대편으로 보낸다 — 고칠 때 축을 함께 적어라.</para>
         /// 필드에 캐시하지 않고 읽을 때마다 OR로 계산한다. 캐시하면 "숨었는데 차단막은 남은" 한 프레임이
         /// 구조적으로 가능해지고, <b>그 한 프레임이 정확히 이 앱에서 가장 나쁜 상태</b>다(안 보이는데
         /// 클릭만 먹는다). bool OR 하나라 24시간 폴링에서도 비용이 없다.
@@ -232,6 +265,13 @@ namespace StickMate.Core
         /// <para><b>포함관계는 그대로다</b>: 허가는 <c>||</c>의 <b>오른쪽 항 안</b>에만 작용하므로
         /// <c>_isSuspended</c>가 참이면 여전히 무조건 참이다. 등급 2(전체화면 게임 / 사용자 명시 숨김)는
         /// 허가로 뚫리지 않는다.</para>
+        ///
+        /// <para>★★★ <b>2026-09-26 정정(code-inspection)</b> — 위 문단에서 <b>허가에 대한 주장은 참이고</b>
+        /// (허가는 정말 오른쪽 항 안에만 작용한다), <b><c>_isSuspended</c>가 참이면 무조건 참이라는 부분만
+        /// 거짓이다.</b> 첫 항은 <c>_isSuspended</c>가 아니라 <see cref="HidesScreenSurfaces"/>이고, 축 2 단독에서는
+        /// 그 값이 거짓이다(맨 위 「불변식」 절의 2026-09-26 정정 참고). 그리고 여기서 <b>사용자 명시 숨김을
+        /// 「등급 2」로 묶어 부른 것도 낡았다</b> — 그날 이후 사용자 명시 숨김 단독은 표면을 걷지 <b>않는다</b>.
+        /// 허가로 뚫리지 않는 것은 맞지만, 그것은 애초에 이 값이 거짓이어서 뚫을 대상이 없기 때문이다.</para>
         ///
         /// <para><b>비용</b>: 예전 한 줄은 bool OR 하나였다. 지금은 거기에 임대 만료 비교
         /// (<c>Time.unscaledTime</c> 읽기 1회 + float 비교 1회)가 붙는다. 매 프레임 이 값을 읽는
@@ -1542,12 +1582,68 @@ namespace StickMate.Core
                 : pointsPerWorldUnit;
         }
 
+        /// <summary>등급 폴링이 <b>게이트로 건너뛴</b> 상태인가 — 게이트가 풀리는 틱에 주기를 기다리지
+        /// 않고 <b>1회 즉시 재평가</b>하기 위한 래치. <c>FootholdPoller</c>의 중단 플래그 +
+        /// <c>PollImmediately()</c>와 <b>같은 형태</b>다.</summary>
+        private bool _tierPollGateHeld;
+
+        /// <summary>
+        /// 관측값을 갈아 끼우는 <b>테스트 전용</b> 창구. null이면 제품 경로(<c>FramePacing.LastPresence</c>).
+        ///
+        /// <para>왜 필요한가: 제품 경로의 관측값은 적응형 페이싱이 <b>적용됐을 때만</b> 채워지고 그 값은
+        /// <b>에디터/테스트에서 언제나 비어</b> 있다. 그 상태로는 아래 게이트가 한 번도 참이 되지 않아
+        /// <b>«잠기면 실제로 서는가»를 아무도 못 재게 된다</b> — 이 저장소가 싫어하는 «아무것도 안 재고
+        /// 초록»이다. <c>FootholdPoller.PresenceProbeOverride</c>와 <b>같은 이유·같은 관례</b>이고,
+        /// <b>쓰는 테스트는 반드시 정리 단계에서 null로 되돌린다</b>(정적이라 다음 테스트로 샌다).</para>
+        ///
+        /// <para>★ 창구가 <b>두 개</b>인 것은 설계가 아니라 <b>비용</b>이다 — 발판 폴러와 이 폴러가 각자
+        /// 들고 있다. 하나로 합치려면 <c>Platform/</c> 쪽 수정이 필요해 이 라운드 범위 밖이다(리더 보고).</para>
+        /// </summary>
+        internal static Platform.IViewerPresenceService TierPresenceProbeOverride;
+
+        private static Platform.ViewerPresenceSnapshot ResolveTierPresence()
+        {
+            Platform.IViewerPresenceService probe = TierPresenceProbeOverride;
+            if (probe == null) return Platform.FramePacing.LastPresence;
+            return probe.TryGetPresence(out Platform.ViewerPresenceSnapshot snapshot) ? snapshot : default;
+        }
+
         private void TickFullscreenSuspend(float deltaTime)
         {
+            // ★★ S2 (2026-09-26, debugger 명세) — <b>화면 변경 유예 중에는 등급을 다시 묻지 않는다.</b>
+            //   Update의 순서가 «등급 폴링 → 동결 조기 반환 → 발판 폴링»이라, 유예 중에도 이 폴링만
+            //   계속 돌아 모니터가 재배치되는 와중의 창 열거 결과로 등급이 갱신됐다.
+            //   ★ 호출 순서를 옮기는 안은 <b>기각</b>됐다 — 「동결 가장자리를 전체화면 판정보다 먼저
+            //     확정한다」는 Update 쪽 계약을 깨기 때문이다. 순서는 그대로 두고 여기서 선다.
+            if (CharacterPreservationFreeze.IsDisplayChangeHoldActive) { _tierPollGateHeld = true; return; }
+
             _fullscreenPollTimer += deltaTime;
             float interval = _config != null ? Mathf.Max(0.1f, _config.fullscreenPollInterval) : 1f;
+
+            // ★ 게이트가 풀린 <b>첫 틱</b>은 주기를 기다리지 않고 1회 즉시 재평가한다. 이것이 없으면
+            //   해제 직후 최대 interval(기본 1초) 동안 <b>얼어붙은 옛 등급</b>으로 표면을 판정한다
+            //   (FootholdPoller가 PollImmediately()로 막는 것과 같은 구멍이다).
+            if (_tierPollGateHeld) { _tierPollGateHeld = false; _fullscreenPollTimer = interval; }
+
             if (_fullscreenPollTimer < interval) return;
             _fullscreenPollTimer = 0f;
+
+            // ★★ S1 (2026-09-26, debugger 명세) — <b>화면이 꺼졌거나 세션이 잠긴 동안에는 등급을 다시
+            //   묻지 않는다.</b> 판정은 이 파일에 없다(Platform/SessionVisibilityPolicy). 여기는 <b>부르는
+            //   자리</b>다 — 위 축 4 주석의 SessionVisibilityPolicy 인용은 비교 비유일 뿐이고 배선은 이 줄이다.
+            //   ★★ <b>세 축 필드와 디바운서를 건드리지 않는다</b> — FootholdPoller가 캐시를 비우지 않는
+            //      것과 <b>같은 이유·같은 형태</b>다. 여기서 축을 0으로 덮으면 그 순간이 곧 «등급 없음»
+            //      오인이고, 잠금 중에 자동 표면이 되살아난다. 우리가 멈추는 것은 <b>다시 묻는 일</b>뿐이고
+            //      마지막으로 확정된 등급은 그대로 얼어붙는다.
+            //   ★ 오판의 대가가 <b>원칙 2 쪽으로만</b> 틀린다: 등급 1이었다면 1로 남아 표면 억제가
+            //     유지되고, 전체화면이 끝난 뒤 최대 interval만큼 표면이 더 걷혀 있을 뿐이다.
+            //   ★ 관측이 «모름»이면 정책이 false를 돌려주므로(스냅숏 Valid 검사) 기능이 조용히 꺼지는
+            //     방향도 안전한 쪽이다 — 지금까지의 동작(계속 폴링)이 그대로 유지된다.
+            if (Platform.SessionVisibilityPolicy.ShouldSuspendFootholdScan(ResolveTierPresence()))
+            {
+                _tierPollGateHeld = true;
+                return;
+            }
 
             // ★ 2026-09-01 설정창 [일반] "전체화면 게임 감지 시 자동 숨김" 토글의 <b>유일한 게이트</b>.
             //   기본값은 켬이고(AppSettingsModel), 끄는 것은 사용자의 명시적 선택이다 — 절대 불변 원칙 2를
@@ -1821,6 +1917,13 @@ namespace StickMate.Core
             //   ArePanelsSuppressed는 _isSuspended를 항상 포함하므로 이 줄이 없어도 판정은 옳지만,
             //   Resume() 직후 <b>남아 있는 임대</b>가 등급 1 회수를 한 박자 건너뛰게 만들 수 있다.
             //   허가는 언제나 사용자의 <b>새</b> 행위에서만 나야 한다.
+            // ★ 2026-09-26 정정(code-inspection) — 위 줄의 "ArePanelsSuppressed는 _isSuspended를 항상
+            //   포함하므로"는 2026-09-03부터 거짓이다(첫 항이 HidesScreenSurfaces로 바뀌었다). 그래서
+            //   "이 줄이 없어도 판정은 옳다"는 근거는 축 1·4에서만 참이다.
+            //   ★ 재미있게도 <b>바로 아래 ★ 블록이 그 사실을 이미 정확히 적고 있다</b> — 사용자 명시 숨김
+            //   단독은 HidesScreenSurfaces=false이므로 ArePanelsSuppressed도 거짓이다. 두 주석이 같은 파일
+            //   네 줄 간격으로 서로 모순이었다. 이 줄이 실제로 필요한 이유는 포함관계가 아니라 <b>그 뒤 문장</b>
+            //   (Resume() 직후 남아 있는 임대가 등급 1 회수를 한 박자 건너뛴다)이다 — 그쪽이 진짜 근거다.
             // ★ 2026-09-03 — <b>표면을 걷는 숨김일 때만</b> 만료시킨다. 사용자 명시 숨김 단독은
             //   표면을 그대로 두므로(HidesScreenSurfaces=false), 여기서 임대를 끊으면 등급 1 체류 중에
             //   [숨기기]를 누른 사용자의 설정창이 <b>등급 1 회수로</b> 함께 닫힌다 — 이번 신고의 재현이다.

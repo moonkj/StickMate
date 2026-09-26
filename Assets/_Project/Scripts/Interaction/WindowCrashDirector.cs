@@ -74,18 +74,28 @@ namespace StickMate.Interaction
 
         /// <summary>
         /// ★★ 2026-09-15 (N-20 해제 조건 A1) — 사용자가 부르지 않은 표면을 억제하는 동안(<see cref="UserSurfaceSummonPolicy.SuppressesUnsummonedSurfaces"/>)의 문구.
-        /// 문구 정본: <c>docs/narrative/CRACK_COMMAND_DISABLED_REASON.md</c> §0(design-narrative, 리더 확정 2026-09-15). 영어 초안도 그 문서에 있다
-        /// (프로덕션 영어 UI 경로는 아직 없다).
+        ///
+        /// <para>★★ 2026-09-26 (해제 조건 7-b) — <b>글자는 더 이상 이 파일에 없다.</b> 형제 명령(그라피티 · 나중에 창 도둑)이
+        /// <b>같은 가드 식</b>을 받아 같은 글자를 쓰므로 <see cref="UnsummonedSurfaceCommandReason"/> 한 곳으로 옮겼다.
+        /// 이 상수는 <b>그것을 가리키는 이름</b>으로 남는다 — 기존 테스트·문서가 인용하는
+        /// <c>WindowCrashDirector.UnsummonedSurfacesSuppressedReason</c>이 그대로 살아 있게 하기 위해서다. 문자열 복제는 0이다.</para>
+        ///
+        /// <para>문구 정본: <c>docs/narrative/CRACK_COMMAND_DISABLED_REASON.md</c> §3-3 <b>S6</b>(design-narrative 5판 추천 · 리더 확정 2026-09-26).
+        /// 2026-09-15 A1이 실었던 값(같은 문서 §0 R1)은 §3-2에서 <b>수식 관계 모호성</b>으로 탈락했다 —
+        /// 「전체화면이 끝나고 연 창」이 «전체화면이 끝난 <b>뒤에</b> 연 창»으로도 읽히고, 그렇게 읽으면 FFT 칸에서
+        /// 「끝난 뒤 연 것은 없다」가 되어 사용자가 <b>아무것도 닫지 않는다</b>.</para>
+        ///
         /// <para>원인이 아니라 <b>이 사유가 사라지는 충분조건</b>을 말한다. 이 사유가 화면에 보이는 칸은 FTT(전체화면 앱 위에서 연 명령창)와
-        /// FFT(전체화면이 끝났는데 그때 연 창·부채꼴이 남음) 둘뿐이고, 두 칸 모두에서 참이다(같은 문서 §1-2 · §4).</para>
+        /// FFT(전체화면이 끝났는데 그때 연 창·부채꼴이 남음) 둘뿐이고, 두 칸 모두에서 참이다(같은 문서 §3-3 · §4).</para>
         /// <para>테스트는 이 상수를 <b>참조</b>한다 — 글자를 베끼지 않는다(CLAUDE.md).</para>
         /// </summary>
-        public const string UnsummonedSurfacesSuppressedReason = "전체화면이 끝나고 연 창과 버튼을 다 닫으면 돼요";
+        public const string UnsummonedSurfacesSuppressedReason = UnsummonedSurfaceCommandReason.Text;
 
         /// <summary>미리 만든 결과 하나 — 명령창이 0.25초마다 다시 묻는다(<see cref="CommandAvailability"/> 문서의 할당 0 계약,
-        /// <see cref="HiddenCharacterCommandGate.WhileHidden"/>과 같은 형태).</summary>
+        /// <see cref="HiddenCharacterCommandGate.WhileHidden"/>과 같은 형태).
+        /// 2026-09-26부터 형제 명령과 <b>같은 값 하나</b>를 가리킨다(<see cref="UnsummonedSurfaceCommandReason.WhileSuppressed"/>).</summary>
         private static readonly CommandAvailability WhileUnsummonedSurfacesSuppressed =
-            CommandAvailability.Blocked(UnsummonedSurfacesSuppressedReason);
+            UnsummonedSurfaceCommandReason.WhileSuppressed;
 
         /// <summary>
         /// ★ 지금 창 부수기를 시킬 수 있는가 — 회색 처리와 실제 실행이 함께 쓰는 단 하나의 판정

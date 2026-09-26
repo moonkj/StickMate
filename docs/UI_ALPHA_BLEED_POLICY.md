@@ -1,5 +1,7 @@
 # UI 알파 비침 정책 · 설정창 컨트롤 면 판정 (design-art, 2026-09-06 R14)
 
+> **유지 소관(2026-09-26 리더 배정): `ux-designer`** — 이 문서의 최신성·인용 정합을 UX 표면 담당이 진다.
+> 아래 「담당」은 **R14 집필자**(수치 사양의 저자)이고, 소관과 별개다.
 > 담당: `design-art` — 팔레트 / 등급 색 체계 / 이펙트 색 / 투명도 체계
 > 산출물 성격: **문서 + 숫자 사양**. 프로덕션 `.cs` 수정 0건.
 > 실측기: `design/art/verify/alphableed.py` · `alphascan.py` · `alphapolicy.py` ·
@@ -13,6 +15,25 @@
 > 그 보고를 독립 재현한 뒤 **두 곳을 고쳤다**: 기본 목표 `3.0 → 3.15`(×1.05), 방향 규칙
 > `흰쪽 우선 → 여유 큰 쪽`. §4-3-a / §4-3-b에 근거와 스윕이 있고, 그에 딸린 값 14곳을
 > 문서 전체에 전파했다. **§4-3-c 표가 정본이다.**
+>
+> ★★ **2026-09-26 문서 ↔ 코드 정합 확인 (`ux-designer`)** — 이 문서의 **판정·수치·규칙은 그대로 살아 있다.**
+> 그리고 인계 대상이던 **P0 전량이 코드에 착지했다.** 그래서 §5·§7-3 인계표의 「지금」 칸은
+> **현재 상태가 아니라 R14 판(`349048f2`)의 기록**으로 읽어야 한다. 착지 증거(작업 트리 `fa25570` 기준, 고정 문자열 앵커):
+> - `UiChrome.cs` 앵커 `public const float EdgeContrastTarget`이 `MinNonTextContrast * 1.05f`(=3.15)이고,
+>   `EdgeOnSurface`의 방향 주석이 「여유가 큰 쪽」이다 — §4-3 개정 ①②가 **글자 그대로** 들어갔다.
+> - `UiChrome.RarityBorder(` 호출부 **7곳 전부**가 `UiChrome.Flatten(` 안에 있다(§1-E의 「10번째 출처」가 닫혔다).
+>   그중 2곳은 R14 때 없던 파일(`CharacterInfoWindow.Dlc.cs` · `CharacterInfoWindow.Shop.cs`)이다.
+> - §4-3이 「사라진다」고 예고한 리터럴 `new Color(1f, 1f, 1f, 0.18f)`는 `CharacterInfoWindow*.cs`에서 **0건**이다.
+>   그 삼항식은 지금 `UiChrome.cs`의 `EdgeOnSurface` 문서 주석이 **역사로** 인용한다.
+> - §7-2 채택값은 `SettingsControls.ControlFaceOnCard` · `ControlFaceOnPanel`로 배선됐고, §7-3 ★ 경고
+>   (게이트가 면을 알아야 한다)는 `GatedInk`가 **면을 들고** 잉크를 그 면에서 뽑는 형태로 예방됐다.
+> - §9 감사는 `Tests/EditMode/UiAlphaBleedPolicyAuditTests` · `EdgeOnSurfaceTests`로 실재하고,
+>   §9-3이 요구한 **8비트 반올림 뒤 회색 램프 256단 전수**와 **절벽 양쪽 1/255 찌르기**가 그 안에 있다.
+> - §4-2의 α 9종과 §4-3-c의 바탕 색값은 `UiChrome.cs` 선언에서 **하나도 바뀌지 않았다.**
+>   그래서 이 문서의 표는 지금도 계산이 선다.
+>
+> **틀린 것 · 안 닫힌 것은 §12 정정 기록에 모았다**: §4-4의 월드 렌더러 「4건」은 **3건**이고(파일 1개 삭제),
+> §3-4의 「이 60줄」은 **54줄**이며, §5-4 처방은 **여전히 미채택(P2)이다.**
 
 ---
 
@@ -37,16 +58,16 @@
 
 | 이미 적혀 있던 값 | 출처 | 내 실측 | 차 |
 |---|---|---|---|
-| 등급 테두리 인접 ΔE 9.06 / 11.13 / 11.01 | `UiChrome.cs:531` (§15.6-a 검산 1) | 9.06 / 11.12 / 11.00 | ≤ 0.006 |
-| 전설 테두리 카드 대비 4.45 | `UiChrome.cs:183` | 4.45 | 0.00 |
-| `CardBorderHover` 실효색 `#A8AAAD` · 7.09 | `UiChrome.cs:201` | `#A8AAAD` · 7.09 | 0.00 |
+| 등급 테두리 인접 ΔE 9.06 / 11.13 / 11.01 | `UiChrome.cs` 앵커 `9.06 / 11.13 / 11.01` (§15.6-a 검산 1) | 9.06 / 11.12 / 11.00 | ≤ 0.006 |
+| 전설 테두리 카드 대비 4.45 | `UiChrome.cs` 앵커 `그 최대(전설)가 카드면 대비` | 4.45 | 0.00 |
+| `CardBorderHover` 실효색 `#A8AAAD` · 7.09 | `UiChrome.cs` 앵커 `α0.62에서 실효색` | `#A8AAAD` · 7.09 | 0.00 |
 
 교정이 섰으므로 아래 숫자를 신뢰한다.
 
 ### 0-1 비침 공식 두 개를 구분한다 — 보고서의 표가 섞여 있었다
 
 uGUI 기본 셰이더는 `Blend SrcAlpha OneMinusSrcAlpha`를 **알파 채널에도** 적용한다
-(`dstA' = srcA² + dstA(1−srcA)`, `UiChrome.cs:70-81`). 그래서 비침은 **밑에 무엇이 있느냐**로 갈린다:
+(`dstA' = srcA² + dstA(1−srcA)`, `UiChrome.cs` 머리 앵커 `RGB<b>와 알파에 똑같이</b> 적용된다`). 그래서 비침은 **밑에 무엇이 있느냐**로 갈린다:
 
 | | 식 | α0.55 | α0.14 | α0.10 |
 |---|---|---|---|---|
@@ -65,12 +86,12 @@ uGUI 기본 셰이더는 `Blend SrcAlpha OneMinusSrcAlpha`를 **알파 채널에
 
 | 결정 | 내용 |
 |---|---|
-| **1-A. `AddSurface`/`AddOutline`을 항상 Flatten하게 바꾸지 않는다** | **반려.** 근거 5개, 전부 숫자 있음(§2). 요약: 그 함수는 **밑에 깔린 색을 모른다**. 실제 바탕이 6종이고, 그중 하나(`CharacterInfoWindow.cs:1776` 잉크색 견본 링)는 **런타임에 유저가 바꾸는 색**이다. |
+| **1-A. `AddSurface`/`AddOutline`을 항상 Flatten하게 바꾸지 않는다** | **반려.** 근거 5개, 전부 숫자 있음(§2). 요약: 그 함수는 **밑에 깔린 색을 모른다**. 실제 바탕이 6종이고, 그중 하나(`CharacterInfoWindow.cs` 앵커 `_inkRings[i].color = active ? SelectedRingOn(fill)`, 잉크색 견본 링)는 **런타임에 유저가 바꾸는 색**이다. |
 | **1-B. 구조적 수정은 「토큰이 아니라 호출부에서 `Flatten(토큰, 바탕)`」으로 한다** | 이 저장소가 **이미 16곳에서 쓰고 있는 관용구**다. 새 관용구를 만들지 않는다. 강제는 함수 시그니처가 아니라 **소스 감사 테스트**로 한다(§9). |
 | **1-C. 테두리 계열은 `Flatten`이 아니라 새 파생 규칙 `EdgeOnSurface(바탕)`으로 닫는다** | 흰색 α를 얹는 방식은 **밝은 바탕에서 원리상 실패**한다(종이 무대 1.02:1, 흰 잉크 견본 1.00:1). `ControlFaceOnSurface`/`InkOnSurface`와 **같은 형태의 세 번째 문**이고, 이걸 만들면 리터럴 `new Color(1f,1f,1f,0.18f)`는 **패치되는 게 아니라 사라진다**(§4-3). |
 | **★ 1-C-b (R14-b 개정, `coder` 구현 실측 반영)** | 목표 = **`MinNonTextContrast × 1.05` = 3.15** (3.0 아님). 방향 = **「여유 큰 쪽」**(「흰쪽 우선」 아님). 근거: 3.0으로 두면 8비트 반올림 후 **회색 램프의 40.6 %·유채색의 37.7 %가 미달**로 떨어지고, 「흰쪽 우선」은 절벽이 `target`에 딸려 움직여 **마진 상수 하나가 테두리 색을 흰↔검으로 뒤집는다**. §4-3-a / §4-3-b. |
-| **1-D. 코너 AA 램프는 이 라운드를 막지 않는다** | 실측 결과 Flatten은 코너에서 **비침을 줄인다**(D계수 0.46→0.25, dstA 0.236→0.375). 그리고 **이미 출하돼 있다** — `AddOpaquePanel`(`UiChrome.cs:1322`)이 2026-08-31부터 보더를 Flatten해 왔고 창 4개에서 6일간 코너 신고 0건. **다만 바깥 실루엣 4곳은 실기 캡처 항목으로 남긴다**(§8). |
-| **1-E. 대상은 9종이 아니라 10종이다** | 인계본이 못 본 것: **`UiChrome.RarityBorder()` α0.55**(함수 반환이라 토큰 grep에 안 걸린다, 4줄, **카드 24장 × 탭 4개의 테두리 전부 + 보관함 행 전부** = 최악 비침의 **최대 면적**). 반대로 인계본 목록의 `Cards.cs:509`는 **오탐**이다(여러 줄에 걸친 `Flatten(`의 인자다). |
+| **1-D. 코너 AA 램프는 이 라운드를 막지 않는다** | 실측 결과 Flatten은 코너에서 **비침을 줄인다**(D계수 0.46→0.25, dstA 0.236→0.375). 그리고 **이미 출하돼 있다** — `AddOpaquePanel`(`UiChrome.cs` 앵커 `public static RectTransform AddOpaquePanel`)이 2026-08-31부터 보더를 Flatten해 왔고 창 4개에서 6일간 코너 신고 0건. **다만 바깥 실루엣 4곳은 실기 캡처 항목으로 남긴다**(§8). |
+| **1-E. 대상은 9종이 아니라 10종이다** | 인계본이 못 본 것: **`UiChrome.RarityBorder()` α0.55**(함수 반환이라 토큰 grep에 안 걸린다, 4줄, **카드 24장 × 탭 4개의 테두리 전부 + 보관함 행 전부** = 최악 비침의 **최대 면적**). 반대로 인계본 목록의 `Cards.cs:509`(R14 판 `349048f2` 기준. 지금 그 파일의 이름은 `CharacterInfoWindow.Cards.cs`다)는 **오탐**이다(여러 줄에 걸친 `Flatten(`의 인자다 — 지금 앵커는 `생 CardBorder/AccentBorder(α<1)를 그대로 얹지 않는다`). |
 | **1-F. 「60곳」은 (토큰, 줄) 쌍의 수이고 실제 소스 줄은 58이다** | 한 줄이 토큰 두 개를 쓰는 경우가 있다(`Cards.cs:509`의 `CardBorder`×2 + `AccentBorder`). 고칠 대상을 셀 때는 **줄**로 세라 — 쌍으로 세면 진행률이 부풀어 보인다. 58 = 공장 호출 29 + `.color=` 대입 16 + 삼항/Lerp/Fade/정적필드 13. 리터럴 α0.18은 **이미 그 58 안**에 있다(같은 줄에 `CardBorder`가 함께 있다). |
 
 ### 과제 2 — 설정창 컨트롤 면
@@ -107,7 +128,9 @@ uGUI 기본 셰이더는 `Blend SrcAlpha OneMinusSrcAlpha`를 **알파 채널에
 
 ### (2) 공장을 고쳐도 **58줄 중 29줄(50 %)만** 닫힌다
 
-실측 분류(`alphascan.py`, 오탐 `Cards.cs:509` 제외 후 **소스 줄 기준**):
+실측 분류(`alphascan.py`, 오탐 `Cards.cs:509` 제외 후 **소스 줄 기준**).
+★ 이 절의 「파일:줄」과 줄 수는 전부 **R14 판(`349048f2`) 기준**이다 — 그때의 결함 분포를 말하는 계량이고,
+지금은 §5 인계가 착지해 이 분포 자체가 과거형이다(문서 머리 ★ 블록):
 
 | 형태 | 줄 수 | 공장 수정으로 닫히나 |
 |---|---|---|
@@ -126,19 +149,20 @@ uGUI 기본 셰이더는 `Blend SrcAlpha OneMinusSrcAlpha`를 **알파 채널에
 
 ### (3) α<1 중 **옳은 것**이 섞여 있다. 공장은 그걸 구분할 수 없다
 
-- `AddSurface(display, "NameHit", Color.clear, …)` (`CharacterInfoWindow.cs:1726`),
-  `AddSurface(stripRect, "Tab"+name, Color.clear, …)` (`Tabs.cs:266`), `Tabs.cs:276` —
+- `AddSurface(display, "NameHit", Color.clear, …)` (`CharacterInfoWindow.cs` 앵커 `AddSurface(display, "NameHit", Color.clear`),
+  `AddSurface(stripRect, "Tab"+name, Color.clear, …)` (`CharacterInfoWindow.Tabs.cs` 앵커
+  `AddSurface(stripRect, "Tab" + name, Color.clear`), 같은 파일의 탭 면 갱신 앵커 `active ? UiChrome.Accent : Color.clear` —
   **칠하지 않는 판**이다. `Flatten(Color.clear, onto)`는 정확히 `onto`를 돌려주므로 이것들이
   **불투명 판으로 변한다**. 탭 면은 그 아래 탭 스트립의 테두리를 덮는다.
-- `SettingsControls.AddHitArea`(α=0) · `TodoPostItWidget.cs:1096/1153`(α0.001) —
+- `SettingsControls.AddHitArea`(α=0) · `TodoPostItWidget.cs`의 α0.001 두 줄(앵커 `new Color(0f, 0f, 0f, 0.001f)`, 그 파일에 2회) —
   α=0은 `dstA' = 0 + dstA·1`로 **프레임버퍼 알파를 건드리지 않는다**. 안전하고, 그대로 둬야 한다.
 - 부채꼴의 펼침/수축 `Fade(색, alpha)` — **의도된 페이드**다. 쉬는 상태는 `alpha = 1f`
-  (`GearRadialMenuWidget.cs:1376`)이므로 Flatten 후에는 정지 상태에서 비침 0 %가 되고,
+  (`GearRadialMenuWidget.cs` 앵커 `b.Progress = 1f;`의 그 분기)이므로 Flatten 후에는 정지 상태에서 비침 0 %가 되고,
   애니메이션 중의 비침은 원래 하려던 연출이다.
 
 ### (4) ★ 바탕이 **런타임에 유저 손으로 바뀌는** 자리가 있다
 
-`CharacterInfoWindow.cs:1776` — 잉크색 견본의 링. 그 링이 올라앉은 면은
+`CharacterInfoWindow.cs` 앵커 `_inkRings[i].color = active ? SelectedRingOn(fill)`(생성부는 `UiChrome.EdgeOnSurface(fill.color), 1.5f`) — 잉크색 견본의 링. 그 링이 올라앉은 면은
 `_config.primaryOutlineColor`(검정) 또는 `_config.whiteInkColor`(흰색)다.
 공장이 어떤 고정 바탕을 가정하든 **둘 중 하나에서는 반드시 틀린다.**
 
@@ -199,10 +223,13 @@ flat : lerp(lerp(D,P,a), F, a)             → D 계수 = (1−a)²        (F = 
 ### 3-4 그래서 판정
 
 1. **58줄 중 54줄은 코너 노출이 0이다.** 전부 불투명한 부모 표면 위에 있다
-   (팝오버 3종은 `PopoverPanel:624`의 `AddOpaquePanel` 안, 정보창은 `CharacterInfoWindow.cs:1299`,
-   설정창은 `SettingsWindow.cs:985`, 포스트잇은 `TodoPostItWidget.cs:1025`).
-   이 60줄에 대해 **코너 위험은 논점이 아니다** — 램프 아래에 있는 것은 항상 불투명한 부모다.
-2. **나머지 4줄만 바깥 실루엣이다** — `GearRadialMenuWidget.cs:2204 / 2238 / 2277`과
+   (팝오버 3종은 `PopoverPanel.cs` 앵커 `AddOpaquePanel(canvasGo.transform, "Panel"`,
+   정보창은 `CharacterInfoWindow.cs` 앵커 `AddOpaquePanel(canvasGo.transform, "InfoPanel"`,
+   설정창은 `SettingsWindow.cs` 앵커 `AddOpaquePanel(canvasGo.transform, "SettingsPanel"`,
+   포스트잇은 `TodoPostItWidget.cs` 앵커 `AddOpaquePanel(canvasGo.transform, "PostItPanel"`).
+   이 ~~60줄~~ **54줄**(2026-09-26 정정 — §12 ㉯: 같은 항목 첫 줄이 이미 54라고 적고 있어 문서가 자기와 어긋나 있었다)에 대해
+   **코너 위험은 논점이 아니다** — 램프 아래에 있는 것은 항상 불투명한 부모다.
+2. **나머지 4줄만 바깥 실루엣이다** — R14 판(`349048f2`) 기준 `GearRadialMenuWidget.cs:2204 / 2238 / 2277`과
    그 세 줄을 매 프레임 다시 칠하는 `:1552 / 1661 / 1688 / 1695`(같은 세 개체)다. §8 목록.
    그 형태는 **이미 출하돼 있다** —
    `AddOpaquePanel`이 `Flatten(PanelBorder, PanelSurface)`로 보더를 그린 지 6일이고
@@ -240,7 +267,7 @@ flat : lerp(lerp(D,P,a), F, a)             → D 계수 = (1−a)²        (F = 
 | **`RarityBorder()`** ★ | **0.55** | **24.75 %** | — | 아래 표 | 아래 표 | — | 아래 표 |
 
 ★ **인계본이 못 본 10번째 출처.** `UiChrome.RarityBorder()`는 함수 반환이라 토큰 grep에 안 걸린다.
-`RarityBorderAlpha = 0.55f`(`UiChrome.cs:552`)로 **최악값과 동률**이고, 붙는 자리가
+`RarityBorderAlpha = 0.55f`(`UiChrome.cs` 앵커 `private const float RarityBorderAlpha`)로 **최악값과 동률**이고, 붙는 자리가
 **카드 24장 × 탭 4개 + 보관함 행 전부 + 상세 썸네일**이라 **이 앱에서 최악 비침의 최대 면적**이다.
 
 #### 등급 테두리 Flatten 등가색 — 세 바탕 전부에서 보증이 산다
@@ -251,7 +278,7 @@ flat : lerp(lerp(D,P,a), F, a)             → D 계수 = (1−a)²        (F = 
 | `CardSurfaceMuted` | `#5F5E5B` 2.74 | `#71695A` 3.29 | `#847454` 3.91 | `#967F4E` 4.60 | **9.11** (+16.8 %) | 유지 |
 | `ThumbSurfaceLocked` | `#5D5C58` 2.77 | `#6F6757` 3.33 | `#817252` 3.96 | `#937D4B` 4.66 | **9.14** (+17.2 %) | 유지 |
 
-**Flatten은 이 자리에서 보이는 색을 한 톤도 바꾸지 않는다** — `UiChrome.cs:531`이 적어 둔
+**Flatten은 이 자리에서 보이는 색을 한 톤도 바꾸지 않는다** — `UiChrome.cs` 앵커 `9.06 / 11.13 / 11.01`이 적어 둔
 9.06 / 11.13 / 11.01과 전설 4.45는 **애초에 「합성 후」 기준으로 계산된 값**이었다
 (내 실측 9.06 / 11.12 / 11.00 / 4.45, 차 ≤ 0.006). 즉 문서는 옳았고 코드만 α를 안 접고 있었다.
 서열(선택 14.99 > 호버 7.09 > 착용 6.19 > 전설 4.45)도 세 바탕 전부에서 유지된다.
@@ -276,8 +303,8 @@ EdgeOnSurface(backdrop, target = EdgeContrastTarget)
 
 **§4-3-a 개정 ① — 기본 목표를 `MinNonTextContrast`(3.0)에서 `×1.05`(3.15)로 올린다**
 
-`coder` 보고를 독립 재현했다(`edgequant.py` J-1): 부동소수 해는 3.0005~3.0096인데
-8비트로 반올림하면 선언 바탕 17종 중 **7종이 2.9895~2.9999**. 최악 종이 무대 2.9895.
+`coder` 보고를 독립 재현했다(`edgequant.py` J-1): 부동소수 해는 3.0005\~3.0096인데
+8비트로 반올림하면 선언 바탕 17종 중 **7종이 2.9895\~2.9999**. 최악 종이 무대 2.9895.
 
 **그런데 17종은 표본이고, 진짜 규모는 그보다 크다**(`edgemargin.py` K-1/K-2):
 
@@ -289,7 +316,7 @@ EdgeOnSurface(backdrop, target = EdgeContrastTarget)
 ★ **그러므로 「3.0 그대로 두고 8비트 반올림 후 2.99대를 허용한다」는 반려한다.**
 그건 예외를 허용하는 게 아니라 **가능한 바탕의 약 40 %에서 정책이 성립하지 않는다**는 뜻이다.
 `MinNonTextContrast`는 WCAG 2.2 §1.4.11에서 그대로 인용해 온 **하한**이고
-(`UiChrome.cs:1341-1345`), 하한은 부동소수 중간값이 아니라 **화면에 나가는 픽셀**에서 서야 한다.
+(`UiChrome.cs` 앵커 `public const float MinNonTextContrast`), 하한은 부동소수 중간값이 아니라 **화면에 나가는 픽셀**에서 서야 한다.
 
 배수 스윕(전 색공간 기준, K-3):
 
@@ -303,15 +330,15 @@ EdgeOnSurface(backdrop, target = EdgeContrastTarget)
 | **1.050** | **3.1500** | **0** | **0** | **3.1269** ← **채택** |
 
 **왜 최소해(1.008/1.010)가 아닌가**: 최소해를 상수로 박으면 여유가 0이다 —
-`UiChrome.cs:1391`이 `ControlFaceLift`에서 **이미 같은 말을 적어 놓았다**
+`UiChrome.cs`가 `ControlFaceLift`에서 **이미 같은 말을 적어 놓았다**(앵커는 바로 아래 인용문)
 (*"최소 해를 그대로 상수로 박으면 여유가 0이 된다"*).
 
 **왜 `ControlFaceContrastTarget`의 ×1.20을 그대로 안 쓰는가** — 두 근거:
 
 1. **커버할 축의 수가 다르다.** 면은 **잉크와 한 쌍**이라 면을 밝히면 잉크가 죽는
    양방향 싸움을 안고 있고(§7-1의 골짜기), 양자화 + 감마 + 모니터 프로파일 세 축을 덮어야 한다.
-   테두리는 **잉크가 안 얹힌다** — 덮을 축이 양자화 하나다. 실측 최악 손실이 **0.699 %**이고
-   ×1.05의 여유는 **+4.37 %**로 그 **6.2배**다. 마진을 베끼지 않고 **잰 값에 맞춰 깎았다.**
+   테두리는 **잉크가 안 얹힌다** — 덮을 축이 양자화 하나다. 실측 최악 손실이 **0.699 %이고**
+   ×1.05의 여유는 **+4.37 %로** 그 **6.2배**다. 마진을 베끼지 않고 **잰 값에 맞춰 깎았다.**
 2. **×1.20은 §7-4의 층을 뭉갠다.** F1 버튼 면이 4.49인데 테두리가 3.60이면
    **1.25배**밖에 안 떨어져 「면이 있는 것」과 「테두리만 있는 것」이 같은 단으로 읽힌다.
    ×1.05에서는 **1.42배**로 3.0안(1.49배)과 사실상 같다. 캡션(5.32) > 테두리(3.16) 층도 유지된다.
@@ -335,7 +362,7 @@ EdgeOnSurface(backdrop, target = EdgeContrastTarget)
 
 그리고 **9종 중 7종은 결과가 비트 단위로 같다**(K-5). 달라지는 둘은 밝은 크롬 칩인데,
 거기서는 **어두운 테두리가 정답**이다: 그 면들은 이미 `BrightTextBackdrops`에 등록돼 있어
-`InkOnSurface`가 어두운 잉크(`OnAccentSolid`)를 고른다(`UiChrome.cs:1592-1603`).
+`InkOnSurface`가 어두운 잉크(`OnAccentSolid`)를 고른다(`UiChrome.cs` 앵커 `public static readonly Color[] BrightTextBackdrops`).
 테두리만 흰쪽으로 가면 **같은 칩에서 잉크와 테두리가 반대 방향**이 된다.
 
 **§4-3-c 확정표 (개정 반영, `target = 3.1500`, 방향 = 여유 큰 쪽)**
@@ -367,10 +394,14 @@ EdgeOnSurface(backdrop, target = EdgeContrastTarget)
 그게 이번 회차가 잡은 것 그 자체다. 이 한 줄이 §9-2에 들어가야 한다.
 
 > **이 규칙이 리터럴을 「예외 처리」하지 않고 「삭제」한다.**
-> `CharacterInfoWindow.cs:1167`의 `whiteInk ? new Color(1f,1f,1f,0.18f) : UiChrome.CardBorder`는
+> R14 판(`349048f2`)의 `CharacterInfoWindow.cs:1167`에 있던 `whiteInk ? new Color(1f,1f,1f,0.18f) : UiChrome.CardBorder`는
 > **손으로 굴린 `EdgeOnSurface`**다 — 누군가 바탕이 뒤집힌다는 걸 눈치채고 분기를 하드코딩한 것이다.
 > 규칙이 생기면 그 삼항식 자체가 `UiChrome.EdgeOnSurface(무대색)` 한 호출로 접힌다.
 > 이것이 "예외를 만들지 마라"에 대한 내 답이다 — 예외를 규칙 안에 넣는 게 아니라 **예외를 없앤다**.
+>
+> ★ **2026-09-26: 예고대로 됐다.** 그 리터럴은 `CharacterInfoWindow*.cs`에서 **0건**이고,
+> 지금은 `UiChrome.cs`의 `EdgeOnSurface` 문서 주석이 **역사로만** 인용한다.
+> 링 갱신부는 `CharacterInfoWindow.cs` 앵커 `_inkRings[i].color = active ? SelectedRingOn(fill)`이다.
 
 **액자 테두리 개선치**:
 
@@ -383,7 +414,8 @@ EdgeOnSurface(backdrop, target = EdgeContrastTarget)
 무대와 창 바탕을 가르는 것은 **무대 자신**(14.88 : 1)이지 테두리가 아니다.
 목탄 무대에서는 무대 자신이 1.22 : 1이라 **테두리가 유일한 분리막**이고, 거기서 1.79 → 3.15가 오른다.
 
-**잉크색 견본 링 개선치**(`CharacterInfoWindow.cs:1122` / `:1776`):
+**잉크색 견본 링 개선치**(`CharacterInfoWindow.cs` 갱신부 앵커 `_inkRings[i].color = active ? SelectedRingOn(fill)` ·
+생성부 앵커 `UiChrome.EdgeOnSurface(fill.color), 1.5f`):
 
 | | 검정 견본 | 흰 견본 |
 |---|---|---|
@@ -394,29 +426,36 @@ EdgeOnSurface(backdrop, target = EdgeContrastTarget)
 | ΔE(선택, 비선택) | 58.27 | 45.73 |
 
 새 색 0개 — `InkContrastCharcoal`은 이미 "밝은 잉크 위의 대비 잉크"로 존재하는 토큰이다
-(`UiChrome.cs:152`).
+(`UiChrome.cs` 앵커 `InkContrastCharcoal = new Color(0.145f`).
 
 ### 4-4 경계 선언 — 이 정책이 **덮지 않는** 것 (예외가 아니라 다른 그리기 경로)
 
-`alphascan.py`가 프로덕션 전체에서 찾은 리터럴 α 중 4건은 **uGUI `Image`가 아니다**:
+`alphascan.py`가 프로덕션 전체에서 찾은 리터럴 α 중 ~~4건~~ **3건**(2026-09-26 정정 — §12 ㉮)은 **uGUI `Image`가 아니다**:
 
 | 파일:줄 | α | 무엇 |
 |---|---|---|
-| `WindowTheftRenderer.cs:95` | 0.95 | 고스트 창 프레임 (`LineRenderer`) |
-| `WindowTheftRenderer.cs:96` | 0.60 | 고스트 창 제목 (`LineRenderer`) |
-| `WindowTheftRenderer.cs:109` | 0.85 | 발밑 먼지 퍼프 (`LineRenderer`) |
-| `FocusWatchRenderer.cs:97` | 0.55 | 집중 링 트랙 (`LineRenderer`) |
+| `WindowTheftRenderer.cs` 앵커 `GhostFrameColor = new Color(0.24f, 0.52f, 0.92f, 0.95f)` | 0.95 | 고스트 창 프레임 (`LineRenderer`) |
+| 같은 파일 앵커 `GhostTitleColor = new Color(0.24f, 0.52f, 0.92f, 0.60f)` | 0.60 | 고스트 창 제목 (`LineRenderer`) |
+| 같은 파일 앵커 `DustColor = new Color(0.62f, 0.60f, 0.56f, 0.85f)` | 0.85 | 발밑 먼지 퍼프 (`LineRenderer`) |
+| ~~`FocusWatchRenderer.cs:97`~~ | ~~0.55~~ | ~~집중 링 트랙 (`LineRenderer`)~~ **2026-09-26 정정 — 이 파일은 삭제됐다**(발밑 타이머 링 제거, 커밋 `912fd8c`). 그래서 이 표는 **4행이 아니라 3행**이다. 같은 사실을 `Tests/EditMode/UiAlphaBleedPolicyAuditTests`가 제외 목록(`NotUguiRenderers`)에서 이 이름을 빼며 「죽은 니들」이라고 적어 두었다. §12 ㉮ |
 
 이것들은 캐릭터의 `Sprites-Default` 머티리얼을 빌려 쓰므로 블렌드 식이 다르다
-(`Blend One OneMinusSrcAlpha` → `dstA' = srcA + dstA(1−srcA)`, `CharacterPortraitStage.cs:828-830` 참조).
+(`Blend One OneMinusSrcAlpha` → `dstA' = srcA + dstA(1−srcA)`, `CharacterPortraitStage.cs` 앵커 `감기 방향이 무관하고` 참조).
 **같은 규칙을 적용하면 계산이 거짓말을 한다.** 그리고 「고스트 창」은 반투명이 **연출 그 자체**다.
 
-→ **이 정책은 uGUI 오버레이 캔버스의 `Image`만 덮는다고 명시한다.** 월드 레이어 4건은
+→ **이 정책은 uGUI 오버레이 캔버스의 `Image`만 덮는다고 명시한다.** 월드 레이어 ~~4건~~ 3건은
 **별건으로 측정이 필요하다**(§8 실기 캡처 목록 W-1). 조용히 빼지 않고 여기 적어 둔다.
 
 ---
 
 ## §5 과제1 — `coder-ui` 인계표 (파일:줄)
+
+★ **이 절의 「파일:줄」은 전부 R14 판(`349048f2`) 기준이고, 이 인계는 이미 착지했다**(문서 머리 ★ 블록).
+줄 번호를 지금 파일에 그대로 대지 마라 — 파일이 쪼개지고 길어졌다(예: 표의 `Cards.cs` · `Inventory.cs` ·
+`Tabs.cs`는 지금 `CharacterInfoWindow.Cards.cs` · `CharacterInfoWindow.Inventory.cs` ·
+`CharacterInfoWindow.Tabs.cs`이고, R14에 없던 `CharacterInfoWindow.Dlc.cs` · `CharacterInfoWindow.Shop.cs`가
+같은 처방을 이미 쓰고 있다). 지금 상태는 **「`UiChrome.Flatten(` 안에 있는가」를 고정 문자열로** 세서 확인한다
+(§9-1 감사가 그 규칙을 소스에서 잠근다).
 
 **공통 규약**: hex를 적지 말고 `UiChrome.Flatten(토큰, 바탕)` / `UiChrome.EdgeOnSurface(바탕)`을
 호출부에 쓴다. 아래 hex는 리뷰어가 눈으로 검산할 값이다.
@@ -512,7 +551,8 @@ Flatten은 색을 안 바꾸지만, **α로 가려져 있던 대비 미달을 �
 
 **(가) 무장한 [앱 종료] 버튼의 면이 약하다.**
 `Flatten(AccentSurface, CardSurface)` = `#33312D`인데, 평상 면 `SubtleSurface` `#191D24` 대비
-**1.31 : 1** · ΔE 12.81이다. 지금은 `α0.14`가 바탕화면을 98 % 통과시켜 **구멍**으로 보이던 자리다.
+**1.31 : 1** · ΔE 12.81이다. ~~지금은~~ **R14 판(`349048f2`)까지는** `α0.14`가 바탕화면을 98 % 통과시켜 **구멍**으로 보이던 자리다
+(지금은 합성돼 있다 — `GearRadialMenuWidget.cs` 앵커 `Color quitArmedFace = UiChrome.Flatten(UiChrome.AccentSurface, UiChrome.CardSurface)`).
 불투명하게 만들면 「장전됨」이 **면만으로는 안 읽힌다.**
 
 **(나) 무장 테두리가 자기 면 위에서 3.0을 못 넘는다.**
@@ -526,12 +566,17 @@ Flatten은 색을 안 바꾸지만, **α로 가려져 있던 대비 미달을 �
 | `Flatten(AccentBorder, 면)` `#856F46` | 2.68 ✘ | — |
 | **`Accent` `#C8A15A`** | **5.35** ✔ | **66.28** |
 
-근거는 그 함수의 자기 주석이다 — *"강조색은 무장 전용이다"*(`GearRadialMenuWidget.cs:1670`).
+근거는 그 함수의 자기 주석이다 — *"강조색은 무장 전용이다"*(`GearRadialMenuWidget.cs` 앵커 `강조색은 <b>무장 전용</b>이다`).
 강조색을 α로 반쯤 지워 놓고 "무장 전용"이라고 적어 둔 상태였다. 같은 이유로 호버 보간
 `:1695`의 끝점도 `Accent`가 맞다(호버 끝 면 `#33312D`에서 2.68 → 5.35).
 
 **P2 · 실기 캡처 항목 C-4** — 이건 알파 결함 수정이 아니라 **연출 강도 판정**이므로
 리더 승인 후 별도 배정을 권한다.
+
+★ **2026-09-26 확인: 이 처방(가·나)은 여전히 미채택이다.** 코드가 그 사실을 스스로 적어 두었다 —
+`GearRadialMenuWidget.cs`의 위 앵커 바로 위 주석이 「무장 링을 Accent로 올리는 §5-4는 연출 강도
+판정이라 P2로 남는다」이고, 실제 배선은 테두리를 `Flatten(AccentBorder, surface)`로, 기호를
+`WarmAccent`로 둔다. **즉 α 결함만 닫히고 강도 판정은 열려 있다**(§12 ㉰).
 
 ---
 
@@ -540,12 +585,12 @@ Flatten은 색을 안 바꾸지만, **α로 가려져 있던 대비 미달을 �
 | 남는 것 | α | 왜 남기나 |
 |---|---|---|
 | `AddHitArea` / `NameHit` / 탭 면 (α=0) | 0 | `dstA' = 0 + dstA(1−0) = dstA`. **프레임버퍼 알파를 건드리지 않는다.** |
-| `TodoPostItWidget.cs:1096/1153` (α0.001) | 0.001 | 불투명 위 비침 **0.0001 %**. 히트테스트용. |
+| `TodoPostItWidget.cs` 앵커 `new Color(0f, 0f, 0f, 0.001f)`(2회) | 0.001 | 불투명 위 비침 **0.0001 %**. 히트테스트용. |
 | `ActionCommandPopover` `IdleTileSurface` (α=0) | 0 | 위와 같음 |
-| 부채꼴 펼침/수축 `Fade(…, α)` | 0→1 | **의도된 페이드.** 쉬는 상태 `alpha = 1f`(`:1376`)라 정지 시 비침 0 % |
+| 부채꼴 펼침/수축 `Fade(…, α)` | 0→1 | **의도된 페이드.** 쉬는 상태 `alpha = 1f`(`GearRadialMenuWidget.cs` 앵커 `b.Progress = 1f;`)라 정지 시 비침 0 % |
 | 이름표/알약 페이드 인·아웃 | 0→1 | 동일 |
 | `UiChrome`의 9개 토큰 **정의 자체** | — | 정의는 남는다. **바뀌는 것은 「생으로 `Image.color`에 넣지 않는다」는 규칙**이다 |
-| 월드 `LineRenderer` 4건 | 0.55~0.95 | §4-4 — **다른 블렌드 경로.** 별건 측정 |
+| 월드 `LineRenderer` ~~4건~~ 3건 | 0.55\~0.95 | §4-4 — **다른 블렌드 경로.** 별건 측정 |
 
 ---
 
@@ -570,13 +615,14 @@ Flatten은 색을 안 바꾸지만, **α로 가려져 있던 대비 미달을 �
 | 0.5000 | `#8D8F92` | 5.10 | `OnAccentSolid` | 5.89 | ✔ 섬 2 |
 
 **골짜기 = 면 대비 3.30 ~ 3.93.** 이 저장소가 선언한 `ControlFaceContrastTarget = 3.60`
-(`UiChrome.cs:1384`)이 **정확히 그 안**이다. 창 바탕 위에서도 같다(골짜기 3.61 ~ 4.32,
+(`UiChrome.cs` 앵커 `public const float ControlFaceContrastTarget`)이 **정확히 그 안**이다. 창 바탕 위에서도 같다(골짜기 3.61 ~ 4.32,
 선언값 3.60이 경계에 걸린다).
 
 > **왜 이 골짜기가 생기나**: 면을 밝히면 면 대비는 오르고 그 위의 **밝은 잉크는 죽는다**.
 > 어두운 잉크(`OnAccentSolid`)로 뒤집히기 전까지 두 지표가 정면으로 싸운다.
-> `UiChrome.cs:1376-1379`가 *"두 지표는 반대 방향이다"*라고 이미 적어 놓았고,
-> `ControlFaceOnSurface`가 이분 탐색이 아니라 격자 탐색인 이유도 이것이다(`:1500-1503`).
+> `UiChrome.cs` 앵커 `두 지표는 <b>반대 방향</b>이다`가 "두 지표는 반대 방향이다"라고 이미 적어 놓았고,
+> `ControlFaceOnSurface`가 이분 탐색이 아니라 격자 탐색인 이유도 이것이다
+> (같은 파일 앵커 `이분 탐색이 아니라 <b>격자 탐색</b>인 이유`).
 > **선언된 3.60이 그 골짜기 안이라는 사실은 아무 데도 안 적혀 있었다.**
 
 ★ **그러므로 "설정창 컨트롤 면을 3.60으로 맞춰라"는 지시는 실행 불가능하다.**
@@ -609,6 +655,11 @@ ControlFaceOnSurface(PanelSurface)  = #848588   면 4.88  잉크 #0B1016  5.18
 
 ### 7-3 ★ 「전부 3.6으로」가 아니다 — 부품 네 종류, 처방 네 개
 
+★ **F1 · F2 · F4는 착지했다**(2026-09-26 확인). 아래 표의 「지금」 칸은 R14 판(`349048f2`) 기록이고,
+현재 배선은 `SettingsControls.cs` 앵커 `public static readonly Color ControlFaceOnCard`와
+`ControlFaceOnPanel` 선언, 그리고 같은 파일의 `UiChrome.EdgeOnSurface(` 호출부다.
+F3(트랙/홈)은 설계대로 **손대지 않았다.**
+
 `coder-ui`가 넘긴 판정("제 행만 밝히면 위계가 뒤집힌다")의 진짜 답은
 **전부 같은 값으로 올리는 것이 아니라, 무엇이 어포던스를 지고 있는지로 나누는 것**이다.
 
@@ -627,12 +678,16 @@ ControlFaceOnSurface(PanelSurface)  = #848588   면 4.88  잉크 #0B1016  5.18
 | `SettingsWindow.cs:1802` (`AddPageButton` 면) | `CardSurfaceMuted` `#15181E` **1.01** ← 창 바탕보다 **어둡다** | `ControlFaceOnSurface(PanelSurface)` `#848588` **4.88** |
 | `SettingsWindow.cs:1804-1805` (그 테두리) | `Flatten(CardBorder, CardSurfaceMuted)` — **α는 이미 옳다**, 대비만 1.33 | 면이 4.88이 되면 테두리는 장식이 된다 → 삭제 권고(P2) |
 
-★ **`SettingsRowGate.Apply()`(`SettingsControls.cs:810-819`)도 함께 고쳐야 한다.**
+★ **`SettingsRowGate.Apply()`(`SettingsControls.cs` 앵커 `ink.Label.color = UiChrome.InkOnSurface(ink.Face, UiChrome.InkRole.Title, Enabled)`)도 함께 고쳐야 한다.**
 그 함수는 등록된 `TitleInk` 전부에 `UiChrome.InkTitle(Enabled)`를 **일괄 대입**하는데,
-그 배열에 F1 버튼 라벨이 들어 있다(`AddButtons`의 `titleInk` 조립, `:1207-1209`).
+그 배열에 F1 버튼 라벨이 들어 있다(`AddButtons`의 `titleInk` 조립, 앵커 `titleInk[i + 1] = new SettingsRowGate.GatedInk(`).
 게이트가 내려가는 순간 라벨이 `TextSecondary`가 되고 `#838589` 위에서 **1.77 : 1**로 지워진다.
 → 게이트가 **면을 알아야** 한다(또는 `Text`가 아니라 `(Text, 면)` 쌍으로 등록한다).
 **이걸 안 고치면 이번 수정이 새 「1.28 : 1 사고」를 만든다** — 그 사고의 재발 형태 그대로다.
+
+★ **2026-09-26 확인: 고쳐졌다.** 게이트는 이제 `Text`가 아니라 `(Text, 면)` 쌍(`GatedInk`)으로
+등록받고 잉크를 **그 면에서 다시 뽑는다** — 위 두 앵커가 그 증거다. 이 절이 제시한 두 번째
+선택지가 채택된 것이고, 예고된 새 결함은 발생하지 않았다(§12 ㉱).
 
 ★ **F1의 테두리는 삭제를 권한다(P2, 필수 아님).** `#838589` 면 위의 `OutlineOnCard` `#404349`는
 면 대비 2.70의 **어두운 링**이 되어 베벨처럼 읽힌다. 선례인 `[✕]`·`[착용]` 칩은 테두리가 없다.
@@ -650,8 +705,9 @@ ControlFaceOnSurface(PanelSurface)  = #848588   면 4.88  잉크 #0B1016  5.18
 | 플레이스홀더 `InkMeta` | 3.94 | **1.18** ✘✘ |
 
 **입력칸에서 부족한 것은 글자가 아니라 「상자가 있다는 사실」이다.** 그건 테두리의 일이다.
-그리고 `UiChrome.cs:1374`가 면을 고른 이유 셋 중 하나가 *"테두리만 있는 것은 버튼이 아니라
-**입력칸**으로 읽힌다"*였다 — 여기서는 그게 **결함이 아니라 정답**이다.
+그리고 `UiChrome.cs`가 면을 고른 이유 셋 중 하나가 "테두리만 있는 것은 버튼이 아니라
+**입력칸**으로 읽힌다"였다(앵커 `테두리만 있는 것은 버튼이 아니라 <b>입력칸</b>으로 읽힌다`)
+— 여기서는 그게 **결함이 아니라 정답**이다.
 
 | 파일:줄 | 지금 | 바꿀 것 |
 |---|---|---|
@@ -659,12 +715,14 @@ ControlFaceOnSurface(PanelSurface)  = #848588   면 4.88  잉크 #0B1016  5.18
 | `SettingsControls.cs:1287-1288` (테두리) | `OutlineOnCard` `#404349` **1.66** · 두께 1 | `EdgeOnSurface(CardSurface)` `#6A6D71` **3.16** · **두께 2** |
 
 두께를 2로 올리는 이유: 배율 1.0에서 1 pt = **물리 1픽셀**이고, 이 저장소는 그걸 한 번 잃어 본 적이
-있다(커밋 `39ab690`, `UiChrome.cs:1368-1369`가 인용). 견본 테두리는 이미 두께 2다
-(`SettingsControls.cs:1242`) — 새 규칙이 아니라 **이미 있는 값에 맞추는 것**이다.
+있다(커밋 `39ab690`, `UiChrome.cs` 앵커 `커밋 39ab690`이 인용). 견본 테두리는 이미 두께 2다
+(`SettingsControls.cs` 앵커 `UiChrome.EdgeOnSurface(colors[i])`) — 새 규칙이 아니라 **이미 있는 값에 맞추는 것**이다.
 
 #### F3 — 트랙/홈: **손대지 않는다**
 
-대상: 스위치 트랙(`SettingsControls.cs:970`), 슬라이더 트랙(`:1043`), 행 구분선(`:947`).
+대상: 스위치 트랙(`SettingsControls.cs` 앵커 `AddSurface(row, "Track", SettingsControls.TrackOnCard`),
+슬라이더 트랙(같은 파일 앵커 `AddSurface(hit.rectTransform, "Track", SettingsControls.TrackOnCard, 3)`),
+행 구분선(같은 파일 앵커 `AddSurface(_card, "Divider" + _rowIndex, SettingsControls.DividerOnCard, 2)`).
 
 | 근거 | 숫자 |
 |---|---|
@@ -673,7 +731,7 @@ ControlFaceOnSurface(PanelSurface)  = #848588   면 4.88  잉크 #0B1016  5.18
 | 트랙을 4.49로 올리면 켜짐/꺼짐의 밝기 비가 무너진다 | 지금 **5.23배** → **1.52배** |
 
 같은 논리를 이 저장소가 이미 등급 리본 트랙에서 확정했다 —
-*"트랙은 「보이는 구획선」이 아니라 **「홈」**으로 설계된 것"*(`UiChrome.cs:497`).
+*"트랙은 「보이는 구획선」이 아니라 **「홈」으로** 설계된 것"*(`UiChrome.cs` 앵커 `트랙은 「보이는 구획선」이 아니라`).
 그리고 WCAG 2.2 §1.4.11은 컴포넌트를 **식별**하는 데 필요한 시각 정보를 요구하지,
 컴포넌트의 모든 부분에 3 : 1을 요구하지 않는다.
 
@@ -716,9 +774,9 @@ ControlFaceOnSurface(PanelSurface)  = #848588   면 4.88  잉크 #0B1016  5.18
 
 | 이미 있는 위계 | 충돌하나 | 숫자 |
 |---|---|---|
-| 활성/비활성 **토글** | ✘ | 트랙은 F3라 안 건드린다. 꺼진 손잡이 1.71(WCAG 1.4.11 면제, `SettingsControls.cs:713-715`가 이미 근거를 적어 놓았다) |
-| 활성/비활성 **세그먼트** | **주의** | `Apply()` `:598`이 비활성 활성칩에 `ButtonSurfaceOnCard`를 쓴다 → F1을 바꾸면 여기도 4.49가 된다. **의도대로다**(활성 = `Accent` 6.83 > 비활성 = 4.49). 잉크는 `:612`가 이미 `InkOnSurface(face, …)`라 **자동으로 따라온다** — 이 부품만 이미 옳게 배선돼 있다 |
-| **K1 캡션 접두사 "준비 중"** | ✘ | 문자열 채널이다(`SettingsControls.cs:208`). 면·잉크와 축이 다르다 |
+| 활성/비활성 **토글** | ✘ | 트랙은 F3라 안 건드린다. 꺼진 손잡이 1.71(WCAG 1.4.11 면제, `SettingsControls.cs` 앵커 `비활성 컴포넌트를 명시적으로 면제`가 이미 근거를 적어 놓았다) ★ 2026-09-26: 그 주석의 현재 숫자는 **1.70 : 1**이다. 어느 쪽이 맞는지는 이 라운드에서 재계산하지 않았다(미확인) |
+| 활성/비활성 **세그먼트** | ~~**주의**~~ **해소(2026-09-26)** | `Apply()`가 비활성 활성칩에 ~~`ButtonSurfaceOnCard`를 쓴다~~ → F1을 바꾸면 여기도 4.49가 된다. **의도대로다**(활성 = `Accent` 6.83 > 비활성 = 4.49). 잉크는 이미 `InkOnSurface(face, …)`라 **자동으로 따라온다** — 이 부품만 이미 옳게 배선돼 있다. ★ **착지 확인**: 그 면은 지금 `ControlFaceOnCard`다(앵커 `: (active ? SettingsControls.ControlFaceOnCard : UiChrome.CardSurface)`, 대상 파일 1회) · 잉크 앵커는 `Labels[i].color = UiChrome.InkOnSurface(face, UiChrome.InkRole.Body, enabled: true)`이고, 코드가 그 자리에 「정책 §7-5」를 인용해 두었다 |
+| **K1 캡션 접두사 "준비 중"** | ✘ | 문자열 채널이다(`SettingsControls.cs` 앵커 `public const string NotBuiltWord`). 면·잉크와 축이 다르다 |
 | **`SettingsRowGate`** | **★ 충돌** | §7-3 F1의 ★ 항목. **이번 라운드에서 함께 안 고치면 새 결함이 난다** |
 | `Dimmed()` 견본 감쇠 (2.67 : 1 물러남) | ✘ | 견본 **면**의 규칙이고 F4는 **테두리**만 건드린다 |
 | 정보창 `CardActionSurface` `#838589` | ✘ | **같은 값이 되는 것이 목적**이다(§7-2) |
@@ -731,14 +789,14 @@ ControlFaceOnSurface(PanelSurface)  = #848588   면 4.88  잉크 #0B1016  5.18
 
 | ID | 무엇 | 왜 계산으로 못 닫나 | 어디서 |
 |---|---|---|---|
-| **C-1** | 부채꼴 버튼 링(`:2277`) Flatten 후 **원 실루엣의 코너 램프** | 원 스프라이트의 램프 폭이 0.26 pt(≈Retina 0.5 px). 바이리니어 축소 후 실제 커버리지는 렌더러가 정한다 | Windows **밝은 바탕화면**부터 (ΔE 20.08 vs 검 3.61) |
-| **C-2** | 부채꼴 이름표 보더(`:2204`) 반지름 9 코너 | 위와 같음(둥근 사각형) | 동일 |
-| **C-3** | 온보딩 알약 보더(`:2238`) 반지름 9 코너, k=0.55 | 위와 같음. k가 커서 raw↔flat 차가 가장 작다(ΔE 10.20) | 동일 |
+| **C-1** | 부채꼴 버튼 링(`GearRadialMenuWidget.cs` 앵커 `view.Border = UiChrome.AddCircle(view.Root, "Border", d,`) Flatten 후 **원 실루엣의 코너 램프** | 원 스프라이트의 램프 폭이 0.26 pt(≈Retina 0.5 px). 바이리니어 축소 후 실제 커버리지는 렌더러가 정한다 | Windows **밝은 바탕화면**부터 (ΔE 20.08 vs 검 3.61) |
+| **C-2** | 부채꼴 이름표 보더(같은 파일 앵커 `_hoverLabelBorder = UiChrome.AddOutline(_hoverLabel, "Border",`) 반지름 9 코너 | 위와 같음(둥근 사각형) | 동일 |
+| **C-3** | 온보딩 알약 보더(같은 파일 앵커 `_onboardingHintBorder = UiChrome.AddOutline(_onboardingHint, "Border",`) 반지름 9 코너, k=0.55 | 위와 같음. k가 커서 raw↔flat 차가 가장 작다(ΔE 10.20) | 동일 |
 | **C-4** | 무장 [앱 종료]의 「장전됨」이 `#33312D` 면 + `Accent` 링으로 읽히는가 | 연출 강도 판정 — 대비 5.35는 **읽힌다**를 보장하지만 **긴장감**은 보장 못 한다 | macOS/Windows 둘 다 |
 | **C-5** | 설정창 F1 버튼 10여 개가 `#838589`가 됐을 때 **창 전체 인상** | 서열은 계산으로 닫았다(§7-4). 남은 것은 「밝은 칩이 많아 산만한가」 — 면적 효과라 색 계산이 못 본다 | 탭 4개 전부 |
-| **C-6** | F2/F4 테두리 **두께 2 pt**가 세그먼트 그룹에서 무겁지 않은가 | 2 pt는 Windows ×1.25/×1.75에서 2.5/3.5 px(반 픽셀). 4의 배수만 잔차 0인데(`UiChrome.cs:608-612`) 4 pt 테두리는 과하다 → **읽히기는 하되 흐린다**를 눈으로 판정 | Windows 125/150/175 % |
+| **C-6** | F2/F4 테두리 **두께 2 pt**가 세그먼트 그룹에서 무겁지 않은가 | 2 pt는 Windows ×1.25/×1.75에서 2.5/3.5 px(반 픽셀). 4의 배수만 잔차 0인데(`UiChrome.cs` 앵커 `<b>4의 배수</b>만 세 배율 전부에서 정수 픽셀이 된다`) 4 pt 테두리는 과하다 → **읽히기는 하되 흐린다**를 눈으로 판정 | Windows 125/150/175 % |
 | **C-7** | 액자 테두리 검 잉크 쪽 `#828381`가 **종이 무대를 답답하게** 만들지 않는가 | 창 바탕 대비가 15.17 → 4.71로 내려간다. 계산상 옳지만 초상화 인상은 캡처 판정 | macOS 먼저(기본 잉크 = 검정) |
-| **W-1** | 월드 `LineRenderer` 4건(§4-4)의 실제 블렌드 결과 | 머티리얼이 `Blend One OneMinusSrcAlpha`이고 색이 프리멀티플라이드가 아니다 → 계산 모형이 다르다. **별건 배정 필요** | 고스트 창 · 먼지 · 집중 링 |
+| **W-1** | 월드 `LineRenderer` ~~4건~~ 3건(§4-4)의 실제 블렌드 결과 | 머티리얼이 `Blend One OneMinusSrcAlpha`이고 색이 프리멀티플라이드가 아니다 → 계산 모형이 다르다. **별건 배정 필요** | 고스트 창 · 먼지 ~~· 집중 링~~(2026-09-26: 링 삭제 — §12 ㉮) |
 
 ---
 
@@ -758,7 +816,8 @@ ControlFaceOnSurface(PanelSurface)  = #848588   면 4.88  잉크 #0B1016  5.18
    - 4상태 서열 `선택 > 호버 > 착용 > 전설` (3바탕)
    - F1 면: `ContrastRatio(면, 바탕) ≥ MinNonTextContrast` **and**
      `ContrastRatio(InkOnSurface(면,…), 면) ≥ MinTextContrast` — **반드시 한 쌍으로**
-     (`UiChrome.cs:1379`가 요구하는 그대로. 면만 재는 검사는 잉크 붕괴를 못 본다)
+     (`UiChrome.cs` 앵커 `그래서 아래 두 목표는 <b>언제나 한 쌍으로</b> 쓴다`가 요구하는 그대로.
+     면만 재는 검사는 잉크 붕괴를 못 본다)
 3. **★ 8비트 반올림 후에 재라 (R14-b에서 추가 — 이번 회차가 잡은 결함 그 자체다)**
    `EdgeOnSurface` 검사는 반환색과 바탕을 **`Color32`로 왕복시킨 뒤** 대비를 잰다.
    부동소수로 재면 3.0005가 통과하고 화면의 2.9895는 안 보인다.
@@ -769,7 +828,9 @@ ControlFaceOnSurface(PanelSurface)  = #848588   면 4.88  잉크 #0B1016  5.18
      찌르는 검사 1건. 절벽이 `target`에 딸려 움직이면 그 순간 빨개져야 한다 —
      그게 개정 ②가 산 이유다.
 4. **네거티브 컨트롤** — 옛 raw 값으로 되돌리면 **실제로 빨개지는가**를 같은 테스트 안에서 증명.
-   `PortraitBackdropGlowAlphaTests`가 이미 이 형태를 쓰고 있다(`:101`, `:324`) — 그 틀을 재사용.
+   `PortraitBackdropGlowAlphaTests`가 이미 이 형태를 쓰고 있다
+   (`Tests/EditMode/PortraitBackdropGlowAlphaTests.cs` 앵커 `네거티브 컨트롤의 반대편` ·
+   같은 파일 앵커 `string rawGlow = "= UiChrome."`) — 그 틀을 재사용.
 5. **게이트 회귀** — `SettingsRowGate.SetEnabled(false)` 후 F1 버튼 라벨의 대비를 실제로 재라
    (§7-3 ★). 지금 형태로 두면 **1.77 : 1**이 나온다.
 
@@ -780,7 +841,7 @@ ControlFaceOnSurface(PanelSurface)  = #848588   면 4.88  잉크 #0B1016  5.18
 - **Windows 영향: 없음(코드 변경 0건 — 이 라운드는 문서·수치 사양이다).**
   다만 **판정 안에 Windows 고유 제약이 두 개 들어가 있다**:
   (1) 배율 125/150/175 %에서 1 pt 테두리가 반 픽셀에 걸린다 → F2/F4 분리막 테두리를 **2 pt**로 올렸다
-      (`UiChrome.cs:608-612`의 리본 두께 판정과 같은 근거).
+      (`UiChrome.cs` 앵커 `<b>4의 배수</b>만 세 배율 전부에서 정수 픽셀이 된다`의 리본 두께 판정과 같은 근거).
   (2) **실기 캡처 C-1~C-3은 Windows 밝은 바탕화면에서 먼저 찍어야 한다** — 코너 램프의 raw↔flat
       편차가 바탕화면 밝기에 비례한다(흰 ΔE 20.08 / 중간 9.41 / 검 3.61). macOS 기본 배경보다
       Windows 기본 테마 쪽이 밝은 경우가 흔하므로 **최악 조건이 Windows에 있다**.
@@ -795,6 +856,10 @@ ControlFaceOnSurface(PanelSurface)  = #848588   면 4.88  잉크 #0B1016  5.18
 
 ## §11 리더 배분 제안 (이 라운드 이후)
 
+★ **2026-09-26 — 아래 P0 4행은 전부 착지했다**(증거는 문서 머리 ★ 블록). 남은 것은
+**P1 실기 캡처 C-1~C-7**과 **P2 두 건**(§4-4 W-1 월드 레이어 · §5-4 무장 링 강도 판정)이다.
+이 표를 「미착수 목록」으로 읽지 마라.
+
 | 배정 | 내용 | 우선도 |
 |---|---|---|
 | `coder-ui` | §5 인계표 58줄 + §7-3 F1/F2/F4 | **P0** — 최악 24.75 %가 카드 24×4 + 보관함 행 전부에 살아 있다 |
@@ -804,3 +869,123 @@ ControlFaceOnSurface(PanelSurface)  = #848588   면 4.88  잉크 #0B1016  5.18
 | 리더 → 실기 | §8 C-1~C-7 | **P1** — 코드 변경과 함께 캡처 |
 | `coder` / `dev-platform` | §4-4 W-1 월드 레이어 4건 별건 측정 | **P2** |
 | `design-art`(나) | C-4·C-5·C-7 캡처 도착 후 최종 도장 | 캡처 후 |
+
+---
+
+## §12 정정 기록 (2026-09-26, `ux-designer`)
+
+**기준**: 대상 파일 `docs/UI_ALPHA_BLEED_POLICY.md`(시작 blob `ac85024a`, HEAD `fa25570`의 커밋본과 동일) ·
+코드 대조는 작업 트리 `fa25570` 기준 · 방법은 **고정 문자열 계수**(`grep -rF -c`, 대상 `Assets/_Project/Scripts` 아래 `*.cs`, 테스트 포함) ·
+「적중 n」은 저장소 전체 발생 수이고, 대상 파일 안 횟수가 다르면 따로 적었다.
+TEAM.md §5(옛 판정은 글자 그대로 + 취소선) · 「기준과 대상이 같이 낡은 스냅숏」 규칙 3(줄 번호를 키로 쓰지 않는다)을 따랐다.
+
+### ㉮ 월드 `LineRenderer`는 4건이 아니라 3건이다 (뜻이 바뀌는 정정 — 취소선)
+
+- 옛 문장: §4-4 표의 4행(FocusWatchRenderer.cs:97 / 0.55 / 집중 링 트랙)과 §4-4 본문 · §6 표 · §8 W-1의 「4건」.
+- 사실: 그 파일은 **삭제됐다**(커밋 `912fd8c`, 발밑 타이머 링 제거). 지금 저장소에 `Interaction/FocusWatchRenderer.cs`는 없다.
+- 근거 둘: ① 삭제 커밋 ② `Tests/EditMode/UiAlphaBleedPolicyAuditTests`의 `NotUguiRenderers` 주석이 **그 이름을 제외 목록에서 뺀 이유를
+  「죽은 니들」이라고 적어 두었다** — 코드가 같은 정정을 먼저 했고 문서만 뒤처져 있었다.
+- 고친 곳 4군데: §4-4 본문 · §4-4 표 4행 · §6 표 · §8 W-1(「4건」과 「집중 링」).
+- 남는 3건의 α(0.95 / 0.60 / 0.85)는 **바뀌지 않았다** — 정의 3줄을 앵커로 다시 쟀다.
+
+### ㉯ §3-4 ①의 「이 60줄」은 54줄이다 (문서가 자기와 어긋나 있었다)
+
+- 옛 문장: 「이 60줄에 대해 **코너 위험은 논점이 아니다**」.
+- 같은 항목 첫 줄이 이미 「58줄 중 54줄은 코너 노출이 0이다」이고, §1-F가 「60은 (토큰, 줄) 쌍의 수이고 실제 소스 줄은 58」이라고 못박았다.
+  즉 60은 이 문장에 올 수 없는 수다. **54 + 4(바깥 실루엣) = 58**로 맞는다.
+- 코드 대조가 아니라 **문서 내부 산술**로 판정했다.
+
+### ㉰ §5-4 처방(무장 링을 `Accent`로)은 여전히 미채택(P2)이다
+
+- 「지금은 α0.14가 … 구멍으로 보이던 자리다」의 「지금은」만 R14 판 표기로 정정했다. 그 면은 이제 합성돼 있다
+  (`GearRadialMenuWidget.cs` 앵커 `Color quitArmedFace = UiChrome.Flatten(UiChrome.AccentSurface, UiChrome.CardSurface)`, 적중 1).
+- 그러나 **처방 자체는 들어가지 않았다.** 같은 함수 주석이 「무장 링을 Accent로 올리는 §5-4는 연출 강도 판정이라 P2로 남는다」고 적고 있고,
+  테두리는 `Flatten(AccentBorder, surface)` · 기호는 `WarmAccent`다. **α 결함만 닫히고 강도 판정은 열려 있다.**
+- 문서의 오류가 아니라 **열린 배정**이라 취소선이 아니라 확인 문장으로 남겼다.
+
+### ㉱ §7-3 ★가 예고한 새 결함은 발생하지 않았다
+
+- 예고: 게이트가 면을 모르면 F1 버튼 **라벨**이 `#838589` 위에서 1.77 : 1로 지워진다.
+- 실제: `GatedInk`가 `(Text, 면)` 쌍으로 등록되고 게이트가 잉크를 **그 면에서** 다시 뽑는다
+  (`SettingsControls.cs` 앵커 `ink.Label.color = UiChrome.InkOnSurface(ink.Face, UiChrome.InkRole.Title, Enabled)` 적중 1 ·
+  같은 파일 앵커 `titleInk[i + 1] = new SettingsRowGate.GatedInk(` 적중 1). 이 절이 제시한 **두 번째 선택지**가 채택됐다.
+
+### ㉲ 렌더 결함 정정 6건 (의미 불변 — TEAM.md §5 「렌더 결함 정정」 예외)
+
+예외 조건 셋을 다 보인다: ① 바뀐 글자는 렌더 기호(`~` · `*`)뿐 ② 기호를 뺀 본문이 글자 단위로 같다 ③ 사유는 아래 칸.
+
+| 위치 | 옛 표기 | 새 표기 | 무엇이 어떻게 깨져 보였나 |
+|---|---|---|---|
+| §4-3-a | `3.0005~3.0096` · `2.9895~2.9999` | `3.0005\~3.0096` · `2.9895\~2.9999` | **한 문단 안에 단일 물결표가 둘이라 짝이 맞아 취소선으로 렌더됐다.** 「3.0096인데 … 7종이 2.9895」가 그어져 보였다. 백슬래시 2자 **삽입만** |
+| §4-3-a | `**0.699 %**이고` | `**0.699 %이고**` | 닫는 `**` 앞이 `%`(구두점)이고 뒤가 한글이라 GFM이 **닫지 못한다** — 별표가 그대로 보였다. 기호 위치만 이동 |
+| §4-3-a | `**+4.37 %**로` | `**+4.37 %로**` | 같은 형태 |
+| §7-1 인용 | `*"두 지표는 반대 방향이다"*라고` | 이탤릭 기호 2개 삭제 | 닫는 `*` 앞이 따옴표, 뒤가 한글이라 닫히지 않았다. 따옴표가 이미 인용을 표시하므로 기호만 뺐다 |
+| §7-3 F2 인용 | `*"…읽힌다"*였다` | 이탤릭 기호 2개 삭제 | 같은 형태 |
+| §7-3 F3 인용 | `**「홈」**으로` | `**「홈」으로**` | 닫는 `**` 앞이 `」`(구두점)이라 닫히지 않았다 |
+
+§6 표의 `0.55~0.95`는 그 칸에 물결표가 하나뿐이라 **원래 무해**했지만, 같은 라운드에 이스케이프를 넣어 두었다(삽입만 1자).
+
+검사는 두 방법으로 했다: ① CommonMark 좌우 플랭킹 규칙을 구현한 짝짓기 스캐너 ② 「기호 앞이 구두점이고 뒤가 글자」인 형태만 세는 독립 가족 스캔.
+★ 짝짓기 스캐너의 **첫 판은 중첩 강조를 버리면서 §7-3 F3의 결함을 조용히 감췄다**(안쪽 열린 기호를 스택에서 지웠다).
+가족 스캔이 그것을 잡아 5건이 6건이 됐다 — **검사기가 자기 판정을 깨뜨리는** 이 저장소의 형태 그대로다.
+
+### ㉳ 줄 번호 인용 → 고정 문자열 앵커 (제자리 전환)
+
+현재 사실을 말하는 인용은 **전부 앵커로 바꿨다**(아래 표). 옛 인용은 이 칸에 백틱 없이 적는다 — 앵커 추출 도구가 산 앵커로 읽지 않게 하는 TEAM 규칙이다.
+
+| 위치 | 옛 인용 | 새 앵커 | 적중 |
+|---|---|---|---|
+| §0 검산 1·2·3 | UiChrome.cs:531 · :183 · :201 | `9.06 / 11.13 / 11.01` · `그 최대(전설)가 카드면 대비` · `α0.62에서 실효색` | 1 · 1 · 1 |
+| §0-1 | UiChrome.cs:70-81 | `RGB<b>와 알파에 똑같이</b> 적용된다` | 1 |
+| §1-D | UiChrome.cs:1322 | `public static RectTransform AddOpaquePanel` | 1 |
+| §1-E | Cards.cs:509 | `생 CardBorder/AccentBorder(α<1)를 그대로 얹지 않는다` + 파일명 정정 | 1 |
+| §2 (3) | CharacterInfoWindow.cs:1726 · Tabs.cs:266 · :276 · TodoPostItWidget.cs:1096/1153 · GearRadialMenuWidget.cs:1376 | `AddSurface(display, "NameHit", Color.clear` · `AddSurface(stripRect, "Tab" + name, Color.clear` · `active ? UiChrome.Accent : Color.clear` · `new Color(0f, 0f, 0f, 0.001f)` · `b.Progress = 1f;` | 1 · 1 · 1 · 2(그 파일) · 1 |
+| §3-4 ① | PopoverPanel:624 · CharacterInfoWindow.cs:1299 · SettingsWindow.cs:985 · TodoPostItWidget.cs:1025 | `AddOpaquePanel(canvasGo.transform, "…"` 4종 | 각 1 |
+| §4-2 ★ | UiChrome.cs:552 | `private const float RarityBorderAlpha` | 1 |
+| §4-3-a | UiChrome.cs:1341-1345 · :1391 | `public const float MinNonTextContrast` · `최소 해를 그대로 상수로 박으면 여유가 0이 된다` | 1 · 1 |
+| §4-3-b | UiChrome.cs:1592-1603 | `public static readonly Color[] BrightTextBackdrops` | 1 |
+| §4-3 링·액자 | CharacterInfoWindow.cs:1122 · :1776 · UiChrome.cs:152 | `_inkRings[i].color = active ? SelectedRingOn(fill)` · `UiChrome.EdgeOnSurface(fill.color), 1.5f` · `InkContrastCharcoal = new Color(0.145f` | 1 · 1 · 1 |
+| §4-4 | WindowTheftRenderer.cs:95 · :96 · :109 · CharacterPortraitStage.cs:828-830 | 정의 3줄(`GhostFrameColor` · `GhostTitleColor` · `DustColor` 전체 식) · `감기 방향이 무관하고` | 각 1 |
+| §5-4 | GearRadialMenuWidget.cs:1670 | `강조색은 <b>무장 전용</b>이다` | 1 |
+| §6 | TodoPostItWidget.cs:1096/1153 · :1376 | 위와 같음 | 2 · 1 |
+| §7-1 | UiChrome.cs:1384 · :1376-1379 · :1500-1503 | `public const float ControlFaceContrastTarget` · `두 지표는 <b>반대 방향</b>이다` · `이분 탐색이 아니라 <b>격자 탐색</b>인 이유` | 1 · 1 · 1 |
+| §7-3 ★·F2·F3 | SettingsControls.cs:810-819 · :1207-1209 · UiChrome.cs:1374 · :1368-1369 · SettingsControls.cs:1242 · UiChrome.cs:497 | `ink.Label.color = UiChrome.InkOnSurface(ink.Face, UiChrome.InkRole.Title, Enabled)` · `titleInk[i + 1] = new SettingsRowGate.GatedInk(` · `테두리만 있는 것은 버튼이 아니라 <b>입력칸</b>으로 읽힌다` · `커밋 39ab690` · `UiChrome.EdgeOnSurface(colors[i])` · `트랙은 「보이는 구획선」이 아니라` | 1 · 1 · 1 · UiChrome.cs 1(저장소 3파일) · 1 · 1 |
+| §8 C-6 · §10 | UiChrome.cs:608-612 (2곳) | `<b>4의 배수</b>만 세 배율 전부에서 정수 픽셀이 된다` | 1 |
+| §9-2 · §9-4 | UiChrome.cs:1379 · PortraitBackdropGlowAlphaTests :101 · :324 | `그래서 아래 두 목표는 <b>언제나 한 쌍으로</b> 쓴다` · `네거티브 컨트롤의 반대편` · `string rawGlow = "= UiChrome."` | 1 · 1 · 1 |
+
+**앵커에 `<b>` 태그가 들어간 것들은 원문이 그렇게 생겼기 때문이다** — 태그를 뺀 문장은 파일에 없으므로
+고정 문자열로 찾으려면 태그째 써야 한다(TEAM 규칙: 앵커에 EM DASH·스마트 따옴표는 넣지 않는다. 위 앵커에는 없다).
+
+**앵커로 바꾸지 않고 판 표기(`349048f2`)로 남긴 것**: §5-1 · §5-2 · §5-3 인계표 전체, §5-1의 오탐 경고 블록,
+§2 (2)의 예시 줄, §3-4 ②의 부채꼴 줄 목록, §7-3 F1/F2/F4 표의 「파일:줄」 칸, §7-5 표, §8 C-1~C-3.
+이유: 이것들은 **현재 상태가 아니라 R14 시점의 인계 대상**을 가리키는 인용이고, TEAM 규칙이 과거 판 인용에 요구하는 것은
+앵커가 아니라 **판 표기**다. 각 절 머리의 ★ 블록이 그 표기를 지고 있다.
+
+**계량** — 줄 번호 인용은 **본문 146건에서 91건으로** 줄었다(full 73 · 확장자 없는 형태 1 · 꼬리 `:N` 17).
+남은 91건은 전부 위에 적은 판 표기 구역 안에 있다. 이 절(§12) 안의 인용(측정 시점 30건)은 **계수에서 뺀다** —
+정정 기록 절은 옛 문장을 원문 그대로 남기는 곳이라 본문 1 + 기록 1의 중복이 **구조적으로** 생긴다
+(TEAM.md 「기준과 대상이 같이 낡은 스냅숏」 규칙 3의 리더 판정 2026-09-26).
+- 형태 정의: full = `파일명.확장자:숫자`(범위·복수 포함) · 확장자 없는 형태 = `` `PopoverPanel:624` `` 같은 것 ·
+  꼬리 = `` `:1776` ``처럼 파일명 없이 줄 번호만. **발생 수**로 셌고 줄 수로 세지 않았다.
+- 앵커 생존 검증: 이 라운드에 새로 넣은 앵커를 **(대상 파일, 기대 횟수)** 표로 만들어 전수 확인했고(46/46),
+  존재하지 않는 앵커 2개를 **음성 대조**로 함께 돌려 0을 확인했다. 음성 대조가 없으면
+  「0건이라 깨끗하다」와 「검사기가 죽었다」를 가를 수 없다.
+- 렌더 결함은 정정 뒤 같은 스캐너로 **물결 취소선 0 · 닫히지 않은 `~~` 0 · 닫히지 않는 강조 0**이다
+  (정정 전 1 / 0 / 10).
+
+### ㉵ 이 라운드의 자백 — 내 검사기가 세 번 틀렸다
+
+1. **죽은 프로브를 만들었다.** `강조색은 무장 전용이다`를 평문으로 찾아 0건이 나왔고, 하마터면
+   「그 인용은 죽었다」고 정정할 참이었다. 원문이 `강조색은 <b>무장 전용</b>이다`라 태그가 끼어 있었을 뿐이고,
+   태그째 찾으면 적중 1이다. **「없다」 판정에 양성 대조를 붙인다**는 규칙을 내가 먼저 어겼다.
+2. **검사기가 자기 판정을 감췄다.** 강조 짝짓기 스캐너의 첫 판이 중첩 강조를 버리면서(안쪽에 열린 기호를
+   스택에서 제거) §7-3 F3의 결함을 조용히 지웠다. 독립 가족 스캔이 그것을 잡아 5건이 6건이 됐다.
+3. **꼬리 인용 함정을 내가 새로 만들었다.** 앵커를 문서에서 자동 추출하는 검사기를 만들었더니, 한 줄에
+   파일 이름이 여럿인 행(위 ㉳ 표)에서 **이웃의 파일을 대상으로 붙여** 「적중 0」 9건을 냈다. 전부 오탐이었고,
+   앵커 위치에서 왼쪽으로 가장 가까운 파일 이름을 대상으로 고치니 사라졌다. 명시 표 검증은 처음부터 46/46이었다.
+
+### ㉴ 미확인 · 넘긴 것
+
+- **§8 C-1~C-7 실기 캡처는 여전히 0장**이다. 이 라운드도 앱을 띄우지 않았다(리더 금지). 「확인됨」이라고 쓰지 않았다.
+- §4-4 W-1(월드 렌더러 3건의 실제 블렌드)은 **미측정**이다. 대상이 4건에서 3건으로 줄었을 뿐이다.
+- §5-4 강도 판정(C-4)과 §7-3 F1 테두리 삭제 권고는 **리더 배분 대기**다.

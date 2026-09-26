@@ -2678,6 +2678,59 @@ namespace StickMate.Tests.EditMode
         }
 
         /// <summary>
+        /// <b>등급 폴러</b>도 같은 게이트를 부르고, 그러면서 <b>세 축 필드를 덮어쓰지 않는가</b>
+        /// (2026-09-26, debugger S1·S2 명세). 바로 위 발판 폴러 검사와 <b>같은 형태</b>다.
+        ///
+        /// <para>왜 필요한가: 화면이 꺼졌거나 세션이 잠긴 동안에도 등급 폴링이 계속 돌아 창 열거를
+        /// 반복했다. 멈추는 것은 <b>다시 묻는 일</b>뿐이어야 하고, 세 축 필드를 여기서 0으로 덮으면
+        /// 그 순간이 곧 «등급 없음» 오인이라 <b>잠금 중에 자동 표면이 되살아난다</b> — 발판 캐시를
+        /// 비우면 안 되는 것과 정확히 같은 병이다.</para>
+        ///
+        /// <para>★ <b>주석을 걷고 읽는다</b>(<c>StripLineComments</c>). 이 파일의 축 4 주석이
+        /// <c>SessionVisibilityPolicy</c>를 <b>비교 비유</b>로 인용하고 있어서, 주석을 남긴 채 세면
+        /// <b>배선이 없어도 «있음»으로 읽힌다</b> — 실측으로 확인된 오독 경로다(S3). 주석을 걷으면
+        /// 아래 단언은 <b>코드</b>만 본다.</para>
+        ///
+        /// <para>★ <b>개수로 잠근다</b>: 세 축 필드의 대입이 각각 <b>정확히 1곳</b>이어야 한다.
+        /// 존재 단언(니들이 살아 있다)과 개수 단언(늘지 않았다)을 같은 테스트에 두어, 니들이 죽어
+        /// 조용히 초록이 되는 경로를 막는다.</para>
+        /// </summary>
+        [Test]
+        public void 등급_폴러가_세션_게이트를_부르고_세_축_필드를_덮어쓰지_않는다()
+        {
+            string agent = StripLineComments(ReadSource(Path.Combine(
+                Application.dataPath, "_Project", "Scripts", "Core", "StickmanAgent.cs")));
+
+            StringAssert.Contains("SessionVisibilityPolicy.ShouldSuspendFootholdScan(ResolveTierPresence())", agent,
+                "등급 폴러가 세션 가시성 판정을 부르지 않습니다 — 규칙이 아무리 옳아도 폴러가 부르지 " +
+                "않으면 두 플랫폼 어디에서도 아무 일이 일어나지 않습니다. 그리고 이 파일의 주석 인용은 " +
+                "비교 비유일 뿐이라 배선의 증거가 되지 못합니다(주석을 걷고 셌습니다).");
+
+            StringAssert.Contains("IsDisplayChangeHoldActive) { _tierPollGateHeld = true; return; }", agent,
+                "화면 변경 유예 중에도 등급 폴링이 계속 돕니다 — 모니터가 재배치되는 와중의 창 열거 " +
+                "결과로 등급이 갱신됩니다. 호출 순서를 옮기는 대신 이 자리에서 서기로 한 판정입니다.");
+
+            StringAssert.Contains("_tierPollGateHeld = false;", agent,
+                "게이트 해제 직후의 즉시 재평가가 사라졌습니다 — 해제된 첫 순간(사용자가 화면을 보는 " +
+                "바로 그 순간)에 최대 fullscreenPollInterval 동안 얼어붙은 옛 등급으로 표면을 판정합니다.");
+
+            foreach (string field in new[]
+            {
+                "_fullscreenAutoHide = ", "_fullscreenPanelRetreat = ", "_foreignFullscreenSuppressesDance = ",
+            })
+            {
+                int writes = CountOccurrences(agent, field);
+                Assert.Greater(writes, 0,
+                    $"양성 대조 실패 — '{field}'를 한 번도 못 찾았습니다. 니들이 죽었다면 아래 개수 " +
+                    "단언은 '축 필드를 덮어쓰는 코드가 늘어도 통과하는' 빈 검사입니다.");
+                Assert.AreEqual(1, writes,
+                    $"세 축 필드 중 '{field}'를 대입하는 자리가 {writes}곳입니다(정상 폴링 경로 1곳이어야 " +
+                    "합니다). 세션 게이트 중단 경로에서 축을 덮어쓰면 그 순간이 곧 «등급 없음» 오인이고, " +
+                    "잠금 중에 자동 표면이 되살아납니다 — 우리가 멈추는 것은 '다시 묻는 일'뿐입니다.");
+            }
+        }
+
+        /// <summary>
         /// <b>코드는 닫혔고 Windows 하드웨어만 남았다.</b> 세션 잠금 감지의 <b>규칙</b>과 <b>배선</b>은
         /// 이 머신에서 실제로 실행해 검증했지만, <c>WTSQuerySessionInformationW</c>와
         /// <c>OpenInputDesktop</c>이 <b>진짜 Windows에서 무엇을 돌려주는지는 한 번도 보지 못했다.</b>
@@ -3240,6 +3293,64 @@ namespace StickMate.Tests.EditMode
                 "Windows가 기하만으로 숨깁니다 — 전체화면 엑셀/PPT에서 캐릭터가 사라집니다.");
             StringAssert.Contains("FullscreenGameCategory.IsGameCategory(", macBody,
                 "macOS가 기하만으로 숨깁니다 — 전체화면 키노트/브라우저에서 캐릭터가 사라집니다.");
+        }
+
+        /// <summary>
+        /// <b>[미해결 B] 게임 판정 조회 실패의 「실패 비캐시」가 macOS에는 아직 없다.</b> 2026-09-26 신설(dev-platform, N-23).
+        ///
+        /// <para>Windows는 FC-1이 착지했다 — 확정 판정만 캐시하고, 실패는 시간 비교 없이 다음 폴링에
+        /// 다시 묻고, 연속 3회면 첫 시도부터 30초 후퇴한다(규칙은 중립 <c>GameVerdictRetryPolicy</c>).
+        /// macOS <c>TryGetAppCategory</c>는 <b>여전히 null(조회 실패 · 미선언 공통)을 30초 캐시</b>하므로
+        /// 감지된 게임 위에서 캐릭터가 약 30초 동안 다시 나온다(60Hz 30fps 루프 모형 30.67초).</para>
+        ///
+        /// <para><b>왜 지금 고치지 않는가</b>: <c>MacWindowService.cs</c>는 N-8 목록 A(화면 변경 경로)라
+        /// E-3 증거를 소비한 뒤에만 손댈 수 있고, 1.0 스토어 선언 OS는 Windows다. 규칙이 이미 중립
+        /// 파일에 있으므로 macOS는 <b>사실 조회부만</b> 붙이면 된다 — 그때 이 항목은 닫힌다.</para>
+        ///
+        /// <para><b>썩음 방지 — Ignore 전에 사유가 기대는 코드 사실을 다시 잰다</b>:
+        /// ① Windows 쪽이 실제로 중립 규칙을 부르는가(아니면 이 항목의 «한쪽만 착지» 서술이 거짓이다).
+        /// ② macOS 캐시 기호가 <b>실재</b>하는지 존재 대조 — 이름이 바뀌어 사라지면 「갭이 남았다」가
+        /// 조용히 참이 된다(부재 단언은 썩으면 초록이 된다).
+        /// ③ macOS가 중립 규칙을 부르기 시작하면 <c>Assert.Pass</c>로 스스로 알린다.</para>
+        /// </summary>
+        [Test]
+        public void 미해결_게임_판정_조회_실패_비캐시가_macOS에는_없다()
+        {
+            string probePath = Path.Combine(PlatformRoot, "Windows", "WindowsGameProcessProbe.cs");
+            string probe = StripLineComments(ReadSource(probePath));
+            string mac = StripLineComments(ReadSource(MacWindowServicePath));
+
+            // ① Windows 착지 확인 — 이 항목 사유의 절반이 여기 기대고 있다.
+            StringAssert.Contains(nameof(GameVerdictRetryPolicy) + ".", probe,
+                "Windows 조회 계층이 중립 재시도 규칙을 부르지 않습니다 — FC-1이 되돌려졌다면 이 항목은 " +
+                "«macOS만 남았다»가 아니라 «양쪽이 열렸다»로 다시 써야 합니다(N-23).");
+
+            // ② 존재 대조 — macOS 캐시 기호가 실재하는가(부재 단언의 짝).
+            // TryGetAppCategory는 아래 사유가 이름으로 지목하는 메서드다 — 대조 목록에 없으면
+            // 개명되는 날 사유만 조용히 낡는다(test-engineer 2026-09-26).
+            foreach (string symbol in new[] { "AppCategoryCacheSeconds", "_cachedCategory", "TryGetAppCategory" })
+            {
+                StringAssert.Contains(symbol, mac,
+                    $"macOS 카테고리 캐시 기호 '{symbol}'가 사라졌습니다 — 이 항목의 진단(«null을 30초 " +
+                    "캐시한다»)이 낡았습니다. 지금 코드를 다시 읽고 사유를 갱신하세요.");
+            }
+
+            // ③ macOS가 같은 규칙을 부르기 시작했으면 갭이 닫힌 것이다.
+            if (probe.Length > 0 && mac.Contains(nameof(GameVerdictRetryPolicy)))
+            {
+                Assert.Pass("macOS 조회 계층이 중립 재시도 규칙을 부릅니다 — FC-1이 양 플랫폼에 " +
+                    "착지했습니다. 이 항목을 정식 패리티 검사(«양쪽이 실패를 캐시하지 않는다»)로 " +
+                    "바꾸세요.");
+            }
+
+            Assert.Ignore("【미해결 · Windows 착지 / macOS 대기】 신설 2026-09-26 (dev-platform, N-23)\n" +
+                "Windows: 확정 판정만 캐시 · 실패는 다음 폴링 재시도 · 연속 3회면 첫 시도부터 30초 후퇴" +
+                "(경로는 pid별 · 목록은 전역). 규칙은 중립 GameVerdictRetryPolicy에 있다.\n" +
+                "macOS: TryGetAppCategory가 null(조회 실패와 미선언이 같은 값)을 30초 캐시한다 — " +
+                "감지된 게임 위 노출 약 30초가 남아 있다(60Hz 30fps 루프 모형 30.67초).\n" +
+                "착수 조건: MacWindowService.cs가 N-8 목록 A라 E-3 증거 소비 뒤. 1.0 게이트는 Windows다.\n" +
+                "해소: macOS 반환을 셋(값 / 확정 null / 조회 실패)으로 나눠 조회 실패만 비캐시하고 " +
+                "같은 중립 규칙을 부른다. 근거 docs/platform/GAME_DETECTION_FAILURE_CACHE.md 「macOS 대응」.");
         }
 
         /// <summary>

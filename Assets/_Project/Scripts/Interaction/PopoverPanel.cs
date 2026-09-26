@@ -446,6 +446,17 @@ namespace StickMate.Interaction
             //    페르소나 `재현` 실측: 카테고리를 선언하지 않은 화상회의/발표 앱을 전체화면으로 올리면
             //    예전 조건은 <b>영원히 false</b>였고 패널이 그 위에 그대로 떠 클릭을 먹었다.
             //    ArePanelsSuppressed는 IsSuspended를 항상 포함하므로 전체화면 게임에서의 동작은 불변이다.
+            // ★★★ 2026-09-26 정정(code-inspection) — <b>위 줄의 전반부는 2026-09-03부터 거짓이다.</b>
+            //    그날 축 2가 갈라져 나가면서 ArePanelsSuppressed의 첫 항이 _isSuspended에서
+            //    HidesScreenSurfaces(= _isSuspended && !IsUserHiddenOnly)로 바뀌었다. 그래서
+            //    <b>사용자 명시 숨김 단독</b>(⌃⌥⌘K / 설정창 [일반]만으로 숨은 경우)에서는 IsSuspended가
+            //    참인데 ArePanelsSuppressed가 <b>거짓</b>이다 — 사용자 확정 설계다("캐릭만 가리고",
+            //    StickmanAgent.HidesScreenSurfaces 문서의 축별 결론표).
+            //    ★ <b>후반부 결론은 그대로 참이다</b>: 전체화면 게임(축 1)에서는 IsUserHiddenOnly가 거짓이라
+            //    HidesScreenSurfaces가 참이 되므로, 이 팝오버가 걷히는 동작은 실제로 불변이다. 즉 이 줄은
+            //    <b>결론은 맞고 근거가 낡은</b> 문장이었다 — 근거만 위와 같이 바꿔 읽어라.
+            //    ★ 이 팝오버에 대해 «사용자 숨김 단독에서는 안 걷힌다»가 되는 것도 의도다: 그때는 표면이
+            //    보이는 채로 남아야 되돌릴 버튼이 누른 자리에 있다(안 보이는데 클릭만 먹는 형태가 아니다).
             if (Agent != null && Agent.ArePanelsSuppressed)
             {
                 if (!_closing) OnClosing();   // 이미 닫히는 중이면 Close()가 이미 불렀다(이중 호출 금지).

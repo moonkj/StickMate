@@ -15,6 +15,10 @@
 # 사용:  xcheck-editor.sh <win|osx> [--selftest]
 #   --selftest : 일부러 컴파일 에러를 주입해 이 검사가 실제로 잡는지 확인한다(거짓 초록 방지).
 #
+# ★ 절차 서술의 정본은 CLAUDE.md 「플랫폼 동시 검토」 절이다(리더 판정 2026-09-26). 어긋나면 그 절이 맞다.
+# 실측 2026-09-26(perf-doc): 이 스크립트의 컴파일 단위는 2개다 — 런타임(editor) + Assembly-CSharp-Editor.
+#   xcheck.sh 는 2026-09-01부터 Assembly-CSharp-Editor 까지 5개를 컴파일하므로 이 파일은 그 축소판이다.
+#   산출물은 mktemp -d 에 만들고 종료 시 지운다 — 저장소에는 쓰지 않는다(marker 대조: 실행 뒤 변경 0건).
 # 방식은 xcheck.sh와 같다: Unity 동봉 dotnet + DotNetSdkRoslyn/csc.dll,
 # 소스 목록은 rsp가 아니라 **트리에서 재생성**(rsp의 목록은 마지막 에디터 컴파일 시점이라 낡는다),
 # 플랫폼 정의는 rsp에서 제거 후 명시적으로 재주입(rsp에 이미 박힌 정의로 인한 거짓 초록 방지).

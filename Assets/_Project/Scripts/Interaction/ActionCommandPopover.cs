@@ -335,6 +335,11 @@ namespace StickMate.Interaction
         /// <summary>헤더 상태 캡션(테스트/진단 전용).</summary>
         public string StatusCaption => _statusCaption != null ? _statusCaption.text : string.Empty;
 
+        /// <summary>푸터 한 줄(테스트/진단 전용). <b>존재</b>를 재는 창구다 — 이 자리는 2026-09-26까지
+        /// <c>.text</c> 대입이 <b>0건</b>이라 28pt 빈 띠였고, 「비어 있지 않다」를 아무도 재지 않아서
+        /// 그 빈 띠가 <b>조용히 초록</b>이었다.</summary>
+        public string FooterHint => _footerHint != null ? _footerHint.text : string.Empty;
+
         // ==================== 수명 주기 ====================
 
         protected override void Start()
@@ -469,6 +474,39 @@ namespace StickMate.Interaction
             return view;
         }
 
+        /// <summary>
+        /// 푸터 한 줄 — 이 창이 <b>무엇인지</b>와 <b>닫아도 되는지</b>를 한 문장으로 말한다(ux-widgets F3).
+        ///
+        /// <para>★ <b>왜 필요한가</b>: 2026-09-26까지 이 자리는 상자만 만들어지고 <c>.text</c> 대입이
+        /// <b>한 번도 없었다</b> — 화면에는 <b>28pt 빈 띠</b>가 있었다. 세로 예산은 이미 이 줄을 세고
+        /// 있으므로(<see cref="Height"/> 검산) 글자를 넣는 데 드는 추가 비용은 <b>0</b>이다.</para>
+        ///
+        /// <para>★ <b>여기서 1회만 쓴다</b> — <see cref="RefreshContent"/>·<see cref="TickSlow"/>에 넣지
+        /// 않는다. 상태에서 파생되는 문장이 아니라 <b>항상 같은 안내</b>라, 0.25초마다 다시 쓰면 폴링
+        /// 비용만 늘고 값은 한 글자도 안 바뀐다(하루 종일 켜져 있는 앱이다).</para>
+        ///
+        /// <para><b>폭 검산</b>(글꼴 <c>UiChrome.FontCaption</c> 10, 상자 = <see cref="ContentWidth"/> 448,
+        /// <b>줄바꿈 없음</b> — 넘치면 잘리지 않고 흘러나간다): 글자 36(한글 24 · 공백 10 · 기호 2) →
+        /// 모형 N <b>281.0</b>pt · 모형 C <b>378.0</b>pt. 여유 167.0 / <b>70.0</b>. 같은 모형이 헤더
+        /// 상수들의 기존 값을 재현하는 것으로 교정했다.</para>
+        ///
+        /// <para>★★ <b>글자 확정(2026-09-26, design-narrative).</b> 임시안 F3이 <b>한 글자도 바뀌지 않고</b>
+        /// 채택됐다(폭도 독립 재유도로 일치). 동사 규칙상 이 줄은 <b>「시키다」(주어 = 사용자)</b>이고
+        /// 타일 사유는 <b>「하다·있다·없다」(주어 = 캐릭터·세계)</b>다 — 두 입이 다른 것은 실수가 아니라
+        /// 규칙의 결과다. 바꾸려면 <b>이 상수 한 줄만</b> 고치면 되고, 테스트는 이 상수를 <b>참조</b>하므로
+        /// 글자가 바뀌어도 조용히 초록으로 남지 않는다. <b>폭은 글자를 바꿀 때 다시 재라</b> — C 여유가
+        /// 70.0뿐이다.</para>
+        ///
+        /// <para>★★★ <b>앞 절은 구조가 아니라 애셋에 기대어 참이다.</b> 뒷절(「닫아도 계속해요」)은
+        /// 구조가 보장한다 — 이 창은 <c>OnClosing</c>을 <b>재정의하지 않아</b> 닫아도 연출을 멈추지 않는다
+        /// (양성 대조: <see cref="TodoBoardPopover"/>는 재정의한다). 그러나 앞 절(「시켜야만 해요」)은
+        /// <b>출하 애셋의 자동 발동 확률 네 개가 0</b>이라서 참이고, 같은 애셋의 다른 확률들은 0이 아니다.
+        /// <b>숫자 하나를 올리면 이 문장이 조용히 거짓이 된다</b> — 그래서 EditMode
+        /// <c>푸터_앞절이_기대는_자동_발동_확률이_출하_애셋에서_0이다</c>가 그 값을 <b>애셋에서 읽어</b>
+        /// 잠근다. 확률을 올리려면 <b>그 문장을 먼저 고쳐라</b>(원칙 1).</para>
+        /// </summary>
+        public const string FooterHintText = "여기 있는 건 시켜야만 해요. 이 창을 닫아도 하던 건 계속해요.";
+
         private void BuildFooter(RectTransform content)
         {
             _footerHint = UiChrome.AddText(content, "FooterHint", UiChrome.FontCaption,
@@ -489,10 +527,25 @@ namespace StickMate.Interaction
             //   트레이도 없어서 순서를 뒤집으면 마우스만 쓰는 사용자의 종료 수단이 0이 되는 순간이 생긴다.
             //
             //   <b>세로 예산 영향 0</b>: 푸터는 원래 한 줄이었고(힌트 + 칩이 같은 y·같은 높이),
-            //   칩이 빠진 만큼 힌트 상자가 340 -> ContentWidth(448)로 넓어질 뿐이다. 푸터 바닥은
-            //   FooterY(-422) - QuitButtonHeight(28) = -450 = 콘텐츠 높이 450 그대로다.
+            //   칩이 빠진 만큼 힌트 상자가 340 -> ContentWidth(448)로 넓어질 뿐이다.
+            //
+            //   ★★ 2026-09-26 수치 정정 — 아래 옛 문장은 <b>타일 5개 시절</b> 값이라 지금은 틀렸다.
+            //      옛 표기(원문 보존): "푸터 바닥은 FooterY(-422) - QuitButtonHeight(28) = -450 =
+            //      콘텐츠 높이 450 그대로다."
+            //      지금 상수로 유도하면: FooterY(-370) - QuitButtonHeight(28) = <b>-398</b> =
+            //      콘텐츠 높이 Height(456) - (Space3 + 22 + Space2) - Space4 = <b>398</b>.
+            //      ★ 셈 자체는 그대로 성립한다 — 바뀐 것은 타일 수(5 -> 4)에 딸린 <b>숫자뿐</b>이다.
+            //      ★ 이 파일 <b>머리 주석</b>(Height 문서의 "-370 - 28 = -398")이 <b>맞는 쪽</b>이었고,
+            //        한 파일 안에서 두 주석이 어긋나 있었다. 수치를 다시 적을 때는 상수에서 유도하라.
             UiChrome.PlaceTopLeft(_footerHint.rectTransform, 0f, FooterY,
                 ContentWidth, QuitButtonHeight);
+
+            // ★ 2026-09-26 — 여기까지는 상자만 만들고 <b>글자를 넣지 않았다</b>(빈 띠). 상수 문서에
+            //   근거·폭 검산·<b>문안 확정 표기</b>와 「앞 절이 애셋 확률 0에 기대고 있다」가 적혀 있다.
+            //   갱신 경로에 넣지 않는 이유도 거기 있다.
+            //   ★ 이 줄은 원래 「확정 대기 표기가 있다」였다 — 문안이 확정되어 그 표기가 사라졌으므로
+            //     <b>가리키는 대상이 없는 주석</b>이 됐다. 같은 라운드에 함께 고친다(거짓 주석 금지).
+            _footerHint.text = FooterHintText;
         }
 
         // ==================== 가용성 — 판정은 Director 하나에서만 나온다 ====================
@@ -747,10 +800,60 @@ namespace StickMate.Interaction
             SetStatusCaption(runaway, readyCount);
         }
 
+        // ==================== 헤더 한 줄 — 문구는 확정된 사실에서만 파생한다 ====================
+        //
+        // ★ 파생 규칙 정본: docs/narrative/ACTION_POPOVER_HEADER_REASON.md §0 (design-narrative 2판).
+        //   다섯 문구를 <b>상수</b>로 두는 것은 테스트가 글자를 베끼지 않고 <b>참조</b>하게 하기 위해서다
+        //   (CLAUDE.md 니들 규칙). design-narrative가 글자를 바꾸는 날 단언이 조용히 초록으로 남지 않는다.
+
+        /// <summary>규칙 1 — 가출 중.</summary>
+        public const string RunawayCaption = "지금 가출 중이에요";
+
+        /// <summary>규칙 3 — 누를 수 있는 칸이 하나라도 있음.</summary>
+        public const string ReadyCaption = "지금 시킬 수 있어요";
+
+        /// <summary>규칙 4 — 누를 수 있는 칸이 0이고 <b>캐릭터 상태가</b> 바쁨.</summary>
+        public const string BusyCaption = "지금은 다른 일 하는 중이에요";
+
         /// <summary>
-        /// 헤더 한 줄은 <b>지어내지 않는다</b> — 세 문장 전부 방금 계산한 실제 값(가출 여부 / 실행 가능
-        /// 타일 수)에서만 파생한다. "전부 불가"는 빈 상태가 아니라 <b>불가 상태</b>이며 이 줄이 그 이유를
-        /// 대표해서 말한다(36-7 예외 상태 표).
+        /// 규칙 5 — 누를 수 있는 칸이 0인데 <b>캐릭터는 한가하다</b>(2026-09-26 신설).
+        ///
+        /// <para>★ 왜 신설했는가: 네 칸이 전부 <b>자리·대상 사유</b>(과녁 자리 없음 · 빈 자리 없음 ·
+        /// 작은 창 없음 · 전체화면 가드)로 회색이면 <see cref="BusyCaption"/>은 <b>거짓</b>이다 —
+        /// 캐릭터는 한가히 걷는데 헤더가 캐릭터 상태를 지어낸다(원칙 1 위반). 이 문장은 캐릭터에 대해
+        /// <b>아무것도 주장하지 않는다</b>: 방금 센 <c>readyCount == 0</c> 하나만 말한다.</para>
+        ///
+        /// <para>이유는 칸마다 이미 적혀 있다(<see cref="RefreshTile"/>이 설명 자리를 사유로 교체한다).
+        /// 헤더가 그 이유를 <b>대신 지어낼</b> 까닭이 없다.</para>
+        ///
+        /// <para>★ 영어 대응은 <b>넣지 않았다</b> — 이 저장소 프로덕션에는 아직 영어 UI 경로가 없다
+        /// (설계 문서 §7 "프로덕션 영어 UI 경로는 아직 없다"). 문자열 테이블이 생기는 라운드에 다른
+        /// 문구와 <b>함께</b> 옮긴다. 여기 한 칸만 이중 언어로 두면 그 자리가 곧 두 벌이 된다.</para>
+        /// </summary>
+        public const string NothingAvailableCaption = "지금은 시킬 수 있는 게 없어요";
+
+        /// <summary>
+        /// 헤더가 말하는 「바쁨」의 정의 — <b>상태만</b> 본다. 네 Director의 <c>GetAvailability()</c>가
+        /// 쓰는 상태 식과 <b>같은 식</b>이라, 헤더 문장과 칸 사유가 한 곳에서 나온다.
+        ///
+        /// <para>★★ <b>연출 락은 일부러 보지 않는다.</b> 락은 <b>앱의 배타 토큰</b>이고 캐릭터 상태가
+        /// 아니다. 락 보유 13종 중 12종은 상태를 벗어나는 전이에서 락을 놓지만 <b>크랙만</b> 금 수명
+        /// (<c>windowCrashOverlayDurationSeconds</c> 3초)까지 들고 있어, 스윙
+        /// (<c>windowCrashSwingDuration</c> 0.4초)이 끝난 뒤 <b>약 2.6초 동안 캐릭터는 Idle로 돌아와
+        /// 걷는데 락이 남는다</b>. 그 구간에 규칙 4를 쓰면 거짓이다(설계 문서 §3-5 — 락 보유자 전수).</para>
+        ///
+        /// <para>대가: 네 Director의 상태 식이 바뀌는 날(예: Jump 중에도 명령 허용) 헤더와 칸이 어긋날
+        /// 수 있다. 그래도 헤더 문장은 여전히 <b>상태 사실</b>이라 거짓말은 하지 않는다. 어긋남은
+        /// <c>ActionCommandPopoverHeaderRuleTests</c>의 소스 감사가 잡는다.</para>
+        /// </summary>
+        public static bool IsBusyHeaderState(StickmanStateId state)
+            => state != StickmanStateId.Idle && state != StickmanStateId.Walk;
+
+        /// <summary>
+        /// 헤더 한 줄은 <b>지어내지 않는다</b> — 다섯 문장 전부 방금 계산한 실제 값(가출 여부 / 숨김 여부 /
+        /// 실행 가능 타일 수 / <b>캐릭터 상태</b>)에서만 파생하고, <b>위에서부터 처음 맞는 줄</b> 하나를 쓴다.
+        /// "전부 불가"는 빈 상태가 아니라 <b>불가 상태</b>이며 이 줄이 그것을 대표해서 말한다
+        /// (36-7 예외 상태 표 / docs/narrative/ACTION_POPOVER_HEADER_REASON.md §0).
         /// </summary>
         private void SetStatusCaption(bool runaway, int readyCount)
         {
@@ -764,11 +867,32 @@ namespace StickMate.Interaction
             //   ★ 가출을 앞에 두는 순서는 <b>일부러</b>다: 가출 중에 숨긴 경우 사용자에게 필요한 것은
             //     [돌아와!] 칩이고(그 칩은 숨김 중에도 살아 있다), 헤더가 그 칩을 설명해야 한다.
             bool hidden = Agent != null && Agent.IsSuspended;
-            string text = runaway ? "지금 가출 중이에요"
+
+            // ★★★ 2026-09-26 — <b>«전부 불가»의 갈래가 셋이 됐다</b>(가출·숨김 밖에서 둘로 갈렸다).
+            //   종전에는 readyCount == 0이면 <b>이유를 묻지 않고</b> 규칙 4를 썼다. 그래서 네 칸이 전부
+            //   자리·대상 사유로 회색인 장면(전체화면 앱 위에서 창을 연 경우가 대표)에서 캐릭터는
+            //   한가히 걷는데 헤더가 «바쁘다»고 <b>캐릭터 상태를 지어냈다</b> — 원칙 1 위반이다.
+            //   판정은 <b>상태만</b> 본다(연출 락은 보지 않는다 — 근거는 IsBusyHeaderState 문서).
+            string text = runaway ? RunawayCaption
                 : hidden ? HiddenCharacterCommandGate.HiddenReason
-                : readyCount > 0 ? "지금 시킬 수 있어요"
-                : "지금은 다른 일 하는 중이에요";
+                : readyCount > 0 ? ReadyCaption
+                : CharacterStateIsBusy() ? BusyCaption
+                : NothingAvailableCaption;
             if (_statusCaption.text != text) _statusCaption.text = text;
+        }
+
+        /// <summary>
+        /// 캐릭터 상태가 지금 바쁜가 — <see cref="RefreshContent"/>와 <b>같은 프레임</b>에서 계산한다.
+        /// 값 읽기뿐이므로 상태 기계·에이전트는 이 경로로 바뀌지 않는다.
+        /// </summary>
+        /// <remarks>매 폴링(0.25초)마다 불리므로 <b>할당이 없다</b> — enum 비교 두 번이 전부다.</remarks>
+        private bool CharacterStateIsBusy()
+        {
+            // 에이전트나 상태 기계가 없으면 <b>바쁘지 않은 것</b>으로 친다. 그때 네 칸은 전부
+            // «이 빌드에는 없는 기능이에요»이고, 캐릭터에 대해 아무 주장도 하지 않는 규칙 5가 참이다.
+            // 여기서 «바쁨»으로 치면 배선 누락을 캐릭터 상태로 덮어 말하게 된다(설계 문서 §0).
+            if (Agent == null || Agent.Blackboard == null || Agent.Blackboard.Machine == null) return false;
+            return IsBusyHeaderState(Agent.Blackboard.Machine.CurrentStateId);
         }
 
         private void RefreshTile(Command command, CommandAvailability availability)

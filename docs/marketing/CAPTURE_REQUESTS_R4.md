@@ -49,6 +49,21 @@
 | **P13** | **`A-5` 가려진 창은 발판이 아니다** | 정확도 | `VisibleTopEdgeSolver` | — | GIF · **개발일지 전용** |
 | **보류** | 장비 / 커스터마이즈 격자 | — | ★ **27색 중 21색 대비 미달**(D등급). 그리고 레벨 30 저장 파일 필요 | — | **수정 라운드 뒤** |
 
+〔**R13-M — P2(등급 1 시연) 합격 기준 보강** (2026-09-26 · `marketing` · 리더 배정 인계 1)〕
+P2는 **표면만 걷히는 그림**이다. 그래서 다음 둘은 **정상이고 불합격 사유가 아니다** — 모르면 정상 테이크를 버린다.
+
+1. ★★ **캐릭터가 계속 걸어다니고 말풍선이 뜬다.** 등급 1은 캐릭터를 건드리지 않는다
+   (`Platform/FullscreenSuspendPolicy.cs` 앵커 `public static bool SuspendsCharacter`는 등급 2에서만 참 ·
+   같은 파일 앵커 `public static bool RetreatsPanels`만 등급 1에서 참 ·
+   `Core/AudioReactiveDanceGate.cs` 앵커 `캐릭터는 한 비트도 건드리지 않는다`).
+   출하 확률도 살아 있다 — 잡담 `idleChatterChance: 0.28` · 밧줄 등반 `ropeClimbChance: 0.85` ·
+   매달리기 `ledgeHangChance: 0.35`(`Data/DefaultStickConfig.asset`).
+2. ★★ **같은 테이크에서 음악을 틀어도 자동 춤은 안 나온다**(같은 정책 파일 앵커 `public static bool SuppressesAutoDance`가 등급 1에서 참).
+   ★ **춤이 나오면 그것이 회귀다** — 테이크를 증거로 보관하고 신고한다.
+
+★ **캡션 · 자막에 주어를 반드시 넣는다** — *"물러납니다"* 단독은 「캐릭터가 물러난다」로 읽힌다.
+쓰는 형태는 이것이다 — **"창과 패널이 물러납니다"**(`TRAILER.md` C1 주석과 같은 사유) → `TRUTH_INVENTORY.md` R13-M-1 · R13-M-6
+
 ---
 
 ## 2. 찍지 말 것 (이번 회차 명시적 제외)

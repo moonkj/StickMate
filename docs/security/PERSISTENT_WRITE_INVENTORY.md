@@ -128,6 +128,7 @@
 - `Player.log` 크기 상한은 미확인이다.
 - macOS 충돌 기록: Unity 문서의 충돌 폴더 항목은 「Windows only」다. macOS 자체 진단 보고서는 OS 기능이라 열거하지 않았다.
 - 충돌 보고 **전송**: `enableCrashReportAPI: 0`이고 `UnityConnectSettings.asset`의 `m_EnableCloudDiagnosticsReporting: 0`이다. 로컬에 쓰는 것만 이 표의 대상이다. 아웃바운드 0은 여기서 주장하지 않는다(`SECURITY_MODEL.md` 1-2 미실측 그대로).
+- ★ **2026-09-26 추가(`security` 로그 싱크 전수) — L-1의 「내용」 칸이 말하는 것보다 넓다.** 새 쓰기 싱크가 생긴 것이 아니다(파일 4 · PlayerPrefs 1 · OS 쓰기 P/Invoke 2는 그대로다). 확정된 것은 **이미 있는 L-1에 무엇이 실리는가**이고, 그래서 3절 세계 표의 L-1 칸은 「있음」 그대로 유효하다. 출시판이 **상시** 남기는 것 둘: macOS는 남의 앱 이름을 60초마다(`[발판리포트] 보이는 상단테두리` · 주기 `FootholdReportIntervalSecondsQuiet = 60f` · 배포 애셋 `verboseDiagnosticsLogging: 0`에서도 도달), 양 플랫폼은 사용자가 타이핑한 할일 본문을(`[할일패널] 추가 —` · `강조 할일` · `체크박스 클릭 — 항목`) 남긴다. 전수 표와 출시판 도달 여부는 `docs/security/SECURITY_MODEL.md` 앵커 `4-4-b. 2026-09-26 정정`에 있다. ⇒ 이 문서에서 바뀌는 것은 **5-1 판정 2의 「무엇이 남는가」 설명과 사용자 고지**이고, 2-1–2-5 표의 행 수는 바뀌지 않는다.
 
 ### 2-4. OS 상태 — 우리 호출로 OS·셸이 저장하는 것
 

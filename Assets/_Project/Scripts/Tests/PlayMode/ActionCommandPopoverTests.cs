@@ -234,14 +234,25 @@ namespace StickMate.Tests.PlayMode
 
             Assert.IsFalse(_popover.IsRecallChipVisible,
                 "가출 중이 아닌데 [돌아와!] 칩이 보입니다 — 없는 상태를 사용자에게 가르치게 됩니다.");
-            Assert.AreNotEqual("지금 가출 중이에요", _popover.StatusCaption,
+            Assert.AreNotEqual(ActionCommandPopover.RunawayCaption, _popover.StatusCaption,
                 "가출 중이 아닌데 헤더가 가출 중이라고 말합니다(원칙 1).");
 
             _popover.Close("테스트 종료");
             yield return null;
         }
 
-        /// <summary>헤더 캡션은 <b>실제 값에서만</b> 파생한다 — 셋 중 하나여야 하고 비어 있으면 안 된다.</summary>
+        /// <summary>
+        /// 헤더 캡션은 <b>실제 값에서만</b> 파생한다 — <b>다섯</b> 중 하나여야 하고 비어 있으면 안 된다.
+        ///
+        /// <para>★ 2026-09-26 — <b>셋 → 다섯</b>이 됐다(파생 규칙 정본:
+        /// <c>docs/narrative/ACTION_POPOVER_HEADER_REASON.md</c> §0). 가출 → 숨김 → 가능 →
+        /// <b>상태가 바쁨</b> → <b>그 밖</b> 순서로 <b>위에서부터 처음 맞는 줄</b>을 쓴다. 마지막 둘이
+        /// 이 라운드에 갈라진 자리이고, 아래 <c>else</c>가 그 경계를 잰다.</para>
+        ///
+        /// <para>★ 문구는 <b>전부 프로덕션 상수 참조</b>다(리터럴 복제 0). 이 파일은 종전에 세 문구를
+        /// 리터럴로 베껴 두고 있었고, 그중 하나가 정확히 이 라운드에 뜻이 바뀌어 <b>조건부 거짓 빨강</b>이
+        /// 될 자리였다 — design-narrative가 글자를 바꾸는 날에도 같은 일이 난다(CLAUDE.md 니들 규칙).</para>
+        /// </summary>
         [UnityTest]
         public IEnumerator StatusCaptionIsAlwaysDerivedFromRealState()
         {
@@ -262,24 +273,64 @@ namespace StickMate.Tests.PlayMode
             var agent = UnityEngine.Object.FindFirstObjectByType<StickmanAgent>();
             if (readyCount > 0)
             {
-                Assert.AreEqual("지금 시킬 수 있어요", caption,
+                Assert.AreEqual(ActionCommandPopover.ReadyCaption, caption,
                     $"실행 가능한 명령이 {readyCount}개인데 헤더가 다르게 말합니다(원칙 1).");
-            }
-            else if (agent != null && agent.IsSuspended)
-            {
-                // ★★★ 2026-09-03 — <b>«전부 불가»의 갈래가 둘이 됐다.</b> 사용자가 캐릭터만 숨겨 두면
-                //   5칸이 전부 막히는데(HiddenCharacterCommandGate) 그때 캐릭터는 «다른 일»을 하는 게
-                //   아니라 <b>숨어 있다</b>. 그 구분이 없으면 이 테스트가 <b>거짓말을 요구</b>하게 된다.
-                //   ★ 문구를 베끼지 않고 프로덕션 상수를 <b>참조</b>한다 — design-narrative가 글자를
-                //     바꾸는 날 이 단언이 조용히 초록으로 남지 않게(CLAUDE.md).
-                Assert.AreEqual(HiddenCharacterCommandGate.HiddenReason, caption,
-                    "캐릭터가 숨은 상태인데 헤더가 «다른 일 하는 중»이라고 말합니다 — 원칙 1 위반이고, " +
-                    "사용자에게는 «왜 안 되지»의 답이 되지 않습니다.");
             }
             else
             {
-                Assert.AreEqual("지금은 다른 일 하는 중이에요", caption,
-                    "전부 불가인데 헤더가 시킬 수 있다고 말합니다(원칙 1).");
+                // ★★ <b>이 테스트의 원래 의도는 이 한 줄이다</b> — «전부 불가인데 헤더가 시킬 수 있다고
+                //   말하면 원칙 1 위반». 아래에서 갈래가 셋으로 늘어도 이 단언은 <b>세 갈래 전부</b>에
+                //   걸린다. 규칙 5는 이 의도를 약화시키지 않는다 — <b>더 정확히</b> 지킨다: 캐릭터 상태를
+                //   지어내지 않으면서 «가능»도 주장하지 않는다.
+                Assert.AreNotEqual(ActionCommandPopover.ReadyCaption, caption,
+                    "누를 수 있는 칸이 하나도 없는데 헤더가 시킬 수 있다고 말합니다(원칙 1). " +
+                    "이것이 이 단언의 원래 의도이고, 아래 세 갈래 어디에서도 깨지면 안 됩니다.");
+
+                if (agent != null && agent.IsSuspended)
+                {
+                    // ★★★ 2026-09-03 — <b>«전부 불가»의 갈래가 둘이 됐다.</b> 사용자가 캐릭터만 숨겨 두면
+                    //   네 칸이 전부 막히는데(HiddenCharacterCommandGate) 그때 캐릭터는 «다른 일»을 하는
+                    //   게 아니라 <b>숨어 있다</b>. 그 구분이 없으면 이 테스트가 <b>거짓말을 요구</b>한다.
+                    //   ★ 문구를 베끼지 않고 프로덕션 상수를 <b>참조</b>한다 — design-narrative가 글자를
+                    //     바꾸는 날 이 단언이 조용히 초록으로 남지 않게(CLAUDE.md).
+                    //   (2026-09-26 «5칸» → «네 칸» 정정: 말 걸기 폐지로 타일은 2026-09-07부터 4개다.)
+                    Assert.AreEqual(HiddenCharacterCommandGate.HiddenReason, caption,
+                        "캐릭터가 숨은 상태인데 헤더가 «다른 일 하는 중»이라고 말합니다 — 원칙 1 위반이고, " +
+                        "사용자에게는 «왜 안 되지»의 답이 되지 않습니다.");
+                }
+                else
+                {
+                    // ★★★ 2026-09-26 — <b>갈래가 셋이 됐다.</b> 종전에는 여기서 <b>이유를 묻지 않고</b>
+                    //   «다른 일 하는 중»을 요구했다. 그런데 네 칸이 전부 <b>자리·대상 사유</b>(과녁 자리
+                    //   없음 · 빈 자리 없음 · 작은 창 없음 · 전체화면 가드)로 회색이면 캐릭터는 한가히
+                    //   걷는다 — 그때 그 문구는 <b>거짓</b>이고, 이 테스트가 거짓말을 <b>요구</b>하게 된다.
+                    //   2026-09-03에 숨김으로 한 번 겪은 것과 <b>같은 형태</b>다.
+                    //   ★ 판정은 <b>상태만</b> 본다(연출 락은 보지 않는다 — 크랙만 금 수명까지 락을 들고
+                    //     있어 스윙 뒤 약 2.6초는 캐릭터가 한가하다). 그래서 여기서도 프로덕션의 같은
+                    //     술어를 <b>참조</b>한다 — 판정을 두 벌로 적으면 반드시 갈라진다.
+                    // ★ 2026-09-26 정정 — null 3중 검사를 <b>전제 단언</b>으로 바꿨다. 씬에는 에이전트와
+                    //   상태 기계가 반드시 있으므로 그 분기는 <b>한 번도 실행되지 않는다</b>. 실행되지 않는
+                    //   검사의 해악은 «조용히 갈라진다»가 아니라 <b>«어느 테스트도 재지 않는다»</b>이고,
+                    //   그러면서 <b>문서로서는 «이 경우도 다룬다»고 거짓말</b>한다. 전제로 바꾸면 씬이
+                    //   그 전제를 깨는 날 <b>시끄럽게</b> 빨개진다.
+                    Assert.IsNotNull(agent?.Blackboard?.Machine,
+                        "씬에 캐릭터 상태 기계가 없습니다 — 헤더 규칙 4와 5를 가를 근거 자체가 없습니다.");
+
+                    if (ActionCommandPopover.IsBusyHeaderState(agent.Blackboard.Machine.CurrentStateId))
+                    {
+                        Assert.AreEqual(ActionCommandPopover.BusyCaption, caption,
+                            $"캐릭터 상태({agent.Blackboard.Machine.CurrentStateId})가 바쁜데 헤더가 다르게 " +
+                            "말합니다(원칙 1). 이 문구는 폐지된 것이 아니라 <b>조건이 붙은</b> 것입니다.");
+                    }
+                    else
+                    {
+                        Assert.AreEqual(ActionCommandPopover.NothingAvailableCaption, caption,
+                            "네 칸이 전부 회색인데 캐릭터는 한가합니다(Idle·Walk 또는 상태 기계 부재) — " +
+                            "그런데 헤더가 «다른 일 하는 중»이라고 말하면 그것은 <b>캐릭터 상태를 " +
+                            "지어내는</b> 것입니다(원칙 1). 규칙 5는 캐릭터에 대해 아무것도 주장하지 않고 " +
+                            "방금 센 readyCount == 0 하나만 말합니다.");
+                    }
+                }
             }
 
             _popover.Close("테스트 종료");

@@ -41,6 +41,44 @@ namespace StickMate.Core
         private static readonly string[] SpectacleNames = BuildSpectacleNames();
         private static readonly string[] SpectacleBusyTexts = BuildBusyTexts(SpectacleNames, "지금 ", " 중이에요");
 
+        /// <summary>
+        /// ★★ 2026-09-26 — <b>크랙 칸만 「지금 ○○ 중이에요」 문형에서 뺀다.</b>
+        ///
+        /// <para><b>무엇이 거짓이었나</b>: 형제 세 칸(활쏘기 · 낙서 · 창 도둑)이 크랙 락 동안 「지금 <b>창 부수기</b>
+        /// 중이에요」를 띄웠는데, 그것은 <b>캐릭터 상태 주장</b>이다. 캐릭터 스윙은
+        /// <c>windowCrashSwingDuration</c>(출하 0.4초)이면 끝나고 그 뒤 캐릭터는 <b>Idle로 한가히 걷는다</b>.
+        /// 그런데 락은 금 오버레이 수명(<c>windowCrashOverlayDurationSeconds</c>, 출하 3초)까지 남는다 ⇒
+        /// <b>약 2.6초 동안 그 문장이 거짓</b>이다(페르소나 둘이 독립으로 짚었다).</para>
+        ///
+        /// <para>★ <b>불변식(ux-widgets)</b>: <b>문장은 그것이 뜰 수 있는 구간 전체에서 참이어야 한다.</b>
+        /// 락 13종 가운데 <b>락이 캐릭터 상태보다 오래 남는 것은 크랙 하나뿐</b>이므로 <b>정확히 한 칸만</b> 바꾼다.
+        /// 나머지 12종은 지금 참이다 — <b>건드리지 마라</b>(전면 교체는 기각됐다).</para>
+        ///
+        /// <para>★ <b>왜 여기서 배열 칸을 덮어쓰는가</b>(<c>BusyText</c>에 분기를 넣지 않는 이유): 이 클래스의 계약은
+        /// <b>완성된 문장을 미리 만들어 두는 것</b>(위 「무할당」 절)이고, <c>CommandAvailabilityContractTests</c>가
+        /// 같은 값을 두 번 물으면 <b>같은 인스턴스</b>가 오는지로 그것을 잰다. 분기를 넣으면 그 계약이 깨진다.
+        /// 칸을 덮어쓰면 호출부는 한 글자도 바뀌지 않고, <c>BusyText(ActiveKind)</c>를 부르는 <b>프로덕션 8개 파일이
+        /// 전부 이 한 곳</b>을 본다(문구 복제 0).</para>
+        ///
+        /// <para>★ <c>Of(kind)</c> <b>이름 표는 건드리지 않는다</b> — 거기서 크랙은 여전히 「창 부수기」다.
+        /// 바꾸는 것은 <b>락 점유 사유 문장</b> 하나뿐이다. 기각된 대안 둘(되살리지 마라):
+        /// ⑴ 형제 칸이 크랙 감독에게 직접 묻기 — 진실이 두 벌이 되고 새 결합이 생긴다.
+        /// ⑵ 13종 전면 교체 — 12종은 지금 참이라 고칠 것이 없다.</para>
+        ///
+        /// <para>★ <b>문구는 design-narrative 확정 대기</b>다. 지금 값은 추천안 <b>T1</b>이고, 자리와 배선을 먼저 만들어
+        /// 확정이 오면 <b>이 상수의 글자만</b> 바꾸면 되게 했다. 폭 재계산(내가 다시 쟀다 · 글꼴
+        /// <c>UiChrome.FontCaption</c> 10 · 타일 설명 상자 폭 <b>372</b> = <c>RowWidth</c> − 56):
+        /// 15자(한글 11 · 공백 4) ⇒ 모형 N <b>122.0pt</b> · 모형 C(글자수 × 10.5) <b>157.5pt</b> — 한도까지 214.5pt 남는다.</para>
+        /// </summary>
+        public const string WindowCrashBusyText = "금이 사라지면 할 수 있어요";
+
+        /// <summary>위 한 칸만 덮어쓴다. <see cref="SpectacleBusyTexts"/>는 <c>readonly</c>지만 그것은 <b>참조</b>가
+        /// 고정된다는 뜻이고 원소 대입은 막지 않는다 — 생성 줄은 한 글자도 바꾸지 않았다.</summary>
+        static StickMateDisplayNames()
+        {
+            SpectacleBusyTexts[(int)SpectacleEventKind.WindowCrash] = WindowCrashBusyText;
+        }
+
         /// <summary>지금 락을 쥔 스펙터클의 한글 이름.</summary>
         public static string Of(SpectacleEventKind kind)
         {

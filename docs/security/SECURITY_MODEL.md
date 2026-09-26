@@ -93,7 +93,7 @@ Player.log: [성장] 준비 완료 — 스틱메이트 Lv.4 (145/429 XP). 저장
 | 플랫폼 | 파일 | 로그에 들어가는 것 |
 |---|---|---|
 | Windows | `Platform/Windows/WindowsGameProcessProbe.cs:159` → `Win32WindowService.cs:1870` | **`전경 실행 파일={전체 경로}`** — 남의 exe **풀 패스**. `C:\Users\<실명>\...` 가 통째로 |
-| macOS | `Platform/MacOS/MacWindowService.cs:1516,1534` → `:1403` | `판정 근거 창 = '{owner}'` — 남의 앱 **이름** |
+| macOS | ~~`Platform/MacOS/MacWindowService.cs:1516,1534` → `:1403`~~ → `Platform/MacOS/MacWindowService.cs`의 `판정 근거 창 = '{owner}' bounds=`(HEAD `fa25570` 기준 :1518) · `판정 근거 창 = '{owner}'(pid {ownerPid})`(:1536) → 로그 줄 `Debug.Log($"[전체화면판정] …")`(:1405 — `[전체화면판정]`은 이 파일에 3회라 줄 번호에 판을 붙였다) | `판정 근거 창 = '{owner}'` — 남의 앱 **이름** |
 
 둘 다 `Debug.Log($"[전체화면판정] ... — {reason}")`로 나간다. Windows 쪽이 더 나쁘다 —
 경로에 **Windows 사용자 계정명**이 포함된다.
@@ -309,12 +309,75 @@ IsOwned(item)  →  item.Tier switch {
 - **평문 유지가 오히려 옳다.** 사용자가 자기 세이브를 백업·복구·이전할 수 있다. 상주 동료 앱의 성격에 맞다.
 - **C층(유료 소유)을 파일에 넣지 않는다** — §3. 이것 하나로 이 파일에 지킬 가치가 있는 것이 사라진다.
 
-## 4-4. 개인정보 — 세이브에 사용자 입력이 들어간다 (참고, 조치 불요)
+## 4-4. 개인정보 — 세이브에 사용자 입력이 들어간다 ~~(참고, 조치 불요)~~ ★ 2026-09-26 정정 — 조치 필요(4-4-b)
 
 `SaveData.todos` / `todoArchive`는 **사용자가 타이핑한 할일 텍스트**를 평문 저장한다
 (`TodoRecord.text`). 현재 실측 세이브는 `[]`로 비어 있다. 로컬 전용이고 전송 경로가 0건이므로
 **위협은 아니다.** 다만 **§1-3(a)와 겹친다** — 세이브 경로가 로그에 찍히고, 사용자가 버그 신고 때
-로그를 보낸다. 로그에 들어가는 건 경로뿐이고 할일 내용은 아니다. **조치 불요, 기록만.**
+로그를 보낸다. ~~로그에 들어가는 건 경로뿐이고 할일 내용은 아니다.~~ ~~**조치 불요, 기록만.**~~
+
+### ★★ 4-4-b. 2026-09-26 정정 — 로그에 들어가는 것은 경로만이 아니다 (`security` 로그 싱크 전수)
+
+**요지(초판 4-4)**: 「로그에 들어가는 건 경로뿐이고 할일 내용은 아니다」 · 「조치 불요, 기록만」.
+
+**정정**: 둘 다 거짓이다. ⑴ 사용자가 타이핑한 **할일 본문**이 평문으로 `Player.log`에 들어간다.
+⑵ macOS는 **남의 앱 이름**을 배포 설정에서도 60초마다 상시 기록한다. ⑶ 조치가 필요하다(4-4-c).
+
+**근거**: 프로덕션 `.cs` 286파일(`Tests/` 제외 · HEAD `fa25570` 위 작업 트리)의 로그 싱크 전수.
+배포 애셋 `Assets/_Project/Data/DefaultStickConfig.asset`은 `verboseDiagnosticsLogging: 0` ·
+`suppressInfoLogStackTraces: 1`이다(양성 대조: 같은 애셋에서 `fullscreenPollInterval`·`throwTumbleEnabled` 2건 적중 / 음성 대조: 없는 키 0건).
+스택트레이스만 꺼지고 Log·Warning **본문은 그대로 파일에 쓰인다**(`PlayerLogPolicy` · `usePlayerLog: 1`).
+
+| # | 로그에 들어가는 것 | 플랫폼 | 출시판 도달 | 빈도 | 앵커(고정 문자열) |
+|---|---|---|---|---|---|
+| **L-a** | 남의 앱 이름(`kCGWindowOwnerName`) + 창 사각형 | macOS만 | **도달** | 60초마다 상시 | 방출 `[발판리포트] 보이는 상단테두리` · 주입 `_reportBuilder.Append(DescribeName(describer, fh.Handle))` · 주기 `FootholdReportIntervalSecondsQuiet = 60f` |
+| **L-b** | 남의 exe 전체 경로(Windows 계정명 포함) | Windows만 | **도달** | 등급 전이 때 | `전경 실행 파일={exe}, {where} -> 게임={isGame}` → `-> 기하 일치=true, {gameReason}` |
+| **L-c** | 사용자가 타이핑한 **할일 본문** | 양쪽 | **도달** | 추가·체크·알림마다 | `[할일패널] 추가 —` · `강조 할일` · `체크박스 클릭 — 항목` |
+| **L-d** | 남의 앱 이름 + pid | macOS만 | **도달** | 등급 전이 때 | `판정 근거 창 = '{owner}'(pid {ownerPid}) bounds=` |
+| **L-e** | 세이브 파일 전체 경로(계정명 포함) | 양쪽 | **도달** | 기동 1회 | `저장 파일=` 과 같은 줄의 `CharacterSaveStore.FilePath` |
+| **L-f** | 작업표시줄 흔적 파일 전체 경로(계정명 포함) | Windows만 | **도달**(자동 숨김 사용자만) | 기동·원복 | `. 흔적 파일={ReservedBarRestoreLedger.FilePath}` |
+| **L-g** | 남의 앱 이름 + pid + 사각형 + 탈락 사유 | macOS만 | **도달 안 함** | verbose 전용 | `Debug.Log("[창진단] " + _reportBuilder);` |
+| **L-h** | GPU 모델명 | 양쪽 | **도달** | 드묾 | `SystemInfo.graphicsDeviceName` — 개인 식별자가 아니다 |
+
+**L-a의 출시판 도달 근거는 두 겹이다**: ⑴ 호출이 무조건이다 — `TickFootholdReport();`가 매 프레임 경로에 있고,
+verbose는 **주기만** 고른다(`float reportInterval = verbose ? FootholdReportIntervalSecondsVerbose : FootholdReportIntervalSecondsQuiet;`).
+⑵ 프로덕션 설정 문구가 스스로 그렇게 적는다 — `StickConfig`의 `false여도 [발판리포트]는 60초 심장박동 주기로 계속 남으므로`.
+
+**들어가지 않는 것(대조 붙임)**: 남의 **창 제목**은 0건이다. 제목 API 결과는 불리언 필터로만 쓰고 버리며,
+Windows 진단 조립기는 `창 제목/경로/사용자명은 <b>남기지 않는다</b>`고 스스로 선언한다.
+양성 대조: 같은 추출기가 **우리** 패널 제목(`TitleText`)과 **우리** 아이템 이름(`entry.DisplayName`)은 12행 잡는다 — 탐지력이 있다.
+**FC-1 접힘 요약 줄은 누출하지 않는다**: `Describe`는 `(직전과 동일 {repeats}회 반복 — 접음)`으로 태그뿐이고,
+후퇴 사유는 `전경 실행 파일=(조회 보류 — 경로 연속 실패` 로 경로 자리가 비어 있다. 누출 관점에서 FC-1은 순이득이다.
+
+★ **계수 정정 — 이 라운드의 828을 인용하지 마라.** 내 추출기는 828행을 뱉었지만 프로덕션 실제 호출 자리는 **602**다
+(`Debug.Log(` 396 + `Debug.LogWarning(` 158 + `Debug.LogError(` 47 + `Debug.LogFormat(` 1. 음성 대조: `LogException(`·`LogWarningFormat(`·`LogErrorFormat(`·`LogAssertion(`·`print(` 전부 0).
+차 226은 전부 **내 스캐너의 과다계수**다: 왼쪽 식별자 경계만 막아 `Debug.LogWarning(`을 `Debug.Log`로 이중으로 셌고,
+주석에 괄호 없이 언급된 `Debug.LogError` 4건이 다음 괄호를 붙잡아 가짜 행을 만들었다.
+정산은 맨 `Debug.Log` 618 + `Debug.LogWarning` 158 + `Debug.LogError` 51 + `Debug.LogFormat` 1 = 828로 정확히 맞는다.
+**과다계수이지 누락이 아니라서**(618 ≥ 602 · 중복 행의 인수는 동일) 위 분류 결론은 살아 있다.
+
+### 4-4-c. 절단 명세 — 리더 채택(2026-09-26), 배정은 뒤 (`.cs` 편집은 `coder`·`dev-platform`)
+
+`security`는 `.cs`를 고치지 않는다. 아래는 파일 · 앵커 · 무엇을 · 왜만이다.
+
+| 순위 | 파일 | 앵커(고정 문자열) | 무엇을 | 왜 |
+|---|---|---|---|---|
+| **1** | `Interaction/TodoBoardPopover.cs` | `[할일패널] 추가 —` | 본문 대신 **길이 N자 + 일자** | 필요한 것은 「추가가 돌았는가」이지 내용이 아니다 — 진단 손실 거의 0 |
+| **1** | `Interaction/TodoReminderDirector.cs` | `강조 할일` | 같음(길이 + 사유) | 위와 같다 |
+| **1** | `Interaction/TodoPostItWidget.cs` | `체크박스 클릭 — 항목` | 본문 빼고 항목 번호만 | 항목 번호가 이미 줄에 있다 |
+| **2** | `Platform/MacOS/MacOverlayStateEnforcer.cs` | `[발판리포트] 보이는 상단테두리` · `DescribeName(describer, fh.Handle)` | **조용 모드에서만** 이름 빼고 개수와 핸들. verbose는 지금 그대로 | 「어느 앱이 발판인가」가 필요한 때는 곧 verbose를 켜는 때다 |
+| **3** | `Platform/Windows/WindowsGameProcessProbe.cs` | `전경 실행 파일={exe}` | **파일명 + 경로 해시 앞 8자**. 내부 비교는 전체 경로 유지 | 판정에 필요한 것은 exe 신원이지 위치가 아니다 |
+| 4 | `Interaction/CharacterProgressionDirector.cs` · `Platform/ReservedBarRevealDirector.cs` | `저장 파일=` · `흔적 파일=` | **유지** | 우리 폴더다. 지우면 지원이 죽는다 — 고지로 해결한다 |
+
+**기각**: 로그 암호화 · 상시 마스킹 레이어(상주 앱의 백신 표면을 늘린다 — 선 3).
+
+**감사(리더 승인. 단 순위 1–3이 착지한 뒤에 잠근다)**: Windows 조립기의 `창 제목/경로/사용자명은 <b>남기지 않는다</b>`를
+잠그는 테스트가 없고, macOS 조립기는 반대로 이름과 pid를 싣는다. `PlatformParityAuditTests`는 `AppendWindowDiagnostics`의
+**존재만** 보고 내용은 보지 않는다. 지금 잠그면 곧 바뀔 것을 잠그게 된다.
+
+**실기 고지 문안(권고)**: 「보내 주시는 `Player.log`에는 ⑴ 그때 화면에 떠 있던 다른 앱의 이름, ⑵ 전체화면이던 앱의
+실행 파일 경로(경로에 Windows 계정 이름이 들어갑니다), ⑶ StickMate에 적으신 할일 문구, ⑷ StickMate 저장 폴더 경로가
+들어 있습니다. 리더 외에는 아무에게도 전달되지 않습니다. 할일 문구가 걱정되시면 세션 전에 할일을 비워 주세요.」
 
 ---
 
@@ -470,6 +533,11 @@ useMacAppStoreValidation: 0`. 착수 시 영수증 검증이 별도 주제가 �
 - **왜 지금**: 사용자가 **버그 신고 때 이 로그를 보낸다.** Windows 경로에는 **계정 실명**이 들어간다.
   나중에 고치면 이미 나간 로그는 회수할 수 없다. 비용은 문자열 두 곳.
 - **왜 3순위**: 피해 규모가 작고 로컬이다. 1·2순위가 매출·공개주장에 걸린 반면 이건 위생 문제다.
+- ★ **2026-09-26 정정(4-4-b) — 이 항목이 잡은 범위가 실제보다 좁다.** ⑴ 여기서 겨눈 전체화면 판정 로그보다
+  **macOS `[발판리포트]`가 더 크다** — 배포 애셋 `verboseDiagnosticsLogging: 0`에서도 60초마다 상시
+  남의 앱 이름을 남긴다(하루 약 1,440줄). ⑵ 사용자가 타이핑한 **할일 본문**도 로그에 들어간다(이 항목 밖이었다).
+  ⑶ 위 「비용」 추정은 그 두 곳을 세지 않았다 — 실제 절단 자리는 **다섯 곳**이다(4-4-c 표).
+  ⑷ 「피해 규모가 작고 로컬이다」는 여전히 참이나, 실기 절차가 **로그 전문 회수**를 요구하면서 노출 면이 커졌다.
 
 ### 4순위 이하로 내린 것 (지금 하지 않는다)
 
@@ -777,7 +845,7 @@ elapsedSec = max(0, nowWallUnix - lastSettledWallUnix)
 - **시계를 되돌리면 지급이 0**이고, 그 뒤 `lastSettledWallUnix = min(lastSettledWallUnix, nowWallUnix)`로
   **아래로 재기준한다.** ★ 얼리지 않는다 — 이게 오탐 방어의 핵심이다.
   CMOS 방전·NTP 오작동으로 시계가 과거로 튄 **정상 사용자**가 영구 동결되면 안 된다.
-- 선례가 이미 있다: `CharacterStatsModel.cs:79` — `if (elapsed < 0L) return 1;` (근속이 음수가 안 되게).
+- 선례가 이미 있다: ~~`CharacterStatsModel.cs:79`~~ → `CharacterStatsModel.cs`의 `if (elapsed < 0L) return 1;` 줄(HEAD `fa25570` 기준 :77 — 옛 인용이 가리키던 :79는 지금 닫는 중괄호다) — `if (elapsed < 0L) return 1;` (근속이 음수가 안 되게).
   **같은 관례를 수급에 확장하는 것이지 새 규칙이 아니다.**
 
 ### T-4-b. "우리 날짜"는 **전진만 한다** (시나리오 나 — 완전 차단)
@@ -1835,6 +1903,8 @@ Learn의 `IVirtualDesktopManager` 페이지는 메서드를 **알파벳순**으�
 - **로그에 남는 것**(§1-3의 출구 두 개 중 (a)): `[가상데스크톱] 우리 창 소속 — 현재/다른 데스크톱`.
   **남의 창 제목·프로세스명·데스크톱 ID는 한 글자도 없다.** 남는 정보는 *"이 사용자는 가상
   데스크톱을 쓰고 T 시점에 전환했다"*뿐이다. §4-4와 같은 등급 — **조치 불요, 기록만.**
+  ★ 2026-09-26: 「§4-4와 같은 등급」의 **참조 대상이 바뀌었다** — 4-4 자체가 「조치 필요」로 뒤집혔다(4-4-b).
+  **V-4 이 줄의 판정은 그대로 유효하다**(이 로그 줄에는 남의 신원이 한 글자도 없다). 바뀐 것은 참조뿐이다.
   (§6 3순위가 *"전체화면 판정 로그에서 남의 앱 신원을 뺀다"*를 요구했는데, **이 신규 로그는
   처음부터 그 조건을 만족한 상태로 들어왔다.**)
 
@@ -2031,3 +2101,19 @@ Learn의 `IVirtualDesktopManager` 페이지는 메서드를 **알파벳순**으�
 
 **Windows 영향**: 공개 빌드 전부가 Windows이고 X-1에서 휴면을 확인했다. 정의를 켜면 `steam_api64.dll` 1개가 추가되고, 방화벽 프롬프트는 미확인이다.
 **macOS 영향**: 로컬 macOS 빌드도 휴면이다. 정의를 켜면 어댑터가 OSX에서도 컴파일되어 네이티브 모듈이 붙는다. 서명·공증(하드닝 런타임 라이브러리 검증) 영향은 **미확인**이고, 켜는 라운드에 `ENTITLEMENT_CONTRACT.md` S-1 재검토가 필요하다.
+
+---
+
+## 인용 앵커 정정 (2026-09-26 · `code-inspection` 낡은 줄 인용 라운드 · 기준 HEAD `fa25570`)
+
+옛 인용은 취소선으로 남기고 새 앵커를 덧붙였다(`docs/TEAM.md` §5 — 커밋된 판정 보존 · 글자 삭제 0).
+
+★ **이 표는 `파일:줄` 꼴을 쓰지 않는다** — 정정 기록 자신이 새 낡은 줄 인용이 되지 않게 행 번호를 `NNN행`으로 적고, 옛 인용은 백틱 없이 적는다(`docs/TEAM.md` 「기준과 대상이 같이 낡은 스냅숏」 규칙 3). 모든 행 번호는 HEAD `fa25570` 기준이다.
+
+| # | 요지 | 정정 | 근거(HEAD `fa25570` · 고정 문자열) |
+|---|---|---|---|
+| S-1 | §1-2 (b) 표의 macOS 행이 로그 자리를 Platform/MacOS/MacWindowService.cs 1516·1534 → 1403행으로 인용 | 가지를 가르는 두 앵커(`판정 근거 창 = '{owner}' bounds=` 1518행 · `판정 근거 창 = '{owner}'(pid {ownerPid})` 1536행)와 로그 줄 `[전체화면판정]`(1405행)로 교체 | 두 긴 앵커 각 1회. 짧은 `판정 근거 창`은 2회라 쓰지 않았다. `[전체화면판정]`은 3회(1391 · 1405 · 1652행)라 행 번호에 판을 붙였다 |
+| S-2 | T-4-a가 선례를 Core/CharacterStatsModel.cs 79행으로 인용 | `if (elapsed < 0L) return 1;` 줄(77행) | 그 문구 1회(77행). 79행은 닫는 중괄호다 |
+
+- **고치지 않은 것 — 판 표기가 이미 있어 규칙을 충족하는 인용**: T-11 표의 `ReservedBarRestoreLedger.cs:197`은 「(`1eb0e2b`·`1f7e139` 기준)」을, T-D 표의 `CharacterStatsModel.cs:75`·`:86`·`CurrencyModel.cs:548`·`CharacterProgressionDirector.cs:117`·`FocusWatchDirector.cs:197-198`은 각각 판을 병기한다. X-2-A 인계의 `STORE_PAGE.md:350`·`:351`·`TRUTH_INVENTORY.md:1054`도 「줄 번호는 HEAD `ad49497` 기준」을 이미 적었다.
+- **남은 약점(이번에 고치지 않음 — 리더 판단)**: X-1 토큰 표의 「예외 문서 :84」·「예외 문서 :584」는 **경로 없는 꼬리 인용**이다. 이 판에서 두 줄은 제자리였다(`docs/security/STEAMWORKS_ENTITLEMENT_EXCEPTION.md`에서 `com.rlabrecque.steamworks.net`이 :84 포함 7회 · `steam_api.bundle`이 :584 1회). 다만 파일 이름이 없어 기계로는 해석되지 않는다 — `docs/TEAM.md` 「경로 없이 파일 이름만 적힌 인용은 경로를 단정하지 말고 확인한다」의 대상이다.

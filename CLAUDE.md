@@ -57,7 +57,7 @@ Active Ragdoll(Rigidbody2D + Joint2D) + IK 하이브리드.
     무엇을 고쳤는지 알 수 있다** — 진단부터다.
 - 근거: docs/ARCHITECTURE.md 0절
 
-## 팀 편성 (.claude/agents/) — 8개 팀 30명: 정의서 29 + 리더, 정의서 수 기준 (정본: `docs/TEAM.md`, 2026-09-15 정의서 실측)
+## 팀 편성 (.claude/agents/) — ~~8개 팀 30명: 정의서 29 + 리더~~ **8개 팀 31명: 정의서 30 + 리더**, 정의서 수 기준 (정본: `docs/TEAM.md`, ~~2026-09-15 정의서 실측~~ **2026-09-27 재실측** — `persona-gamer` 신설 반영, `.claude/agents/*.md` **30개**)
 
 2026-09-02 사용자 지시로 세분화. **각 팀 범위는 겹치지 않는다. 겹치면 리더를 거쳐 조정한다.**
 ★ **인원이 부족하면 리더가 즉시 충원한다**(사용자 상시 지시). 주인 없는 영역을 발견하면
@@ -128,7 +128,8 @@ Active Ragdoll(Rigidbody2D + Joint2D) + IK 하이브리드.
 
 ### 👥 사용자 검증 (페르소나)
 `persona-newcomer`(민지, 첫인상·발견가능성) / `persona-stress`(재현, 장시간·멀티태스킹·비침해) /
-`persona-immersion`(소은, 행동-텍스트 싱크·물리적 설득력). 프로덕션 코드 수정 없이 비판만 한다.
+`persona-immersion`(소은, 행동-텍스트 싱크·물리적 설득력) / **`persona-gamer`(도현, 게임 중 방해 0을 구매 조건으로 삼는 축 — 2026-09-26 리더 신설)**. 프로덕션 코드 수정 없이 비판만 한다.
+★ 도현의 지갑 문장: **「풀스크린 게임 위에 절대 안 뜬다고 보장되면 산다 — 뜨면 그날 환불한다.」** 기존 3인이 「어떻게 쓰는가」 축이라면 이쪽은 **「안 뜨는가」 하나**만 본다(스팀 최대 유입 경로와 겹친다).
 
 ---
 
@@ -186,9 +187,9 @@ macOS 타깃에서는 **타입이 존재하지 않고**, 리플렉션 기반 감
     - (리더 채택 2026-09-15) "macOS 영향" 한 줄도 같은 세 값(없음 / 함께 수정함 / 별도 배정 필요(사유))으로 적는다.
   - **Windows 전용 파일은 이 개발 머신에서 한 번도 컴파일되지 않는다** — 갭이 조용히 쌓이는
     근본 원인이다. 그래서 Windows 쪽을 건드렸으면 `Tools/CrossCompile/xcheck.sh win`·`osx`
-    (Unity 동봉 `dotnet` + `DotNetSdkRoslyn/csc.dll` — `MonoBleedingEdge/.../csc` 래퍼는 내부 경로가 깨져 있어 쓰지 않는다고 스크립트 머리 주석에 적혀 있다)로
-    런타임 어셈블리를 `UNITY_STANDALONE_WIN`·`UNITY_STANDALONE_OSX` 양쪽으로 크로스 컴파일해 0 에러를 확인한다
-    (병렬 라운드 중에는 격리판 `Tools/VerifyChange/xcheck_isolated.sh`).
+    (Unity 동봉 `dotnet` + `DotNetSdkRoslyn/csc.dll` — `MonoBleedingEdge/.../csc` 래퍼는 내부 경로가 깨져 있어 쓰지 않는다고 스크립트 머리 주석에 적혀 있다 — 2026-09-26 perf-doc이 직접 돌려 확인했다: 존재하지 않는 빌드 머신 절대 경로를 `exec` 해 **rc 126**으로 죽는다. 파이프로 재면 `head`의 rc 0이 나와 「정상」처럼 보이니 파이프 없이 재라. 양성 대조로 동봉 `csc.dll`은 rc 0)로
+    런타임 어셈블리를 `UNITY_STANDALONE_WIN`·`UNITY_STANDALONE_OSX` 양쪽으로 크로스 컴파일해 0 에러를 확인한다(실제 컴파일 단위는 **5개**다 — 런타임 editor·player · `Tests.EditMode` · `Tests.PlayMode` · `Assembly-CSharp-Editor`. 정의는 명령줄 인수가 아니라 스크립트가 생성한 rsp에 `-define:` 형태로 들어간다. 2026-09-26 perf-doc 실측: osx·win 각 5/5 units errors=0)
+    (병렬 라운드 중에는 격리판 `Tools/VerifyChange/xcheck_isolated.sh` — 인수로 받은 출력루트 밑 `<타깃>.<pid>/`에만 쓰고 저장소 `Library/`는 건드리지 않는다. 러너 3개(표준·에디터 축소판·격리판) 비교표는 `Tools/CrossCompile/README.md` 「누가 무엇을 쓰는가」).
   - 구조적 패리티는 `Tests/EditMode/PlatformParityAuditTests.cs`가 자동 검사한다. 새로 생긴
     플랫폼 분기는 이 검사에 항목을 추가한다. 아직 못 고친 갭은 `Assert.Fail`이 아니라
     `Assert.Ignore`(사유 포함)로 남겨 러너에 "건너뜀"으로 계속 보이게 한다 — 잊히지 않게.

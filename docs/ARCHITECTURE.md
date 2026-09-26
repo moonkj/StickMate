@@ -23,6 +23,13 @@
 > ★ **경고 2건 — 문서가 "해결됨"이라 적었는데 코드에 없다**:
 > (1) `CurrentVersion` 되돌리기(여전히 `= 10`), (2) 설정창 5→4탭(여전히 5탭).
 > 둘 다 `docs/MILESTONES.md`가 완료로 적고 있다. 상세: REVIEW §7-6-a · §7-10-a.
+>
+> ★★ **2026-09-26 as-of — 삭제된 파일 위에 서 있던 판단 4곳을 정정했다**(`game-architect`).
+> 측정 판은 HEAD `fa25570`이다. 정정 블록 위치: §5-2-0 표의 「집중모드(포모도로)」 행 · §5-2-3 ·
+> §6-4 난제 1 · §6-4 난제 2 · §6-5 근거 4 · §6-5 선행조건 2·3.
+> 사라진 전제: `FocusWatchRenderer`(파일째 삭제, `912fd8c`) · `CornerHoverPanel`(파일째 삭제, `2051739`) ·
+> `PomodoroSensitivity`·`FocusWatchTierChanged`(둘 다 `912fd8c`에서 타입·이벤트째 사라졌다).
+> **원문은 지우지 않고 취소선으로 남긴다** — 커밋된 판정은 당시 사실의 기록이다.
 
 ## 0. 리서치 기반 핵심 기술 결정: 캐릭터 무빙 방식
 [리서치] 스프라이트 워크사이클(Pivot Animator류 8프레임 순환) vs **Active Ragdoll 절차적 애니메이션**(Rigidbody2D+Joint2D, IK로 힘을 가해 포즈를 따라가게 하는 방식) 비교 검색 결과:
@@ -333,7 +340,7 @@ iOS/iPadOS는 앱 샌드박스 정책상 "다른 앱 창 열거"·"시스템 전
 | 배터리/와이파이 "걱정" 유휴 버전 | 없음 | 위 디렉터에 **등급 추가**로 흡수 | 작음 | OK |
 | 스트레스 / 반항 / 가출 | ★ **2026-09-14 정정 — 종전 「출하됨」은 사실이 아니었다.** **가출: 코드는 들어 있으나 출하 빌드에서 스스로 일어나지 않고 사용자가 시킬 수도 없다.** ① 자율 발동 — 임계 `stressRunawayThreshold` 2(`Core/StickConfig.cs:1647` · 배포 에셋 `Data/DefaultStickConfig.asset:234`) > 게이지 상한 1(`Core/StressGauge.cs:34` `Clamp01`)이라 `Interaction/RunawayDirector.cs:70`에서 항상 return ② 강제 발동 — `StickMateDevTools.Enabled` 뒤 개발 전용(`Interaction/AppControlDirector.cs:679`). 기능 존폐는 **사용자 결정 대기(2026-09-14)**, 그때까지 동작 변경 없음. 판정: [`docs/systems/RUNAWAY_DEFAULT_REACHABILITY.md`](systems/RUNAWAY_DEFAULT_REACHABILITY.md). ★ 가출 연출 PlayMode 테스트(`Phase5VisualLayerTests.cs:306` `ForceTriggerNow` · `StandbyGearVisibilityTests.cs:331` · `CharacterPreservationFreezeAgentTests.cs:504`/`:511` `TryForceRunawayNow`)는 `RunawayDirector`를 **직접 호출해 개발 게이트와 임계를 둘 다 우회한 세계**에서 돈다 — 그 초록은 「사용자에게 가출이 일어난다」의 근거가 아니다(TEAM.md 09-14 규칙 5). 같은 칸 나머지(배포 기본값): **SULKY 자율 발동 확률 0**(에셋 `:231` `stressSulkyChance: 0` → `Interaction/StressGaugeDirector.cs:156`) · **어깨 처짐 표시 꺼짐**(에셋 `:228` `stressTierCautionLevel: 2` → `Interaction/StressGaugeRenderer.cs:289`) · 게이지 입력·출력 전수는 판정 문서 §1-2·§1-3 | `StressGauge`, `StressGaugeDirector`, `Sulky`, `RunawayState`/`RunawayDirector` | — | OK |
 | 투두 말풍선 메모 | **출하됨** | `TodoListModel`, `TodoReminderDirector`, `TodoPostItWidget` | — | OK |
-| 집중모드(포모도로) | **출하됨, 사양 변경 필요** | `FocusWatchDirector`(감시 민감도 3단계 포함), `FocusWatchRenderer` | 중간 | OK |
+| 집중모드(포모도로) | ★ **2026-09-26 정정 — 종전 「사양 변경 필요」의 대상 절반이 사라졌다.** ~~**출하됨, 사양 변경 필요**~~ → **출하됨(감시 기능은 사용자 지시로 삭제됨)**. ① 「지켜보기(딴짓 감지)」와 3단계 에스컬레이션이 2026-09-06 사용자 지시 «집중모드에서 지켜보기 기능 삭제해줘»로 통째 삭제됐다(`912fd8c`). 함께 사라진 이름: `PomodoroSensitivity` · `FocusWatchTierChanged` · `DistractionDetectionEnabled`(HEAD `fa25570` 프로덕션 참조 각 0건 · 양성 대조 `FocusWatchDirector` 45파일 · 음성 대조 `PomodoroSensitivityZZZ` 0건). ② 같은 날 두 번째 지시(신고 «집중모드시 캐릭터 아래에 녹색링이 생김»)로 **발밑 타이머 링도 완전 제거**됐고 `Interaction/FocusWatchRenderer.cs`가 **파일째 삭제**됐다(같은 커밋). ★ **되살리지 마라 — 사용자가 닫은 문이다**(근거: `Interaction/FocusWatchDirector.cs` 클래스 문서 · `docs/UX_FLOW.md` §18 배너 · 같은 문서 §35-7 ⛔ 무효) | `FocusWatchDirector`(세션 수명 · 타이머 · XP/코인 지급), `FocusSessionPopover`(60분 절대 다이얼 — `docs/UX_FLOW.md` §18은 「남은 시간을 말하는 표면은 … 하나뿐」이라고 적는다), `FocusSessionPhase`/`CurrentPhase`, `FocusAmbientGestures` + `StickmanPoseAnimator.ApplyFocusPose`/`ApplyFocusWatchStancePose`(세션 중 관망 자세 — 감시와 **무관한 별개 시스템**), `CostumePropRenderer`(코스튬 프롭). ~~`FocusWatchDirector`(감시 민감도 3단계 포함), `FocusWatchRenderer`~~ | 중간 | OK |
 | 유휴 행동 9종 | 없음(공용 스케줄러 부재) | `AutoWanderController` Resting 페이즈, `TimedSpectacleState`, `SpectacleEventLock` | 중간 | 1건 위험 |
 | 인질극 이벤트 | 없음 | 스펙터클 취소 선례(`e18ac09`), 클릭관통 유지 원칙 | 중간 | 주의 |
 | 스케치북 무기 제작 | 없음 | `LocalClickCaptureGate`(드래그&던지기의 일시 입력 캡처 선례. 격파 미니게임이 원래의 선례였으나 2026-09-02 삭제) | 큼 | 4번 주의 |
@@ -395,20 +402,54 @@ iOS/iPadOS는 앱 샌드박스 정책상 "다른 앱 창 열거"·"시스템 전
 - **(b) 난이도**: 중간. **(c)**: 위 4번만 지키면 충돌 없음.
 
 ### 5-2-3. 집중모드 개편 (기획서 1, 4절) — **사양 변경 1건 주의**
-- **(a) 확인**: `FocusWatchDirector`에 세션/딴짓 감지/민감도 3단계(`PomodoroSensitivity`)가 이미 있고,
-  신규 폴링을 만들지 않고 **기존 발판 캐시의 `IsTopmost` 변화**로 포커스 전환을 세는 영리한 설계가
-  이미 들어 있다(새 OS 호출 0).
-- **★ 충돌 발견**: 기획서는 **"머리 위 HUD 링/모래시계"** 를 요구하는데, 현재 `FocusWatchRenderer`의
-  타이머 링은 **캐릭터 발밑**이다(`RingCenterYRatio`, 주석에 "18절이 지정한 '발밑'"이라고 명시).
-  즉 `docs/UX_FLOW.md` 18절 원문과 신규 기획서가 서로 다른 위치를 지정하고 있다.
-  → **리더 확정 필요.** 이동 자체는 상수 2개(중심 Y 비율/반지름 비율) 변경이라 작지만, 머리 위는
-  모자 액세서리와 겹치므로 액세서리 렌더러와의 Z/충돌 검토가 따라온다.
+
+> ## ⛔ 2026-09-26 — **이 절의 전제 둘이 죽었다. (a)와 「충돌 발견」을 그대로 읽으면 안 된다**(`game-architect`)
+>
+> ① **감시(딴짓 감지)가 기능째 삭제됐다.** 2026-09-06 사용자 지시 «집중모드에서 지켜보기 기능
+> 삭제해줘» → `912fd8c`. (a)가 근거로 든 `PomodoroSensitivity`와, 「신규 요구 3건」의 셋째가
+> 재사용하려던 `FocusWatchTierChanged`는 **타입·이벤트째 사라졌다**(HEAD `fa25570` 프로덕션 참조
+> 각 0건 · 양성 대조 `FocusWatchDirector` 45파일 · `IsSessionActive` 19파일 · 음성 대조
+> `PomodoroSensitivityZZZ` 0건). 함께 사라진 것: `DistractionDetectionEnabled` · 전경 창 전환
+> 카운터(= (a)가 칭찬한 `IsTopmost` 설계 그 자체) · 마우스 극단값 신호 · 관찰 창/유예 시간.
+> ② **「충돌 발견」은 판정 대상이 없어졌다.** 같은 날 두 번째 지시로 발밑 타이머 링이 완전 제거되고
+> `Interaction/FocusWatchRenderer.cs`가 파일째 삭제됐다(같은 커밋 `912fd8c`).
+> `docs/UX_FLOW.md`가 같은 판정을 이미 닫아 두었다 — 앵커 `### 35-7.`(⛔ 무효)과 §18 배너.
+>
+> **지금 실재하는 것**: 남은 시간을 말하는 표면은 `Interaction/FocusSessionPopover.cs`의 **60분 절대
+> 다이얼**이다(`DialSpanSeconds = 3600f` · `DialDiameter = 128f` · `RingDiameter = 74f`). 세션 중
+> **관망 자세**(팔짱↔뒷짐 + 제스처)는 감시와 무관한 별개 시스템이라 살아 있다
+> (`StickmanBlackboard.IsFocusSessionAmbientActive` = `StickConfig.focusSessionAmbientEnabled` ×
+> `FocusWatchDirector.IsSessionActive`).
+>
+> **그래서 판단이 어떻게 바뀌는가**: 제목의 「사양 변경 1건」이 **그 1건째 소멸했다.** 남는 일감은
+> 신규 요구 3건 중 **앞의 둘**이고, 셋째(종료 임박 체크 리액션)는 재사용할 채널이 없어 **신설**이며
+> 감시 연출의 인접 지대라 **착수 전 리더 판정**을 받는다.
+> ★ 그리고 첫째(행동 선택 = 책상업무/곡괭이질)는 **이 절이 예상한 형태로 이미 착지했다** —
+> `Interaction/CostumePropRenderer.cs`(602줄, mtime 2026-09-08 00:20) + `Core/CostumeManifestSO.cs`의
+> `propShapes`/`keyposes`, 설계 정본 `docs/DESIGN_COSTUME_FOCUS_ARCHITECTURE.md`.
+> **이 절을 근거로 새 렌더러를 또 만들지 마라.**
+- ~~**(a) 확인**: `FocusWatchDirector`에 세션/딴짓 감지/민감도 3단계(`PomodoroSensitivity`)가 이미 있고,~~
+  ~~신규 폴링을 만들지 않고 **기존 발판 캐시의 `IsTopmost` 변화**로 포커스 전환을 세는 영리한 설계가~~
+  ~~이미 들어 있다(새 OS 호출 0).~~
+  → **(a) 2026-09-26 재확인**: `FocusWatchDirector`에 남은 것은 **세션 수명 · 타이머 · XP/코인 지급**이다
+  (`IsSessionActive` `:55` · `RemainingSeconds` `:56` · `CurrentPhase` `:119`, 판 HEAD `fa25570`).
+  딴짓 감지 · 민감도 · `IsTopmost` 포커스 전환 카운터는 위 배너 ①대로 **삭제됐다.**
+- ~~**★ 충돌 발견**: 기획서는 **"머리 위 HUD 링/모래시계"** 를 요구하는데, 현재 `FocusWatchRenderer`의~~
+  ~~타이머 링은 **캐릭터 발밑**이다(`RingCenterYRatio`, 주석에 "18절이 지정한 '발밑'"이라고 명시).~~
+  ~~즉 `docs/UX_FLOW.md` 18절 원문과 신규 기획서가 서로 다른 위치를 지정하고 있다.~~
+  ~~→ **리더 확정 필요.** 이동 자체는 상수 2개(중심 Y 비율/반지름 비율) 변경이라 작지만, 머리 위는~~
+  ~~모자 액세서리와 겹치므로 액세서리 렌더러와의 Z/충돌 검토가 따라온다.~~
+  → **2026-09-26 판정: 이 충돌은 닫혔다.** 링 자체가 삭제돼 **고를 위치가 없다.** 「리더 확정 필요」는
+  해소가 아니라 **소멸**이고, 다시 열려면 사용자 지시가 필요하다. 모자 액세서리와의 Z/충돌 검토도
+  따라서 **발생하지 않는다.**
 - **신규 요구 3건**: 행동 선택(책상업무/곡괭이질), 성과물 시각 누적, 종료 임박 체크 리액션.
   - 행동 선택 = 포즈 2종 + 소품 렌더러 2종. **소품은 손에 들지 않는다**(기획서가 명시적으로 금지 —
     행동 애니메이션과 충돌). 타이머는 캐릭터 상태와 **완전히 독립된 컴포넌트**로 유지 = 지금 구조 그대로.
   - 성과물 누적 = 팩별 차등 → **DLC 매니페스트에서 읽어야 한다**(5-3). 하드코딩하면 원칙 4 위반이
     또 한 겹 쌓인다.
-  - 종료 임박 체크 리액션 = 기존 `FocusWatchTierChanged` 앰비언트 이벤트 채널 재사용.
+  - ~~종료 임박 체크 리액션 = 기존 `FocusWatchTierChanged` 앰비언트 이벤트 채널 재사용.~~
+    → **재사용할 채널이 없다** — 그 이벤트는 `912fd8c`에서 사라졌다(프로덕션 참조 0건).
+    신설해야 하고, 감시 연출의 인접 지대라 **착수 전 리더 판정**을 받는다.
 - **(b) 난이도**: 중간. **(c)**: 성과물이 DLC 연동이므로 5-3 단계 B 이후에 하는 것이 순서상 옳다.
 
 ### 5-2-4. 유휴 행동 9종 — **공용 스케줄러 1개 + 렌더러 9개** 로 접근한다
@@ -865,8 +906,8 @@ Windows 실기가 이 개발 환경에 없고, 다른 에이전트 3명이 `Plat
 
 | # | 난제 | 실제 확인된 내용 | 난이도 |
 |---|---|---|---|
-| 1 | **`orthographicSize`의 의미가 갈라진다** | `SceneBootstrapper`가 ortho=12로 굽고 픽셀/월드 비가 여기서 파생된다. 창을 400pt로 줄이면 화질 유지를 위해 ortho도 12→4.89로 줄여야 하고, 그 순간 `cam.orthographicSize`를 **"화면 절반 높이"로 쓰던 코드가 전부 "창 절반 높이"로 의미가 바뀐다**. 실사용처: `TodoReminderRenderer:326`, `HardwareReactionRenderer:369`, `StressGaugeRenderer:460`, `RunawayRenderer:509`, `FocusWatchRenderer:403`, `ArcheryDirector:306,347`, `ArcheryRenderer:307`, `CharacterPetRenderer:463`, `DockPhysicsStep:211`. 전부 "화면 가장자리로 클램프" 의도라 소형 창에서는 **캐릭터 코앞에 클램프**된다. 총 18개 파일이 `orthographicSize`를, 21개 파일이 `Screen.width/height`를 참조한다 | **특대** |
-| 2 | **전역 UI가 물리적으로 안 들어간다** | `CharacterInfoWindow`는 **880×861pt**(`PanelWidth`/`PanelHeight`) — 640×640 창에도 안 들어간다. 최소 클램프 320×320으로 접히면 UI가 붕괴한다. `CornerHoverPanel`은 **화면 좌하단 모서리 기준** 264×392pt인데 소형 창에는 "화면 모서리"라는 앵커 자체가 없다. 둘 다 ScreenSpaceOverlay 캔버스라 **창 밖으로 1픽셀도 못 나간다** → 뜰 때마다 전체화면 복귀 필요 → 그때마다 6-3의 미검증 끊김 발생 | **특대** |
+| 1 | **`orthographicSize`의 의미가 갈라진다** | `SceneBootstrapper`가 ortho=12로 굽고 픽셀/월드 비가 여기서 파생된다. 창을 400pt로 줄이면 화질 유지를 위해 ortho도 12→4.89로 줄여야 하고, 그 순간 `cam.orthographicSize`를 **"화면 절반 높이"로 쓰던 코드가 전부 "창 절반 높이"로 의미가 바뀐다**. ~~실사용처: `TodoReminderRenderer:326`, `HardwareReactionRenderer:369`, `StressGaugeRenderer:460`, `RunawayRenderer:509`, `FocusWatchRenderer:403`, `ArcheryDirector:306,347`, `ArcheryRenderer:307`, `CharacterPetRenderer:463`, `DockPhysicsStep:211`.~~ 전부 "화면 가장자리로 클램프" 의도라 소형 창에서는 **캐릭터 코앞에 클램프**된다. ~~총 18개 파일이 `orthographicSize`를, 21개 파일이 `Screen.width/height`를 참조한다~~ ★ **2026-09-26 정정 · 재계수(`game-architect`, 판 HEAD `fa25570`)** — ① `FocusWatchRenderer:403`은 **없다**: 그 파일이 2026-09-06 사용자 지시로 삭제됐다(`912fd8c`). ② 나머지 8파일의 줄 번호가 전부 이동했다(326→334 · 369→370 · 460→495 · 509→518 · 306,347→494,538 · 307→406 · 463→1277 · 211→212) — **줄 번호를 앵커로 쓰지 말고 파일명과 `cam.orthographicSize` 고정 문자열로 찾아라.** ③ 빈 자리는 **`CostumePropRenderer:413`이 채웠다**(같은 «화면 반폭 클램프» 형태 `float half = cam.orthographicSize * cam.aspect`, 발판 경계 질의 `TryGetWalkableScreenBoundsWorld`가 실패할 때의 폴백 경로) ⇒ 클램프 의도 **9파일 · 10곳으로 개수 불변**이다. ④ 「18개/21개」의 기준을 재현했다 — `767c985` 판에서 **프로덕션(Tests 제외) 파일 수**가 각각 **18 · 21**로 문서와 정확히 일치한다(전체는 38 · 63) ⇒ 기준은 「프로덕션 파일 수」다. 같은 기준으로 HEAD는 **`orthographicSize` 20파일 · `Screen.width`/`Screen.height` 31파일**(전체 49 · 105 · 음성 대조 `orthographicSizeZZZ` 0). ⑤ **그래서 판단이 어떻게 바뀌는가: 난이도 특대 유지** — 근거 한 줄이 죽었어도 선행 작업량은 오히려 늘었다(참조 파일 18→20 · 21→31) | **특대** |
+| 2 | **전역 UI가 물리적으로 안 들어간다** | ~~`CharacterInfoWindow`는 **880×861pt**(`PanelWidth`/`PanelHeight`) — 640×640 창에도 안 들어간다.~~ ★ **2026-09-26 재측정 — 수치가 낡았다**: 지금은 **1042×802pt**(`Interaction/CharacterInfoWindow.cs` `PanelWidth = 1042f` `:132` · `PanelHeight = 802f` `:139` · `sizeDelta` 대입 `:1416`)이고 **폭이 162pt 늘었다** — 640×640에 여전히 안 들어가고 폭 기준으로는 더 나빠졌다. 최소 클램프 320×320으로 접히면 UI가 붕괴한다. ~~`CornerHoverPanel`은 **화면 좌하단 모서리 기준** 264×392pt인데 소형 창에는 "화면 모서리"라는 앵커 자체가 없다.~~ 둘 다 ScreenSpaceOverlay 캔버스라 **창 밖으로 1픽셀도 못 나간다** → 뜰 때마다 전체화면 복귀 필요 → 그때마다 6-3의 미검증 끊김 발생. ★ **2026-09-26 정정 — 근거 하나가 사라졌지만 난이도는 내려가지 않는다**: ① `CornerHoverPanel`은 **파일째 삭제됐다**(`2051739`, 2026-09-02 — `SizeDialWidget`과 그 테스트 2개가 동반 삭제). 좌하단 모서리 표면은 지금 **없다.** ② 그러나 「화면 모서리 앵커」라는 성질은 사라진 게 아니라 **주 진입점으로 옮겨갔다** — `InfoGearIconWidget`(화면 우상단 상시 톱니)의 자리는 **OS에 물어본 예약 띠 두께**에서 유도된다(`ReservedEdgeProbe` 네 방향 · 클래스 문서 「톱니가 화면 오른쪽 끝에서 `10.18 ~ 49.82pt` 구간을 차지한다」). 소형 창에는 그 「화면 예약 띠」가 없다. `TodoPostItWidget`(폭 220pt)도 화면 오른쪽 여백·`ReservedEdge` 기준이다. ③ 크기로 못 들어가는 표면도 1개가 아니라 2개다(정보창 1042×802 · `SettingsWindow` 720×560 — `PanelWidth` `:55` · `PanelHeight` `:56`, 폭 720 > 640). ④ 팝오버 2종은 640×640에 들어가지만(행동 480×456 · 집중 244×252, 대기 시 188) 앵커가 톱니라(`ButtonScreenRect(GearMenuButton.Action)`) ②가 안 풀리면 함께 흔들린다. ⑤ ScreenSpaceOverlay 성질은 그대로다 — `Interaction/`에서 그 렌더모드를 쓰는 파일 **10개**(음성 대조 0). ⇒ **난이도 특대 유지**, 대상은 **2개 → 4개**(정보창 · 설정창 · 톱니 · 메모 카드) **+ 연쇄 2개**(팝오버) | **특대** |
 | 3 | **좌표계** — 유일한 좋은 소식 | `ScreenCoordinateConverter.OverlayOriginOsScreen`이 "창 좌상단의 OS 좌표"를 **이미 흡수하고 있고**, macOS에서 실전 사용 중이다. `Win32WindowService.CaptureOverlayOrigin()`이 `GetWindowRect`로 원점/배율을 갱신한다. `VisibleTopEdgeSolver`는 순수 OS 좌표 산술이라 창 크기와 **무관**하다. `CheckScreenBoundsOrFall`의 경계도 카메라가 아니라 **발판 합집합**(`GroundSensor.ScreenLeft/RightWorldX`)에서 나오므로 소형 창에서도 캐릭터가 데스크톱 전폭을 걸을 수 있다. **주의 1건**: 창을 옮기는 코드가 **같은 프레임에** `ReportOverlayWindowOsRect`를 직접 불러야 한다(폴링에 맡기면 그 사이 프레임에서 커서↔월드가 틀어진다) | **소** |
 | 4 | **멀티모니터** | 지금은 한 모니터 고정이라 토폴로지 변경 훅이 아예 없다. 소형 창은 모니터 경계를 자유롭게 넘나들게 되므로 `WM_DISPLAYCHANGE` / `NSApplicationDidChangeScreenParameters` 훅이 **새로 필요**하다 | 중 |
 | 5 | **세포분열 다개체(Phase 5)** | 개체가 화면 양끝에 있으면 바운딩박스 창이 결국 전체화면이 된다 — 1차 리포트와 같은 결론, 변화 없음 | **특대**(컨셉 충돌) |
@@ -883,9 +924,12 @@ Windows 실기가 이 개발 환경에 없고, 다른 에이전트 3명이 `Plat
    총 10.6%p)이지 14.5배가 아니다. 1차 리포트의 그 숫자는 **이번 라운드로 정정된다.**
 3. **가장 순진한 구현은 지금보다 느리다**(E3 +13.8%p > E1 −6.8%p). 즉 "일단 만들어 보고 튜닝"이
    통하지 않는 종류의 변경이다 — 이동 빈도 설계를 **처음부터** 맞춰야 이득이 존재한다.
-4. **공사 규모는 1차 추정보다 커졌다.** 특히 난제 2가 새로 확정됐다: **880×861pt 정보창은
-   소형 창과 물리적으로 양립 불가**다. 전역 연출뿐 아니라 **상시 UI 두 개**가 전체화면 복귀를
-   요구한다.
+4. **공사 규모는 1차 추정보다 커졌다.** 특히 난제 2가 새로 확정됐다: ~~**880×861pt 정보창은~~
+   ~~소형 창과 물리적으로 양립 불가**다. 전역 연출뿐 아니라 **상시 UI 두 개**가 전체화면 복귀를~~
+   ~~요구한다.~~
+   ★ **2026-09-26 재측정**: 정보창은 **1042×802pt**이고, 전체화면 복귀 또는 앵커 재정의를 요구하는
+   표면은 **두 개가 아니라 네 개**다(정보창 1042×802 · 설정창 720×560 · 톱니 · 메모 카드).
+   여기에 톱니를 앵커로 쓰는 팝오버 2종이 연쇄한다. 근거는 난제 2의 정정 블록.
 5. **더 싼 축이 남아 있다.** 비용 모델 `표면적 × present 횟수 × 그럴 필요가 있는 시간`에서
    이미 적용된 적응형 프레임(2·3번 축)은 앱 CPU 31.6% → 3.6~21.1%를 훨씬 싼 값에 얻었다.
    B-1은 그보다 훨씬 큰 공사로 그보다 작은 이득을 낸다.
@@ -899,10 +943,24 @@ WindowServer 13.0% → 7.6%). Windows에서도 같으면 **B-1 없이 사용자 
 **그럼에도 착수한다면, 다음 5개가 전부 선행 조건이다:**
 1. 창 이동은 **초당 2회 이하 청크 점프**(E5). 매 프레임 추종 구현은 착수 즉시 실패한다.
 2. `orthographicSize`를 창 높이에서 파생하는 **단일 소스**를 먼저 도입하고, "화면 가장자리"를
-   묻는 12곳을 **"데스크톱 경계" 질의 API**로 교체(난제 1). 이 선행 작업 없이 창을 줄이면
-   연출 12종이 조용히 캐릭터 코앞으로 클램프된다.
-3. `CharacterInfoWindow`/`CornerHoverPanel`은 **전체화면 복귀 모드**로 분리하고, 그 전환의
-   `Screen.SetResolution` 끊김을 **실기에서 눈으로 먼저 확인**(6-3 미검증 항목).
+   묻는 ~~12곳~~ **10곳**을 **"데스크톱 경계" 질의 API**로 교체(난제 1). 이 선행 작업 없이 창을 줄이면
+   ~~연출 12종이~~ **연출 9파일 · 10곳이** 조용히 캐릭터 코앞으로 클램프된다.
+   ★ **2026-09-26 — 「12」의 기준은 재현되지 않았다**(미확인): 난제 1이 든 실사용처 9파일에서
+   `orthographicSize` 발생은 `767c985` 판에서 **10**이고, 프로덕션 전체로 넓히면 `cam.orthographicSize`
+   **16** · `orthographicSize` **36**이다 — 12가 나오는 기준이 없다. 그래서 새 숫자는 클램프 의도
+   **9파일 · 10곳**으로 적는다(HEAD `fa25570` 재측정, 난제 1 정정 블록 ③과 같은 목록).
+3. ~~`CharacterInfoWindow`/`CornerHoverPanel`은 **전체화면 복귀 모드**로 분리하고, 그 전환의~~
+   ~~`Screen.SetResolution` 끊김을 **실기에서 눈으로 먼저 확인**(6-3 미검증 항목).~~
+   ★ **2026-09-26 대체안** — `CornerHoverPanel`이 삭제돼(`2051739`) 이 선행조건은 **셋으로 갈린다**:
+   **(가)** 크기로 못 들어가는 **호출 표면 2개**(`CharacterInfoWindow` 1042×802 · `SettingsWindow` 720×560)는
+   원 권고 그대로 **전체화면 복귀 모드**로 분리하고, 그 전환의 `Screen.SetResolution` 끊김을
+   **실기에서 눈으로 먼저 확인**한다(6-3 미검증 항목 — 이 조건은 그대로 살아 있다).
+   **(나)** **상시 표면 2개**(`InfoGearIconWidget` · `TodoPostItWidget`)는 **전체화면 복귀로 풀 수 없다** —
+   상시로 떠 있으니 복귀도 상시가 되어 창 모드 전환의 이득이 0이 된다. 이 둘은 앵커 기준을
+   「화면 예약 띠」에서 **「오버레이 창 경계 또는 데스크톱 경계」 질의 API**로 바꾸는 것이 유일한 경로이고,
+   그 API는 **위 선행조건 2와 같은 것**이다 ⇒ **2를 먼저 하지 않으면 3-(나)는 착수 자체가 불가능하다.**
+   **(다)** 팝오버 2종(`ActionCommandPopover` 480×456 · `FocusSessionPopover` 244×252)은 톱니 사각형을
+   앵커로 받으므로 **(나)가 끝나면 자동으로 따라온다** — 따로 일감을 잡지 않는다.
 4. 디스플레이 토폴로지 변경 훅 신설(난제 4).
 5. 다개체는 바운딩박스 창으로 폴백하되, 양끝 배치에서 전체화면으로 되돌아간다는 것을
    **컨셉 차원에서 수용**할 것(난제 5).

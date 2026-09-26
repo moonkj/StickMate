@@ -53,6 +53,22 @@ namespace StickMate.Tests.PlayMode
         /// <c>CharacterFxRenderer.LeafSpawnSpreadInR</c>과 같은 값이다.</summary>
         private const float LeafSpawnSpreadInR = 1.1f;
 
+        /// <summary>나뭇잎이 줄기에서 지키는 <b>최소</b> 가로 거리(머리 반경 배수) —
+        /// <c>CharacterFxRenderer.LeafSideOffsetInR</c>과 같은 값(private라 복제,
+        /// LeafFallClearsBodyTests와 같은 관례).</summary>
+        private const float LeafSideOffsetInR = 3.5f;
+
+        /// <summary>나뭇잎 스폰 높이(머리 중심 위, 머리 반경 배수) —
+        /// <c>CharacterFxRenderer.LeafSpawnAboveHeadInR</c>과 같은 값(private라 복제).
+        /// ★ 렌더러가 공개한 <see cref="CharacterFxRenderer.HeadAnchorWorldPosition"/>은 <b>반짝임</b>
+        /// 높이(4.1R)라 나뭇잎 스폰 높이와 회전 팔이 다르다 — 기울인 세계에서 그 앵커를 그대로 쓰면
+        /// 두 점의 x가 갈라진다. 그래서 스폰 앵커는 같은 프레임의 몸통 회전으로 직접 재구성한다.</summary>
+        private const float LeafSpawnAboveHeadInR = 2.2f;
+
+        /// <summary>프로덕션 스폰 띠와 실측을 비교할 때 두는 여유(머리 반경 배수). 한 프레임의 회전
+        /// 스큐만 흡수하면 되므로 작게 잡는다 — 띠 자체는 프로덕션과 <b>같은 상수</b>로 유도한다.</summary>
+        private const float LeafBandTolerance = 0.05f;
+
         /// <summary>FX 나뭇잎 / PET 풍선의 자리와 요구 레벨.</summary>
         private const int FxLeaf = 5, PetBalloon = 4, TopRequiredLevel = 30;
 
@@ -176,30 +192,102 @@ namespace StickMate.Tests.PlayMode
 
             // 기울인 채로 착용한다 — 나뭇잎은 착용 직후 첫 장이 바로 떨어진다.
             for (int i = 0; i < 4; i++) { pose.SetBodyLean(LeanDegrees); yield return null; }
+            pose.SetBodyLean(LeanDegrees);
+
+            var fx = Object.FindFirstObjectByType<CharacterFxRenderer>();
+            Assert.IsNotNull(fx, $"{LogPrefix} CharacterFxRenderer가 씬에 없습니다.");
+            float bodyXAtWear = agent.Blackboard.Body.position.x;
+
             Assert.IsTrue(EquipmentModel.TryWear(EquipmentSlot.Fx, FxLeaf, null),
                 $"{LogPrefix} 나뭇잎을 걸치지 못했습니다.");
 
             Transform leaf = null;
-            float deadline = Time.realtimeSinceStartup + 6f;
+            float bodyXAtCapture = float.NaN, exposedAnchorX = float.NaN, leafAnchorX = float.NaN;
+            float tiltAtCapture = 0f, waitedSeconds = 0f;
+            int holderCount = 0, liveCount = -1;
+            string holderDump = "(없음)";
+            float startedAt = Time.realtimeSinceStartup;
+            float deadline = startedAt + 6f;
             while (Time.realtimeSinceStartup < deadline && leaf == null)
             {
                 pose.SetBodyLean(LeanDegrees);
                 yield return null;
+                // ★ 코루틴은 다음 프레임의 Update <b>뒤</b>에 깨어나므로 그 사이 TickBodyLean이 기울임을
+                //   한 스텝 감쇠시켜 두었다. 다시 세워 두어야 «잎을 낳은 직전 프레임 LateUpdate»의 몸통
+                //   회전이 그대로 복원되고, 그때서야 기준(앵커)과 대상(잎)이 같은 세계의 값이 된다.
+                pose.SetBodyLean(LeanDegrees);
+
                 leaf = FindChildStartingWith("CharacterFx", "Leaf");
+                if (leaf == null) continue;
+
+                waitedSeconds = Time.realtimeSinceStartup - startedAt;
+                bodyXAtCapture = agent.Blackboard.Body.position.x;
+                exposedAnchorX = fx.HeadAnchorWorldPosition.x;
+                tiltAtCapture = TorsoTilt(agent);
+                holderCount = CountChildrenStartingWith("CharacterFx", "Leaf");
+                holderDump = DescribeChildrenX("CharacterFx", "Leaf");
+                liveCount = fx.LiveLeafWorldPositionsForTests.Length;
+
+                Vector2 foot = agent.Blackboard.Body.position;
+                var hip = new Vector2(0f, metrics.HipLocalY);
+                var local = new Vector2(0f, metrics.HeadCenterLocalY + r * LeafSpawnAboveHeadInR);
+                leafAnchorX = (foot + hip + (Vector2)(TorsoRotation(agent) * (local - hip))).x;
             }
             Assert.IsNotNull(leaf, $"{LogPrefix} 나뭇잎이 한 장도 떨어지지 않았습니다.");
 
-            float bodyX = agent.Blackboard.Body.position.x;
+            float bodyX = bodyXAtCapture;
             float offset = Mathf.Abs(leaf.position.x - bodyX);
             float spread = r * LeafSpawnSpreadInR;
+            float offsetFromSpawnAnchor = Mathf.Abs(leaf.position.x - leafAnchorX);
+            float axisGap = Mathf.Abs(leafAnchorX - bodyX);
+            float bandMin = r * LeafSideOffsetInR;
+            float bandMax = r * (LeafSideOffsetInR + LeafSpawnSpreadInR);
+            float eps = r * LeafBandTolerance;
 
-            Debug.Log($"{LogPrefix} 나뭇잎 스폰 x가 몸 중심선에서 {offset:F4}유닛 " +
-                $"(무작위 폭 {spread:F4}유닛, 머리 반경 {r:F4}) — 기울임 {TorsoTilt(agent):F1}도.");
+            Debug.Log($"{LogPrefix} 잎 스폰 x {leaf.position.x:F4} — 몸 중심선 대비 {offset:F4}유닛" +
+                $"(무작위 폭 {spread:F4}, 머리 반경 {r:F4}), 스폰 앵커({LeafSpawnAboveHeadInR}R) 대비 " +
+                $"{offsetFromSpawnAnchor:F4}유닛(프로덕션 띠 {bandMin:F4}~{bandMax:F4}, 여유 {eps:F4}). " +
+                $"기준축 간극 {axisGap:F4}, 기울임 {tiltAtCapture:F1}도, 몸 x 착용시 {bodyXAtWear:F4} → 포착시 " +
+                $"{bodyXAtCapture:F4}(이동 {Mathf.Abs(bodyXAtCapture - bodyXAtWear):F4}), 공개 앵커 x(4.1R) " +
+                $"{exposedAnchorX:F4}, 스폰 앵커 x {leafAnchorX:F4}, 홀더 {holderCount}개 {holderDump}, " +
+                $"살아있는 잎 {liveCount}장, 착용 후 {waitedSeconds:F2}초.");
 
-            Assert.Greater(offset, spread,
-                $"{LogPrefix} 나뭇잎이 몸 중심선에서 {offset:F4}유닛 떨어졌습니다 — 무작위 폭 " +
-                $"{spread:F4}유닛 안이라 <b>기울지 않은</b> 머리 위에서 떨어진 것과 구분되지 않습니다. " +
-                "즉 스폰 기준이 여전히 중립 머리입니다.");
+            // ── 측정 전제 ──────────────────────────────────────────────────────
+            Assert.Less(Mathf.Abs(bodyXAtCapture - bodyXAtWear), spread,
+                $"{LogPrefix} 착용 시점({bodyXAtWear:F4})과 포착 시점({bodyXAtCapture:F4}) 사이에 몸이 " +
+                "움직였습니다 — 스폰 순간의 기준과 포착 순간의 기준이 달라 이 측정은 무효입니다.");
+            Assert.AreEqual(1, holderCount,
+                $"{LogPrefix} 잎 홀더가 {holderCount}개입니다 {holderDump} — 어느 것이 방금 태어난 잎인지 " +
+                "가릴 수 없습니다(원형 버퍼가 재사용한 죽은 조각을 잡았을 수 있습니다). 측정 무효입니다.");
+
+            // ── 대조 유효성 — 두 기준축이 실제로 갈라졌는가 ────────────────────
+            // 기울임이 만드는 간극이 무작위 폭보다 작으면 아래 (나)가 우연히 성립할 수 있다.
+            // 그러면 이 테스트는 "기울임을 따라갔다"를 증명하지 못한다 — 조용히 통과하지 않고 여기서 멈춘다.
+            Assert.Greater(axisGap, spread + 2f * eps,
+                $"{LogPrefix} 기울임이 만든 기준축 간극({axisGap:F4})이 무작위 폭({spread:F4})을 " +
+                "충분히 넘지 못했습니다 — 기울어진 머리와 중립 머리를 구분할 수 없어 대조가 성립하지 " +
+                $"않습니다(기울임 {tiltAtCapture:F1}도, 대조 무효).");
+
+            // ── (가) 잎은 <b>기울어진</b> 스폰 앵커 기준으로 프로덕션 띠 안에 있다 ──
+            Assert.GreaterOrEqual(offsetFromSpawnAnchor, bandMin - eps,
+                $"{LogPrefix} 잎이 기울어진 스폰 앵커에서 {offsetFromSpawnAnchor:F4}유닛 떨어졌습니다 — " +
+                $"프로덕션이 보장하는 최소 거리({bandMin:F4})에 못 미칩니다.");
+            Assert.LessOrEqual(offsetFromSpawnAnchor, bandMax + eps,
+                $"{LogPrefix} 잎이 기울어진 스폰 앵커에서 {offsetFromSpawnAnchor:F4}유닛 떨어졌습니다 — " +
+                $"프로덕션 띠의 바깥 끝({bandMax:F4})을 넘었습니다.");
+
+            // ── (나) 같은 잎을 <b>중립(몸 루트)</b> 기준으로 재면 그 띠를 벗어난다 ──
+            // ★ 이것이 "스폰 기준이 기울어진 머리다"의 진짜 증거다. 옛 판은 「몸 중심선에서 무작위 폭보다
+            //   멀리 있는가」만 봤는데, 프로덕션이 줄기 오프셋 3.5R을 쓰게 된 뒤로 그 조건은 <b>중립 머리로
+            //   스폰해도 성립</b>한다(3.5R > 1.1R) — 즉 무엇도 증명하지 못하는 거짓 초록이었다.
+            //   동시에 줄기를 <b>기울임 반대쪽</b>으로 고른 회차에서는 두 값이 상쇄되어 그 조건이 우연히
+            //   깨졌다(실측: 기준축 간극 0.4115 − 3.5R 0.5775 = −0.1660 → 신고된 실패값 0.1666과 일치).
+            //   한 부등식이 거짓 초록과 거짓 빨강을 동시에 내고 있었다.
+            bool insideNeutralBand = offset >= bandMin - eps && offset <= bandMax + eps;
+            Assert.IsFalse(insideNeutralBand,
+                $"{LogPrefix} 잎이 <b>몸 루트</b> 기준으로도 프로덕션 띠({bandMin:F4}~{bandMax:F4}) 안" +
+                $"({offset:F4})입니다 — 기울어진 머리에서 스폰한 것과 중립 머리에서 스폰한 것이 구분되지 " +
+                "않습니다. 즉 스폰 기준이 여전히 중립 머리일 수 있습니다.");
 
             EquipmentModel.TryWear(EquipmentSlot.Fx, EquipmentModel.NotWorn, null);
             yield return null;
@@ -566,6 +654,36 @@ namespace StickMate.Tests.PlayMode
                 if (t != null && t.name == lineName) return t;
             }
             return null;
+        }
+
+        /// <summary>진단용 — 그 이름으로 시작하는 자손이 <b>몇 개</b>인가. 원형 버퍼가 재사용하는
+        /// 조각을 이름으로 찾을 때 "내가 잡은 것이 유일한가"를 같이 봐야 한다(죽은 조각을 잡고
+        /// 살아 있는 것으로 오해하는 실패 유형).</summary>
+        private static int CountChildrenStartingWith(string rootName, string prefix)
+        {
+            GameObject root = GameObject.Find(rootName);
+            if (root == null) return 0;
+            int n = 0;
+            foreach (Transform t in root.GetComponentsInChildren<Transform>(true))
+            {
+                if (t != null && t != root.transform && t.name.StartsWith(prefix)) n++;
+            }
+            return n;
+        }
+
+        /// <summary>진단용 — 그 이름으로 시작하는 자손들의 x를 그대로 나열한다.</summary>
+        private static string DescribeChildrenX(string rootName, string prefix)
+        {
+            GameObject root = GameObject.Find(rootName);
+            if (root == null) return "(루트 없음)";
+            var sb = new System.Text.StringBuilder("[");
+            foreach (Transform t in root.GetComponentsInChildren<Transform>(true))
+            {
+                if (t == null || t == root.transform || !t.name.StartsWith(prefix)) continue;
+                if (sb.Length > 1) sb.Append(' ');
+                sb.Append($"{t.name}:{t.position.x:F4}");
+            }
+            return sb.Append(']').ToString();
         }
 
         private static Transform FindChildStartingWith(string rootName, string prefix)

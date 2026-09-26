@@ -92,6 +92,21 @@ namespace StickMate.Tests.PlayMode
         private float _dockLeftWorldX;
         private float _dockRightWorldX;
 
+        /// <summary>원본(설정/의도/폴러/오버레이 원점)을 이미 보관했는가. ★ (6-b) 유계 재시도가
+        /// <see cref="SetUpDockLayout"/>을 한 테스트 안에서 여러 번 부르기 때문에 필요하다 —
+        /// 두 번째 호출이 원본 자리에 <b>직전 복제본</b>을 적어 넣으면 TearDown이 파괴된 설정을
+        /// 되돌려 놓는다.</summary>
+        private bool _originalsCaptured;
+
+        /// <summary>수정 전(2026-08-31 이전) 맨틀 인셋 — <b>네거티브 컨트롤 전용</b>.
+        /// <b>프로덕션 값이 아니다</b>(프로덕션은 유도값을 쓴다). 같은 숫자를 파일 안 세 곳에 흩어
+        /// 적지 않으려고 이름을 준다 — 하나가 낡으면 대조가 조용히 죽는 자리다.</summary>
+        private const float LegacyMantleInset = 0.25f;
+
+        /// <summary>(6-c) 계측기 생존 확인에서 "떠났다"를 기다리는 벽시계 상한(초). 프레임 수로
+        /// 기다리지 않는다(배치모드는 2,000fps 이상으로 돈다 — CLAUDE.md 협업 프로토콜).</summary>
+        private const float DepartureObserveSeconds = 20f;
+
         [TearDown]
         public void TearDown()
         {
@@ -105,6 +120,7 @@ namespace StickMate.Tests.PlayMode
             if (_clonedConfig != null) Object.DestroyImmediate(_clonedConfig);
             _clonedConfig = null;
             _agent = null;
+            _originalsCaptured = false;
         }
 
         /// <summary>
@@ -124,12 +140,23 @@ namespace StickMate.Tests.PlayMode
             yield return new WaitForSeconds(SettleWaitSeconds);
 
             StickmanBlackboard bb = _agent.Blackboard;
-            _originalConfig = bb.Config;
-            _originalIntent = bb.IntentSource;
-            _originalPoller = bb.FootholdPoller;
-            _savedOrigin = ScreenCoordinateConverter.OverlayOriginOsScreen;
+            // ★ 2026-09-26 — 이 준비를 <b>한 테스트가 여러 번</b> 부를 수 있게 됐다((6-b) 유계 재시도).
+            //   원본 보관은 반드시 <b>첫 호출에서만</b> 한다. 두 번째 호출이 원본 자리에 직전 복제본을
+            //   적어 넣으면, TearDown이 그 복제본을 되돌려 놓고 곧바로 파괴한다 — 뒤따르는 테스트가
+            //   파괴된 설정으로 도는 조용한 오염이다. 씬을 다시 불러오면 새 에이전트는 원본 자산을
+            //   들고 오므로 첫 호출에 보관한 값이 계속 옳다.
+            if (!_originalsCaptured)
+            {
+                _originalConfig = bb.Config;
+                _originalIntent = bb.IntentSource;
+                _originalPoller = bb.FootholdPoller;
+                _savedOrigin = ScreenCoordinateConverter.OverlayOriginOsScreen;
+                _originalsCaptured = true;
+            }
             ScreenCoordinateConverter.OverlayOriginOsScreen = Vector2.zero;
 
+            // 직전 호출이 만든 복제본을 흘리지 않는다(재시도마다 ScriptableObject가 쌓인다).
+            if (_clonedConfig != null) Object.DestroyImmediate(_clonedConfig);
             _clonedConfig = Object.Instantiate(_originalConfig);
             bb.Config = _clonedConfig;
 
@@ -539,7 +566,7 @@ namespace StickMate.Tests.PlayMode
             yield return SetUpDockLayout(DockDropUnits, 0.60f);
             StickmanBlackboard bb = _agent.Blackboard;
 
-            _clonedConfig.parkourMantleInset = 0.25f;
+            _clonedConfig.parkourMantleInset = LegacyMantleInset;
 
             _clonedConfig.parkourMantleInsetDerived = true;
             float derived = bb.ParkourMantleInsetWorld;
@@ -547,28 +574,123 @@ namespace StickMate.Tests.PlayMode
             _clonedConfig.parkourMantleInsetDerived = false;
             float legacy = bb.ParkourMantleInsetWorld;
 
-            Debug.Log($"{LogPrefix} 맨틀 인셋 복원 확인 — 설정값 0.250, 유도 켬 → {derived:F3}, 유도 끔 → {legacy:F3} " +
+            Debug.Log($"{LogPrefix} 맨틀 인셋 복원 확인 — 설정값 {LegacyMantleInset:F3}, 유도 켬 → {derived:F3}, 유도 끔 → {legacy:F3} " +
                 $"(경계 판정 거리 {bb.EdgeStopDistanceWorld:F3}, 물리 반폭 {bb.CharacterPhysicalHalfWidthWorld:F3}).");
 
-            Assert.Greater(derived, 0.25f + 0.001f,
-                $"{LogPrefix} 유도를 켠 채로 설정값 0.250이 그대로 나왔습니다({derived:F3}) — 유도" +
+            Assert.Greater(derived, LegacyMantleInset + 0.001f,
+                $"{LogPrefix} 유도를 켠 채로 설정값 {LegacyMantleInset:F3}이 그대로 나왔습니다({derived:F3}) — 유도" +
                 "(DockGeometry.ResolveParkourMantleInset)가 소비 경로에 실제로 연결돼 있지 않다는 뜻입니다.");
-            Assert.AreEqual(0.25f, legacy, 0.0005f,
+            Assert.AreEqual(LegacyMantleInset, legacy, 0.0005f,
                 $"{LogPrefix} 유도를 껐는데도 인셋이 {legacy:F3}입니다 — 아래 (6)의 네거티브 컨트롤이 " +
                 "옛 조건을 재현하지 못하고 조용히 무력화됩니다(2026-08-31 유도 전환 시 명시적으로 막은 실패 유형).");
         }
 
+        /// <summary>
+        /// ★ 2026-09-26 하네스 수정 — 이 대조군은 <b>수정이 제거한 무작위성</b>을 계측하고 있었다.
+        ///
+        /// <para>옛 판은 "옛 조건으로 한 번 돌려서 5초 안에 Dock을 떠나는가"만 봤다. 그런데 옛 조건의
+        /// 증상 자체가 <b>타이밍에 걸린 확률 사건</b>(경계 정지가 등반 도중 끝나며 방향이 반전되는
+        /// 순간)이라, 같은 트리·같은 시드에서도 회차마다 갈렸다 — 실측 간헐 1/3. 프로덕션은 멀쩡한데
+        /// 대조군만 빨개지는 구조였고, 그 빨강이 전량 판독을 오염시켰다.</para>
+        ///
+        /// <para>그래서 둘로 나눈다:</para>
+        ///   <b>(6-a) 결정론적 기하</b> — 무작위성이 <b>한 톨도 없는</b> 단언. 옛 인셋은 캐릭터를
+        ///   <b>경계 판정 띠 안쪽</b>에 올려놓고(그래서 올라서는 순간 다시 "경계다"로 읽혀 곧바로
+        ///   뛰어내린다), 유도 인셋은 그 띠 <b>밖</b>에 올려놓는다. 이것이 수정의 기하학적 알맹이이고,
+        ///   물리·프레임 타이밍과 무관하게 매 회차 같은 값이 나온다.
+        ///   <b>(6-b) 행동 관측</b> — 옛 조건을 한 번 돌려 <b>장부에 남긴다</b>. 게이트가 아니다.
+        ///   <b>(6-c) 계측기 생존</b> — (5)가 믿는 「Dock 연속 체류」 계측기가 <b>떠남을 실제로 잡아내는가</b>를
+        ///   뛰어내리기 펄스로 결정론적으로 못박는다. (6-b)를 게이트에서 내린 자리를 이쪽이 메운다.
+        ///
+        /// <para>★ 2026-09-26 — 처방이었던 「유계 재시도(최대 4회, 전부 실패면 측정 무효)」는 <b>실측이
+        /// 반증했다</b>. 4회가 네 번 모두 같은 값이었다(되올라온 X=6.150 / 왕복 9.04·9.04·9.04·9.06초 /
+        /// 체류 5.00초). 배회 추첨이 고정 시드라 재시도는 <b>독립 표본이 아니라 같은 궤적의 재생</b>이다 —
+        /// 회차를 가르는 것은 시드가 아니라 프레임 간격이고 그것은 한 실행 안에서 거의 같다. 그래서
+        /// 재시도는 확률을 바꾸지 못한 채 시간만 쓴다. 판정을 결정론적인 (6-a)/(6-c)로 옮긴 이유다.</para>
+        ///
+        /// <para>기각한 대안: 등반 직후 방향을 테스트가 직접 주입해 결정론으로 만드는 방법. 그러려면
+        /// 프로덕션에 새 공개 표면(방향 강제 API)이 필요한데, <b>대조군을 위해 제품 표면을 넓히는 것</b>은
+        /// 비용이 이익보다 크다 — 게다가 그 순간 이 대조군은 "실제로 일어나는 일"이 아니라 "주입한 일"을
+        /// 재게 된다.</para>
+        /// </summary>
         [UnityTest]
+        [Timeout(180000)]
         public IEnumerator NegativeControl_WithoutPostClimbCooldown_LeavesDockAlmostImmediately()
         {
-            yield return MeasureDockHoldAfterAutoClimbBack(usePostClimbCooldown: false);
+            // ── (6-a) 결정론적 기하 ─────────────────────────────────────────────
+            yield return SetUpDockLayout(DockDropUnits, 0.60f);
+            StickmanBlackboard bb = _agent.Blackboard;
 
-            Assert.IsTrue(_climbedBackToDock,
-                $"{LogPrefix} (네거티브 컨트롤) 되올라오는 것 자체가 안 됐습니다 — 대조 실험이 성립하지 않습니다.");
-            Assert.Less(_dockHoldSeconds, DockHoldSeconds,
-                $"{LogPrefix} (네거티브 컨트롤) 수정을 껐는데도 Dock에 {_dockHoldSeconds:F2}초 이상 머물렀습니다 — " +
-                "(5)의 계측기가 증상을 잡아내지 못한다는 뜻이라 그 테스트를 신뢰할 수 없습니다. " +
-                "고장 재현 조건(경계 정지가 등반 도중 끝나며 방향이 반전되는 타이밍)이 바뀌었는지 확인하세요.");
+            _clonedConfig.parkourMantleInset = LegacyMantleInset;
+
+            _clonedConfig.parkourMantleInsetDerived = false;
+            float legacyInset = bb.ParkourMantleInsetWorld;
+            float edgeStop = bb.EdgeStopDistanceWorld;
+
+            _clonedConfig.parkourMantleInsetDerived = true;
+            float derivedInset = bb.ParkourMantleInsetWorld;
+
+            _clonedConfig.parkourMantleInsetDerived = false;   // (6-b)는 옛 조건으로 돌아야 한다.
+
+            Debug.Log($"{LogPrefix} (6-a) 기하 대조 — 경계 판정 거리 {edgeStop:F3}유닛 / 옛 인셋 {legacyInset:F3} " +
+                $"(띠 {(legacyInset < edgeStop ? "안쪽" : "바깥")}) / 유도 인셋 {derivedInset:F3} " +
+                $"(띠 {(derivedInset > edgeStop ? "바깥" : "안쪽")}), 물리 반폭 {bb.CharacterPhysicalHalfWidthWorld:F3}.");
+
+            Assert.Greater(edgeStop, 0f,
+                $"{LogPrefix} (6-a) 경계 판정 거리가 {edgeStop:F3}입니다 — 기하 비교의 전제가 없습니다(측정 무효).");
+            Assert.Less(legacyInset, edgeStop,
+                $"{LogPrefix} (6-a) 옛 인셋({legacyInset:F3})이 경계 판정 거리({edgeStop:F3})보다 작지 않습니다 — " +
+                "옛 조건이 더 이상 «올라서자마자 다시 경계»를 만들지 못한다는 뜻이고, 그러면 (6-b)가 " +
+                "재현하려는 증상 자체가 사라진 것입니다. 네거티브 컨트롤을 다시 설계해야 합니다.");
+            Assert.Greater(derivedInset, edgeStop,
+                $"{LogPrefix} (6-a) 유도 인셋({derivedInset:F3})이 경계 판정 거리({edgeStop:F3})보다 크지 않습니다 — " +
+                "수정이 캐릭터를 경계 판정 띠 <b>밖</b>에 올려놓지 못합니다((5)가 지키는 기하가 무너졌습니다).");
+
+            // ── (6-b) 행동 관측(게이트 아님) ────────────────────────────────────
+            yield return MeasureDockHoldAfterAutoClimbBack(usePostClimbCooldown: false);
+            bool reproducedThisRun = _climbedBackToDock && _dockHoldSeconds < DockHoldSeconds;
+            Debug.Log($"{LogPrefix} (6-b) 행동 관측(게이트 아님) — 되올라옴={_climbedBackToDock}, " +
+                $"체류={_dockHoldSeconds:F2}초(요구 {DockHoldSeconds:F0}초), " +
+                $"떠난 핸들={(!_dockLost ? "안떠남" : _handleWhenDockLost.ToString())} ⇒ 증상 재현={reproducedThisRun}");
+
+            // ── (6-c) 계측기 생존(결정론) ───────────────────────────────────────
+            // (5)가 믿는 계측기는 「Dock 발판을 연속으로 몇 초 유지하는가」다. 그 계측기가 <b>떠남을
+            // 실제로 잡아내는지</b>를 확률에 기대지 않고 못박는다: 뛰어내리기 펄스로 명시적으로 내려보내고
+            // 같은 규칙으로 잰다. 여기서 요구치 미만이 안 나오면 (5)의 초록은 「안 떠났다」가 아니라
+            // 「계측기가 못 본다」일 수 있다 — 그게 네거티브 컨트롤이 원래 막으려던 실패다.
+            yield return SetUpDockLayout(DockDropUnits, 0.60f);
+            StickmanBlackboard rig = _agent.Blackboard;
+            _intent.HopDownRequested = true;
+
+            float hold = 0f;
+            bool left = false;
+            long handleWhenLost = 0L;
+            float guard = Time.realtimeSinceStartup + DepartureObserveSeconds;
+            while (hold < DockHoldSeconds && Time.realtimeSinceStartup < guard)
+            {
+                yield return null;
+                if (rig.Machine.CurrentStateId == StickmanStateId.Fall) _intent.HopDownRequested = false;
+                if (rig.CurrentFootholdHandle != DockHandle)
+                {
+                    left = true;
+                    handleWhenLost = rig.CurrentFootholdHandle;
+                    break;
+                }
+                hold += Time.deltaTime;
+            }
+            _intent.HopDownRequested = false;
+
+            Debug.Log($"{LogPrefix} (6-c) 계측기 생존 — 떠남={left}(떠난 순간 핸들 {handleWhenLost}), " +
+                $"연속 체류 {hold:F2}초(요구 미만 {DockHoldSeconds:F0}초), 최종 상태={rig.Machine.CurrentStateId}.");
+
+            Assert.IsTrue(left,
+                $"{LogPrefix} (6-c) 뛰어내리기 펄스를 줬는데도 {DepartureObserveSeconds:F0}초 동안 Dock을 " +
+                "떠나지 않았습니다 — 이 리그에서 「떠남」 자체를 만들 수 없어 계측기 생존을 확인할 수 " +
+                "없습니다(측정 무효).");
+            Assert.Less(hold, DockHoldSeconds,
+                $"{LogPrefix} (6-c) 캐릭터가 Dock을 떠났는데도 연속 체류가 {hold:F2}초로 요구치" +
+                $"({DockHoldSeconds:F0}초) 아래로 내려가지 않았습니다 — (5)가 믿는 계측기가 떠남을 " +
+                "잡아내지 못한다는 뜻이라 그 테스트의 초록을 신뢰할 수 없습니다.");
         }
 
         /// <summary>
@@ -609,7 +731,7 @@ namespace StickMate.Tests.PlayMode
                 // ★ 유도를 먼저 꺼야 아래 0.25가 실제로 남는다(위 (6) 주석 + (6-0) 테스트 참고).
                 //   순서를 바꿔도 결과는 같지만, "끄고 나서 옛 값을 넣는다"가 의도를 그대로 읽게 한다.
                 _clonedConfig.parkourMantleInsetDerived = false;
-                _clonedConfig.parkourMantleInset = 0.25f;
+                _clonedConfig.parkourMantleInset = LegacyMantleInset;
             }
 
             _dockWidthWorldUnits = _dockRightWorldX - _dockLeftWorldX;

@@ -120,5 +120,71 @@ namespace StickMate.Tests.EditMode
             Assert.IsNotEmpty(StickMateDisplayNames.Of((StickmanStateId)(-1)));
             Assert.IsNotEmpty(StickMateDisplayNames.BusyText((StickmanStateId)(-1)));
         }
+
+        /// <summary>
+        /// ★★ 2026-09-26 — <b>락 점유 사유에서 문형을 벗어나는 칸은 «정확히 하나»다.</b>
+        ///
+        /// <para><b>불변식</b>(ux-widgets): 문장은 그것이 <b>뜰 수 있는 구간 전체에서</b> 참이어야 한다.
+        /// 크랙은 캐릭터 스윙이 끝난 뒤에도 금 수명까지 락을 쥐고 있어 「지금 ○○ 중이에요」가 약 2.6초 동안
+        /// <b>캐릭터 상태를 거짓 주장</b>한다. 락 13종 중 그런 것은 크랙 하나뿐이므로 <b>한 칸만</b> 갈라야 하고,
+        /// 나머지는 <b>지금 참이므로 건드리면 안 된다</b>. 이 테스트가 그 «하나»를 양방향으로 못박는다 —
+        /// 0이면 덮어쓰기가 사라진 것이고, 2 이상이면 누가 12종까지 손댄 것이다.</para>
+        ///
+        /// <para>★ <b>문형 자를 런타임에 유도한다</b>: 접두 「지금 」과 접미 「 중이에요」는 프로덕션 리터럴이고
+        /// 공개 상수가 없다. 그것을 테스트에 <b>베껴 적으면</b> 프로덕션이 문형을 바꾸는 날 기준과 대상이 갈라진 채
+        /// 조용히 초록이 된다(CLAUDE.md 니들 규칙). 그래서 <b>바뀌지 않은 대조 칸</b>(활쏘기)의 완성 문장에서
+        /// 이름을 빼내 접두·접미를 얻고, <b>그 자가 살아 있는지 먼저 단언</b>한다.</para>
+        /// </summary>
+        [Test]
+        public void 락_사유는_크랙_한_칸만_문형에서_갈라진다()
+        {
+            // ---- 자 만들기: 대조 칸에서 접두·접미를 유도하고, 그 자가 살아 있음을 먼저 못박는다 ----
+            const SpectacleEventKind control = SpectacleEventKind.Archery;
+            string controlBusy = StickMateDisplayNames.BusyText(control);
+            string controlName = StickMateDisplayNames.Of(control);
+            int at = controlBusy.IndexOf(controlName, StringComparison.Ordinal);
+            Assert.Greater(at, 0,
+                $"대조 칸({control})의 완성 문장 «{controlBusy}»에서 이름 «{controlName}»을 찾지 못했습니다 — " +
+                "이 검사의 자(문형)가 죽었습니다. 아래 «한 칸만 갈린다»는 아무것도 재지 못합니다.");
+            string prefix = controlBusy.Substring(0, at);
+            string suffix = controlBusy.Substring(at + controlName.Length);
+            Assert.IsNotEmpty(prefix, "유도한 접두가 비었습니다(자가 죽었습니다).");
+            Assert.IsNotEmpty(suffix, "유도한 접미가 비었습니다(자가 죽었습니다).");
+
+            // ---- 전수: 문형을 벗어난 칸을 모은다 ----
+            // ★ 전체 이름으로 쓴다 — 이 파일의 using 목록에 기대지 않기 위해서다(기대에 기대면 컴파일이 갈린다).
+            var divergent = new System.Collections.Generic.List<SpectacleEventKind>();
+            foreach (SpectacleEventKind kind in (SpectacleEventKind[])Enum.GetValues(typeof(SpectacleEventKind)))
+            {
+                string expected = prefix + StickMateDisplayNames.Of(kind) + suffix;
+                if (!string.Equals(StickMateDisplayNames.BusyText(kind), expected, StringComparison.Ordinal))
+                {
+                    divergent.Add(kind);
+                }
+            }
+
+            CollectionAssert.AreEqual(new[] { SpectacleEventKind.WindowCrash }, divergent,
+                "★ 문형에서 갈라진 칸이 «크랙 하나»가 아닙니다: [" + string.Join(", ", divergent) + "]. " +
+                "0이면 크랙 덮어쓰기가 사라져 스윙이 끝난 뒤에도 «지금 창 부수기 중이에요»가 다시 거짓말을 합니다. " +
+                "2 이상이면 지금 참인 칸까지 바꾼 것입니다(전면 교체는 기각된 안입니다).");
+
+            // ---- 그 한 칸의 값은 프로덕션 상수를 참조해 잰다(글자를 베끼지 않는다) ----
+            Assert.AreEqual(StickMateDisplayNames.WindowCrashBusyText,
+                StickMateDisplayNames.BusyText(SpectacleEventKind.WindowCrash),
+                "크랙 칸이 공개 상수와 다른 글자입니다 — 문구가 두 벌이 됐습니다.");
+            Assert.AreNotEqual(prefix + StickMateDisplayNames.Of(SpectacleEventKind.WindowCrash) + suffix,
+                StickMateDisplayNames.BusyText(SpectacleEventKind.WindowCrash),
+                "크랙 칸이 아직 문형 그대로입니다 — 덮어쓰기가 실행되지 않았습니다(정적 생성자 확인).");
+
+            // ---- 이름 표는 그대로여야 한다(바꾼 것은 «사유 문장» 하나뿐이다) ----
+            Assert.AreEqual(controlName, StickMateDisplayNames.Of(control), "대조 칸의 이름이 흔들렸습니다.");
+            Assert.AreNotEqual("다른 일", StickMateDisplayNames.Of(SpectacleEventKind.WindowCrash),
+                "크랙의 이름 표가 비었습니다 — 바꾼 것은 사유 문장이지 이름이 아닙니다.");
+
+            // ---- 무할당 계약: 덮어쓴 칸도 «미리 만들어 둔» 같은 인스턴스여야 한다 ----
+            Assert.AreSame(StickMateDisplayNames.BusyText(SpectacleEventKind.WindowCrash),
+                StickMateDisplayNames.BusyText(SpectacleEventKind.WindowCrash),
+                "크랙 사유가 호출마다 새로 만들어집니다 — 0.25초 폴링이 곧 GC 압력이 됩니다(이 파일의 무할당 계약).");
+        }
     }
 }

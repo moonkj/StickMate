@@ -72,6 +72,23 @@ namespace StickMate.Interaction
             //   숨김에서 안 막히고, 그게 정확히 이 줄이 고치는 결함이다.
             if (HiddenCharacterCommandGate.BlocksNow(_player)) return HiddenCharacterCommandGate.WhileHidden;
 
+            // ★★ 2026-09-26 (N-20 해제 조건 7-b 층 1, docs/systems/UNSUMMONED_EFFECTS_INVARIANT.md 「4. 판정 ③」) —
+            //    <b>명령 그라피티도 «사용자가 부른 표면»이 아니다.</b> 임대(허가)의 목적은 설정 스위치에 닿는 것이고
+            //    연출에는 허가를 내지 않는다(Core/StickmanAgent.cs의 임대 계약). 그래서 등급 1에서 사용자가 연
+            //    명령창·부채꼴이 임대를 갱신하는 동안 이 판정이 «가능»이면, ⌃⌥⌘G와 [낙서하기] 타일이 발표·회의
+            //    화면 위에 낙서를 시작한다. 해제 조건 7(A1)의 크랙과 <b>같은 창구·같은 호출형·같은 사유 문구</b>다.
+            //    ★ 대상 선정이 «우연히» 막는 것은 가드가 아니다: 전체화면 앱이 발판이면 빈 자리가 없어 못 그리지만,
+            //      그 경우의 사유는 「낙서할 빈 자리가 없어요」이고 그것은 <b>상태에서 파생된 사유가 아니다</b>(원칙 1).
+            //      게다가 앞 창이 전체화면 앱의 상단선을 가리면 그 폭만큼 발판이 빠져 빈 자리 판정이 통과할 수 있다
+            //      (같은 문서 1-3-2 「상단선 틈」 — 코드상 성립, 발생 빈도 미확인).
+            //    ★ 자리가 계약이다(리더 확정, A1과 같음): <b>숨김 게이트 바로 뒤</b> — 숨김은 이 사유 문구를 채워도
+            //      풀리지 않는 지속 사유라서 먼저 보여야 한다. <b>연출 락·상태·대상 검사보다 앞</b> — 뒤에 두면
+            //      «지금 ○○ 중이에요»나 «빈 자리가 없어요»가 먼저 떠 기다리거나 자리를 비우면 될 것처럼 보였다가
+            //      아니게 된다. 캐릭터 축(IsSuspended)은 바로 위 게이트가 이미 봤으므로 여기 다시 붙이지 않는다.
+            //    (이 순서는 Tests/EditMode/UnsummonedSurfaceAxisTests가 소스에서, PlayMode R6d가 런타임에서 잠근다.)
+            if (UserSurfaceSummonPolicy.SuppressesUnsummonedSurfaces(_player.ArePanelsSuppressed, _player.IsUserSummonGrantActive))
+                return UnsummonedSurfaceCommandReason.WhileSuppressed;
+
             if (SpectacleEventLock.IsActive)
                 return CommandAvailability.Blocked(StickMateDisplayNames.BusyText(SpectacleEventLock.ActiveKind));
 
@@ -137,6 +154,41 @@ namespace StickMate.Interaction
         private void MonitorRegion()
         {
             if (!_hasRegion) return;
+
+            // ★★ 2026-09-26 (N-20 해제 조건 7-b <b>층 2 — 수명</b>, docs/systems/UNSUMMONED_EFFECTS_INVARIANT.md 「3. 판정 ②」) —
+            //    층 1(가능 판정)은 «시작하지 않는다»만 막는다. 등급 0에서 <b>사용자가 직접 시킨</b> 낙서가 그려지는
+            //    동안(출하 값 3~5초) 발표·화상회의가 시작되면, 그 낙서는 남의 전체화면 앱 위에 남는다. 그래서 이
+            //    연출도 크랙 오버레이처럼 <b>억제 창구가 참이 되면 걷는다</b>(같은 문서의 층 2 규칙).
+            //    취소는 <b>기존 경로 하나</b>(CancelDrawing)를 그대로 재사용한다 — 새 상태도, 새 연출도 만들지 않는다.
+            //    ★ 2026-09-26 정정 — 이 줄은 원래 「쿨다운 <b>미적용</b>」이라고 적었고 그것은 <b>거짓이었다</b>
+            //      (game-architect 적발 · 아래는 내가 경로를 다시 따라가 확인한 것이다). 네 항목을 하나씩 보면:
+            //        · Cancelled 이벤트 발행 — CancelDrawing이 RaiseOverlay(Cancelled)를 부른다.
+            //        · Idle 강제 전이 — 같은 함수가 ChangeState(Idle, isForcedInterrupt: true).
+            //        · 락 반납 — OnStateTransitioned 끝의 SpectacleEventLock.Release(this), 두 분기 공통이다.
+            //        · <b>쿨다운 적용</b> — 도착 상태 Idle은 <b>비정상 이탈이 아니다</b>(Core/SpectacleExitClassification은
+            //          Fall · Ragdoll · ThrowTumble · GroundLossHang 넷에만 true를 낸다) ⇒ OnStateTransitioned의
+            //          else 가지가 graffitiCooldownSeconds(출하 600초)를 건다.
+            //      ⇒ <b>넷 다 기존 취소 경로</b>(빈 자리에 발판이 겹쳐 취소되는 그 경로)<b>와 같다.</b> 틀렸던 것은
+            //      「기존과 같다」가 아니라 「미적용」이라는 낱말 하나였다.
+            //    ★ 그 쿨다운이 닿는 범위: 읽는 곳은 TickAutoTrigger 한 곳뿐이라 <b>자율 발동만</b> 지연되고,
+            //      명령 경로는 쿨다운을 보지 않는다(GetAvailability 판독 0 · ForceTriggerNow는 오히려 0으로 지운다).
+            //      출하 기본값이 graffitiChance: 0이라 오늘 사용자 영향은 0이다 — 그래도 주석은 참이어야 한다.
+            //    ★ 캐릭터 축(IsSuspended)을 여기 <b>일부러 넣지 않았다 — 실수가 아니라 정확한 비대칭이다</b>
+            //      (리더 · game-architect 판정 2026-09-26). 크랙은 오버레이 수명이 <b>상태와 독립</b>이라
+            //      (금 3초 대 스윙 windowCrashSwingDuration) 층 2가 등급 1과 등급 2를 <b>모두</b> 덮어야 한다.
+            //      낙서는 <b>상태 수명 = 오버레이 수명</b>이라(graffitiHoldDuration 하한·상한 3~5초) 등급 2와 사용자
+            //      명시 숨김에서는 Core/StickmanAgent.cs의 Suspend가 이미 Graffiti를 Idle로 강제 전이시켜
+            //      OnStateTransitioned가 이벤트를 낸다(도착 Idle ⇒ Completed + 쿨다운). ⇒ 층 2는 <b>등급 1 전용
+            //      보강</b>이고, 등급 2에서도 낙서가 화면에 남지는 않는다.
+            //      ⇒ <b>「크랙과 모양을 맞추자」며 여기에 || IsSuspended를 더하지 마라.</b> 더하면 등급 2에서
+            //      완료 · 취소 분류가 뒤집혀(Completed → Cancelled) 쿨다운 판정까지 흔들린다. 그 분류를 바꾸는 것은
+            //      캐릭터 축 변경이라 별건이다(리더 판단 대기).
+            if (UserSurfaceSummonPolicy.SuppressesUnsummonedSurfaces(_player.ArePanelsSuppressed, _player.IsUserSummonGrantActive))
+            {
+                CancelDrawing();
+                return;
+            }
+
             // 그려지는 도중 그 빈 영역에 새 창이 열려 겹치게 되면 즉시 취소(27-3 예외 상태).
             if (RegionOverlapsRealFoothold(_regionSnapshot)) CancelDrawing();
         }

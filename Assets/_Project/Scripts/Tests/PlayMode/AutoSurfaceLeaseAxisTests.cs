@@ -146,6 +146,11 @@ namespace StickMate.Tests.PlayMode
         private bool _userHiddenByTest;
         private readonly CrackTally _crack = new CrackTally();
 
+        // ---- R6 · R7(명령 그라피티 — 해제 조건 7-b) 하네스 ----
+        private GraffitiDirector _graffiti;
+        private bool _graffitiObserverAttached;
+        private readonly GraffitiTally _paint = new GraffitiTally();
+
         private static readonly FieldInfo ButtonServiceField =
             typeof(AppControlDirector).GetField("_buttonService", BindingFlags.Instance | BindingFlags.NonPublic);
 
@@ -219,11 +224,19 @@ namespace StickMate.Tests.PlayMode
                 StickmanEventBus.StateTransitioned -= OnCrackStateTransitioned;
             }
             _crackObserverAttached = false;
+            if (_graffitiObserverAttached)
+            {
+                StickmanEventBus.GraffitiOverlayChanged -= OnGraffitiOverlayChanged;
+                StickmanEventBus.StateTransitioned -= OnGraffitiStateTransitioned;
+            }
+            _graffitiObserverAttached = false;
             if (_intentHijacked && _agent != null && _agent.Blackboard != null) _agent.Blackboard.IntentSource = _savedIntent;
             _intentHijacked = false;
             if (_agent != null && _agent.Blackboard != null && _agent.Blackboard.Machine != null
-                && _agent.Blackboard.Machine.CurrentStateId == StickmanStateId.WindowCrash)
+                && (_agent.Blackboard.Machine.CurrentStateId == StickmanStateId.WindowCrash
+                    || _agent.Blackboard.Machine.CurrentStateId == StickmanStateId.Graffiti))
             {
+                // 그라피티는 출하 값 3~5초짜리 상태다. 남겨 두면 뒤따르는 테스트가 «지금 그라피티 중이라 못 해요»를 본다.
                 _agent.Blackboard.Machine.ChangeState(StickmanStateId.Idle, isForcedInterrupt: true);
             }
 
@@ -276,6 +289,7 @@ namespace StickMate.Tests.PlayMode
             _savedButtonService = null;
             _crash = null;
             _popover = null;
+            _graffiti = null;
             _savedIntent = null;
             yield return null;
         }
@@ -1035,8 +1049,13 @@ namespace StickMate.Tests.PlayMode
             yield return MeasureCrackCommand("R5b(등급 1 종료 · 명령창 열림 · FFT 칸)", r);
             AssertCrackCommandSuppressed("R5b(등급 1 종료 · 명령창 열림 · FFT 칸)", r);
 
-            // ---------- 사유가 약속한 조건(전체화면이 끝나고 연 창과 버튼을 다 닫음)을 채우면 이 사유가 사라지는가 ----------
-            _menu.ForceCloseAll("R5b — 전체화면이 끝난 뒤 연 창과 버튼을 다 닫는다");
+            // ---------- 사유가 약속한 조건(StickMate 창과 버튼을 다 닫고 잠시 뒤 다시 열기)을 채우면 이 사유가 사라지는가 ----------
+            //   ★ 2026-09-26 — 사유 문구가 S6로 바뀌었다(design-narrative 5판 · 리더 확정). 여기서 채우는 것은 그 문구의
+            //     «다 닫고 → 다시 열면» 절반이다. 문구의 「3초쯤 뒤」는 <b>전체화면 판정이 풀리기까지의 지연</b>(폴링 1.5초 ×
+            //     디바운서 유지 1.0초)을 사용자에게 옮긴 값인데, 이 케이스는 등급을 리플렉션으로 이미 내려 둔 FFT 칸에서
+            //     시작하므로 그 지연이 존재하지 않는다 — 즉 이 칸은 「3초쯤」을 재는 자리가 아니다(사유 문서 §3-3 비용 표의
+            //     test-engineer 메모와 같은 판단). 여기서 기다리는 것은 임대 만료뿐이다.
+            _menu.ForceCloseAll("R5b — 전체화면이 끝난 뒤 StickMate 창과 버튼을 다 닫는다");
             yield return Wait(UserSurfaceSummonPolicy.LeaseSeconds * 3f);
             Assert.IsFalse(_popover.IsOpen || _menu.IsVisible, $"{LogPrefix} R5b 약속 확인 전제 — 닫았는데 명령창이나 부채꼴이 남았습니다.");
             Assert.IsFalse(_agent.IsUserSummonGrantActive, $"{LogPrefix} R5b 약속 확인 전제 — 다 닫았는데 허가가 {UserSurfaceSummonPolicy.LeaseSeconds * 3f:F2}초 뒤까지 남았습니다.");
@@ -1150,6 +1169,524 @@ namespace StickMate.Tests.PlayMode
             Debug.Log($"{LogPrefix} R5d 대조 등급 없음 + 락 — 가능={control.IsReady} 사유=«{control.Reason}»");
             Assert.AreEqual(busy, control.Reason, $"{LogPrefix} R5d 대조 실패 — 등급 없음 + 락에서 락 사유가 나오지 않습니다(«{control.Reason}»). 위 (ii) 비교가 아무것도 가르지 못합니다.");
             Debug.Log($"{LogPrefix} R5d 확인 — 숨김이면 숨김 사유, 등급 1 + 락이면 A1 사유, 등급 없음 + 락이면 락 사유.");
+        }
+
+        // ==================== R6 · R7 — 해제 조건 7-b: 명령 그라피티(행동 명령창 [낙서하기] · ⌃⌥⌘G) ====================
+        //
+        // 설계: docs/systems/UNSUMMONED_EFFECTS_INVARIANT.md 「3. 판정 ②」(층 1 시작 · 층 2 수명) · 「4. 판정 ③」(명령 3종).
+        // 층 1 결함: 등급 1에서 사용자가 연 명령창이 임대를 갱신하는 동안 [낙서하기]가 «준비됨»으로 보이고, 누르면
+        //           발표·회의 화면 위에 낙서가 시작된다. 대상 선정(빈 자리 찾기)이 우연히 막을 수는 있지만 그것은
+        //           가드가 아니고, 사유도 「낙서할 빈 자리가 없어요」로 상태에서 파생되지 않는다(원칙 1).
+        // 층 2 결함: 등급 0에서 사용자가 직접 시킨 낙서(출하 값 3~5초)가 그려지는 동안 발표가 시작되면 그대로 남는다.
+        // ★ 발판 목록은 어느 칸에서도 <b>건드리지 않는다</b> — 그래야 MonitorRegion의 «겹침 취소»와 7-b 가드의 취소가 갈린다.
+
+        /// <summary>
+        /// ★ 7-b 사유 — 프로덕션 상수를 <b>참조</b>한다(CLAUDE.md — 문구를 베끼지 않는다).
+        /// <para>크랙(A1)과 <b>같은 글자 하나</b>를 쓰는 것이 설계다(사유 문서 §7). 그 «하나»(= 프로덕션 소스에
+        /// 이 문구 리터럴이 정확히 한 번만 있다)는 EditMode <c>UnsummonedSurfaceAxisTests</c>의
+        /// 사유 문구 복제 검사가 따로 못박는다 — 이 속성만 있으면 누군가 문구를 두 벌로 쪼개도
+        /// 이 파일은 각자의 상수를 보며 조용히 초록이다.</para>
+        /// </summary>
+        private static string ExpectedUnsummonedReason => UnsummonedSurfaceCommandReason.Text;
+
+        private const ActionCommandPopover.Command GraffitiCommand = ActionCommandPopover.Command.Graffiti;
+
+        /// <summary>명령 그라피티 관측 계수 — 이벤트 버스에서 직접 센다(렌더러를 거치지 않는다).</summary>
+        private sealed class GraffitiTally
+        {
+            public int GraffitiTransitions;
+            public int Started;
+            public int Cancelled;
+            public int Completed;
+            public int UnknownPhase;
+            public int Exits;
+            public float StartedAt = -1f;
+            public float CancelledAt = -1f;
+            public float CompletedAt = -1f;
+            public StickmanStateId LastExitTo;
+            public bool LastExitAbnormal;
+
+            public void Reset()
+            {
+                GraffitiTransitions = Started = Cancelled = Completed = UnknownPhase = Exits = 0;
+                StartedAt = CancelledAt = CompletedAt = -1f;
+                LastExitTo = default;
+                LastExitAbnormal = false;
+            }
+
+            public GraffitiTally Snapshot() => (GraffitiTally)MemberwiseClone();
+
+            public override string ToString() =>
+                $"낙서 전이 {GraffitiTransitions} · Started {Started} · Cancelled {Cancelled} · Completed {Completed} · 미상 단계 {UnknownPhase}" +
+                $" · 이탈 {Exits}" + (Exits > 0 ? $"(→ {LastExitTo}, 비정상={LastExitAbnormal})" : string.Empty) +
+                (StartedAt >= 0f && Cancelled > 0 ? $" · Started→Cancelled {CancelledAt - StartedAt:F3}초" : string.Empty);
+        }
+
+        /// <summary>한 칸에서 잰 것 전부. 단언보다 먼저 로그로 남긴다 — 무엇이 일어났는가가 첫 실패 단언에 가려지지 않게.</summary>
+        private sealed class GraffitiCommandReport
+        {
+            public StickmanStateId StateAtMeasure;
+            public bool CouldTakeCommand;
+            public float StableSeconds;
+            public CommandAvailability Director;
+            public CommandAvailability TileJudgement;
+            public bool TileReady;
+            public string TileReason;
+            public string Caption;
+            public GraffitiTally AfterClick;
+            public bool ForceResult;
+            public GraffitiTally AfterForce;
+            public bool LeaseAtEnd;
+            public bool PopoverOpenAtEnd;
+
+            public override string ToString() =>
+                $"잴 때 상태 {StateAtMeasure}(명령 받을 수 있음={CouldTakeCommand}, 안정 {StableSeconds:F2}초) · " +
+                $"판정(감독) 가능={Director.IsReady} 사유=«{Director.Reason}» · 타일 가능={TileReady} 사유=«{TileReason}» · " +
+                $"헤더=«{Caption}» · 클릭 뒤 [{AfterClick}] · ForceTriggerNow={ForceResult} 뒤 [{AfterForce}] · " +
+                $"끝 허가={LeaseAtEnd} · 끝 명령창={PopoverOpenAtEnd}";
+        }
+
+        private void OnGraffitiOverlayChanged(GraffitiOverlayEvent e)
+        {
+            switch (e.Phase)
+            {
+                case SpectacleOverlayPhase.Started:
+                    _paint.Started++;
+                    _paint.StartedAt = Time.realtimeSinceStartup;
+                    return;
+                case SpectacleOverlayPhase.Cancelled:
+                    _paint.Cancelled++;
+                    _paint.CancelledAt = Time.realtimeSinceStartup;
+                    return;
+                case SpectacleOverlayPhase.Completed:
+                    _paint.Completed++;
+                    _paint.CompletedAt = Time.realtimeSinceStartup;
+                    return;
+                default:
+                    // 정상값은 위 셋이다. 여기 오면 단계가 늘었는데 이 관측기가 모른다 — 조용히 버리지 않고 세서 단언이 드러낸다.
+                    _paint.UnknownPhase++;
+                    Debug.LogWarning($"{LogPrefix} 알 수 없는 낙서 오버레이 단계({(int)e.Phase}) — 관측기를 함께 고치십시오.");
+                    return;
+            }
+        }
+
+        private void OnGraffitiStateTransitioned(StateTransitionEvent e)
+        {
+            if (e.To == StickmanStateId.Graffiti) _paint.GraffitiTransitions++;
+            if (e.From == StickmanStateId.Graffiti)
+            {
+                _paint.Exits++;
+                _paint.LastExitTo = e.To;
+                _paint.LastExitAbnormal = e.IsAbnormalExit;
+            }
+        }
+
+        /// <summary>감독 · 명령창을 찾고, 의도 소스를 정지로 바꾸고(배회 AI가 발판을 벗어나 상태를 흔들지 않게), 관측을 붙인다.</summary>
+        private IEnumerator PrepareGraffitiHarness(string what)
+        {
+            _graffiti = Object.FindFirstObjectByType<GraffitiDirector>(FindObjectsInactive.Include);
+            Assert.IsNotNull(_graffiti, $"{LogPrefix} {what} — 씬에 GraffitiDirector가 없습니다.");
+            _popover = _agent.GetComponent<ActionCommandPopover>();
+            Assert.IsNotNull(_popover, $"{LogPrefix} {what} — 캐릭터에 ActionCommandPopover가 없습니다(부채꼴 [행동]이 여는 창).");
+
+            _savedIntent = _agent.Blackboard.IntentSource;
+            _agent.Blackboard.IntentSource = new StillIntent();
+            _intentHijacked = true;
+
+            StickmanEventBus.GraffitiOverlayChanged += OnGraffitiOverlayChanged;
+            StickmanEventBus.StateTransitioned += OnGraffitiStateTransitioned;
+            _graffitiObserverAttached = true;
+            _paint.Reset();
+
+            yield return WaitUntilOrTimeout(CharacterCanTakeCommand, CommandReadyBudgetSeconds);
+            Assert.IsTrue(CharacterCanTakeCommand(),
+                $"{LogPrefix} {what} 전제 — {CommandReadyBudgetSeconds:F0}초 안에 캐릭터가 Idle/Walk + 락 비움에 오지 않았습니다" +
+                $"(상태 {_agent.Blackboard.Machine.CurrentStateId}, 락 {SpectacleEventLock.IsActive}). 아래 판정이 다른 사유에 가려집니다.");
+        }
+
+        /// <summary>층 1 관측 예산(초) — «시작하지 않았다»를 재는 자리라 임대 수명과 정착 중 긴 쪽에 슬랙을 얹는다.</summary>
+        private float GraffitiObserveSeconds() =>
+            Mathf.Max(UserSurfaceSummonPolicy.LeaseSeconds, SettleSeconds) + ObserveSlackSeconds;
+
+        private IEnumerator ObserveGraffiti(float seconds)
+        {
+            float end = Time.realtimeSinceStartup + seconds;
+            while (Time.realtimeSinceStartup < end) yield return null;
+        }
+
+        /// <summary>임대 칸에서 명령 그라피티를 잰다 — 판정 · 타일 · 실제 클릭 · ⌃⌥⌘G와 같은 <c>ForceTriggerNow</c>.</summary>
+        private IEnumerator MeasureGraffitiCommand(string what, GraffitiCommandReport r)
+        {
+            // ★ 판정이 상태·락 조건에 가려지지 않게, 캐릭터가 Idle/Walk + 락 비움을 SettleSeconds 동안 유지한 뒤 잰다
+            //   (R5 박제에서 우클릭 직후 착지 상태에 걸려 타일이 «착지 중»으로 회색이던 사고와 같은 대비).
+            float stableSince = -1f;
+            float deadline = Time.realtimeSinceStartup + CommandReadyBudgetSeconds;
+            while (Time.realtimeSinceStartup < deadline)
+            {
+                if (CharacterCanTakeCommand()) { if (stableSince < 0f) stableSince = Time.realtimeSinceStartup; }
+                else stableSince = -1f;
+                if (stableSince >= 0f && Time.realtimeSinceStartup - stableSince >= SettleSeconds) break;
+                yield return null;
+            }
+            r.StateAtMeasure = _agent.Blackboard.Machine.CurrentStateId;
+            r.CouldTakeCommand = CharacterCanTakeCommand();
+            r.StableSeconds = stableSince >= 0f ? Time.realtimeSinceStartup - stableSince : 0f;
+            r.Director = _graffiti.GetAvailability();
+            r.TileJudgement = _popover.GetAvailability(GraffitiCommand);
+            r.TileReady = _popover.IsCommandReady(GraffitiCommand);
+            r.TileReason = _popover.CommandReason(GraffitiCommand);
+            r.Caption = _popover.StatusCaption;
+
+            _paint.Reset();
+            _popover.FeedClickForTests(_popover.CommandScreenRect(GraffitiCommand).center);
+            yield return ObserveGraffiti(GraffitiObserveSeconds());
+            r.AfterClick = _paint.Snapshot();
+
+            yield return WaitUntilOrTimeout(CharacterCanTakeCommand, CommandReadyBudgetSeconds);
+            _paint.Reset();
+            r.ForceResult = _graffiti.ForceTriggerNow($"{what} — ⌃⌥⌘G와 같은 경로");
+            yield return ObserveGraffiti(GraffitiObserveSeconds());
+            r.AfterForce = _paint.Snapshot();
+
+            r.LeaseAtEnd = _agent.IsUserSummonGrantActive;
+            r.PopoverOpenAtEnd = _popover.IsOpen;
+            Debug.Log($"{LogPrefix} {what} — {r}");
+        }
+
+        private void AssertGraffitiCommandSuppressed(string what, GraffitiCommandReport r)
+        {
+            Assert.IsTrue(r.CouldTakeCommand && r.StableSeconds >= SettleSeconds,
+                $"{LogPrefix} {what} 전제 — 잴 때 캐릭터가 명령을 받을 수 있는 상태로 안정되지 않았습니다({r}). 아래 «회색»이 상태·락 때문일 수 있습니다.");
+            Assert.IsFalse(r.Director.IsReady,
+                $"{LogPrefix} ★ {what} — [낙서하기] 판정이 «가능»입니다({r}). 사용자가 연 창의 임대에 명령 그라피티가 편승합니다(7-b 층 1).");
+            Assert.AreEqual(ExpectedUnsummonedReason, r.Director.Reason,
+                $"{LogPrefix} ★ {what} — 불가 사유가 7-b 사유가 아닙니다({r}). 특히 «낙서할 빈 자리가 없어요»로 막힌 것이라면 그것은 " +
+                "대상 선정의 부수 효과이지 가드가 아니며, 그 사유가 사라지는 순간(빈 자리가 생기는 순간) 다시 뚫립니다.");
+            Assert.AreEqual(r.Director.IsReady, r.TileJudgement.IsReady, $"{LogPrefix} {what} — 명령창이 부른 판정과 감독 판정이 다릅니다(진실 두 벌, 36-7).");
+            Assert.IsFalse(r.TileReady, $"{LogPrefix} ★ {what} — 타일이 회색이 아닙니다({r}).");
+            Assert.AreEqual(ExpectedUnsummonedReason, r.TileReason, $"{LogPrefix} ★ {what} — 타일 설명 자리의 사유가 7-b 사유가 아닙니다({r}).");
+
+            Assert.AreEqual(0, r.AfterClick.UnknownPhase + r.AfterForce.UnknownPhase, $"{LogPrefix} {what} — 관측기가 모르는 오버레이 단계가 나왔습니다({r}).");
+            Assert.AreEqual(0, r.AfterClick.GraffitiTransitions, $"{LogPrefix} ★ {what} — 회색 타일을 눌렀는데 캐릭터가 낙서 상태로 전이했습니다({r}).");
+            Assert.AreEqual(0, r.AfterClick.Started, $"{LogPrefix} ★ {what} — 회색 타일을 눌렀는데 낙서 오버레이가 시작됐습니다({r}).");
+            Assert.AreEqual(0, r.AfterClick.Cancelled, $"{LogPrefix} ★ {what} — 타일 클릭 뒤 낙서 취소가 관측됐습니다 — 시작했다가 걷힌 것입니다({r}).");
+            Assert.IsFalse(r.ForceResult, $"{LogPrefix} ★ {what} — ⌃⌥⌘G와 같은 경로(ForceTriggerNow)가 발동했다고 답했습니다({r}).");
+            Assert.AreEqual(0, r.AfterForce.GraffitiTransitions, $"{LogPrefix} ★ {what} — ForceTriggerNow 뒤 낙서 전이가 있었습니다({r}).");
+            Assert.AreEqual(0, r.AfterForce.Started, $"{LogPrefix} ★ {what} — ForceTriggerNow 뒤 낙서 오버레이가 시작됐습니다({r}).");
+            Assert.AreEqual(0, r.AfterForce.Cancelled, $"{LogPrefix} ★ {what} — ForceTriggerNow 뒤 낙서 취소가 관측됐습니다({r}).");
+
+            Assert.IsTrue(r.LeaseAtEnd, $"{LogPrefix} {what} — 관측 끝에서 허가가 죽어 있습니다(임대 칸을 재지 못했습니다).");
+            Assert.IsTrue(r.PopoverOpenAtEnd, $"{LogPrefix} {what} — 명령창이 관측 중 닫혔습니다(사용자 표면 회귀 또는 전제 붕괴).");
+        }
+
+        [UnityTest]
+        [Timeout(180000)]
+        public IEnumerator R6a_프로덕션_톱니세계_등급1에서_사용자가_연_행동_명령창의_낙서하기는_회색과_사유이고_눌러도_단축키_경로로도_낙서가_0이다()
+        {
+            yield return LoadScene();
+            yield return PrepareGraffitiHarness("R6a");
+            yield return EnterTierOne("R6a");
+            yield return OpenCommandPopoverFromFan("R6a", expectGrant: true);
+
+            Assert.IsTrue((bool)PanelRetreatField.GetValue(_agent), $"{LogPrefix} R6a 전제 — 축 3이 꺼졌습니다(FTT 칸이 아닙니다).");
+            Assert.IsFalse(_agent.ArePanelsSuppressed, $"{LogPrefix} R6a 전제 — 옛 창구가 참입니다. 명령창이 떠 있을 수 없는 칸입니다.");
+
+            var r = new GraffitiCommandReport();
+            yield return MeasureGraffitiCommand("R6a(등급 1 · 명령창 열림 · FTT 칸)", r);
+            AssertGraffitiCommandSuppressed("R6a(등급 1 · 명령창 열림 · FTT 칸)", r);
+            Debug.Log($"{LogPrefix} R6a 확인 — FTT 칸에서 [낙서하기]는 회색 + 7-b 사유, 클릭 · ForceTriggerNow 모두 낙서 0.");
+        }
+
+        [UnityTest]
+        [Timeout(180000)]
+        public IEnumerator R6b_프로덕션_톱니세계_이력칸_등급1이_끝나도_그때_연_명령창이_떠_있으면_낙서하기는_회색이고_연_것을_다_닫으면_사유가_사라진다()
+        {
+            yield return LoadScene();
+            yield return PrepareGraffitiHarness("R6b");
+            yield return EnterTierOne("R6b");
+            yield return OpenCommandPopoverFromFan("R6b", expectGrant: true);
+
+            SetPanelRetreat(false);   // 전체화면 앱이 끝났다. 부채꼴 · 명령창은 그대로 — FFT 칸.
+            yield return Wait(SettleSeconds);
+            Assert.IsFalse((bool)PanelRetreatField.GetValue(_agent), $"{LogPrefix} R6b 전제 — 축 3이 아직 켜져 있습니다.");
+            Assert.IsFalse(_agent.ArePanelsSuppressed, $"{LogPrefix} R6b 전제 — 옛 창구가 참입니다(FFT 칸이 아닙니다).");
+            Assert.IsTrue(_agent.IsUserSummonGrantActive, $"{LogPrefix} R6b 전제 — 허가가 죽었습니다(부채꼴 갱신이 끊김).");
+
+            var r = new GraffitiCommandReport();
+            yield return MeasureGraffitiCommand("R6b(등급 1 종료 · 명령창 열림 · FFT 칸)", r);
+            AssertGraffitiCommandSuppressed("R6b(등급 1 종료 · 명령창 열림 · FFT 칸)", r);
+
+            // ---------- 사유가 약속한 조건(StickMate 창과 버튼을 다 닫고 다시 열기)을 채우면 이 사유가 사라지는가 ----------
+            _menu.ForceCloseAll("R6b — 전체화면이 끝난 뒤 StickMate 창과 버튼을 다 닫는다");
+            yield return Wait(UserSurfaceSummonPolicy.LeaseSeconds * 3f);
+            Assert.IsFalse(_popover.IsOpen || _menu.IsVisible, $"{LogPrefix} R6b 약속 확인 전제 — 닫았는데 명령창이나 부채꼴이 남았습니다.");
+            Assert.IsFalse(_agent.IsUserSummonGrantActive,
+                $"{LogPrefix} R6b 약속 확인 전제 — 다 닫았는데 허가가 {UserSurfaceSummonPolicy.LeaseSeconds * 3f:F2}초 뒤까지 남았습니다.");
+
+            yield return WaitUntilOrTimeout(CharacterCanTakeCommand, CommandReadyBudgetSeconds);
+            yield return OpenCommandPopoverFromFan("R6b 약속 확인(등급 없음에서 다시 연 명령창)", expectGrant: false);
+            yield return WaitUntilOrTimeout(() => _popover.IsCommandReady(GraffitiCommand), CommandReadyBudgetSeconds);
+            CommandAvailability after = _graffiti.GetAvailability();
+            Debug.Log($"{LogPrefix} R6b 약속 확인 — 다시 연 명령창의 [낙서하기] 가능={after.IsReady} 사유=«{after.Reason}» · 타일 가능={_popover.IsCommandReady(GraffitiCommand)}");
+            Assert.AreNotEqual(ExpectedUnsummonedReason, after.Reason,
+                $"{LogPrefix} ★ R6b — 사유가 약속한 조건을 다 채웠는데 같은 사유가 다시 나옵니다. 문구가 거짓 약속이 됩니다.");
+            Assert.IsTrue(after.IsReady && _popover.IsCommandReady(GraffitiCommand),
+                $"{LogPrefix} R6b — 조건을 채우고 다시 연 명령창에서 [낙서하기]가 가능해지지 않았습니다(사유 «{after.Reason}»). " +
+                "위 «회색»이 «원래 못 누르는 세계»와 구별되지 않습니다.");
+            Debug.Log($"{LogPrefix} R6b 확인 — FFT 칸에서 회색 + 7-b 사유, 낙서 0. 연 것을 다 닫고 다시 열자 [낙서하기]가 가능해졌습니다.");
+        }
+
+        [UnityTest]
+        [Timeout(180000)]
+        public IEnumerator R6c_음성대조_프로덕션_톱니세계_등급없음에서_명령창의_낙서하기는_가능하고_누르면_낙서가_시작된다()
+        {
+            yield return LoadScene();
+            yield return PrepareGraffitiHarness("R6c");
+            yield return OpenCommandPopoverFromFan("R6c", expectGrant: false);
+            Assert.IsFalse(_agent.ArePanelsSuppressed || _agent.IsUserSummonGrantActive || (bool)PanelRetreatField.GetValue(_agent),
+                $"{LogPrefix} R6c 전제 — 등급 없음 · 무허가가 아닙니다.");
+
+            yield return WaitUntilOrTimeout(() => _popover.IsCommandReady(GraffitiCommand) && _graffiti.GetAvailability().IsReady, CommandReadyBudgetSeconds);
+            CommandAvailability before = _graffiti.GetAvailability();
+            Assert.IsTrue(before.IsReady && _popover.IsCommandReady(GraffitiCommand),
+                $"{LogPrefix} ★ R6c 음성 대조 실패 — 등급 없음에서 [낙서하기]가 가능하지 않습니다(사유 «{before.Reason}», 타일 {_popover.IsCommandReady(GraffitiCommand)}). " +
+                "이 세계에서 낙서가 원래 불가면 R6a · R6b · R6d · R7a의 «회색 · 0»은 전부 무효입니다. " +
+                "사유가 «낙서할 빈 자리가 없어요»면 발판 환경 탓이고, 7-b 사유면 가드가 등급 없음에서도 무는 것입니다.");
+
+            _paint.Reset();
+            _popover.FeedClickForTests(_popover.CommandScreenRect(GraffitiCommand).center);
+            yield return ObserveGraffiti(GraffitiObserveSeconds());
+            GraffitiTally t = _paint.Snapshot();
+            StickmanStateId state = _agent.Blackboard.Machine.CurrentStateId;
+            Debug.Log($"{LogPrefix} R6c — 등급 없음 클릭: [{t}] · 상태 {state} · 명령창 열림={_popover.IsOpen}");
+
+            Assert.AreEqual(0, t.UnknownPhase, $"{LogPrefix} R6c — 관측기가 모르는 오버레이 단계가 나왔습니다.");
+            Assert.AreEqual(1, t.Started, $"{LogPrefix} ★ R6c 음성 대조 실패 — 가능한 타일을 눌렀는데 낙서가 시작되지 않았습니다([{t}]). 관측기가 죽었을 수 있습니다.");
+            Assert.AreEqual(1, t.GraffitiTransitions, $"{LogPrefix} ★ R6c 음성 대조 실패 — 낙서 상태 전이가 {t.GraffitiTransitions}회입니다(기대 1).");
+            Assert.AreEqual(0, t.Cancelled,
+                $"{LogPrefix} ★ R6c — 등급 없음에서 낙서가 취소됐습니다([{t}]). 7-b 가드가 등급 없음에서도 물거나 빈 자리에 발판이 겹친 것이고, " +
+                "그러면 R7a의 «취소됐다»가 «원래 취소되는 세계»와 구별되지 않습니다.");
+            Assert.AreEqual(StickmanStateId.Graffiti, state, $"{LogPrefix} ★ R6c — 클릭 뒤 상태가 {state}입니다([{t}]).");
+            Assert.IsTrue(_popover.IsOpen, $"{LogPrefix} R6c — 낙서가 시작됐는데 명령창이 닫혔습니다(2026-09-02 «메뉴가 유지되어야함» 회귀).");
+
+            // 3~5초짜리 상태를 끌고 가지 않는다 — 뒤따르는 단언 없이 여기서 정리한다(TearDown도 같은 일을 한다).
+            _agent.Blackboard.Machine.ChangeState(StickmanStateId.Idle, isForcedInterrupt: true);
+            yield return null;
+            Debug.Log($"{LogPrefix} R6c 확인 — 등급 없음에서 [낙서하기]는 가능했고, 누르자 낙서가 1회 시작됐습니다(측정기 생존).");
+        }
+
+        [UnityTest]
+        [Timeout(180000)]
+        public IEnumerator R6d_가드위치_등급1에서_숨김이면_숨김_사유가_먼저이고_락이_잡혀_있으면_7b_사유가_락_사유보다_먼저다()
+        {
+            yield return LoadScene();
+            yield return PrepareGraffitiHarness("R6d");
+            yield return EnterTierOne("R6d");
+            yield return OpenCommandPopoverFromFan("R6d", expectGrant: true);
+
+            // ---------- (i) 숨김 + 등급 1: 숨김 사유가 나와야 한다(숨김은 7-b 사유 문구를 채워도 풀리지 않는 지속 사유다) ----------
+            _agent.SetUserHidden(true, "R6d — 등급 1에서 명령창을 연 채 캐릭터를 숨긴다");
+            _userHiddenByTest = true;
+            yield return Wait(SettleSeconds);
+            Assert.IsTrue(_agent.IsSuspended, $"{LogPrefix} R6d 전제 — 숨김이 IsSuspended로 이어지지 않았습니다.");
+            Assert.IsTrue(_agent.ArePanelsSuppressed || _agent.IsUserSummonGrantActive, $"{LogPrefix} R6d 전제 — 7-b 가드 조건(옛 창구 ∨ 허가)이 거짓입니다(가드 순서를 재지 못합니다).");
+            CommandAvailability hidden = _graffiti.GetAvailability();
+            Debug.Log($"{LogPrefix} R6d(i) 숨김 + 등급 1 — 가능={hidden.IsReady} 사유=«{hidden.Reason}»");
+            Assert.IsFalse(hidden.IsReady, $"{LogPrefix} ★ R6d(i) — 숨김 + 등급 1인데 [낙서하기]가 가능입니다.");
+            Assert.AreEqual(HiddenCharacterCommandGate.HiddenReason, hidden.Reason,
+                $"{LogPrefix} ★ R6d(i) — 숨김 + 등급 1에서 사유가 숨김 사유가 아닙니다(«{hidden.Reason}»). 7-b 가드가 숨김 게이트보다 앞에 있습니다 — " +
+                "숨김은 7-b 사유 문구를 다 채워도 풀리지 않는 지속 사유라서 먼저 보여야 합니다.");
+
+            _agent.SetUserHidden(false, "R6d — 숨김 해제");
+            _userHiddenByTest = false;
+            yield return Wait(SettleSeconds);
+            Assert.IsFalse(_agent.IsSuspended, $"{LogPrefix} R6d 전제 — 숨김이 풀리지 않았습니다.");
+
+            // ---------- (ii) 등급 1 + 락 점유: 7-b 사유가 락 사유보다 먼저여야 한다 ----------
+            Assert.IsTrue((bool)PanelRetreatField.GetValue(_agent), $"{LogPrefix} R6d(ii) 전제 — 축 3이 꺼졌습니다.");
+            Assert.IsFalse(SpectacleEventLock.IsActive, $"{LogPrefix} R6d(ii) 전제 — 테스트가 잡기 전에 이미 락이 잡혀 있습니다.");
+            Assert.IsTrue(SpectacleEventLock.TryAcquire(SpectacleEventKind.Archery, this), $"{LogPrefix} R6d(ii) 전제 — 테스트가 락을 잡지 못했습니다.");
+            _testHoldsLock = true;
+            CommandAvailability locked = _graffiti.GetAvailability();
+            SpectacleEventLock.Release(this);
+            _testHoldsLock = false;
+            string busy = StickMateDisplayNames.BusyText(SpectacleEventKind.Archery);
+            Debug.Log($"{LogPrefix} R6d(ii) 등급 1 + 락 — 가능={locked.IsReady} 사유=«{locked.Reason}» (락 사유 문형 «{busy}»)");
+            Assert.IsFalse(locked.IsReady, $"{LogPrefix} ★ R6d(ii) — 락이 잡혀 있는데 가능입니다.");
+            Assert.AreEqual(ExpectedUnsummonedReason, locked.Reason,
+                $"{LogPrefix} ★ R6d(ii) — 등급 1 + 락에서 사유가 7-b 사유가 아닙니다(«{locked.Reason}»). 7-b 가드가 락 검사보다 뒤에 있습니다 — " +
+                "«지금 활쏘기 중이에요»가 먼저 떠 기다리면 될 것처럼 보였다가 아니게 됩니다.");
+
+            // ---------- 대조: 등급 없음 · 무허가에서 같은 락이면 락 사유가 나온다(락 판정이 살아 있고 위 비교가 가를 수 있다) ----------
+            _menu.ForceCloseAll("R6d 대조 — 연 것을 다 닫는다");
+            SetPanelRetreat(false);
+            yield return Wait(UserSurfaceSummonPolicy.LeaseSeconds * 3f);
+            Assert.IsFalse(_agent.ArePanelsSuppressed || _agent.IsUserSummonGrantActive, $"{LogPrefix} R6d 대조 전제 — 등급 없음 · 무허가가 아닙니다.");
+            Assert.IsTrue(SpectacleEventLock.TryAcquire(SpectacleEventKind.Archery, this), $"{LogPrefix} R6d 대조 전제 — 테스트가 락을 잡지 못했습니다.");
+            _testHoldsLock = true;
+            CommandAvailability control = _graffiti.GetAvailability();
+            SpectacleEventLock.Release(this);
+            _testHoldsLock = false;
+            Debug.Log($"{LogPrefix} R6d 대조 등급 없음 + 락 — 가능={control.IsReady} 사유=«{control.Reason}»");
+            Assert.AreEqual(busy, control.Reason,
+                $"{LogPrefix} R6d 대조 실패 — 등급 없음 + 락에서 락 사유가 나오지 않습니다(«{control.Reason}»). 위 (ii) 비교가 아무것도 가르지 못합니다.");
+            Debug.Log($"{LogPrefix} R6d 확인 — 숨김이면 숨김 사유, 등급 1 + 락이면 7-b 사유, 등급 없음 + 락이면 락 사유.");
+        }
+
+        /// <summary>낙서를 시작할 자격이 있는 «발판 위 정지» 상태인가 — 명령 조건(Idle/Walk · 락 비움)에
+        /// <b>실제 접지</b>를 더한다. 층 2 케이스는 연출이 몇 초 이어져야 성립하는데, 접지를 보지 않고 시작하면
+        /// 몸이 정착 중일 때 시작해 0.1초 안에 <c>Fall</c>로 밀려난다(첫 판 R7b 실측: 시작 0.075초 뒤 이탈).</summary>
+        private bool StandsStillOnGround() =>
+            CharacterCanTakeCommand() && _agent.Blackboard.SenseGround().Grounded;
+
+        /// <summary>«발판 위 정지»가 <see cref="SettleSeconds"/> 동안 <b>끊기지 않고</b> 이어질 때까지 기다린다.</summary>
+        private IEnumerator WaitUntilStandingStill(string what)
+        {
+            float stableSince = -1f;
+            float deadline = Time.realtimeSinceStartup + CommandReadyBudgetSeconds;
+            while (Time.realtimeSinceStartup < deadline)
+            {
+                if (StandsStillOnGround()) { if (stableSince < 0f) stableSince = Time.realtimeSinceStartup; }
+                else stableSince = -1f;
+                if (stableSince >= 0f && Time.realtimeSinceStartup - stableSince >= SettleSeconds) yield break;
+                yield return null;
+            }
+            Assert.IsTrue(StandsStillOnGround(),
+                $"{LogPrefix} {what} 전제 — {CommandReadyBudgetSeconds:F0}초 안에 «발판 위 정지»가 {SettleSeconds:F2}초 이어지지 않았습니다" +
+                $"(접지={_agent.Blackboard.SenseGround().Grounded}, 상태={_agent.Blackboard.Machine.CurrentStateId}, 락={SpectacleEventLock.IsActive}).");
+        }
+
+        /// <summary>층 2 케이스의 시작 시도 횟수. 물리 이탈은 <b>가드 판정이 아니라 전제 붕괴</b>라서 재시도한다.</summary>
+        private const int GraffitiStartAttempts = 3;
+
+        /// <summary>
+        /// 발판 위 정지 상태에서 ⌃⌥⌘G와 같은 경로로 낙서를 시작한다. 시작 직후 몸이 밀려나 비정상 이탈하면
+        /// <b>측정 전 전제가 무너진 것</b>이므로(가드와 무관하다) 정리하고 다시 시도한다.
+        /// </summary>
+        private IEnumerator StartGraffitiOnStableGround(string what)
+        {
+            for (int attempt = 1; attempt <= GraffitiStartAttempts; attempt++)
+            {
+                yield return WaitUntilStandingStill($"{what}(시도 {attempt})");
+                CommandAvailability before = _graffiti.GetAvailability();
+                Assert.IsTrue(before.IsReady,
+                    $"{LogPrefix} ★ {what} 전제 — 등급 없음에서 낙서가 불가합니다(사유 «{before.Reason}»). 시작할 수 없으면 «도중에 걷힌다»를 잴 수 없습니다.");
+                _paint.Reset();
+                Assert.IsTrue(_graffiti.ForceTriggerNow($"{what} — 등급 없음에서 사용자가 직접 시킨 낙서(시도 {attempt})"),
+                    $"{LogPrefix} ★ {what} 전제 — 판정이 «가능»인데 ForceTriggerNow가 발동하지 않았습니다.");
+                yield return null;
+                Assert.AreEqual(1, _paint.Started, $"{LogPrefix} {what} 전제 — 낙서 Started가 {_paint.Started}회입니다(기대 1) [{_paint}].");
+
+                if (_paint.Exits == 0 && _agent.Blackboard.Machine.CurrentStateId == StickmanStateId.Graffiti)
+                {
+                    Debug.Log($"{LogPrefix} {what} — 시도 {attempt}에서 낙서가 발판 위에서 시작됐습니다 [{_paint}].");
+                    yield break;
+                }
+
+                Debug.LogWarning($"{LogPrefix} {what} — 시도 {attempt}: 시작 직후 이탈(→ {_paint.LastExitTo}, 비정상={_paint.LastExitAbnormal}) [{_paint}]. " +
+                    "가드가 아니라 물리 전제가 무너진 것이므로 다시 시도합니다.");
+                if (_agent.Blackboard.Machine.CurrentStateId == StickmanStateId.Graffiti)
+                    _agent.Blackboard.Machine.ChangeState(StickmanStateId.Idle, isForcedInterrupt: true);
+                if (SpectacleEventLock.IsActive) SpectacleEventLock.Release(SpectacleEventLock.CurrentOwner);
+                yield return Wait(SettleSeconds);
+            }
+            Assert.Fail($"{LogPrefix} ★ {what} 전제 붕괴 — {GraffitiStartAttempts}회 모두 시작 직후 몸이 발판에서 밀려났습니다. " +
+                "이 칸은 층 2 가드를 재지 못했습니다(가드 판정이 아닙니다).");
+        }
+
+        [UnityTest]
+        [Timeout(180000)]
+        public IEnumerator R7a_층2_등급없음에서_시작한_낙서는_등급1이_주입되면_벽시계_예산_안에_취소된다()
+        {
+            yield return LoadScene();
+            yield return PrepareGraffitiHarness("R7a");
+            Assert.IsFalse(_agent.ArePanelsSuppressed || _agent.IsUserSummonGrantActive || (bool)PanelRetreatField.GetValue(_agent),
+                $"{LogPrefix} R7a 전제 — 등급 없음 · 무허가가 아닙니다.");
+
+            // ---------- 사용자가 직접 시킨다(⌃⌥⌘G와 같은 경로) ----------
+            yield return StartGraffitiOnStableGround("R7a");
+
+            // ---------- 발표가 시작된다(등급 1 주입). 발판 목록은 건드리지 않는다 ----------
+            float budget = SettleSeconds + ObserveSlackSeconds;
+            float minHold = Mathf.Max(0f, _config.graffitiHoldDurationMin);
+            Assert.Less(budget, minHold,
+                $"{LogPrefix} R7a 측정 무효 — 관측 예산({budget:F2}초)이 낙서 최소 유지 시간({minHold:F2}초)보다 짧지 않습니다. " +
+                "그러면 «가드가 취소했다»와 «수명이 다 돼 끝났다»를 가를 수 없습니다.");
+
+            float injectedAt = Time.realtimeSinceStartup;
+            SetPanelRetreat(true);
+            yield return WaitUntilOrTimeout(() => _paint.Cancelled > 0, budget);
+            GraffitiTally t = _paint.Snapshot();
+            float elapsed = t.CancelledAt >= 0f ? t.CancelledAt - injectedAt : -1f;
+            StickmanStateId state = _agent.Blackboard.Machine.CurrentStateId;
+            Debug.Log($"{LogPrefix} R7a — 등급 1 주입 뒤 {(elapsed >= 0f ? elapsed.ToString("F3") + "초" : "취소 없음")}(예산 {budget:F2}초 · 최소 유지 {minHold:F2}초): " +
+                $"[{t}] · 상태 {state} · 락 {SpectacleEventLock.IsActive}");
+
+            Assert.AreEqual(0, t.UnknownPhase, $"{LogPrefix} R7a — 관측기가 모르는 오버레이 단계가 나왔습니다([{t}]).");
+            Assert.AreEqual(1, t.Cancelled,
+                $"{LogPrefix} ★ R7a — 등급 1이 켜졌는데 낙서가 벽시계 {budget:F2}초 안에 취소되지 않았습니다([{t}]). " +
+                "명령으로 시작한 낙서가 발표·회의 화면 위에 최대 " + $"{_config.graffitiHoldDurationMax:F0}초 남습니다(7-b 층 2 · 원칙 2).");
+            Assert.AreEqual(0, t.Completed,
+                $"{LogPrefix} ★ R7a — 취소가 아니라 «완료»로 끝났습니다([{t}]). 수명이 다 돼 끝난 것이면 이 칸은 가드를 재지 못했습니다.");
+            Assert.IsFalse(t.LastExitAbnormal,
+                $"{LogPrefix} R7a 전제 붕괴 — 낙서가 비정상 이탈(→ {t.LastExitTo})로 끝났습니다([{t}]). 몸이 발판에서 밀려난 것이고 가드 판정이 아닙니다.");
+            Assert.AreNotEqual(StickmanStateId.Graffiti, state, $"{LogPrefix} ★ R7a — 취소 이벤트는 났는데 상태가 아직 낙서입니다([{t}]).");
+            Assert.Less(elapsed, minHold,
+                $"{LogPrefix} ★ R7a — 취소가 주입 뒤 {elapsed:F3}초에 났습니다(최소 유지 {minHold:F2}초 이상) — 수명 만료와 구별되지 않습니다.");
+            Debug.Log($"{LogPrefix} R7a 확인 — 명령으로 시작한 낙서가 등급 1 주입 뒤 {elapsed:F3}초에 기존 취소 경로로 걷혔습니다(층 2).");
+        }
+
+        [UnityTest]
+        [Timeout(180000)]
+        public IEnumerator R7b_음성대조_층2_등급을_주입하지_않으면_같은_예산_동안_낙서가_살아_있다()
+        {
+            yield return LoadScene();
+            yield return PrepareGraffitiHarness("R7b");
+            Assert.IsFalse(_agent.ArePanelsSuppressed || _agent.IsUserSummonGrantActive || (bool)PanelRetreatField.GetValue(_agent),
+                $"{LogPrefix} R7b 전제 — 등급 없음 · 무허가가 아닙니다.");
+
+            // ★ R7a와 같은 예산으로는 «아무 일도 안 했으니 당연히 안 걷힌다»만 보인다. 그래서 여기서는 <b>최소 유지 시간 직전까지</b>
+            //   관측한다 — 그 구간 내내 살아 있으면, R7a의 취소는 주입이 만든 것이라는 귀속이 선다.
+            float budget = Mathf.Max(0f, _config.graffitiHoldDurationMin) - ObserveSlackSeconds;
+            Assert.Greater(budget, SettleSeconds + ObserveSlackSeconds,
+                $"{LogPrefix} R7b 측정 무효 — 관측 예산({budget:F2}초)이 R7a 예산보다 크지 않습니다(낙서 최소 유지 {_config.graffitiHoldDurationMin:F2}초).");
+
+            // ★ 물리 이탈(→ Fall)은 가드 판정이 아니라 전제 붕괴다. 첫 판이 그 이탈을 «음성 대조 실패»로 보고했는데,
+            //   실측 원인은 몸이 정착 중에 시작된 것이었다(시작 0.075초 뒤 Fall). 그래서 접지 게이트를 두고, 그래도
+            //   이탈하면 그 시도는 버리고 다시 잰다 — 버린 사실은 위 경고 로그에 남는다.
+            GraffitiTally t = null;
+            for (int attempt = 1; attempt <= GraffitiStartAttempts; attempt++)
+            {
+                yield return StartGraffitiOnStableGround($"R7b(관측 시도 {attempt})");
+                yield return ObserveGraffiti(budget);
+                t = _paint.Snapshot();
+                if (!t.LastExitAbnormal) break;
+                Debug.LogWarning($"{LogPrefix} R7b — 관측 시도 {attempt}에서 몸이 비정상 이탈했습니다(→ {t.LastExitTo}) [{t}]. 전제 붕괴이므로 다시 잽니다.");
+                if (_agent.Blackboard.Machine.CurrentStateId == StickmanStateId.Graffiti)
+                    _agent.Blackboard.Machine.ChangeState(StickmanStateId.Idle, isForcedInterrupt: true);
+                if (SpectacleEventLock.IsActive) SpectacleEventLock.Release(SpectacleEventLock.CurrentOwner);
+                yield return Wait(SettleSeconds);
+            }
+            Assert.IsNotNull(t, $"{LogPrefix} R7b — 관측을 한 번도 하지 못했습니다.");
+            Assert.IsFalse(t.LastExitAbnormal,
+                $"{LogPrefix} ★ R7b 전제 붕괴 — {GraffitiStartAttempts}회 모두 관측 중 몸이 발판에서 밀려났습니다([{t}]). " +
+                "이 칸은 층 2 음성 대조를 재지 못했습니다(가드 판정이 아닙니다).");
+            StickmanStateId state = _agent.Blackboard.Machine.CurrentStateId;
+            Debug.Log($"{LogPrefix} R7b — 주입 없이 벽시계 {budget:F2}초: [{t}] · 상태 {state} · 옛 창구={_agent.ArePanelsSuppressed} · 허가={_agent.IsUserSummonGrantActive}");
+
+            Assert.AreEqual(0, t.UnknownPhase, $"{LogPrefix} R7b — 관측기가 모르는 오버레이 단계가 나왔습니다([{t}]).");
+            Assert.AreEqual(0, t.Cancelled,
+                $"{LogPrefix} ★ R7b 음성 대조 실패 — 등급을 주입하지 않았는데 낙서가 취소됐습니다([{t}], 이탈 → {t.LastExitTo} 비정상={t.LastExitAbnormal}). " +
+                "발판이 빈 자리에 겹쳤거나 몸이 밀려난 것이고, 그렇다면 R7a의 취소를 등급 주입에 귀속시킬 수 없습니다.");
+            Assert.AreEqual(0, t.Completed, $"{LogPrefix} R7b 측정 무효 — 관측 예산 안에 낙서가 수명을 다 채웠습니다([{t}]).");
+            Assert.AreEqual(StickmanStateId.Graffiti, state,
+                $"{LogPrefix} ★ R7b 음성 대조 실패 — 주입 없이 상태가 {state}로 바뀌었습니다([{t}]).");
+            Assert.IsFalse(_agent.ArePanelsSuppressed || _agent.IsUserSummonGrantActive,
+                $"{LogPrefix} R7b — 관측 중 억제 창구가 참이 됐습니다(주입 없는 칸이 아니었습니다).");
+
+            _agent.Blackboard.Machine.ChangeState(StickmanStateId.Idle, isForcedInterrupt: true);
+            yield return null;
+            Debug.Log($"{LogPrefix} R7b 확인 — 주입이 없으면 같은 연출이 {budget:F2}초 동안 취소 없이 살아 있었습니다(R7a 취소의 귀속이 섭니다).");
         }
     }
 }

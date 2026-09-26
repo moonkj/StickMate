@@ -20,7 +20,7 @@ model: opus
    **`\uXXXX` 이스케이프**라 `grep '[가-힣]'`이 **영원히 0건**을 낸다. `.cs`만 세는 감사는 못 본다.
 3. **실제 지역화 표면은 ~1,073건**이다. `StickConfig.cs`의 1,637건은 전부 `[Tooltip]`/`[Header]`로
    **인스펙터 전용이라 출하되지 않는다.** 총 리터럴 수로 규모를 말하면 7배 과대다.
-4. **`KoreanParticle`은 유저 노출 호출부가 0곳**(4곳 전부 `Debug.Log`). 영어에 조사 개념이 없으므로
+4. ~~**`KoreanParticle`은 유저 노출 호출부가 0곳**(4곳 전부 `Debug.Log`).~~ ★★ **2026-09-26 정정(리더): 이 문장은 거짓이다 — 취소선 부분은 등재 당시 글자 그대로다.** 호출부는 **7곳**이고 그중 **2곳이 화면으로 나간다**(`Interaction/CharacterInfoWindow.Shop.cs`의 `ShopDetailBodyText()`·`ShopWaitClause()` 반환 경로 → `_shopDetailBody.text`). **출하 기본값에서 도달하며 레벨 절은 상시다** — 다만 **이유를 정확히 적는다**: 항목 필드는 `public readonly int? RequiredLevel;`로 **널러블**이고, 비널러블인 것은 **생성 경로**(`ForEquipment(…, int requiredLevel, …)`)이며 그 인자가 **`public int requiredLevel = 1;`**로 채워져 `HasValue`가 항상 참이 된다. ★ 앞서 이 자리에 「비널러블 `int requiredLevel`」이라고만 적혀 있었는데, 그 문장은 **필드를 grep한 다음 검증자가 `int?`를 보고 「거짓」으로 결론 내리게 만든다** — 실제로 그 직전 단계에서 그렇게 될 뻔했다. 근거: `verify-change` 독립 재계수 두 경로 + 별칭 은폐 검사 + 반대 방향 확인(나머지 5곳은 `Debug.Log*` 인자). 상세는 `docs/localization/PLAN_1.0.md` §3-7 정정 블록. ⇒ **「조립 경로에 언어 분기 필요」는 실재한다.** 다만 아래 처방은 그대로다 — 영어에 조사 개념이 없으므로
    **언어 분기를 조사 함수에 넣지 마라** — 문장 템플릿 단위에서 갈린다.
 5. **`Core/StickMateDisplayNames.cs`가 이미 문자열 테이블이다**(enum → 한글 정적 배열). 그 어법을 쓸 수 있다.
 

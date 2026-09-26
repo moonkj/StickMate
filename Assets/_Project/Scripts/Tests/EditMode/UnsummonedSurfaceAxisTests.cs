@@ -165,6 +165,11 @@ namespace StickMate.Tests.EditMode
             new Entry(nameof(TodoPostItWidget), null, Axis.Unsummoned, "#7 메모 카드 + 클릭 차단막 — 상시 HUD, 이 파일의 허가 경로 0"),
             new Entry(nameof(TodoReminderDirector), null, Axis.Unsummoned, "#8 할 일 리마인더 — 밀어내기"),
             new Entry(nameof(WindowCrashDirector), null, Axis.Unsummoned, "#9 창 크랙 오버레이 — 자동"),
+            // ★ 2026-09-26 (해제 조건 7-b) — 그라피티가 새 창구 독자로 합류했다. 이 파일에는 두 자리가 있다:
+            //   층 1 명령 가능 판정(GetAvailability)과 층 2 낙서 수명(MonitorRegion). 둘 다 (나)이므로 형 전체 항목
+            //   하나로 충분하고, «두 자리 각각에 가드가 있는가»는 아래 메서드 단위 단언 둘이 따로 잰다
+            //   (형 전체 항목만 두면 한 자리에만 가드가 있어도 통과한다 — #9 크랙에서 이미 겪은 사각지대다).
+            new Entry(nameof(GraffitiDirector), null, Axis.Unsummoned, "#10 그라피티 — 명령 가능 판정(층 1) + 낙서 오버레이 수명(층 2)"),
         };
 
         private static readonly string PanelsRead = "." + nameof(StickmanAgent.ArePanelsSuppressed);
@@ -562,6 +567,84 @@ namespace StickMate.Tests.EditMode
             return list;
         }
 
+        /// <summary>프로덕션 소스 <b>원문</b>(지우지 않은 것). 리터럴을 세는 검사는 <see cref="Sanitize"/>를 쓸 수 없다 —
+        /// 그 함수가 문자열을 공백으로 지우므로 «리터럴이 몇 번 있는가»가 구조적으로 항상 0이 된다(docs/TEAM.md 같은 가족 보강 규칙 4).</summary>
+        private static List<(string Rel, string Raw)> ProductionSourcesRaw()
+        {
+            var list = new List<(string Rel, string Raw)>();
+            string assets = Application.dataPath.Replace('\\', '/');
+            string[] roots =
+            {
+                Path.Combine(Application.dataPath, "_Project", "Scripts"),
+                Path.Combine(Application.dataPath, "Editor"),
+            };
+            foreach (string root in roots)
+            {
+                if (!Directory.Exists(root)) continue;
+                foreach (string path in Directory.GetFiles(root, "*.cs", SearchOption.AllDirectories))
+                {
+                    string norm = path.Replace('\\', '/');
+                    if (norm.Contains("/Tests/")) continue;
+                    string rel = norm.StartsWith(assets, System.StringComparison.Ordinal) ? norm.Substring(assets.Length + 1) : norm;
+                    list.Add((rel, File.ReadAllText(path)));
+                }
+            }
+            return list;
+        }
+
+        /// <summary>
+        /// ★ 해제 조건 7-b — <b>사유 문구는 프로덕션에 정확히 한 번만 있다.</b> 설계는 같은 가드 식을 받는 형제 명령이
+        /// <b>같은 상수</b>를 재사용하라고 요구한다(<c>docs/narrative/CRACK_COMMAND_DISABLED_REASON.md</c> §7).
+        ///
+        /// <para>★ 왜 <c>Assert.AreSame</c>으로는 부족한가(이 검사를 그렇게 쓰려다 고쳤다): C#은 <b>같은 어셈블리의 동일한
+        /// 리터럴을 인터닝</b>한다. 그래서 누군가 문구를 Director마다 한 벌씩 <b>같은 글자로</b> 복제해도 두 상수는
+        /// <c>AreSame</c>이 참이다 — 즉 «공유»와 «복제»를 가를 수 없다. 갈라야 하는 것은 값이 아니라 <b>선언 개수</b>이므로
+        /// 소스 원문에서 리터럴을 센다.</para>
+        ///
+        /// <para>니들은 프로덕션 상수에서 <b>런타임에 조립</b>한다(글자를 베끼지 않는다 — CLAUDE.md). 그리고 이 검사는
+        /// «정확히 1»이라는 <b>개수 단언</b>이라 니들이 죽으면 0이 되어 스스로 빨개지지만, 그 빨강이 «복제가 없다»와
+        /// 헷갈리지 않게 <b>양성 대조</b>를 붙인다 — 같은 방법·같은 도구로 다른 사유 문구(빈 자리 없음)가 잡히는지 먼저 보인다.</para>
+        /// </summary>
+        [Test]
+        public void 사유_문구는_프로덕션에_정확히_한_번_있고_크랙과_그라피티가_그_하나를_가리킨다()
+        {
+            Assert.IsNotEmpty(UnsummonedSurfaceCommandReason.Text,
+                "7-b 사유 상수가 비었습니다 — 회색 타일이 이유를 말하지 못합니다(36-7 조용한 실패 금지).");
+            Assert.AreEqual(UnsummonedSurfaceCommandReason.Text, WindowCrashDirector.UnsummonedSurfacesSuppressedReason,
+                "★ 크랙의 사유 상수가 공용 상수와 다른 글자입니다 — 같은 상황에 두 명령이 다른 말을 합니다(사유 문서 §7).");
+            Assert.AreEqual(UnsummonedSurfaceCommandReason.Text, UnsummonedSurfaceCommandReason.WhileSuppressed.Reason,
+                "미리 만든 결과의 사유가 상수와 다릅니다 — 화면에 뜨는 글자는 이 결과 쪽입니다.");
+            Assert.IsFalse(UnsummonedSurfaceCommandReason.WhileSuppressed.IsReady,
+                "7-b 사유가 «가능»으로 만들어져 있습니다 — 회색이어야 할 타일이 눌립니다.");
+
+            List<(string Rel, string Raw)> raw = ProductionSourcesRaw();
+            Assert.Greater(raw.Count, 100, $"프로덕션 소스를 {raw.Count}개밖에 못 읽었습니다 — 경로가 틀렸습니다(스캔 공허).");
+
+            string needle = "\"" + UnsummonedSurfaceCommandReason.Text + "\"";
+            string control = "\"" + GraffitiDirector.NoEmptyRegionReason + "\"";
+            int total = 0, controlTotal = 0;
+            var owners = new List<string>();
+            foreach ((string rel, string text) in raw)
+            {
+                int n = CountOrdinal(text, needle);
+                if (n > 0) owners.Add($"{rel}×{n}");
+                total += n;
+                controlTotal += CountOrdinal(text, control);
+            }
+
+            Assert.Greater(controlTotal, 0,
+                "★ 양성 대조 실패 — 같은 방법으로 다른 사유 문구(빈 자리 없음)도 0건입니다. 리터럴 계수 자체가 죽었으므로 " +
+                "아래 «정확히 1»은 아무것도 재지 못합니다.");
+            Debug.Log($"[7-b] 사유 문구 리터럴 {total}곳: {string.Join(", ", owners)} · 양성 대조(다른 사유) {controlTotal}곳 · 스캔 {raw.Count}파일");
+            Assert.AreEqual(1, total,
+                $"★ 사유 문구 리터럴이 프로덕션에 {total}곳입니다(기대 1): {string.Join(", ", owners)}.\n" +
+                "0이면 상수가 사라졌거나 글자가 바뀐 것이고, 2 이상이면 형제 명령이 같은 글자를 <b>복제</b>한 것입니다 — " +
+                "복제는 한쪽만 고치는 날 같은 상황에 다른 말이 뜨게 만듭니다(사유 문서 §7).");
+            StringAssert.Contains(nameof(UnsummonedSurfaceCommandReason) + ".cs", owners[0],
+                $"★ 사유 문구가 공용 상수 파일이 아닌 곳에 있습니다: {owners[0]}. 글자는 " +
+                $"{nameof(UnsummonedSurfaceCommandReason)}에만 두고 나머지는 그것을 참조해야 합니다(사유 문서 §7 2).");
+        }
+
         [Test]
         public void TB_옛_창구_독자는_스캔으로_뽑아_분류_표와_양방향으로_맞추고_자동_표면은_return_가드까지_새_창구만_읽는다()
         {
@@ -603,6 +686,8 @@ namespace StickMate.Tests.EditMode
                 "\n자동 표면이 옛 창구(또는 등급 2 전용 값)를 읽으면 등급 1에서 사용자가 창을 연 동안 발표 화면 위로 되살아납니다(원칙 2 · N-20).");
 
             AssertCrackCommandJudgementUsesUnsummonedAxis(files);
+            AssertGraffitiCommandJudgementUsesUnsummonedAxis(files);
+            AssertGraffitiOverlayLifetimeUsesUnsummonedAxis(files);
         }
 
         /// <summary>
@@ -643,6 +728,96 @@ namespace StickMate.Tests.EditMode
             Assert.GreaterOrEqual(lockCheck, 0, $"{label} — 순서 앵커 «{lockAnchor}»가 본문에 없습니다(앵커가 죽었습니다 — 순서 판정 무효).");
             Assert.Less(hidden, call, $"★ {label} — A1 가드가 숨김 게이트보다 앞입니다. 숨김은 A1 사유 문구를 채워도 풀리지 않는 지속 사유라서 먼저 보여야 합니다.");
             Assert.Less(call, lockCheck, $"★ {label} — A1 가드가 락 검사보다 뒤입니다. «지금 ○○ 중이에요»가 먼저 떠 기다리면 될 것처럼 보였다가 아니게 됩니다.");
+        }
+
+        /// <summary>
+        /// ★ 해제 조건 <b>7-b 층 1</b>(설계 정본 <c>docs/systems/UNSUMMONED_EFFECTS_INVARIANT.md</c> 「4. 판정 ③」) —
+        /// <b>그라피티 명령 판정의 메서드 단위 존재 단언과 순서 단언.</b> 위 표의 #10은 형 전체 (나)라서 층 2(낙서 수명)만
+        /// 새 창구를 읽어도 통과한다. 그래서 명령 판정(<c>GetAvailability</c> — [낙서하기] 타일과 ⌃⌥⌘G의
+        /// <c>ForceTriggerNow</c>가 함께 부른다)의 본문을 따로 잰다. A1(크랙)과 같은 형태다.
+        /// <para>순서: 숨김 게이트 &lt; 7-b 가드 &lt; 락 · 상태 · 대상 검사. 숨김은 7-b 사유 문구를 채워도 풀리지 않는
+        /// 지속 사유라서 먼저 보이고, 「지금 ○○ 중이에요」·「낙서할 빈 자리가 없어요」는 7-b 사유보다 뒤에 보인다 —
+        /// 짧은 사유가 긴 사유를 가리면 «기다리거나 자리를 비우면 되겠다»는 거짓 인상을 준다(PlayMode R6d가 런타임으로 잰다).</para>
+        /// <para>앵커는 전부 <c>nameof</c>다 — 대상 검사 앵커도 공개 상수(<see cref="GraffitiDirector.NoEmptyRegionReason"/>)를
+        /// 참조하므로 문자열 니들이 하나도 없고, 이름이 바뀌면 조용히 초록이 되는 대신 이 파일이 컴파일되지 않는다.</para>
+        /// </summary>
+        private static void AssertGraffitiCommandJudgementUsesUnsummonedAxis(IList<(string Rel, string San)> files)
+        {
+            string label = nameof(GraffitiDirector) + "." + nameof(GraffitiDirector.GetAvailability);
+            string signature = "public " + nameof(CommandAvailability) + " " + nameof(GraffitiDirector.GetAvailability) + "(";
+
+            List<(string Rel, string San)> owners = files.Where(f => DeclaresType(f.San, nameof(GraffitiDirector))).ToList();
+            Assert.AreEqual(1, owners.Count, $"{label} — {nameof(GraffitiDirector)} 선언 파일이 {owners.Count}개입니다(기대 1).");
+            (string rel, string san) = owners[0];
+            Assert.AreEqual(1, CountOrdinal(san, signature), $"{label} — 서명 «{signature}»이 정확히 한 곳이 아닙니다({rel}). 아래 판정 무효.");
+            Assert.IsTrue(TryMethodBody(san, signature, out int open, out int close), $"{label} — 본문을 자르지 못했습니다({rel}). 아래 판정 무효.");
+            string body = san.Substring(open, close - open + 1);
+
+            ScopeReport scope = AnalyzeUnsummonedScope(body);
+            Debug.Log($"[T-B] {label}: 새 창구 호출 {scope.ValidCalls}/{scope.Calls} · 옛 창구 읽기 {scope.PanelReads} · 위반 {scope.Violations.Count} · 괄호 실패 {scope.ParseFailures}");
+            Assert.AreEqual(0, scope.ParseFailures, $"{label} — 괄호를 자르지 못한 곳이 있습니다(판정 무효).");
+            Assert.AreEqual(1, scope.ValidCalls,
+                $"★ {label} — 그라피티 명령 판정에 새 창구 호출(인자에 {PanelsRead.Substring(1)}와 {GrantRead.Substring(1)}가 둘 다)이 {scope.ValidCalls}곳입니다(기대 1). " +
+                "없으면 등급 1에서 사용자가 연 명령창의 [낙서하기]와 ⌃⌥⌘G가 «가능»으로 보이고, 발표·회의 화면 위에 낙서가 시작됩니다(7-b · 원칙 2).");
+            Assert.IsEmpty(scope.Violations, $"★ {label} — " + string.Join(" / ", scope.Violations));
+
+            int call = UnsummonedCallRegex.Match(body).Index;
+            string hiddenAnchor = nameof(HiddenCharacterCommandGate) + "." + nameof(HiddenCharacterCommandGate.BlocksNow);
+            string lockAnchor = nameof(SpectacleEventLock) + "." + nameof(SpectacleEventLock.IsActive);
+            string stateAnchor = nameof(StickmanStateId);
+            string targetAnchor = nameof(GraffitiDirector.NoEmptyRegionReason);
+            int hidden = body.IndexOf(hiddenAnchor, System.StringComparison.Ordinal);
+            int lockCheck = body.IndexOf(lockAnchor, System.StringComparison.Ordinal);
+            int stateCheck = body.IndexOf(stateAnchor, System.StringComparison.Ordinal);
+            int targetCheck = body.IndexOf(targetAnchor, System.StringComparison.Ordinal);
+
+            // 존재 단언 먼저 — 앵커가 죽으면 아래 순서 비교는 «-1 < N»으로 조용히 통과한다.
+            Assert.GreaterOrEqual(hidden, 0, $"{label} — 순서 앵커 «{hiddenAnchor}»가 본문에 없습니다(앵커가 죽었습니다 — 순서 판정 무효).");
+            Assert.GreaterOrEqual(lockCheck, 0, $"{label} — 순서 앵커 «{lockAnchor}»가 본문에 없습니다(앵커가 죽었습니다 — 순서 판정 무효).");
+            Assert.GreaterOrEqual(stateCheck, 0, $"{label} — 순서 앵커 «{stateAnchor}»가 본문에 없습니다(앵커가 죽었습니다 — 순서 판정 무효).");
+            Assert.GreaterOrEqual(targetCheck, 0, $"{label} — 순서 앵커 «{targetAnchor}»가 본문에 없습니다(앵커가 죽었습니다 — 순서 판정 무효).");
+
+            Assert.Less(hidden, call, $"★ {label} — 7-b 가드가 숨김 게이트보다 앞입니다. 숨김은 7-b 사유 문구를 채워도 풀리지 않는 지속 사유라서 먼저 보여야 합니다.");
+            Assert.Less(call, lockCheck, $"★ {label} — 7-b 가드가 연출 락 검사보다 뒤입니다. «지금 ○○ 중이에요»가 먼저 떠 기다리면 될 것처럼 보였다가 아니게 됩니다.");
+            Assert.Less(call, stateCheck, $"★ {label} — 7-b 가드가 상태 검사보다 뒤입니다. «지금 △△ 중이라 못 해요»가 먼저 떠 상태가 풀리면 될 것처럼 보였다가 아니게 됩니다.");
+            Assert.Less(call, targetCheck, $"★ {label} — 7-b 가드가 대상(빈 자리) 검사보다 뒤입니다. «낙서할 빈 자리가 없어요»가 먼저 떠 자리를 비우면 될 것처럼 보였다가 아니게 됩니다.");
+        }
+
+        /// <summary>
+        /// ★ 해제 조건 <b>7-b 층 2</b>(설계 정본 「3. 판정 ②」의 층 표) — <b>낙서 수명 감시가 억제 창구를 읽고 기존 취소 경로로 걷는가.</b>
+        /// 층 1만 있으면 «시작하지 않는다»는 지켜지지만, 등급 0에서 사용자가 시킨 낙서가 그려지는 동안 발표가 시작되면
+        /// 그 낙서는 남의 전체화면 앱 위에 남는다.
+        /// <para>취소 호출 앵커는 private 메서드라 문자열 니들이 불가피하다 → <b>같은 테스트에서 존재 대조</b>를 붙인다:
+        /// 그 이름이 파일 전체에 실재함을 먼저 단언하고(니들 생존), 그다음 그것이 <b>이 메서드 본문 안</b>에 있는지를 단언한다.
+        /// 존재 대조 없이 본문 단언만 두면, 이름이 바뀐 날 «본문에 없다»가 «니들이 죽었다»와 구별되지 않는다(CLAUDE.md).</para>
+        /// </summary>
+        private static void AssertGraffitiOverlayLifetimeUsesUnsummonedAxis(IList<(string Rel, string San)> files)
+        {
+            const string monitorSignature = "private void MonitorRegion(";
+            const string cancelCall = "CancelDrawing(";
+            string label = nameof(GraffitiDirector) + " «" + monitorSignature + "»";
+
+            List<(string Rel, string San)> owners = files.Where(f => DeclaresType(f.San, nameof(GraffitiDirector))).ToList();
+            Assert.AreEqual(1, owners.Count, $"{label} — {nameof(GraffitiDirector)} 선언 파일이 {owners.Count}개입니다(기대 1).");
+            (string rel, string san) = owners[0];
+
+            // 존재 단언(니들 생존) — 서명과 취소 호출이 이 파일에 실재한다.
+            Assert.AreEqual(1, CountOrdinal(san, monitorSignature), $"{label} — 서명이 정확히 한 곳이 아닙니다({rel}). 이름이 바뀌었으면 이 감사도 함께 고치십시오(아래 판정 무효).");
+            Assert.Greater(CountOrdinal(san, cancelCall), 0,
+                $"{label} — 취소 호출 니들 «{cancelCall}»이 파일 어디에도 없습니다({rel}) — 니들이 죽었습니다. 아래 «본문에 있다»는 판정 무효입니다.");
+            Assert.IsTrue(TryMethodBody(san, monitorSignature, out int open, out int close), $"{label} — 본문을 자르지 못했습니다({rel}). 아래 판정 무효.");
+            string body = san.Substring(open, close - open + 1);
+
+            ScopeReport scope = AnalyzeUnsummonedScope(body);
+            Debug.Log($"[T-B] {label}: 새 창구 호출 {scope.ValidCalls}/{scope.Calls} · 옛 창구 읽기 {scope.PanelReads} · 위반 {scope.Violations.Count} · 괄호 실패 {scope.ParseFailures}");
+            Assert.AreEqual(0, scope.ParseFailures, $"{label} — 괄호를 자르지 못한 곳이 있습니다(판정 무효).");
+            Assert.AreEqual(1, scope.ValidCalls,
+                $"★ {label} — 낙서 수명 감시에 새 창구 호출이 {scope.ValidCalls}곳입니다(기대 1). " +
+                "없으면 명령으로 시작한 낙서가 발표가 시작된 뒤에도 남의 화면 위에 남습니다(7-b 층 2 · 원칙 2).");
+            Assert.IsEmpty(scope.Violations, $"★ {label} — " + string.Join(" / ", scope.Violations));
+            Assert.Greater(body.IndexOf(cancelCall, System.StringComparison.Ordinal), 0,
+                $"★ {label} — 본문이 기존 취소 경로(«{cancelCall}»)를 부르지 않습니다. 층 2는 새 상태·새 연출을 만들지 않고 " +
+                "기존 취소 하나를 재사용해야 합니다(Cancelled 발행 · Idle 전이 · 락 반납 · 쿨다운 미적용이 전부 그 경로에 있습니다).");
         }
 
         /// <summary>② 단계에서 형을 못 찾거나 서명을 못 잘라 규칙 판정 전에 건너뛴 항목 수(합계 대조용).</summary>
