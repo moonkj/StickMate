@@ -119,6 +119,34 @@ namespace StickMate.Tests.PlayMode
         private float _characterHeight;
         private Vector2 _cursorWorld;
 
+        // ★★ 간헐 #12(2026-09-15, debugger 규명) — 스크립트 커서는 **조회 시점**에 위치를 계산한다.
+        //   예전에는 코루틴이 `_cursorWorld += 속도 × dt`로 전진시켰는데, UnityTest 코루틴은 에이전트 Update **뒤**에 돈다.
+        //   그래서 에이전트가 읽은 커서는 늘 한 프레임 전 자리였다 — DragThrowState의 속도 표본은 «위치는 한 프레임 전,
+        //   시각은 이번 프레임»으로 어긋나 긴 프레임 뒤에 던진 속도가 과소 측정됐고(debugger 실측 비율 0.41),
+        //   밀착 오차는 «커서 속력 × 그 프레임 길이»만큼 부풀었다. 실제 앱의 커서 조회(MacWindowService·Win32WindowService의
+        //   TryGetGlobalCursorPosition)는 Tick 시점의 OS 커서를 읽으므로 이 어긋남이 없다 — 테스트 쪽 결함이다.
+        //   위치 = 기준점 + 속도 × (Time.time − 시작 시각). DragThrowState가 표본에 찍는 것과 **같은 게임 시계**를 쓴다
+        //   (벽시계를 쓰면 표본 시각과 다시 갈라진다). 루프 **예산**만 벽시계로 잡는다(CLAUDE.md).
+        private Vector2 _cursorVelocity;
+        private float _cursorMotionStartTime;
+
+        private Vector2 ScriptedCursorWorldNow => _cursorWorld + _cursorVelocity * (Time.time - _cursorMotionStartTime);
+
+        /// <summary>이 프레임부터 커서를 <paramref name="velocity"/>로 움직인다(위치는 조회 시점에 계산).</summary>
+        private void StartScriptedCursorMotion(Vector2 velocity)
+        {
+            _cursorWorld = ScriptedCursorWorldNow;
+            _cursorVelocity = velocity;
+            _cursorMotionStartTime = Time.time;
+        }
+
+        /// <summary>지금 자리에서 커서를 멈춘다. 이후 <c>_cursorWorld</c>에 직접 쓰는 정지 배치가 다시 유효하다.</summary>
+        private void StopScriptedCursorMotion()
+        {
+            _cursorWorld = ScriptedCursorWorldNow;
+            _cursorVelocity = Vector2.zero;
+        }
+
         [TearDown]
         public void TearDown()
         {
@@ -205,7 +233,7 @@ namespace StickMate.Tests.PlayMode
         {
             Camera cam = _agent != null ? _agent.Blackboard.MainCamera : null;
             if (cam == null) { osScreenPosition = default; return false; }
-            osScreenPosition = ScreenCoordinateConverter.WorldToOsScreen(cam, _cursorWorld, _clonedConfig, out _);
+            osScreenPosition = ScreenCoordinateConverter.WorldToOsScreen(cam, ScriptedCursorWorldNow, _clonedConfig, out _);
             return true;
         }
 
@@ -228,19 +256,23 @@ namespace StickMate.Tests.PlayMode
             bb.Body.transform.position = new Vector3(start.x, start.y, bb.Body.transform.position.z);
             bb.Body.linearVelocity = Vector2.zero;
             bb.CurrentFootholdHandle = 0L;
+            _cursorVelocity = Vector2.zero;
             _cursorWorld = start;
 
             bb.Machine.ChangeState(StickmanStateId.Dragged, isForcedInterrupt: true);
 
-            float t = 0f;
-            while (t < dragSeconds)
+            // 잡힌 그 프레임부터 움직인다(Dragged 진입 표본은 방금 start로 찍혔다). 예산은 벽시계.
+            StartScriptedCursorMotion(cursorVelocity);
+            float dragDeadline = Time.realtimeSinceStartup + dragSeconds;
+            while (Time.realtimeSinceStartup < dragDeadline)
             {
                 yield return null;
-                float dt = Time.deltaTime;
-                t += dt;
-                _cursorWorld += cursorVelocity * dt;
             }
 
+            // 놓기 신호와 같은 프레임에 커서를 멈춘다 — 예전처럼 놓은 자리에 커서가 남는다.
+            //   DragThrowState.Tick은 놓기 신호를 표본 추가보다 먼저 처리하고 ReleaseAndThrow는 커서를 다시 읽지 않으므로
+            //   멈춘 뒤의 커서는 던진 속도에 들어가지 않는다.
+            StopScriptedCursorMotion();
             bb.DragReleaseSignaled = true;
             Debug.Log($"{LogPrefix} 놓기 신호 — 커서 속도={cursorVelocity.ToString("F2")}(속력 {cursorVelocity.magnitude:F2} = " +
                 $"{cursorVelocity.magnitude / _characterHeight:F2}신장/초), 놓은 위치={_cursorWorld.ToString("F2")}, " +

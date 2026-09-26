@@ -73,6 +73,178 @@ namespace StickMate.Tests.PlayMode
             if (evt.Phase == ArcheryShotPhase.Release) _releases.Add(evt);
         }
 
+        // ============================================================================
+        // ★★ 간헐 #11(2026-09-15) — 사거리 추첨을 경계에 고정하고, 밴드 울타리를 공개 설정에서 다시 유도한다
+        // ============================================================================
+        // 원인(코드·로그로 확정): 이 파일의 사거리 상한은 «신장 6.6배 + 0.2배»라는 **숫자**였다(767c985, 2026-09-01).
+        // 프로덕션은 da71068(2026-09-07)에서 밴드 상한을 «min(구간, max(U0, min(g×구간폭, Ucap)))»으로 폭 비례로 열었는데
+        // 이 파일은 따라가지 않았다. 배치모드 화면(걸어다닐 폭 30.18유닛, 신장 1.706)에서 밴드는 6.64~12.85이고
+        // 옛 상한 11.60을 넘는 **합법** 추첨이 약 17.5%였다 — 같은 코드가 확률로 빨갰다.
+        //
+        // 규칙(CLAUDE.md): 프로덕션 상수를 숫자로 베끼지 않는다 / 기대값을 프로덕션 함수로 만들지 않는다(TEAM.md).
+        //   · 설정값은 StickConfig 공개 필드에서 읽는다.
+        //   · 여백 상수(CharacterEdgeInsetRatio 등)는 internal이라 이 어셈블리가 못 읽는다(AssemblyInfo.cs의
+        //     InternalsVisibleTo는 EditMode만). 그래서 여기서는 **등식이 아니라 울타리(부등식)**만 세운다 —
+        //     정확한 등식은 EditMode ArcheryTargetDistanceTests(⑤-2 ExpectedBand)가 잠근다.
+        //   · 난수는 고정 시드(InitState)를 쓰지 않는다. 뒤에 도는 다른 테스트의 난수열을 결정론으로 바꿔
+        //     다른 간헐을 가리거나 만들 수 있기 때문이다. 현재 생성기 상태에서 앞으로 찾아 **되감는다**.
+
+        private enum RollEdge { Low, High }
+
+        /// <summary>테스트 소유 여유(프로덕션 상수 아님) — 0 또는 1에서 이만큼 안쪽이면 «경계 추첨»으로 본다.</summary>
+        private const float RollEdgeEpsilon = 0.001f;
+
+        /// <summary>테스트 소유 여유 — 방향 난수를 0.25 이하/0.75 이상으로 잡는다. 프로덕션의 방향 문턱이
+        /// 그 사이 어디에 있든 방향이 결정된다(문턱 숫자를 베끼지 않기 위한 폭).</summary>
+        private const float DirectionRollMargin = 0.25f;
+
+        /// <summary>한 번의 성공 확률이 0.001 × 0.25 = 2.5e-4라 기대 4,000회. 이 예산에서 못 찾을 확률은 e^-250 수준.</summary>
+        private const int RollSearchBudget = 1_000_000;
+
+        /// <summary>테스트 소유 여유 — 과녁·캐릭터 여백 합(internal 상수)을 신장의 이 배수 이하로 보수적으로 잡는다.
+        /// 실제 합은 과녁 반지름을 뺀 나머지가 신장 1배에 한참 못 미친다. 이 값은 «울타리가 거짓 빨강을 내지 않는 쪽»으로만 쓴다.</summary>
+        private const float ConservativeInsetHeights = 2f;
+
+        /// <summary>
+        /// <see cref="ArcheryDirector.ForceTriggerNow"/>가 소비하는 **다음 두 난수**(인자 평가 순서: 사거리 → 방향)를
+        /// 경계로 맞춘다. 근거(코드 판독): GetAvailability와 그 안의 숨김 게이트(IsSuspended 조회)는 난수를 안 먹고,
+        /// ArcheryState.Enter의 발별 추첨은 배치 추첨 **뒤**다. 호출과 ForceTriggerNow 사이에 yield를 두지 마라.
+        /// </summary>
+        private static void PinNextArcheryRolls(RollEdge edge, bool directionRollLow, out float roll, out float dirRoll)
+        {
+            for (int i = 0; i < RollSearchBudget; i++)
+            {
+                Random.State before = Random.state;
+                float r = Random.value;
+                float d = Random.value;
+                bool edgeOk = edge == RollEdge.High ? r >= 1f - RollEdgeEpsilon : r <= RollEdgeEpsilon;
+                bool dirOk = directionRollLow ? d <= DirectionRollMargin : d >= 1f - DirectionRollMargin;
+                if (!edgeOk || !dirOk) continue;
+                Random.state = before;
+                roll = r;
+                dirRoll = d;
+                return;
+            }
+            roll = dirRoll = float.NaN;
+            Assert.Fail($"난수 {RollSearchBudget}쌍을 뒤져도 경계({edge}) 추첨값을 못 찾았습니다 — 생성기가 멈췄거나 " +
+                "Random.state 되감기가 동작하지 않습니다(이 상태로 재는 값은 전부 무효).");
+        }
+
+        /// <summary>
+        /// 씬 설정(DefaultStickConfig.asset)의 사거리 밴드 필드가 **코드 기본값과 같다**는 다리.
+        /// 아래 울타리들은 프로덕션 클램프(f ≤ 0.9, g ≤ 0.5, s ≤ 0.30 — internal 상수)가 비활성이라는 전제로
+        /// 클램프를 생략하는데, 그 전제는 EditMode ArcheryTargetDistanceTests가 **코드 기본값**에 대해 잠근다.
+        /// 애셋이 기본값과 갈라지면 그 잠금이 이 테스트로 넘어오지 않는다(TEAM.md 거짓 통과 #9).
+        /// </summary>
+        private static void AssertBandConfigMatchesCodeDefaults(StickConfig cfg)
+        {
+            Assert.IsNotNull(cfg, "캐릭터에 StickConfig가 배선돼 있지 않습니다.");
+            var defaults = ScriptableObject.CreateInstance<StickConfig>();
+            try
+            {
+                const string why = " — 씬 애셋이 코드 기본값과 다르면 EditMode의 클램프 잠금이 이 PlayMode 울타리의 전제로 " +
+                    "넘어오지 않습니다. 애셋을 바꾼 라운드라면 StickConfig 기본값과 함께 맞추십시오(TEAM.md 거짓 통과 #9).";
+                Assert.AreEqual(defaults.archeryMinTargetDistanceRatio, cfg.archeryMinTargetDistanceRatio, 0f, nameof(cfg.archeryMinTargetDistanceRatio) + why);
+                Assert.AreEqual(defaults.archeryMaxTargetDistanceRatio, cfg.archeryMaxTargetDistanceRatio, 0f, nameof(cfg.archeryMaxTargetDistanceRatio) + why);
+                Assert.AreEqual(defaults.archeryMinDistanceSpanFraction, cfg.archeryMinDistanceSpanFraction, 0f, nameof(cfg.archeryMinDistanceSpanFraction) + why);
+                Assert.AreEqual(defaults.archeryMaxDistanceSpanFraction, cfg.archeryMaxDistanceSpanFraction, 0f, nameof(cfg.archeryMaxDistanceSpanFraction) + why);
+                Assert.AreEqual(defaults.archeryMaxDistanceHardCapRatio, cfg.archeryMaxDistanceHardCapRatio, 0f, nameof(cfg.archeryMaxDistanceHardCapRatio) + why);
+                Assert.AreEqual(defaults.archeryMinTargetDistanceScreenFraction, cfg.archeryMinTargetDistanceScreenFraction, 0f, nameof(cfg.archeryMinTargetDistanceScreenFraction) + why);
+            }
+            finally { Object.DestroyImmediate(defaults); }
+
+            // 프로덕션 기준 상한은 max(하한 × 소폭 여유, 설정 상한)이다(뒤집힘 방어). 설정 상한이 하한의 2배를 넘으면
+            // 그 방어가 개입하지 않아 U0 = 신장 × 설정 상한이 된다. 2는 테스트 소유 여유다(출하 6.6 대 2.6).
+            Assert.Greater(cfg.archeryMaxTargetDistanceRatio, 2f * Mathf.Max(1f, cfg.archeryMinTargetDistanceRatio),
+                "사거리 밴드 기준 상한이 절대 하한의 2배 이하입니다 — 프로덕션의 뒤집힘 방어가 개입할 수 있는 영역이라 " +
+                "아래 울타리의 U0 식이 성립하지 않습니다.");
+        }
+
+        /// <summary>구간 폭 = 딛고 있는 발판 ∩ 걸어다닐 수 있는 화면(ArcheryDirector.TryResolvePlacement와 같은 두 공개 생산자).
+        /// 프로덕션의 사거리 구간(과녁 끝 − 캐릭터 끝)은 여백만큼 이보다 **좁다** — 그래서 이 값은 위쪽 울타리에만 쓴다.</summary>
+        private static float UsableWidth(GroundSensor.GroundInfo ground, float walkLeft, float walkRight)
+            => Mathf.Max(0f, Mathf.Min(ground.CurrentFootholdRightWorldX, walkRight)
+                             - Mathf.Max(ground.CurrentFootholdLeftWorldX, walkLeft));
+
+        /// <summary>
+        /// 밴드 상한의 **위쪽 울타리**. ResolvePlacement 계약 문장
+        /// «상한 = min(구간, max(U0, min(g × 구간, Ucap)))»에 구간 대신 <see cref="UsableWidth"/>(≥ 구간)를 넣었다.
+        /// 식이 구간에 대해 단조 증가이므로 참값 이상이다 = 거짓 빨강을 내지 않는다(헐거운 정도 = g × 여백 합).
+        /// </summary>
+        private static float BandHiCeiling(StickConfig cfg, float height, float usableWidth)
+        {
+            float u0 = height * cfg.archeryMaxTargetDistanceRatio;
+            float cap = Mathf.Max(u0, height * cfg.archeryMaxDistanceHardCapRatio);
+            return Mathf.Min(usableWidth, Mathf.Max(u0, Mathf.Min(cfg.archeryMaxDistanceSpanFraction * usableWidth, cap)));
+        }
+
+        /// <summary>
+        /// 밴드 상한의 **아래쪽 울타리** — 위 울타리가 헐거워서 통과한 게 아님을 보이는 존재 대조.
+        /// 구간을 «UsableWidth − 과녁 반지름 − 보수 여백(<see cref="ConservativeInsetHeights"/> × 신장)» 이상으로 잡는다.
+        /// 반환값이 true면 이 화면에서 폭 비례 항(g)이 옛 고정 상한 U0를 **실제로 이긴다** — 즉 옛 테스트의 6.6H 상한이
+        /// 합법 추첨을 빨갛게 만드는 기하라는 뜻이다.
+        /// </summary>
+        private static bool WidthTermBinds(StickConfig cfg, float height, float usableWidth, float targetRadius,
+            out float bandHiFloor)
+        {
+            float spanFloor = usableWidth - targetRadius - ConservativeInsetHeights * height;
+            float u0 = height * cfg.archeryMaxTargetDistanceRatio;
+            float cap = Mathf.Max(u0, height * cfg.archeryMaxDistanceHardCapRatio);
+            float widthTerm = Mathf.Min(cfg.archeryMaxDistanceSpanFraction * spanFloor, cap);
+            bandHiFloor = Mathf.Min(spanFloor, Mathf.Max(u0, widthTerm));
+            return widthTerm > u0;
+        }
+
+        /// <summary>경계 추첨 한 번의 관측 — 전부 **발동한 그 프레임**에 읽는다(뒤에 활이 그려지면 시각 반폭이 바뀌어
+        /// 걸어다닐 폭이 달라진다. 프로덕션이 추첨에 쓴 기하와 같은 순간이어야 한다).</summary>
+        private struct EdgeDraw
+        {
+            public float Roll, DirRoll, Height, FootX, WalkLeft, WalkRight, Usable, Drawn, TargetX, Facing;
+            public long Foothold;
+            public float ScreenWidth => WalkRight - WalkLeft;
+        }
+
+        /// <summary>경계 난수를 고정하고 **같은 프레임에** 발동해 추첨 결과를 읽는다(yield 없음).</summary>
+        private EdgeDraw TriggerAtRollEdge(RollEdge edge, bool directionRollLow, string reason)
+        {
+            StickmanBlackboard bb = _agent.Blackboard;
+            GroundSensor.GroundInfo ground = bb.SenseGround();
+            Assert.IsTrue(ground.Grounded, $"{reason}: 발동 직전인데 캐릭터가 발판 위가 아닙니다.");
+            Assert.IsTrue(bb.TryGetWalkableScreenBoundsWorld(out float wl, out float wr),
+                $"{reason}: 걸어다닐 수 있는 화면 경계를 못 읽었습니다 — 프로덕션은 카메라 폴백으로 넘어가므로 이 울타리는 무효입니다.");
+
+            var s = new EdgeDraw
+            {
+                Height = bb.CharacterHeightWorld,
+                FootX = bb.Body.position.x,
+                Foothold = bb.CurrentFootholdHandle,
+                WalkLeft = wl,
+                WalkRight = wr,
+                Usable = UsableWidth(ground, wl, wr),
+            };
+            PinNextArcheryRolls(edge, directionRollLow, out s.Roll, out s.DirRoll);
+            Assert.IsTrue(_director.ForceTriggerNow(reason), $"{reason}: 강제 발동이 거절됐습니다(자리 없음/락/상태).");
+            s.TargetX = _director.LastTargetWorld.x;
+            s.Drawn = Mathf.Abs(s.TargetX - bb.ArcheryStandWorldX);
+            s.Facing = bb.ArcheryFacingSign;
+            return s;
+        }
+
+        /// <summary>벽시계 기준으로 «Idle/Walk + 발판 딛음 + 연출 락 없음»을 기다린다(CLAUDE.md: 프레임 수 대기 금지).</summary>
+        private IEnumerator WaitUntilReadyToShoot(float budgetSeconds, string label)
+        {
+            float deadline = Time.realtimeSinceStartup + budgetSeconds;
+            while (Time.realtimeSinceStartup < deadline)
+            {
+                var st = _agent.Blackboard.Machine.CurrentStateId;
+                if ((st == StickmanStateId.Idle || st == StickmanStateId.Walk)
+                    && _agent.Blackboard.CurrentFootholdHandle != 0L && !SpectacleEventLock.IsActive) yield break;
+                yield return null;
+            }
+            Assert.Fail($"{label}: 벽시계 {budgetSeconds:F0}초 안에 쏠 수 있는 상태(Idle/Walk + 발판 + 락 없음)가 되지 않았습니다 " +
+                $"(현재 {_agent.Blackboard.Machine.CurrentStateId}, 발판 {_agent.Blackboard.CurrentFootholdHandle}, 락 {SpectacleEventLock.IsActive}).");
+        }
+
         private IEnumerator LoadSceneAndResolve()
         {
             SceneManager.LoadScene("Main", LoadSceneMode.Single);
@@ -194,7 +366,10 @@ namespace StickMate.Tests.PlayMode
             StickmanEventBus.ArcheryShotChanged += OnShot;
             _listening = true;
 
-            _director.ForceTriggerNow("PlayMode 테스트");
+            // ★★ 간헐 #11 — 사거리 추첨을 **상단 경계**에 고정한다(가장 긴 비행 · 옛 상한을 넘는 쪽 = 이 테스트의 최악 조건).
+            //   하단 경계와 반대 방향은 RangeDrawAtBothRollEdgesStaysInsideTheWidthProportionalBand가 잰다.
+            //   기하는 발동한 **그 프레임**에 읽는다(TriggerAtRollEdge 문서).
+            EdgeDraw pinned = TriggerAtRollEdge(RollEdge.High, directionRollLow: true, "PlayMode 테스트");
             yield return null;
 
             Assert.AreEqual(StickmanStateId.Archery, _agent.Blackboard.Machine.CurrentStateId,
@@ -232,13 +407,22 @@ namespace StickMate.Tests.PlayMode
                 "쏘기 시작했는데 방향 고정이 걸려 있지 않습니다 — 배회 AI의 이동 의도로 몸이 돌아가 " +
                 "화살이 뒤통수에서 나갈 수 있습니다.");
 
-            // ★ 사거리 절대 조건 — 발판 종류에 따라 요구치가 다르다(사용자 명시).
+            // ★ 사거리 조건 — **추첨된 사거리**(서는 자리 ↔ 과녁, Begin()이 블랙보드에 확정한 두 값)로 잰다.
+            //   ★★ 간헐 #11: 예전 상한은 걸어간 뒤의 실측 거리에 «신장 6.6배 + 0.2배»를 숫자로 댔다. 6.6은 출하 설정을,
+            //   0.2는 도착 허용 오차 여유를 베낀 값이었고, 프로덕션이 da71068에서 상한을 폭 비례로 연 뒤로 합법 추첨의
+            //   약 17.5%(배치모드 화면)가 그 숫자를 넘었다. 이제 상한은 공개 설정에서 다시 유도한 울타리이고
+            //   (BandHiCeiling), 걸음 오차(ArcheryState 도착 판정)는 사거리 계약과 섞지 않는다.
+            //   하한 2.6도 같은 병이라 설정 필드를 참조하게 바꿨다.
             GroundSensor.GroundInfo groundInfo = _agent.Blackboard.SenseGround();
             float shootDistance = Mathf.Abs(_director.LastTargetWorld.x - footAtStart.x);
-            float height = _agent.Blackboard.CharacterHeightWorld;
-            Assert.GreaterOrEqual(shootDistance, height * 2.6f - 0.01f,
-                $"사거리가 {shootDistance:F2}유닛뿐입니다 — 최소 사거리(신장의 2.6배 = " +
-                $"{height * 2.6f:F2}유닛)조차 안 됩니다. 코앞에서 쏘면 포물선이 직선처럼 보입니다.");
+            StickConfig cfg = _agent.Config;
+            AssertBandConfigMatchesCodeDefaults(cfg);
+            float absoluteFloor = pinned.Height * cfg.archeryMinTargetDistanceRatio;
+            Assert.GreaterOrEqual(pinned.Drawn, absoluteFloor - 1e-3f,
+                $"추첨 사거리가 {pinned.Drawn:F2}유닛뿐입니다 — 절대 하한(신장의 {cfg.archeryMinTargetDistanceRatio:F2}배 = " +
+                $"{absoluteFloor:F2}유닛)조차 안 됩니다. 코앞에서 쏘면 포물선이 직선처럼 보입니다.");
+            Assert.GreaterOrEqual(shootDistance, absoluteFloor - 0.01f,
+                $"걸어간 뒤 실제 사거리가 {shootDistance:F2}유닛뿐입니다 — 절대 하한({absoluteFloor:F2}유닛) 미달.");
 
             if (groundInfo.Grounded)
             {
@@ -249,30 +433,36 @@ namespace StickMate.Tests.PlayMode
                     $"과녁 x={_director.LastTargetWorld.x:F2}가 딛고 있는 발판의 오른쪽 끝" +
                     $"({groundInfo.CurrentFootholdRightWorldX:F2}) 바깥입니다 — 창 모서리 너머 허공에 뜹니다.");
 
-                // ★ 2026-08-31 사용자 재정의로 상한 규칙이 바뀌었다. 예전에는 "바탕화면이면 화면 폭의
-                // 절반 이상"을 **요구**했는데(그래서 캐릭터를 한쪽 끝, 과녁을 반대쪽 끝에 고정 배치했다),
-                // 그게 곧 신고 "활쏘기 시키면 무조건 과녁이 화면 끝에만 생김 / 거리는 항상 랜덤으로
-                // 변경되어야"의 원인이었다. 지금은 사거리가 신장 배수 밴드(2.6~6.6배)에서 매번 추첨된다.
-                // 여기서는 **상한과 가장자리 여유**만 실물 씬에서 확인하고, 분포(=진짜 랜덤인가)는
-                // EditMode의 ArcheryTargetDistanceTests가 수천 표본으로 잠근다.
-                Assert.LessOrEqual(shootDistance, height * 6.6f + height * 0.2f,
-                    $"사거리 {shootDistance:F2}유닛이 랜덤 밴드 상한(신장의 6.6배 = {height * 6.6f:F2}유닛)을 " +
-                    "넘었습니다 — 사거리가 다시 화면/발판 폭에 끌려가고 있습니다(신고 재발).");
+                // ★ 2026-08-31 사용자 재정의로 상한 규칙이 바뀌었다(구간 끝 고정 배치 → 매번 추첨).
+                // ★★ 2026-09-07(da71068) 프로덕션이 상한을 폭 비례로 열었다: 상한 = min(구간, max(U0, min(g×구간, Ucap))).
+                //   이 파일은 그 뒤에도 «6.6H + 0.2H» 숫자를 들고 있었고 그것이 간헐 #11이다.
+                //   여기서는 실물 씬의 **배선**(설정·화면 폭·신장이 추첨에 제대로 들어가는가)만 울타리로 확인하고,
+                //   식의 등식과 분포는 EditMode ArcheryTargetDistanceTests가 잠근다.
+                float ceiling = BandHiCeiling(cfg, pinned.Height, pinned.Usable);
+                Assert.LessOrEqual(pinned.Drawn, ceiling + 1e-3f,
+                    $"상단 경계 추첨(roll {pinned.Roll:F4}) 사거리 {pinned.Drawn:F2}유닛이 밴드 상한 울타리 {ceiling:F2}유닛" +
+                    $"(구간 폭 {pinned.Usable:F2}유닛, 신장 {pinned.Height:F2})을 넘었습니다 — 사거리가 다시 화면/발판 폭 전체에 " +
+                    "끌려가고 있습니다(신고 '무조건 과녁이 화면 끝에만 생김' 재발).");
 
-                if (_agent.Blackboard.TryGetWalkableScreenBoundsWorld(out float wl, out float wr)
-                    && (wr - wl) > height * 16f)
+                // 존재 대조 — 위 울타리가 헐거워서 통과한 게 아니다.
+                if (WidthTermBinds(cfg, pinned.Height, pinned.Usable, _renderer.TargetRadius, out float bandHiFloor))
                 {
-                    // 화면이 밴드보다 충분히 넓을 때만 의미 있는 판정 — 과녁이 진행 방향 끝에 붙지 않는다.
-                    // 경계 16배의 근거(계산): facing +1일 때 standX ≤ 화면중앙 - 한걸음(신장 1배)이고
-                    // 사거리 ≤ 신장 6.6배이므로 여유 ≥ 0.5W + 1H - 6.6H. 이게 2H를 넘으려면 W > 15.2H.
-                    // 실측 환경(가시 폭 36.96유닛 = 신장의 21.7배)은 여유 있게 이 조건을 넘는다.
-                    float gap = _agent.Blackboard.ArcheryFacingSign > 0f
-                        ? wr - _director.LastTargetWorld.x
-                        : _director.LastTargetWorld.x - wl;
-                    Assert.Greater(gap, height * 2f,
-                        $"과녁이 진행 방향 화면 끝에서 {gap:F2}유닛(신장의 {gap / height:F1}배)밖에 안 " +
-                        "떨어져 있습니다 — 신고 문구 '화면 끝에만 생김'이 재발한 상태입니다.");
+                    Assert.GreaterOrEqual(pinned.Drawn, (1f - RollEdgeEpsilon) * bandHiFloor - 1e-3f,
+                        $"상단 경계 추첨(roll {pinned.Roll:F4})인데 사거리가 {pinned.Drawn:F2}유닛으로 폭 비례 상한의 아래 울타리 " +
+                        $"{bandHiFloor:F2}유닛에 못 미칩니다 — 난수 고정이 안 먹었거나(추첨이 경계가 아님) 폭 비례 항(g)이 배선에서 빠졌습니다.");
+                    Debug.Log($"[활쏘기테스트] 폭 비례 항 생존 — 상단 경계 추첨 {pinned.Drawn:F2}유닛, 옛 고정 상한 U0 " +
+                        $"{pinned.Height * cfg.archeryMaxTargetDistanceRatio:F2}유닛(이 차이가 간헐 #11의 원인 기하).");
                 }
+                else
+                {
+                    Debug.LogWarning($"[활쏘기테스트] 이 화면(구간 폭 {pinned.Usable:F2}유닛)에서는 폭 비례 항이 U0를 못 이겨 " +
+                        "상한 존재 대조를 건너뜀 — 같은 조건에서 RangeDrawAtBothRollEdgesStaysInsideTheWidthProportionalBand가 «측정 무효» 실패로 드러낸다.");
+                }
+
+                // ★ 옛 «진행 방향 화면 끝 여유 > 신장 2배» 단언은 RangeDrawAtBothRollEdgesStaysInsideTheWidthProportionalBand의
+                //   **하단 경계**로 옮겼다. 옛 전제 두 개(«facing +1이면 standX ≤ 화면중앙 − 한걸음», «사거리 ≤ 6.6H»)가
+                //   방향 추첨(2026-09-06)과 폭 비례 상한(da71068)으로 둘 다 거짓이 됐다. 상단 경계에서 올바른 전제로 다시 세우면
+                //   성립 조건이 거의 안 잡혀 조용히 건너뛰는 단언이 되므로, 전제가 성립하는 하단 경계에서 잰다.
             }
 
             Debug.Log($"[활쏘기테스트] 이동 검증 — {walked:F2}유닛 걸어간 뒤 과녁 등장, 사거리 {shootDistance:F2}유닛 " +
@@ -470,6 +660,132 @@ namespace StickMate.Tests.PlayMode
 
             Debug.Log($"[활쏘기테스트] 전체 사이클 통과 — 3발 발사/3발 꽂힘, 시나리오 " +
                 $"{_releases[0].Result}/{_releases[1].Result}/{_releases[2].Result}, 종료 시 전부 소멸 + 락 해제.");
+        }
+
+        // ============================================================================
+        // ③-a ★★ 간헐 #11(2026-09-15) — 사거리 추첨 경계 두 칸(최소·최대)을 결정적으로 잰다
+        // ============================================================================
+
+        /// <summary>
+        /// 입력 → 기대 결과(추첨은 발동한 그 프레임에 읽고 곧바로 클릭으로 걷는다 — 사이클을 기다리지 않는다):
+        /// <list type="bullet">
+        /// <item>두 경계 공통: 추첨 사거리 ≥ 절대 하한(설정 × 신장), ≤ <see cref="BandHiCeiling"/>.</item>
+        /// <item>상단 경계(roll ≥ 1 − ε): 폭 비례 항이 살아 있는 화면이면 ≥ 아래 울타리(<see cref="WidthTermBinds"/>).</item>
+        /// <item>하단 경계(roll ≤ ε): ≥ max(절대 하한, min(s × 화면 폭, f × 상단 사거리)). 밴드 하한 식의 세 항 중
+        ///   폭 비례 항을 뺀 값이 하한의 아래 울타리이고, 상단 사거리 ≤ 밴드 상한이라 성립한다.</item>
+        /// <item>두 경계의 차 ≥ (1 − 2ε)(1 − f) × 상단 사거리: 밴드가 붕괴하지 않았고 난수 고정이 실제로 추첨을 움직였다.</item>
+        /// <item>하단 경계: 진행 방향 화면 끝 여유 &gt; 신장 2배(FullCycle에서 옮긴 단언, 전제를 다시 세웠다).</item>
+        /// </list>
+        /// 대조 전제(폭 항 생존 · 화면 바닥 구별 가능 · 끝 여유 전제)가 이 화면에서 안 서면 단언을 조용히 건너뛰지 않고
+        /// 마지막에 <b>«측정 무효»로 실패</b>시켜 사유를 드러낸다(조용한 초록 금지).
+        /// ★ Ignore가 아닌 이유(2026-09-15): 이것은 닫힐 갭이 아니라 «기하 전제가 깨져 이 테스트가 아무것도 못 잰다»는 신호라
+        /// 되살릴 역방향 장치가 없다 — TestClaimExpiryAuditTests의 Ignore 명부 규칙과 맞지 않는다. 배치모드 기하(로그의 화면 폭
+        /// 30.17~30.18 · 신장 1.706으로 계산)에서는 세 전제가 모두 여유 있게 선다: 폭 항 11.74 대 U0 11.26 · 화면 바닥 6.64 대
+        /// 바닥 없는 배선 6.19 · 끝 여유 전제 5.04 대 3.41.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator RangeDrawAtBothRollEdgesStaysInsideTheWidthProportionalBand()
+        {
+            yield return LoadSceneAndResolve();
+            StickConfig cfg = _agent.Config;
+            AssertBandConfigMatchesCodeDefaults(cfg);
+            var hitbox = _agent.GetComponent<StickmanClickHitbox>();
+            Assert.IsNotNull(hitbox, "StickmanClickHitbox가 캐릭터에 없습니다 — 추첨 뒤 연출을 걷을 방법이 없습니다.");
+
+            yield return WaitUntilReadyToShoot(10f, "하단 경계 준비");
+            EdgeDraw low = TriggerAtRollEdge(RollEdge.Low, directionRollLow: true, "PlayMode 경계 추첨(하단)");
+            yield return null;
+            hitbox.SimulateMouseDownForTests();
+            yield return null;
+            Assert.AreNotEqual(StickmanStateId.Archery, _agent.Blackboard.Machine.CurrentStateId,
+                "하단 경계 추첨 뒤 클릭 취소가 먹지 않았습니다 — 상단 경계를 잴 수 없습니다.");
+
+            yield return WaitUntilReadyToShoot(10f, "상단 경계 준비");
+            EdgeDraw high = TriggerAtRollEdge(RollEdge.High, directionRollLow: false, "PlayMode 경계 추첨(상단)");
+            yield return null;
+            hitbox.SimulateMouseDownForTests();
+            yield return null;
+            Assert.AreNotEqual(StickmanStateId.Archery, _agent.Blackboard.Machine.CurrentStateId,
+                "상단 경계 추첨 뒤 클릭 취소가 먹지 않았습니다.");
+
+            string Describe(in EdgeDraw d) =>
+                $"roll {d.Roll:F4} · 방향난수 {d.DirRoll:F2} · 방향 {(d.Facing > 0f ? "오른쪽" : "왼쪽")} · 발 x {d.FootX:F2} · " +
+                $"사거리 {d.Drawn:F2} · 구간 폭 {d.Usable:F2} · 화면 폭 {d.ScreenWidth:F2} · 신장 {d.Height:F3}";
+            Debug.Log($"[활쏘기테스트] 경계 추첨 — 하단: {Describe(low)} / 상단: {Describe(high)}");
+
+            // (1) 두 경계 공통 — 한 번의 추첨만으로 성립하는 울타리.
+            foreach (EdgeDraw d in new[] { low, high })
+            {
+                float absFloor = d.Height * cfg.archeryMinTargetDistanceRatio;
+                Assert.GreaterOrEqual(d.Drawn, absFloor - 1e-3f,
+                    $"경계 추첨 사거리가 절대 하한 {absFloor:F2}유닛 미만입니다 — {Describe(d)}");
+                float ceiling = BandHiCeiling(cfg, d.Height, d.Usable);
+                Assert.LessOrEqual(d.Drawn, ceiling + 1e-3f,
+                    $"경계 추첨 사거리가 밴드 상한 울타리 {ceiling:F2}유닛을 넘었습니다(신고 '화면 끝에만 생김' 재발) — {Describe(d)}");
+            }
+
+            // 아래 비교는 두 추첨이 **같은 밴드**에서 나왔을 때만 뜻이 있다(밴드는 발 위치가 아니라 구간·화면 폭·신장으로 정해진다).
+            if (low.Foothold != high.Foothold || Mathf.Abs(low.Usable - high.Usable) > 1e-3f
+                || Mathf.Abs(low.ScreenWidth - high.ScreenWidth) > 1e-3f || Mathf.Abs(low.Height - high.Height) > 1e-4f)
+            {
+                Assert.Fail("측정 무효 — 두 경계 추첨의 기하가 달라 서로 비교할 수 없습니다(사이에 발판·화면 폭·신장이 바뀜) — " +
+                    $"하단: {Describe(low)} / 상단: {Describe(high)}");
+            }
+
+            float h = high.Height;
+            float f = Mathf.Clamp01(cfg.archeryMinDistanceSpanFraction);
+            float s = Mathf.Max(0f, cfg.archeryMinTargetDistanceScreenFraction);
+            float absoluteFloor = h * cfg.archeryMinTargetDistanceRatio;
+            float highCeiling = BandHiCeiling(cfg, h, high.Usable);
+            var unmeasured = new List<string>(3);
+
+            // (2) 상단 — 폭 비례 항 생존(위 울타리가 헐거워서 통과한 게 아니다).
+            if (WidthTermBinds(cfg, h, high.Usable, _renderer.TargetRadius, out float bandHiFloor))
+            {
+                Assert.GreaterOrEqual(high.Drawn, (1f - RollEdgeEpsilon) * bandHiFloor - 1e-3f,
+                    $"상단 경계 추첨이 폭 비례 상한의 아래 울타리 {bandHiFloor:F2}유닛에 못 미칩니다 — 난수 고정이 안 먹었거나 " +
+                    $"폭 비례 항(g)이 배선에서 빠졌습니다. {Describe(high)}");
+            }
+            else unmeasured.Add($"폭 비례 항 생존(구간 폭 {high.Usable:F2}에서 g 항이 U0를 못 이김)");
+
+            // (3) 하단 — 화면 비례 바닥(2026-09-06 신고 처방)이 배선에 살아 있다.
+            float screenTerm = Mathf.Min(s * low.ScreenWidth, f * high.Drawn);
+            float lowFloor = Mathf.Max(absoluteFloor, screenTerm);
+            Assert.GreaterOrEqual(low.Drawn, lowFloor - 1e-3f,
+                $"하단 경계 추첨 {low.Drawn:F2}유닛이 밴드 하한의 아래 울타리 {lowFloor:F2}유닛" +
+                $"(화면 비례 {s:P0} × 화면 폭 {low.ScreenWidth:F2}, f × 상단 사거리 {f * high.Drawn:F2} 중 작은 값)에 못 미칩니다 — " +
+                "화면 비례 바닥이 배선에서 빠졌습니다(신고 '과녁이 너무 가까움' 재발).");
+            // 대조: 화면 비례 바닥을 잃은 배선의 하한(절대, f × U0 이하)보다 이 울타리가 **실제로 높아야** (3)이 그 결함을 가른다.
+            float floorWithoutScreenTerm = Mathf.Max(absoluteFloor, f * h * cfg.archeryMaxTargetDistanceRatio);
+            if (!(lowFloor - 1e-3f > floorWithoutScreenTerm + RollEdgeEpsilon * highCeiling))
+                unmeasured.Add($"화면 비례 바닥 구별(울타리 {lowFloor:F2} ≤ 바닥 없는 배선의 하한 {floorWithoutScreenTerm:F2})");
+
+            // (4) 밴드 폭 — 밴드 하한 ≤ f × 밴드 상한(절대 하한이 그 아래일 때). 두 경계 차가 그만큼 벌어져야 한다.
+            if (h * Mathf.Max(1f, cfg.archeryMinTargetDistanceRatio) <= f * high.Drawn)
+            {
+                float minSpread = (1f - 2f * RollEdgeEpsilon) * (1f - f) * high.Drawn;
+                Assert.GreaterOrEqual(high.Drawn - low.Drawn, minSpread - 1e-3f,
+                    $"두 경계 추첨의 차가 {high.Drawn - low.Drawn:F2}유닛뿐입니다(최소 {minSpread:F2}) — 밴드가 붕괴했거나" +
+                    "(«거리는 항상 랜덤» 사망) 난수 고정이 추첨에 닿지 않았습니다.");
+            }
+            else unmeasured.Add("밴드 폭(절대 하한이 f × 상한을 넘는 좁은 기하)");
+
+            // (5) 하단 경계 — 진행 방향 화면 끝 여유 > 신장 2배(FullCycle에서 옮김).
+            //   서는 자리 ≤ 발 x + 캐릭터 여백(물러서면 더 작다)이므로 과녁 ≤ 발 x + 사거리 + 여백.
+            //   여백을 보수적으로 ConservativeInsetHeights × 신장으로 잡아, 전제가 서면 합법 배치의 끝 여유는 반드시 2H를 넘는다.
+            float lowRoom = low.Facing > 0f ? low.WalkRight - low.FootX : low.FootX - low.WalkLeft;
+            float lowGap = low.Facing > 0f ? low.WalkRight - low.TargetX : low.TargetX - low.WalkLeft;
+            if (lowRoom - low.Drawn - ConservativeInsetHeights * h > 2f * h)
+            {
+                Assert.Greater(lowGap, 2f * h,
+                    $"과녁이 진행 방향 화면 끝에서 {lowGap:F2}유닛(신장의 {lowGap / h:F1}배)밖에 안 떨어져 있습니다 — " +
+                    $"신고 문구 '화면 끝에만 생김'이 재발한 상태입니다. {Describe(low)}");
+            }
+            else unmeasured.Add($"끝 여유 전제(여유 {lowRoom:F2} − 사거리 {low.Drawn:F2}가 보수 여백 + 2H 이하)");
+
+            if (unmeasured.Count > 0)
+                Assert.Fail("측정 무효 — 경계 추첨의 공통 울타리는 통과했지만 이 화면에서 대조 전제가 서지 않아 못 잰 단언이 있습니다(조용한 초록 금지): " +
+                    string.Join(" / ", unmeasured));
         }
 
         // ============================================================================

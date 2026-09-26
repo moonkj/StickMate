@@ -80,6 +80,34 @@ namespace StickMate.Tests.PlayMode
         private float _characterHeight;
         private Vector2 _cursorWorld;
 
+        // ★★ 간헐 #10(2026-09-15) — #12와 같은 뿌리 — 스크립트 커서는 **조회 시점**에 위치를 계산한다.
+        //   예전에는 코루틴이 `_cursorWorld += 속도 × dt`로 전진시켰는데, UnityTest 코루틴은 에이전트 Update **뒤**에 돈다.
+        //   그래서 에이전트가 읽은 커서는 늘 한 프레임 전 자리였다 — DragThrowState의 속도 표본은 «위치는 한 프레임 전,
+        //   시각은 이번 프레임»으로 어긋나 긴 프레임 뒤에 던진 속도가 과소 측정됐고(debugger 실측 비율 0.41),
+        //   밀착 오차는 «커서 속력 × 그 프레임 길이»만큼 부풀었다. 실제 앱의 커서 조회(MacWindowService·Win32WindowService의
+        //   TryGetGlobalCursorPosition)는 Tick 시점의 OS 커서를 읽으므로 이 어긋남이 없다 — 테스트 쪽 결함이다.
+        //   위치 = 기준점 + 속도 × (Time.time − 시작 시각). DragThrowState가 표본에 찍는 것과 **같은 게임 시계**를 쓴다
+        //   (벽시계를 쓰면 표본 시각과 다시 갈라진다). 루프 **예산**만 벽시계로 잡는다(CLAUDE.md).
+        private Vector2 _cursorVelocity;
+        private float _cursorMotionStartTime;
+
+        private Vector2 ScriptedCursorWorldNow => _cursorWorld + _cursorVelocity * (Time.time - _cursorMotionStartTime);
+
+        /// <summary>이 프레임부터 커서를 <paramref name="velocity"/>로 움직인다(위치는 조회 시점에 계산).</summary>
+        private void StartScriptedCursorMotion(Vector2 velocity)
+        {
+            _cursorWorld = ScriptedCursorWorldNow;
+            _cursorVelocity = velocity;
+            _cursorMotionStartTime = Time.time;
+        }
+
+        /// <summary>지금 자리에서 커서를 멈춘다. 이후 <c>_cursorWorld</c>에 직접 쓰는 정지 배치가 다시 유효하다.</summary>
+        private void StopScriptedCursorMotion()
+        {
+            _cursorWorld = ScriptedCursorWorldNow;
+            _cursorVelocity = Vector2.zero;
+        }
+
         [TearDown]
         public void TearDown()
         {
@@ -153,7 +181,7 @@ namespace StickMate.Tests.PlayMode
         {
             Camera cam = _agent != null ? _agent.Blackboard.MainCamera : null;
             if (cam == null) { osScreenPosition = default; return false; }
-            osScreenPosition = ScreenCoordinateConverter.WorldToOsScreen(cam, _cursorWorld, _clonedConfig, out _);
+            osScreenPosition = ScreenCoordinateConverter.WorldToOsScreen(cam, ScriptedCursorWorldNow, _clonedConfig, out _);
             return true;
         }
 
@@ -169,21 +197,23 @@ namespace StickMate.Tests.PlayMode
             bb.Body.transform.position = new Vector3(start.x, start.y, bb.Body.transform.position.z);
             bb.Body.linearVelocity = Vector2.zero;
             bb.CurrentFootholdHandle = 0L;
+            _cursorVelocity = Vector2.zero;
             _cursorWorld = start;
             bb.Machine.ChangeState(StickmanStateId.Dragged, isForcedInterrupt: true);
+            StartScriptedCursorMotion(cursorVelocity);
 
             float minHip = float.MaxValue, maxHip = float.MinValue;
             float minArm = float.MaxValue, maxArm = float.MinValue;
             float minKnee = float.MaxValue, maxKnee = float.MinValue;
             float minTwist = float.MaxValue, maxTwist = float.MinValue;
 
+            // 예산은 벽시계(CLAUDE.md). 커서 위치는 조회 시점 계산이라 에이전트와 이 관찰이 같은 프레임에 같은 자리를 본다.
+            float holdStart = Time.realtimeSinceStartup;
             float t = 0f;
             while (t < seconds)
             {
                 yield return null;
-                float dt = Time.deltaTime;
-                t += dt;
-                _cursorWorld += cursorVelocity * dt;
+                t = Time.realtimeSinceStartup - holdStart;
 
                 if (bb.Machine.CurrentStateId != StickmanStateId.Dragged) break;
 
@@ -199,11 +229,13 @@ namespace StickMate.Tests.PlayMode
 
                 // 밀착 오차 — 잡은 지점(= 이 배치에서는 몸통 원점)이 커서에서 얼마나 떨어졌는가.
                 result.WorstStickError = Mathf.Max(result.WorstStickError,
-                    Vector2.Distance(bb.Body.position, _cursorWorld));
+                    Vector2.Distance(bb.Body.position, ScriptedCursorWorldNow));
 
                 // 오른다리는 왼다리와 반대 위상이라 폭 계산에는 왼쪽만 쓴다(같은 폭이 나온다).
                 _ = rLeg;
             }
+
+            StopScriptedCursorMotion();
 
             // 관찰이 끝나면 잡은 상태를 정리한다 — 그대로 두면 다음 관찰까지 Dragged가 살아 있어
             // 나중에 엉뚱한 시점에 던져진다(실측 로그에서 실제로 그런 유령 던지기가 찍혔다).
@@ -360,20 +392,21 @@ namespace StickMate.Tests.PlayMode
             bb.Body.transform.position = new Vector3(start.x, start.y, bb.Body.transform.position.z);
             bb.Body.linearVelocity = Vector2.zero;
             bb.CurrentFootholdHandle = 0L;
+            _cursorVelocity = Vector2.zero;
             _cursorWorld = start;
             bb.Machine.ChangeState(StickmanStateId.Dragged, isForcedInterrupt: true);
 
             Vector2 cursorVelocity = new Vector2(5f, 0f);
-            float t = 0f;
+            StartScriptedCursorMotion(cursorVelocity);
+            float holdDeadline = Time.realtimeSinceStartup + 0.8f;
             float lastHip = 0f, lastArm = 0f;
-            while (t < 0.8f)
+            while (Time.realtimeSinceStartup < holdDeadline)
             {
                 yield return null;
-                t += Time.deltaTime;
-                _cursorWorld += cursorVelocity * Time.deltaTime;
                 pose.GetUpperAngles(out lastHip, out _, out lastArm, out _);
             }
 
+            StopScriptedCursorMotion();
             bb.DragReleaseSignaled = true;
             yield return null; // 이 프레임에 놓기 -> ThrowTumble 진입 + 첫 포즈 적용
 
