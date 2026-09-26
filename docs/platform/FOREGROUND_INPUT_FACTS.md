@@ -356,3 +356,116 @@
 | 22 | ~~리더 판정 대기~~ (이 절 머리) | 리더 채택(2026-09-15) · TEAM.md 앵커에 작업 트리 전용 표시 | 2차 재검증 경미 |
 | 23 | 1-2 [지금 종료] 경로 목록에 「한 번 길게 누르기」 없음 | 검증 발견 반영(재현 · 조건 차이 2건) + R-7 + 1-6 안전 문구 | 2차 재검증 신규 발견 |
 | 24 | ~~설정창 쪽 파일(SettingsWindow·SettingsControls·UiChrome)에 IDragHandler·ScrollRect·Scrollbar·uGUI Slider는 0이다~~ (1-2 (b) 근거) | [지금 종료] 조상 계층 기준 드래그 처리기 0 · `SettingsControls.cs:1444` InputField 명시 · R-3 행 「판정」→「채택」 표기 통일 | 3차 재검증 경미 · 리더 커밋 전 정확 일치 치환 |
+
+
+---
+
+## 6. 작업 표시줄 · Alt+Tab / Dock · ⌘Tab에 우리 이름이 뜨는가 — 코드 사실 조회 (2026-09-15 추가)
+
+담당 `dev-platform` · 기준 `a8c3723` blob(비테스트 `.cs` 297개를 `git show`로 떠서 계수) · 코드 읽기만, 실기 0회. **이 절은 삽입만 했고 위 본문은 한 글자도 바꾸지 않았다.**
+입력: `docs/strategy/CHANNEL_PRICING_DECISIONS.md` 59절의 한정형 문구 — 작업 트리 전용 앵커 `발표 중에도 작업 표시줄과 Alt+Tab에 우리 이름이 뜨지 않습니다`(HEAD `76504c2` 0회 · 작업 트리 1회, 그 파일은 작업 트리 `M`). 이 절을 처음 쓸 때 그 문구는 「사용 보류」였다. 지금 그 파일은 이 절의 판정을 근거로 리더 판정(2026-09-15) **「1.0 게시에서 쓰지 않는다」 판정**으로 닫았고(고정 문자열 `이 한정형은 1.0 게시에서 쓰지 않는다`, 작업 트리 1회 · HEAD 0회), 「Alt+Tab 목록에 뜨지 않습니다」 단독형은 실기 확인 전까지 보류다.
+
+### 6-0. 세계별 판정
+
+| 세계 | 작업 표시줄 버튼(창 목록) | 작업 표시줄 알림 영역 | Alt+Tab | 문구 판정 |
+|---|---|---|---|---|
+| Windows · 트레이 켬(기본) | **조건부** — `ITaskbarList::DeleteTab` 성공 전제(6-1 ②). 기동 직후 성공 전까지는 있다 | **아이콘이 뜬다.** 이름은 커서를 올릴 때 툴팁으로 뜬다(6-2) | **코드상 참** — 도구 창 비트(6-1 ①). 틈: 부착 감지 전 기동 직후 · 외부가 비트를 지운 뒤 최대 2초 | **조건부** — 「작업 표시줄」에 알림 영역을 포함하면 문구 그대로는 거짓(아이콘이 뜨고 툴팁에 이름이 있다). 버튼만 뜻하면 DeleteTab 성공 전제 |
+| Windows · 트레이 끔(`STICKMATE_NO_TRAY_ICON`) | 같음(조건부) | 아이콘 없음. 세션 종료 때 할 일이 있을 때만 숨은 수신 창이 선다 — 이번 실행이 작업표시줄 설정을 바꿨거나 종료 표지가 시작됐을 때(`Platform/AppShutdownSequence.cs:464-465`, 1회만 평가 `:507-510`). 도구 창 비트, 한 번도 보이지 않음 | 코드상 참(같은 틈) | **조건부** — 버튼 제거 성공 전제 |
+| macOS | 해당 없음(대응 표면은 Dock) | 해당 없음(accessory는 메뉴 막대가 없다 — Apple) | 해당 없음(대응 표면은 ⌘Tab) | Dock **코드상 참**(부착 뒤 accessory 전환, 기동 직후 틈) · ⌘Tab **미확인**(1차 문서 문장 없음, 코드 주석만 주장) |
+
+- Windows 행은 전부 **실기 미확인**이다(이 머신에 Windows 없음).
+- 「발표 중에도」: 전체화면 등급·사용자 숨김은 창 스타일·표시 상태·activation policy를 바꾸지 않는다. 우리 비테스트 코드의 `ShowWindow`는 전부 주석이고(6-1 ④), activation policy 쓰기는 부착 시 1회뿐이다(6-4). **발표 중이라서 달라지는 경로는 코드에 없다.**
+
+### 6-1. Windows — 오버레이(Unity 메인) 창
+
+**① Alt+Tab — `WS_EX_TOOLWINDOW`**
+- 창 부착을 처음 감지한 프레임에 1회 `_toolWindowStyle.ApplyOnce()`(`Platform/Windows/WindowsOverlayStateEnforcer.cs:291`), 그 뒤 매 프레임 `Tick`(`:331`, 내부 2초 주기 `Platform/Windows/WindowsToolWindowStyleControl.cs:80`).
+- 읽기 → 판정 → 대행 쓰기: `WindowsToolWindowStyleControl.cs:131-173` → `Platform/Windows/WindowsLayeredHybridResolver.cs:404-425` `TryAddExStyleBits`(비트를 켜기만 한다 — `:416` `ex | bitsToAdd`, `:419` 쓰기, `:420` 되읽기). 검증 `Platform/AppSwitcherPresencePolicy.cs:119-120` `VerifyApplied`. 비트 값의 단일 출처 `:74` `0x00000080`.
+- 해소기 영구 비활성과 무관하다 — `TryAddExStyleBits`는 정적 함수이고 본문(`:404-425`)에 비활성 게이트가 없다.
+- Microsoft(Extended Window Styles, `WS_EX_TOOLWINDOW`): *"A tool window does not appear in the taskbar or in the dialog that appears when the user presses ALT+TAB."*
+- 이미 보인 창에 비트를 얹었을 때 Alt+Tab에서 **즉시** 빠지는지는 1차 문서 문장이 없다. 저장소 정책 `AppSwitcherPresencePolicy.cs:126-127` `TakesEffectOnAlreadyShownWindow`(Alt+Tab 참)는 판단이지 인용이 아니다 → **미확인(실기)**.
+- 틈 두 개(코드상): (a) 기동 직후 부착 감지 전에는 비트가 없다. (b) 누가 비트를 지우면 다음 2초 틱까지 없다. 지우는 후보는 패키지 `detachWindow`의 **절대값 복원**이다(업스트림 태그 `v0.9.8` `VisualStudio/LibUniWinC/libuniwinc.cpp:82` `SetWindowLong(hTargetWnd_, GWL_EXSTYLE, originalWindowInfo_.dwExStyle)`. 부착 대상이 바뀔 때 `:98-101`, 명시 해제 `:549-550`). ★ **플레이어 빌드에서는 C#이 이 복원을 부르지 않는다** — 패키지 C#의 `DetachWindow()` 호출자는 `Runtime/Scripts/UniWindowController.cs:1195` 하나이고 `OnApplicationQuit`의 `#if UNITY_EDITOR` 안(`:1191-1196`)에 있으며, `Dispose`의 호출은 주석 처리돼 있다(`Runtime/Scripts/LowLevel/UniWinCore.cs:322-323`). 남는 후보는 네이티브 내부 재부착 경로(`attachWindow` `:98-101`)뿐이고, 그것이 같은 창에서 도는지는 **미확인**이다. 소스와 이진이 같은 판인지 미확인.
+
+**② 작업 표시줄 버튼 — 스타일로는 안 빠지고 COM으로 지운다**
+- Microsoft(The Taskbar, 「Managing Taskbar Buttons」): *"The Shell will remove a window's button from the taskbar only if the window's style supports visible taskbar buttons. If you want to dynamically change a window's style to one that does not support visible taskbar buttons, you must hide the window first (by calling ShowWindow with SW_HIDE), change the window style, and then show the window."* — 비트는 창이 이미 보인 뒤에 얹히므로 **스타일만으로는 버튼이 남는다.**
+- 그래서 `Platform/Windows/WindowsTaskbarButtonRemover.cs`가 `ITaskbarList::DeleteTab(우리 창)`을 부른다(`:144`, 호출부 `WindowsOverlayStateEnforcer.cs:338`). 같은 문서 「Modifying the Contents of the Taskbar」: *"From an application, you can now add, remove, and activate taskbar buttons."*
+- **조건(코드상)**: 환경변수 `STICKMATE_KEEP_TASKBAR_BUTTON`이 없다(`:78`·`:117-126`) · COM 생성과 `HrInit`이 성공한다(`:187-230` — 실패하면 `_unavailable`이 되어 버튼은 그대로이고 다시 시도하지 않는다) · `DeleteTab` 호출이 예외를 던지지 않는다(`:146-153` — 던지면 역시 `_unavailable`, 재시도 없음) · 시도 횟수는 **호출이 성공한 뒤에만** 오른다(`:155`) · 최대 **3회**, 2초 간격(`:83`·`:86`, 상한 판정 `AppSwitcherPresencePolicy.cs:144-151`).
+  셸이 3회째 시도 뒤에 버튼을 만들면 남는다(주석 `:69-72` 「부착 직후 시점에 셸이 이미 버튼을 만들어 두었는가」) · Mono COM 상호운용이 플레이어에서 도는지(같은 주석) → 둘 다 **실기 미확인**.
+- 3회가 끝난 뒤 버튼이 다시 생기는 경로(셸 재시작 `TaskbarCreated`, 위 ① (b) 틈 동안의 표시 전환)를 다시 지우는 코드는 없다. 셸이 도구 창 비트가 선 창에 버튼을 다시 만드는지는 **미확인**.
+- `WS_EX_APPWINDOW`: 우리 비테스트 코드 **0파일** · 패키지 소스 **0회**(같은 파일 양성 대조 `WS_EX_LAYERED` 7회 · 음성 대조 0).
+
+**③ 소유자 창 · `WS_EX_NOACTIVATE` · 초기 스타일**
+- 소유자: Win32 `SetParent`(점 접두사가 없는 호출 · `extern` 선언 · `EntryPoint` 문자열, 주석 제외)와 `GWLP_HWNDPARENT`는 `a8c3723` 비테스트 `.cs`에 **0**이다. 참고로 고정 문자열 `SetParent` 전체는 147줄 / 36파일이고, 그중 `.SetParent`(Unity `transform.SetParent`)가 142줄 / 34파일, 나머지 5줄은 Unity `SetParent`를 설명하는 주석이다.
+- 패키지 `SetParent`는 `SetBackground`(`libuniwinc.cpp:884-906`, 창을 바탕화면 뒤로 붙이는 기능)에만 있다. 그 기능을 켜는 `isBottommost` 쓰기는 우리 코드에 0파일이고, 씬 `Assets/_Project/Scenes/Main.unity`(`a8c3723`)와 패키지 프리팹 `Runtime/Prefabs/UniWindowController.prefab`의 bottommost 계수는 0이다(양성 대조: 씬 `_isTransparent` 1 · 프리팹 topmost 1). 필드 기본값은 `false`다(`UniWindowController.cs:175`).
+- `WS_EX_NOACTIVATE`: 우리 비테스트 코드 2파일(`States/IMovementIntentSource.cs`·`States/StickmanBlackboard.cs`)이 모두 주석이고 패키지 소스 0회다(E1 0절과 같은 결과).
+- Unity 플레이어가 만드는 창의 **초기** 확장 스타일과 소유자는 코드로 알 수 없다 → **미확인(실기)**.
+- 패키지 `SetBorderless`(`libuniwinc.cpp:694-783`)는 우리 씬의 투명 설정(`Assets/_Project/Scenes/Main.unity` `_isTransparent: 1`)이 켜는 경로이고 안에서 `ShowWindow`를 부른다(`:713`·`:783`). 기동 시(비트 전)라면 버튼이 정상 생성되고 ②가 지운다. 비트가 선 뒤 투명 재적용으로 이 `ShowWindow`가 다시 돌 때의 셸 동작은 **미확인**.
+
+**④ 우리 코드의 `ShowWindow`** — 비테스트 `.cs` 5개 파일 6줄이 **전부 주석**이다(`a8c3723`, 줄 머리 `//` 판정). 기각된 「ShowWindow 왕복」이 들어오지 않았음은 `AppSwitcherPresenceTests` `B3_기각된_ShowWindow_왕복이_들어오지_않았다`가 소스로 잠근다.
+
+### 6-2. Windows — 트레이 호스트 창 · 알림 영역 아이콘
+
+- **호스트 창**: `Platform/Windows/WindowsSystemTrayIcon.cs:471` `EnsureHostWindow` → `:491-497` `CreateWindowEx`.
+  - 확장 스타일은 도구 창 비트(`AppSwitcherPresencePolicy` 상수)다.
+  - 스타일은 `WS_POPUP`이고 `WS_VISIBLE`이 없다.
+  - 크기는 0이고 부모는 `IntPtr.Zero`다.
+  - `HWND_MESSAGE` 0회 — 메시지 전용 창이 아니라 **숨은 최상위 창**이다. 표시 호출 0(위 ④).
+  - ⇒ 버튼·Alt+Tab 없음(도구 창이고 한 번도 보이지 않음 — 위 Microsoft 규칙, 실기 미확인). 창 제목 문자열 `StickMate`는 보이지 않는 창의 제목이다.
+- **트레이 끔**: `EnsureSessionEndReceiverWithoutTray`(`:302`) → `CreateSessionEndReceiverWindow` → **같은** `EnsureHostWindow` — 아이콘 없이 같은 숨은 창만 선다.
+- **알림 영역 아이콘**: `Shell_NotifyIcon(NIM_ADD)`(`:349`), 툴팁 `Platform/SystemTrayPresencePolicy.cs:75` `StickMate — 우클릭: 메뉴 (종료 · 숨기기 · 설정)`.
+  - Microsoft(The Taskbar, 「About the Taskbar」): 작업 표시줄 구성 목록에 *"Taskbar buttons"* · *"Notification area"* 가 함께 있다 — **알림 영역 아이콘은 작업 표시줄의 일부다.**
+  - 이름은 아이콘에 커서를 둘 때 툴팁으로 뜬다. 아이콘이 기본으로 숨은 아이콘 영역(오버플로)에 들어가는지는 **미확인**이다.
+- 트레이 메뉴 경로(1-3 W-1)에서 호스트 창이 전경이 돼도 도구 창이라 Alt+Tab에는 뜨지 않을 것으로 판단한다 — 미확인.
+- **구분**: 「작업 표시줄에 이름이 뜬다」를 **버튼**(창 목록)으로 읽으면 트레이 아이콘은 해당하지 않는다. **작업 표시줄 전체**로 읽으면 알림 영역 아이콘과 그 툴팁이 해당한다. 문구가 어느 쪽인지는 marketing·product-strategy 판단이다.
+
+### 6-3. Windows — 우리 UI는 OS 창인가
+
+- 설정창·정보창·포스트잇·부채꼴·팝오버·말풍선은 **Unity 창 안의 캔버스**다: `SettingsCanvas` `Interaction/SettingsWindow.cs:1181` · `CharacterInfoCanvas` `Interaction/CharacterInfoWindow.cs:1357` · `TodoPostItCanvas` `Interaction/TodoPostItWidget.cs:1116` · `GearRadialMenuCanvas` `Interaction/GearRadialMenuWidget.cs:2348` · 팝오버 `Interaction/PopoverPanel.cs:1004` · 말풍선 `Dialogue/DialogueBubbleRenderer.cs:1888`(고정 문자열 `typeof(Canvas)` — `a8c3723` 비테스트 `.cs` **6줄 / 6파일**).
+- 우리 코드의 `CreateWindowEx` **호출**은 트레이 호스트 1곳뿐이다. 나머지 두 파일은 주석이다(`Platform/ILocalClickCaptureService.cs:35` · `Platform/Windows/Win32WindowService.cs:44`). ⇒ 우리 UI가 새 작업 표시줄 버튼·Alt+Tab 항목을 만들 경로는 코드에 없다. macOS 실측 창 1장(`docs/UX_FLOW.md` 앵커 `OS 창이 아니므로`)과 같은 구조다.
+
+### 6-4. macOS — Dock · ⌘Tab
+
+- **활성화 정책**: 창 부착을 처음 감지한 프레임에 1회 `MacSpaceBehaviorNative.ApplyAccessoryActivationPolicyOnce()`(`Platform/MacOS/MacOverlayStateEnforcer.cs:279`) → `setActivationPolicy:` accessory(1)(`Platform/MacOS/MacSpaceBehaviorNative.cs:94` · `:205-228`). 되읽어 확인한다. 되읽은 값이 accessory가 아니면 `Debug.Log`로 「전환 실패」 한 줄(`:230`)을 남기고, 예외나 앱 객체 획득 실패는 `Debug.LogWarning` 1회(`LogFailureOnce` `:304-308`)를 남긴다. 어느 쪽이든 일반 앱으로 남는다.
+- **`LSUIElement`**: `Assets/Editor/` 빌드 코드와 `ProjectSettings/ProjectSettings.asset`에 **0회**다. 비테스트 `.cs`에서 걸린 3곳은 전부 주석이다(`MacSpaceBehaviorNative.cs` 1 · `MacWindowService.cs` 2). Info.plist를 만지는 후처리 `Assets/Editor/MacHybridGpuInfoPlistPostprocessor.cs`에도 이 키가 없다.
+  ⇒ **기동 시에는 일반 앱으로 떴다가 부착 뒤 accessory로 내려갈 것으로 판단한다**— 빌드 산출물 실측: `Builds/macOS/StickMate.app/Contents/Info.plist`(2026-09-09 13:32, 같은 앱의 `StickMate.Runtime.dll` 09-09 13:19 — **`a8c3723`(09-15)보다 이전 빌드**)에 `LSUIElement` 키 **0**이다(`plutil`로 XML 변환 뒤 `<key>` 고정 문자열 계수. 양성 대조 `CFBundleIdentifier` 1 · `NSSupportsAutomaticGraphicsSwitching` 1 · 음성 대조 없는 키 0). `a8c3723` 빌드 산출물은 재지 않았다.
+- Apple(`NSApplication.ActivationPolicy.accessory`): *"The application doesn’t appear in the Dock and doesn’t have a menu bar, but it may be activated programmatically or by clicking on one of its windows."*
+- Apple(`LSUIElement`): *"A Boolean value indicating whether the app is an agent app that runs in the background and doesn’t appear in the Dock."*
+- **⌘Tab**: 위 두 1차 문서 문장에 없다. 코드 주석(`MacSpaceBehaviorNative.cs:28` 「Dock 아이콘과 Cmd-Tab 목록에서 사라진다」)만 주장한다 → **미확인(1차 문서·실기)**.
+- **틈**: 기동 직후 부착 감지 전 Dock 아이콘(위 판단) — 길이는 미확인이다.
+
+### 6-5. 이 사실을 잠그는 테스트 (`a8c3723`, 선언 기준)
+
+- `AppSwitcherPresenceTests` 14개(A1–C1): 비트 값, 다른 비트 보존, 읽기 실패 시 쓰기 0, 「버튼은 스타일만으로 안 사라진다」, DeleteTab 상한, 부착 시점 대칭, ShowWindow 왕복 부재, COM은 DeleteTab 하나. **전부 소스·순수 규칙 검사다.**
+- `PlatformParityAuditTests` `앱전환기_제외가_양_플랫폼에_대칭으로_배선되어_있다` · `작업표시줄_버튼_제거는_창_상태를_건드리지_않는_경로로만_한다`.
+- 실제로 버튼·Alt+Tab·Dock·⌘Tab에서 빠지는지 재는 테스트는 없다(실기 영역).
+
+### 6-6. 연결과 실기 문안 (이 절은 아래 파일을 수정하지 않았다)
+
+- 같은 문장이 걸리는 파일(고정 문자열 계수, `a8c3723` / 작업 트리): `docs/strategy/CHANNEL_PRICING_DECISIONS.md` **0 / 1**(작업 트리에만) · `docs/strategy/ROADMAP.md` 1 / 1 · `docs/marketing/ROADMAP.md` 1 / 1 · `docs/marketing/TRUTH_INVENTORY.md` 1 / 1 · `docs/marketing/CAPTURE_REQUESTS_R6.md` 1 / 1.
+- 실기 확인 문안(체크표 반영은 리더 판단): 기동 30초 뒤에 본다.
+  - (a) 작업 표시줄 버튼 유무
+  - (b) Alt+Tab 목록에 StickMate 유무
+  - (c) 알림 영역·오버플로에서 아이콘 위치
+  - (d) 로그 `[전환기제외]`의 `부여` 또는 `이미 서 있음` 줄, `[작업표시줄버튼] ITaskbarList.DeleteTab 호출 성공` 줄
+  - macOS: Dock·⌘Tab에 StickMate 유무와 로그 `activation policy 전환 성공` 줄
+
+**Windows 영향**: 코드 변경 없음. Alt+Tab 제외는 코드상 참(부착 전·외부 삭제 뒤 최대 2초 틈), 작업 표시줄 버튼 제거는 DeleteTab 성공 전제의 조건부, 트레이 켬이면 알림 영역 아이콘과 이름 툴팁이 뜬다. 실기 미확인.
+**macOS 영향**: 코드 변경 없음. Dock 제외는 부착 뒤 코드상 참(기동 직후 틈), ⌘Tab 제외는 1차 문서가 없어 미확인. 실기 미확인.
+
+### 6-7. 6절 정정 기록 (미커밋 삽입분 제자리 교체 · 2026-09-15)
+
+6절은 `a8c3723` 뒤에 삽입한 미커밋 부분이라 제자리에서 고쳤다(1–5절 커밋판 글자 삭제 0). `TEAM.md` §5 형식(요지 → 정정 → 근거)으로 적는다. 첫 삽입본 sha 앞 16자 `9208a2c835cd45f3`.
+근거 번호는 `Tasklist.md` 「[verify-change] `FOREGROUND_INPUT_FACTS.md` 6절 삽입 — 조건부 통과」 기록의 순서다 — 틀린 계수 ①②, 경미 1–7. 이 표의 형식(항목별 근거 번호 · 교체 표기)은 델타 재검증 C1(리더 판정)으로 맞췄다.
+
+| # | 첫 삽입본 요지 | 정정 | 근거 |
+|---|---|---|---|
+| 1 | 6-1 ③ 「우리 비테스트 코드에 `SetParent`·`GWLP_HWNDPARENT` 0파일」(계수 기준 없음) | 기준 명시: Win32 형태 0 · 문자열 147줄 / 36파일 · `.SetParent` 142줄 / 34파일 | 틀린 계수 ① |
+| 2 | 6-3 「`typeof(Canvas)` 비테스트 5곳」 | 6줄 / 6파일(말풍선 캔버스 누락) | 틀린 계수 ② |
+| 3 | 6-1 ② `DeleteTab` 재시도 조건에 COM 생성 실패만 적음 | 「호출 예외 → 재시도 없음」·「시도 계수는 성공 뒤에만」 추가 | 경미 1 |
+| 4 | 6-1 ① 「같은 창을 다시 붙일 때 이 복원이 도는지는 판독하지 않았다」 | **교체**: 플레이어 빌드에서는 C#이 부르지 않는다(`#if UNITY_EDITOR` 안 호출 1곳 · `Dispose`의 호출은 주석), 남는 후보는 네이티브 재부착 경로뿐(미확인). 6-1 ③에 씬·프리팹 bottommost 0 추가 | 경미 2 |
+| 5 | 6-4 「Unity 기본 Info.plist에 이 키가 없다는 것은 미확인」 | `a8c3723` 이전 빌드(09-09) Info.plist 실측 0으로 교체 | 경미 3 |
+| 6 | 6-6 표제 「(작업 트리)」와 `docs/marketing/ROADMAP.md`에만 붙은 「(`a8c3723`에도 1회)」 | **교체**: 「`a8c3723` / 작업 트리」 계수로 통일 — 작업 트리에만 있는 것은 CHANNEL(0 / 1) 하나 | 경미 4 |
+| 7 | 6-0 트레이 끔 행 「세션 종료 수신용 숨은 창만 선다」 | **교체**: 세션 종료 때 할 일이 있을 때만(이번 실행이 작업표시줄 설정을 바꿨거나 종료 표지 시작 · 1회 평가) 숨은 수신 창이 선다 | 경미 5 |
+| 8 | 6-4 Apple 인용의 곧은 아포스트로피 3곳 | 원문 둥근 따옴표 | 경미 6 |
+| 9 | 6-4 「되읽어 확인하고, 실패하면 경고 한 줄을 남긴 뒤 일반 앱으로 남는다」 | **교체**: 되읽기 실패는 `Debug.Log`(`:230`), 예외·앱 객체 획득 실패는 `Debug.LogWarning` 1회(`:304-308`) | 경미 7 |
+| 10 | 절 머리 입력 줄 「CHANNEL의 사용 보류 문구」(`a8c3723` 기준 계수) | **교체**: CHANNEL 59절의 현재 상태(리더 판정 「1.0 게시에서 쓰지 않는다」, Alt+Tab 단독형은 실기 전 보류)와 HEAD `76504c2` 기준 계수 | strategy 검증 경미 ③ |

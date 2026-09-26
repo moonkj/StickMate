@@ -420,7 +420,7 @@ if (_agent != null && UserSurfaceSummonPolicy.SuppressesUnsummonedSurfaces(
 
 ### 9-1. ★ 정정 — 명령 크랙(행동 명령창 [창 부수기] · ⌃⌥⌘X)은 개발 전용이 아니다 (2026-09-15, `ad49497` 커밋 뒤)
 
-발단: `persona-immersion`(소은) 코드 판독 지적 → 판정(리더 배정). 코드 줄은 `ad49497` 기준이다. 〔2026-09-15 재확인 · verify-change A 조건부 반영: 작업 트리 `Interaction/WindowCrashDirector.cs`에는 A1 가드가 **미커밋**으로 들어와 있다(HEAD 대비 +25줄). 이 절의 크랙 줄 번호는 여전히 HEAD 기준이다. A 1 · 2 · 3 정정은 이 절 안에 취소선과 함께 있다〕
+발단: `persona-immersion`(소은) 코드 판독 지적 → 판정(리더 배정). 코드 줄은 `ad49497` 기준이다. 〔2026-09-15 재확인 · verify-change A 조건부 반영: 작업 트리 `Interaction/WindowCrashDirector.cs`에는 A1 가드가 **미커밋**으로 들어와 있다(HEAD 대비 +25줄). 이 절의 크랙 줄 번호는 여전히 HEAD 기준이다. 〔묶음 ⑨ 보강: 예를 들어 `ForceTriggerNow` 첫 줄(앵커 `CommandAvailability availability = GetAvailability();`)은 `ad49497` blob과 `a8c3723`(HEAD) blob에서 `:109`이고, A1이 든 작업 트리에서는 `:134`다. **A1이 커밋되면 HEAD의 이 파일 줄 번호가 밀린다** — 그 뒤 이 절의 `WindowCrashDirector.cs` 줄 인용은 `ad49497` 기준으로만 참이므로 앵커로 찾는다〕 A 1 · 2 · 3 정정은 이 절 안에 취소선과 함께 있다〕
 
 **무엇이 틀렸나 — 자백**
 - 위 §9 줄은 `Interaction/WindowCrashDirector.cs:60-63`의 `ForceTriggerNow` 문서 주석(「강제 발동 … 데모 경로」)만 믿었고 **호출자를 세지 않았다.**

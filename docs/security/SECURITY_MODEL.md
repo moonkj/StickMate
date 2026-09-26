@@ -1944,6 +1944,28 @@ Learn의 `IVirtualDesktopManager` 페이지는 메서드를 **알파벳순**으�
 - 스팀을 켠 상태와 끈 상태, 부팅 자동 실행 경로를 모두 잰다. 스팀 클라이언트와의 로컬 통신이 루프백 소켓인지는 **미확인**이라 루프백은 따로 기록한다.
 - 실측 전에는 쓰지 않는다. 앱 실행이라 리더 승인 사항이고, 사용자 머신에서 하지 않는다.
 
+**X-2-A. 관리자 권한(UAC) 판정** (2026-09-15 측정 · 커밋판 `a8c3723`에 삽입만 했다. 위 표 「OS 권한 요청 0」 행의 권한 가운데 **관리자 권한 하나**만 판정한다. 방화벽 프롬프트 미확인과 짧은 형 「OS 권한 요청 0」 보류는 그대로다)
+
+- **측정 — 실행 파일 매니페스트**: 아래 다섯 파일 모두 `RT_MANIFEST` 1개, `requestedExecutionLevel level="asInvoker"`, `uiAccess="false"`다. 두 방법(PE 리소스 디렉터리 파싱 / 파일 전체 원시 바이트 검색)이 일치했고, 원시 바이트의 `requireAdministrator`·`highestAvailable`은 0이다.
+  - `Builds/Windows/StickMate.exe` · `Builds/Windows/UnityCrashHandler64.exe`
+  - `Builds/StickMate-Windows-20260914-eb4670d.zip` 안의 같은 두 파일
+  - Unity 6000.0.82f1 설치 폴더의 win64 비개발 Mono 스텁 `PlaybackEngines/WindowsStandaloneSupport/Variations/win64_player_nondevelopment_mono/WindowsPlayer.exe` — 매니페스트가 우리 `StickMate.exe`와 같은 1314바이트 · `asInvoker`라서, 우리 빌드 설정이 바꾼 값이 아니라 Unity 기본값으로 판단한다.
+  - 음성 대조: 매니페스트가 없는 `Builds/Windows/StickMate_Data/Managed/StickMate.Runtime.dll` · `Builds/Windows/UnityPlayer.dll`에서 같은 파서가 `RT_MANIFEST` 0 · 원시 바이트 `asInvoker` 0이었다.
+  - 엔진 dll: `Builds/Windows/UnityPlayer.dll`과 0914 zip의 `UnityPlayer.dll` sha256 앞 16자는 Unity 비개발 변형과 같은 `6052d8f8650c3acc`이고, 개발 변형(`90e1bbd568bb4b92`)과 다르다.
+- **측정 — 소스**(고정 문자열, 대소문자 구분): `requireAdministrator`·`highestAvailable`·`runas`·`Process.Start`·`ShellExecute`가 런타임 스크립트 `Assets/_Project/Scripts`(`Tests/` 제외) · `ProjectSettings` · `Tools`에서 0줄이다. `Assets/Editor`에는 1줄이 있다 — 에디터 전용 macOS 빌드 후처리기의 `UseShellExecute = false`로, 플레이어에 들어가지 않는다(`PERSISTENT_WRITE_INVENTORY.md` 1-5). 같은 명령 형태의 양성: 합성 파일에서 2줄씩.
+- **미측정**: 스팀 빌드(정의 ON — X-1대로 존재한 적이 없다) · 다른 스텁 변형(개발 · arm64 · x86) · 스팀 depot 설치 스크립트(저장소에 없다).
+- **1차 문서** — Microsoft Learn 「Windows Firewall Rules」 (https://learn.microsoft.com/en-us/windows/security/operating-system-security/network-security/windows-firewall/rules · 페이지 `ms.date` 2025-06-06). 원문 HTML을 curl로 받아 옮겼다(요약 도구를 거치지 않았다):
+  - 「If the user has admin permissions, they're prompted. If they respond No or cancel the prompt, block rules are created.」 (원문은 `No`에 기울임 태그가 있다)
+  - 「If the user isn't a local admin and they are prompted, block rules are created. It doesn't matter what option is selected.」
+  - 「However, the behaviors involved in the automatic creation of application rules at runtime require user interaction and administrative privilege.」
+  - 계수(받은 HTML, 고정 문자열): 태그를 걷은 본문에서 세 문장 각 1회. 원시 HTML에서는 둘째·셋째가 각 1회이고, 첫째는 `<em>No</em>` 형태로 1회(태그 없는 형태 0회). 음성 대조: 첫째 문장의 한 낱말을 바꾼 형태 0회.
+  - 알림이 뜨는 조건(같은 페이지): 「a dialog box prompts the user to either allow or block an application's packets the first time the app is launched or tries to communicate in the network」.
+- **결론**:
+  - 좁은 문장 「실행할 때 관리자 권한(UAC)을 요청하지 않습니다」: **측정한 바이너리 기준 게시 가능.** 조건은 출시 게이트에서 1.0 출시 바이너리의 매니페스트를 위 방법으로 다시 확인하는 것이다.
+  - 열거형 「관리자 권한을 요구하지 않습니다」: **조건부.** 조건은 (a) 출시 바이너리가 `asInvoker`일 것, (b) 정의 ON 출시 바이너리로 깨끗한 Windows에서 스팀 켬·끔 각각 방화벽 알림이 0일 것이다. 알림이 뜨면 위 1차 문서대로 「허용」에 관리자 권한이 필요하므로, 사용자 눈에 이 문장이 거짓이 된다 — 그때는 좁은 문장으로 내린다.
+  - 범위 밖: 스팀 클라이언트 자체의 설치 · 업데이트 권한.
+- **위 표 · 짧은 형과의 연결**: 이 판정은 「OS 권한 요청 0」 보류를 풀지 않는다. 조건 (b)가 확인되면 짧은 형 「OS 권한 요청 0」과 열거형의 관리자 항목이 함께 풀리고, 확인 전에는 관리자 권한에 대해 좁은 문장만 쓴다. 정의 OFF 공개 빌드도 방화벽 알림은 실측한 적이 없다(위 표의 「우리 코드 기준 참」 그대로다).
+
 **문구 선택 규칙(제안)**: 문구는 빌드 이름이 아니라 **바이너리 판정**으로 고른다.
 - 출시 체크에 아래 **토큰 정의 그대로** X-1의 세 방법과 양성 대조를 넣는다. 대상은 `StickMate_Data/Managed/StickMate.Runtime.dll`(Windows) / `Contents/Resources/Data/Managed/StickMate.Runtime.dll`(macOS)과 그 빌드 폴더 전체다.
   ★ **monodis는 반드시 그 `Managed/` 폴더 안의 dll에 실행한다**(따로 복사한 사본 금지). 사본에서는 의존 어셈블리를 못 찾아 `--method`가 중단되고, `--fields`는 종료코드 0인 채 형 이름이 깨진다(아래 제외 표 뒤 표).
