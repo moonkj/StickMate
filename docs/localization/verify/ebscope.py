@@ -185,6 +185,15 @@ def drift_lines(d, focus=()):
         for k in sorted(d['born_rows']):
             if k[0] == f:
                 out.append('  + [%s] %s %r' % (f, k[1], k[2]))
+    if not focus:
+        # ★ 규칙 24(2026-09-27) — focus 파일만 찍으면 그 밖에서 바뀐 것을 구조적으로 못 본다.
+        #   공용 구현(driftkeys.py)으로 키 집합 전량(상한 안)을 찍는다. 차이가 0이면 줄이 늘지 않는다.
+        if HERE not in sys.path:
+            sys.path.insert(0, HERE)
+        import driftkeys  # noqa
+        empty = collections.Counter()
+        out.extend(driftkeys.key_lines(d.get('gone_rows', empty), d.get('born_rows', empty),
+                                       label='ship 키(파일, 판정, 문자열)'))
     return out
 
 
@@ -326,6 +335,14 @@ def selftest():
     chk('★ 스냅숏 신선도 — ship.json 이 지금 소스로 ship.py 가 낼 결과와 같다',
         not drift['stale'], '\n           '.join(drift_lines(drift, focus=(ITEMCATALOG_FILE,))),
         undecidable=True)
+    synthetic = {'gone': 1, 'born': 1, 'asset_gone': 0, 'asset_born': 0,
+                 'files': collections.Counter({'X.cs': 2}),
+                 'gone_rows': collections.Counter({('X.cs', 'SHIP', u'옛 원문'): 1}),
+                 'born_rows': collections.Counter({('X.cs', 'SHIP', u'심은 변이'): 1})}
+    chk('★ 규칙 24 — 차이 dict가 키 집합을 들고 있고, 심은 변이가 키 줄로 찍힌다(합계 차 0)',
+        'gone_rows' in drift and 'born_rows' in drift
+        and any(u'심은 변이' in ln for ln in drift_lines(synthetic)[1:])
+        and any(u'옛 원문' in ln for ln in drift_lines(synthetic)[1:]))
 
     eb, ec = classify(data, chrome)
 

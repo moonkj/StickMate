@@ -393,6 +393,12 @@ namespace StickMate.Tests.PlayMode
         /// 풀리면 안 된다. 두 축을 <c>(fullscreen || userHidden) &amp;&amp; AutoHideOnFullscreen</c>처럼
         /// 한 조건식에 얹으면 정확히 그렇게 된다 — 화면공유 중에 토글 하나가 캐릭터를 발표 화면으로
         /// 되돌리는 경로다.
+        ///
+        /// <para>★ <b>정정(2026-09-27)</b> — 위 인용은 원칙 문구가 아니라 <b>그때의 설정창 행 라벨</b>이고,
+        /// <b>그 라벨은 이후 바뀌었다</b>. 지금 화면에 뜨는 문구의 정본은 행 <c>general.autoHide</c>를
+        /// 만드는 곳의 문자열 하나다(<c>Interaction/SettingsWindow.cs</c>) — 이 주석의 인용을 라벨의
+        /// 현재값으로 읽지 마라. 원칙 2 <b>문구 자체</b>의 정정은 <c>CLAUDE.md</c> 「절대 불변 원칙」
+        /// 2번 아래 정정 블록에 있다. 이 테스트가 재는 <b>두 축의 독립</b>은 어느 쪽과도 무관하게 그대로다.</para>
         /// </summary>
         [UnityTest]
         [Timeout(120000)]

@@ -135,10 +135,30 @@ namespace StickMate.Tests.PlayMode
 
             _info.Toggle("테스트");
             yield return null;
-            _info.FeedClickForTests(_info.SettingsChipScreenRect.center);
+            Assert.IsTrue(_info.IsOpen, $"{LogPrefix} 전제: 정보창이 열려 있어야 합니다.");
+
+            // ★★ 2026-09-27 — 이 전제는 09-14부터 18회 연속 «판정 불가»였다(그 전에는 32회 통과).
+            //    원인은 라우팅 회귀가 아니라 <b>이 화면에서 [설정] 칩이 접힌다</b>는 것이다: 헤더 오른쪽 칩은
+            //    탭 스트립을 침범하면 꺼지는데(SyncHeaderChips — 겹치면 «탭을 눌렀는데 설정이 열리는»
+            //    오배선이 나므로 옳은 규칙이다), 배치모드의 좁은 게임 뷰에서 창이 줄면 그 조건에 걸린다.
+            //    꺼진 칩의 사각형은 비고(RawScreenRectOf는 비활성이면 빈 사각형), 그 중심을 누르면
+            //    아무 데도 닿지 않아 설정창이 열리지 않았다.
+            //    ⇒ 칩 <b>핸들러와 같은 호출</b>로 연다. CharacterInfoWindow.OpenSettings가 하는 일이 정확히
+            //      이 한 줄이고(그 함수는 private), 같은 치환을 이미 두 스위트가 쓴다
+            //      (FullscreenPanelRetreatTests · PanelsOnlyTierMouseEntryTests).
+            //      «빼앗고 돌려주는» 배선은 이 경로에 그대로 살아 있다 — 설정창이 열리면서 정보창을 거두고
+            //      그때 «돌려줄 것»을 기억하므로, 아래 [✕] 네거티브 컨트롤이 여전히 그 복귀를 잡는다.
+            //    ★ 칩을 <b>좌표로 누르는</b> 경로 자체는 이 파일의
+            //      ClosingSettingsReopensTheInfoWindowItReplaced가 계속 지킨다(그쪽은 같은 접힘 때문에 빨갛고,
+            //      그 사실은 리더 명부에 올라 있다). 여기서 그 경로를 다시 재지 않는 것이지 덮는 것이 아니다.
+            Debug.Log($"{LogPrefix} 참고 — 게임 뷰 {Screen.width}×{Screen.height}에서 [설정] 칩 사각형 폭=" +
+                $"{_info.SettingsChipScreenRect.width:F1}px(0이면 좁아서 접힌 것). 칩 핸들러와 같은 호출로 엽니다.");
+            _settings.Open("테스트 — 정보창 [설정] 칩 핸들러와 같은 호출");
             yield return null;
-            Assume.That(_settings.IsOpen, Is.True, $"{LogPrefix} 전제: 설정창이 열려 있어야 합니다.");
-            Assume.That(_info.IsOpen, Is.False, $"{LogPrefix} 전제: 설정창은 배타 모달이라 정보창을 닫습니다.");
+
+            // ★ Assume이 아니라 Assert다 — 전제가 조용히 무너진 채 18회가 지나갔다. 건너뛴 검사는 잊힌다.
+            Assert.IsTrue(_settings.IsOpen, $"{LogPrefix} 전제: 설정창이 열려 있어야 합니다.");
+            Assert.IsFalse(_info.IsOpen, $"{LogPrefix} 전제: 설정창은 배타 모달이라 정보창을 닫습니다.");
 
             // ★ "창 밖"을 좌표로 못 박지 않는다 — 배치모드의 좁은 화면(예: 640×480)에서는 720×560 패널이
             //   화면을 통째로 덮어 <b>화면 안에는</b> 바깥이 존재하지 않는다(첫 작성본이 (4,4)를 찍었다가

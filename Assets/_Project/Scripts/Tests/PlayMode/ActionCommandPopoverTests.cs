@@ -199,7 +199,7 @@ namespace StickMate.Tests.PlayMode
         //   명령창에 얹어 두었던 <b>오분류가 정리됐다</b>. 이 창의 푸터 칩은 같은 라운드에 삭제됐다.
         //
         //   <b>같은 성질을 잠그는 자리는 옮겨 갔다</b>:
-        //     · 2단 확인 · 3초 자동 해제  ->  <c>InfoGearRadialMenuTests.QuitSatelliteArmsThenDisarms…</c>
+        //     · 2단 확인 · 3초 자동 해제  ->  <c>InfoGearRadialMenuTests.QuitArmsOnFirstClickAndDisarmsByItself</c>
         //     · 오조준 이격             ->  ★ 2026-09-06 <b>이 방어는 폐지됐다</b>. 위성이 폐지되어
         //                                   다섯이 등간격이다(이웃 57.75pt). 오폭 방어는 2단 확인이 전부다.
         //     · 확인 시간 단일 출처     ->  바로 아래 테스트(<b>이 창에 그대로 남아 있다</b> — 상수의

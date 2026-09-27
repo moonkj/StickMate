@@ -17,12 +17,12 @@
    29
   ],
   [
-   "Dialogue/DialogueBubbleRenderer.cs",
-   22
+   "Interaction/ActionCommandPopover.cs",
+   23
   ],
   [
-   "Interaction/ActionCommandPopover.cs",
-   21
+   "Dialogue/DialogueBubbleRenderer.cs",
+   22
   ],
   [
    "Interaction/FocusSessionPopover.cs",
@@ -236,7 +236,7 @@
   ],
   [
    "Core/StickMateDisplayNames.cs",
-   52
+   53
   ],
   [
    "Core/CostumeCatalog.cs",
@@ -331,6 +331,10 @@
    12
   ],
   [
+   "Platform/Windows/WindowsGameProcessProbe.cs",
+   12
+  ],
+  [
    "Interaction/ArcheryDirector.cs",
    12
   ],
@@ -420,10 +424,6 @@
   ],
   [
    "Platform/MacOS/MacSystemAudioActivityProbe.cs",
-   7
-  ],
-  [
-   "Platform/Windows/WindowsGameProcessProbe.cs",
    7
   ],
   [
@@ -561,6 +561,10 @@
   [
    "Interaction/WindowTheftRenderer.cs",
    2
+  ],
+  [
+   "Core/UnsummonedSurfaceCommandReason.cs",
+   1
   ],
   [
    "Platform/RepeatedLogFolder.cs",

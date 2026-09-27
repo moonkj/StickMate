@@ -92,6 +92,38 @@ iOS/iPadOS는 앱 샌드박스 정책상 "다른 앱 창 열거"·"시스템 전
 ## 3. 절대 불변 원칙 (전 팀원 공유)
 1. 행동과 텍스트는 항상 일치 (상태 확정 → 대사 파생, 역방향 금지)
 2. 클릭 관통 기본 ON, 전체화면 게임 감지 시 자동 숨김
+   - ★ 2026-09-27 문구 정정(`game-architect` 판정 ⑷ · 행동 변경 0줄 · 위 한 줄은 글자 그대로 보존한다):
+     **이 문구는 구현보다 좁다.** 실재 배선은 두 단계다 — 전체화면 앱이 뜨면 게임이 아니어도 우리
+     표면(창·팝오버·부채꼴과 그 클릭 차단막)이 물러나고 자동 발동 춤이 멈추며(등급 1), **그중 게임일
+     때만 캐릭터까지 숨는다**(등급 2). 읽을 때의 정본은 이 두 단계다.
+     계기는 줄 번호가 아니라 (파일 · 문자열 앵커 · 기대 횟수)로 적는다 —
+     `Platform/FullscreenSuspendPolicy.cs` 앵커 `return isGame ? ForeignFullscreenTier.Full : ForeignFullscreenTier.PanelsOnly;` 1회 ·
+     `Core/StickmanAgent.cs` 앵커 `_fullscreenAutoHide = AppSettingsModel.AutoHideOnFullscreen` 1회(등급 2) ·
+     `_fullscreenPanelRetreat = AppSettingsModel.AutoHideOnFullscreen` 1회(등급 1) ·
+     `_foreignFullscreenSuppressesDance = AppSettingsModel.AutoHideOnFullscreen` 1회(자동 춤).
+   - ★★ **「게임」을 「앱」으로 한 낱말만 바꾸지 마라.** 그렇게 쓰면 「전체화면 앱이면 캐릭터가 숨는다」로
+     읽히고, 그것은 2026-08-31 사용자 신고 *"엑셀같은 프로그램 전체화면에서 엑셀 클릭하면 캐릭터가
+     없어져버림"*로 **닫힌 문이다.** 코드가 그 처방을 「금지」·「완전한 회귀」로 못박아 두었다 —
+     같은 파일 앵커 `게임 조건을 없애고 기하만 쓴다` 1회 · 신고 원문 앵커 2회.
+     즉 문구를 넓히는 것은 **원칙을 약화시키지 않고 실재에 맞추는 일**이지만, 넓히는 방향이 하나뿐인
+     것은 아니다. 캐릭터 은신까지 앱 전반으로 넓히는 쪽은 **사용자 확정을 뒤집는 것**이라 리더 재량이 아니다.
+     판정 전문은 `docs/GAME_ARCHITECTURE_REVIEW.md` §20-4.
+   - ★ 이 문구는 `CLAUDE.md`·`README.md`·`docs/ARCHITECTURE.md` **세 곳에 각 1회** 있고 **글자가 같아야 한다** — 바꿀 때는 **같은 커밋에서 셋 다** 고친다.
+     ★ **무엇을 세는지가 이 불변식의 절반이다**. 「각 1회」와 「글자가 같아야 한다」의 주어는
+     **줄이 아니라 문장 하나**다 — 니들은 원칙 2 본문의
+     `클릭 관통 기본 ON, 전체화면 게임 감지 시 자동 숨김` **한 문장 전체**이고 기대값은 **세 파일 각 1회**다.
+     아래 두 니들을 이 정정 블록이 인용하고 있으므로 **이 블록을 계수 범위에서 빼고 센다**
+     (`docs/TEAM.md` 규칙 18 ⑶ 「센티널은 적는 순간 센티널이 아니게 된다」).
+     ⑴ **줄 전체로 비교하면 이미 거짓이다** — `docs/ARCHITECTURE.md` 쪽 줄에는 `**비침해**:` 접두와
+     끝 마침표가 없다. 줄까지 같은 것은 `CLAUDE.md`와 `README.md` 둘뿐이다.
+     ⑵ **짧게 자른 니들 `전체화면 게임 감지`로 세지 마라** — 본문 기준으로 1 · 2 · 3이 나오고 셋 다
+     정상이다(`README.md`의 기능 소개문 1회, `docs/ARCHITECTURE.md`의 요구사항 표와 소형 창 절 2회가
+     같은 말을 풀어 쓴 것이다).
+     ★ **썩는 방향**: 이것은 **존재 단언**이라 원칙 문구가 바뀌면 적중 0으로 **시끄럽게 빨개진다**.
+     조용히 초록이 되는 구멍은 하나뿐이고 **이미 열려 있다** — 세 파일 목록 **밖**의 사본은 세지지
+     않는다(`.claude/agents/` 정의서와 `.cs` 주석에 같은 원칙 문구가 있다). 전수 배분표는
+     `docs/GAME_ARCHITECTURE_REVIEW.md` §20-4-5이고, 원칙을 새 문서에 베끼면 **그 문서를 이 목록에
+     먼저 추가**한다.
 3. 유저 실제 파일/아이콘/창은 절대 변경 안 함 — 전부 읽기 전용 열거 + 시각적 복사본
    - ★ 승인된 예외 1건: **Windows 작업표시줄 자동 숨김**(실행 중에만 해제, 종료 시 원복,
      크래시 시 다음 실행이 복구). 사용자 확정 2026-09-02. 상세·근거·실기 확인 목록은
@@ -340,7 +372,7 @@ iOS/iPadOS는 앱 샌드박스 정책상 "다른 앱 창 열거"·"시스템 전
 | 배터리/와이파이 "걱정" 유휴 버전 | 없음 | 위 디렉터에 **등급 추가**로 흡수 | 작음 | OK |
 | 스트레스 / 반항 / 가출 | ★ **2026-09-14 정정 — 종전 「출하됨」은 사실이 아니었다.** **가출: 코드는 들어 있으나 출하 빌드에서 스스로 일어나지 않고 사용자가 시킬 수도 없다.** ① 자율 발동 — 임계 `stressRunawayThreshold` 2(`Core/StickConfig.cs:1647` · 배포 에셋 `Data/DefaultStickConfig.asset:234`) > 게이지 상한 1(`Core/StressGauge.cs:34` `Clamp01`)이라 `Interaction/RunawayDirector.cs:70`에서 항상 return ② 강제 발동 — `StickMateDevTools.Enabled` 뒤 개발 전용(`Interaction/AppControlDirector.cs:679`). 기능 존폐는 **사용자 결정 대기(2026-09-14)**, 그때까지 동작 변경 없음. 판정: [`docs/systems/RUNAWAY_DEFAULT_REACHABILITY.md`](systems/RUNAWAY_DEFAULT_REACHABILITY.md). ★ 가출 연출 PlayMode 테스트(`Phase5VisualLayerTests.cs:306` `ForceTriggerNow` · `StandbyGearVisibilityTests.cs:331` · `CharacterPreservationFreezeAgentTests.cs:504`/`:511` `TryForceRunawayNow`)는 `RunawayDirector`를 **직접 호출해 개발 게이트와 임계를 둘 다 우회한 세계**에서 돈다 — 그 초록은 「사용자에게 가출이 일어난다」의 근거가 아니다(TEAM.md 09-14 규칙 5). 같은 칸 나머지(배포 기본값): **SULKY 자율 발동 확률 0**(에셋 `:231` `stressSulkyChance: 0` → `Interaction/StressGaugeDirector.cs:156`) · **어깨 처짐 표시 꺼짐**(에셋 `:228` `stressTierCautionLevel: 2` → `Interaction/StressGaugeRenderer.cs:289`) · 게이지 입력·출력 전수는 판정 문서 §1-2·§1-3 | `StressGauge`, `StressGaugeDirector`, `Sulky`, `RunawayState`/`RunawayDirector` | — | OK |
 | 투두 말풍선 메모 | **출하됨** | `TodoListModel`, `TodoReminderDirector`, `TodoPostItWidget` | — | OK |
-| 집중모드(포모도로) | ★ **2026-09-26 정정 — 종전 「사양 변경 필요」의 대상 절반이 사라졌다.** ~~**출하됨, 사양 변경 필요**~~ → **출하됨(감시 기능은 사용자 지시로 삭제됨)**. ① 「지켜보기(딴짓 감지)」와 3단계 에스컬레이션이 2026-09-06 사용자 지시 «집중모드에서 지켜보기 기능 삭제해줘»로 통째 삭제됐다(`912fd8c`). 함께 사라진 이름: `PomodoroSensitivity` · `FocusWatchTierChanged` · `DistractionDetectionEnabled`(HEAD `fa25570` 프로덕션 참조 각 0건 · 양성 대조 `FocusWatchDirector` 45파일 · 음성 대조 `PomodoroSensitivityZZZ` 0건). ② 같은 날 두 번째 지시(신고 «집중모드시 캐릭터 아래에 녹색링이 생김»)로 **발밑 타이머 링도 완전 제거**됐고 `Interaction/FocusWatchRenderer.cs`가 **파일째 삭제**됐다(같은 커밋). ★ **되살리지 마라 — 사용자가 닫은 문이다**(근거: `Interaction/FocusWatchDirector.cs` 클래스 문서 · `docs/UX_FLOW.md` §18 배너 · 같은 문서 §35-7 ⛔ 무효) | `FocusWatchDirector`(세션 수명 · 타이머 · XP/코인 지급), `FocusSessionPopover`(60분 절대 다이얼 — `docs/UX_FLOW.md` §18은 「남은 시간을 말하는 표면은 … 하나뿐」이라고 적는다), `FocusSessionPhase`/`CurrentPhase`, `FocusAmbientGestures` + `StickmanPoseAnimator.ApplyFocusPose`/`ApplyFocusWatchStancePose`(세션 중 관망 자세 — 감시와 **무관한 별개 시스템**), `CostumePropRenderer`(코스튬 프롭). ~~`FocusWatchDirector`(감시 민감도 3단계 포함), `FocusWatchRenderer`~~ | 중간 | OK |
+| 집중모드(포모도로) | ★ **2026-09-26 정정 — 종전 「사양 변경 필요」의 대상 절반이 사라졌다.** ~~**출하됨, 사양 변경 필요**~~ → **출하됨(감시 기능은 사용자 지시로 삭제됨)**. ① 「지켜보기(딴짓 감지)」와 3단계 에스컬레이션이 2026-09-06 사용자 지시 «집중모드에서 지켜보기 기능 삭제해줘»로 통째 삭제됐다(`912fd8c`). 함께 사라진 이름: `PomodoroSensitivity` · `FocusWatchTierChanged` · `DistractionDetectionEnabled`(HEAD `fa25570` 프로덕션 참조 각 0건 · 양성 대조 `FocusWatchDirector` 45파일 · 음성 대조 `PomodoroSensitivityZZZ` 0건). ② 같은 날 두 번째 지시(신고 «집중모드시 캐릭터 아래에 녹색링이 생김»)로 **발밑 타이머 링도 완전 제거**됐고 `Interaction/FocusWatchRenderer.cs`가 **파일째 삭제**됐다(같은 커밋). ★ **되살리지 마라 — 사용자가 닫은 문이다**(근거: `Interaction/FocusWatchDirector.cs` 클래스 문서 · `docs/UX_FLOW.md` §18 배너 · 같은 문서 §35-7 ⛔ 무효) | `FocusWatchDirector`(세션 수명 · 타이머 · XP/코인 지급), `FocusSessionPopover`(60분 절대 다이얼 — `docs/UX_FLOW.md` §18은 「남은 시간을 말하는 표면은 … 하나뿐」이라고 적는다. ★ **그 §18 문장은 거짓이다** — 시간 표면은 2개이고 이 창만 **숫자**(`mm:ss`)를 쓴다. 나머지 하나는 부채꼴 ① [집중 모드] 버튼 글리프 **안**의 Ø20pt 스톱워치 링으로 **호만 있다**. 경위는 아래 「지금 실재하는 것」 정정), `FocusSessionPhase`/`CurrentPhase`, `FocusAmbientGestures` + `StickmanPoseAnimator.ApplyFocusPose`/`ApplyFocusWatchStancePose`(세션 중 관망 자세 — 감시와 **무관한 별개 시스템**), `CostumePropRenderer`(코스튬 프롭). ~~`FocusWatchDirector`(감시 민감도 3단계 포함), `FocusWatchRenderer`~~ | 중간 | OK |
 | 유휴 행동 9종 | 없음(공용 스케줄러 부재) | `AutoWanderController` Resting 페이즈, `TimedSpectacleState`, `SpectacleEventLock` | 중간 | 1건 위험 |
 | 인질극 이벤트 | 없음 | 스펙터클 취소 선례(`e18ac09`), 클릭관통 유지 원칙 | 중간 | 주의 |
 | 스케치북 무기 제작 | 없음 | `LocalClickCaptureGate`(드래그&던지기의 일시 입력 캡처 선례. 격파 미니게임이 원래의 선례였으나 2026-09-02 삭제) | 큼 | 4번 주의 |
@@ -415,11 +447,21 @@ iOS/iPadOS는 앱 샌드박스 정책상 "다른 앱 창 열거"·"시스템 전
 > `Interaction/FocusWatchRenderer.cs`가 파일째 삭제됐다(같은 커밋 `912fd8c`).
 > `docs/UX_FLOW.md`가 같은 판정을 이미 닫아 두었다 — 앵커 `### 35-7.`(⛔ 무효)과 §18 배너.
 >
-> **지금 실재하는 것**: 남은 시간을 말하는 표면은 `Interaction/FocusSessionPopover.cs`의 **60분 절대
+> **지금 실재하는 것**: ~~남은 시간을 말하는 표면은~~ **숫자로** 남은 시간을 말하는 표면은
+> `Interaction/FocusSessionPopover.cs`의 **60분 절대
 > 다이얼**이다(`DialSpanSeconds = 3600f` · `DialDiameter = 128f` · `RingDiameter = 74f`). 세션 중
 > **관망 자세**(팔짱↔뒷짐 + 제스처)는 감시와 무관한 별개 시스템이라 살아 있다
 > (`StickmanBlackboard.IsFocusSessionAmbientActive` = `StickConfig.focusSessionAmbientEnabled` ×
 > `FocusWatchDirector.IsSessionActive`).
+>
+> ★ **정정(2026-09-27 `game-architect`) — 위 「표면은 하나」는 쓰인 순간부터 거짓이었다**. 남은 시간을
+> 보여주는 표면은 **2개**다: ⑴ 집중 모드 창의 60분 절대 다이얼 — **숫자**(`mm:ss`)와 호를 함께 쓰고
+> `Interaction/FocusSessionPopover.cs:831`이 저장소에서 숫자를 그리는 유일한 자리다 · ⑵ 부채꼴 ①
+> [집중 모드] **버튼 글리프 안**의 Ø20pt 스톱워치 링 — **호만 있고 숫자는 0**이다
+> (`Interaction/GearRadialMenuWidget.cs:1919`). **참인 축소판**은 「숫자로 말하는 표면이 하나」다.
+> ★ **왜 틀렸나**: 링은 2026-08-30, 이 문장은 2026-09-06 — **링이 일주일 먼저 있었다**. 사라진 짝은
+> 발밑 **상대** 링이었고(같은 커밋 `912fd8c`), 그 삭제를 「시간 표면이 하나로 줄었다」로 옮겨 적은 것이
+> 이 오류다. ★ **「버튼 둘레」로 쓰지 마라** — Ø20pt 링은 Ø44pt 버튼 **안**이라 둘레를 찾으면 없다.
 >
 > **그래서 판단이 어떻게 바뀌는가**: 제목의 「사양 변경 1건」이 **그 1건째 소멸했다.** 남는 일감은
 > 신규 요구 3건 중 **앞의 둘**이고, 셋째(종료 임박 체크 리액션)는 재사용할 채널이 없어 **신설**이며

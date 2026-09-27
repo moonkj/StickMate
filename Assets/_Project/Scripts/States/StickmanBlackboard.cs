@@ -329,15 +329,37 @@ namespace StickMate.States
         /// 발판 좌표를 되돌릴 때 쓰는 것과 동일한 패턴).
         /// </summary>
         public bool TryGetCursorWorldPosition(out Vector2 worldPos)
+            => ReadCursorWorldPosition(out worldPos) == CursorReadOutcome.Ok;
+
+        /// <summary>
+        /// <see cref="TryGetCursorWorldPosition"/>과 <b>완전히 같은 조회</b>를 하면서 실패 <b>원인</b>을
+        /// 돌려준다(2026-09-27).
+        ///
+        /// <para><b>왜 필요한가</b>: 원인이 <b>넷</b>인데 <c>bool</c> 하나로 돌아왔다 —
+        /// 제공자 배선 없음 · 카메라 없음 · 몸통 없음 · 제공자 거절. 넷의 처방이 서로 다른데
+        /// 돌아오는 값이 똑같이 생겨서, 커서를 못 읽어 연출이 빠진 자리에 <b>로그가 0줄</b>이었다.
+        /// 원인 표의 정본과 「0이 성공이 아닌 이유」는 <c>States/CursorReadOutcome.cs</c> 한 곳에 있다.</para>
+        ///
+        /// <para>★ <b>bool 창구를 남기는 이유</b>: 이 조회의 소비자는 여러 곳이고 대부분 「읽었나」만
+        /// 필요하다. 전부를 원인 코드로 갈아치우면 관심 없는 호출부까지 흔들린다. 그래서 위 한 줄
+        /// 위임으로 <b>판정은 한 곳</b>에 두고, 원인이 필요한 자리만 이 메서드를 부른다 —
+        /// 두 경로가 각자 판정하면 그 둘이 갈라진다.</para>
+        ///
+        /// <para>검사 순서는 예전과 <b>한 글자도 다르지 않다</b>(제공자 null → 카메라 → 몸통 →
+        /// 제공자 호출). 특히 카메라·몸통이 없으면 <b>제공자를 부르지 않는다</b>는 성질을 유지한다.</para>
+        /// </summary>
+        public CursorReadOutcome ReadCursorWorldPosition(out Vector2 worldPos)
         {
             worldPos = default;
-            if (CursorProvider == null || MainCamera == null || Body == null) return false;
-            if (!CursorProvider(out Vector2 osScreen)) return false;
+            if (CursorProvider == null) return CursorReadOutcome.NoProvider;
+            if (MainCamera == null) return CursorReadOutcome.NoCamera;
+            if (Body == null) return CursorReadOutcome.NoBody;
+            if (!CursorProvider(out Vector2 osScreen)) return CursorReadOutcome.ProviderDeclined;
 
             _ = ScreenCoordinateConverter.WorldToOsScreen(MainCamera, Body.position, Config, out float depth);
             Vector3 world = ScreenCoordinateConverter.OsScreenToWorld(MainCamera, osScreen, depth, Config);
             worldPos = world;
-            return true;
+            return CursorReadOutcome.Ok;
         }
 
         // Idle/Walk(지상 상태)에서 발판을 잃은 뒤 실제로 Fall로 전이하기까지의 유예 누적 시간.
@@ -2824,18 +2846,41 @@ namespace StickMate.States
         /// <summary>G1에서 A/B 팔 역할을 교대하는 진행도. 포즈 층의 «안착» 구간(0.78~1.00) 시작점이다.</summary>
         private const float RecrossRoleSwapProgress01 = 0.78f;
 
+        /// <summary>G3 시작 시점의 좌표 조회 실패를 <b>세션당 한 줄만</b> 남기는 엣지 로그.
+        /// 자격 축(추첨에서 빠진 비율)은 <c>States/AutoWanderController</c>가 <c>[배회]</c>로 따로 찍는다 —
+        /// <b>두 실패는 서로 다른 사실</b>이라 한 줄로 합치면 어느 쪽인지 못 가린다.</summary>
+        private readonly CursorReadFailureEdgeLog _focusGlanceCursorLog = new CursorReadFailureEdgeLog();
+
         /// <summary>
         /// G3 시작 시점에 "커서가 지금 보는 쪽의 <b>반대편</b>인가"를 확정한다.
         /// <b>커서를 못 읽으면 언제나 false</b> — 없는 대상을 향해 돌아보는 그림은 절대 불변 원칙 1
         /// 위반이다(발행자도 같은 이유로 커서가 없으면 G3를 추첨에서 제외한다. 그래도 추첨과 시작
         /// 사이에 조회가 실패할 수 있어 여기서 한 번 더 막는다).
+        ///
+        /// <para>★ <b>2026-09-27 — 그 «한 번 더 막는» 자리가 로그를 0줄 남겼다.</b> 제스처는 시작됐는데
+        /// 방향만 못 정한 경우라, 화면에는 「돌지 않는 G3」가 정상처럼 보인다. 원인 코드를 받아
+        /// 엣지에서 한 줄 남긴다(<c>States/CursorReadOutcome.cs</c>).</para>
+        ///
+        /// <para>★ <c>Body == null</c> 선검사를 <b>지웠다</b>(거동 무변경): 아래 조회가 같은 조건을
+        /// <c>NoBody</c>로 <b>이미</b> 판정하고, <c>Ok</c>를 받은 뒤에는 <c>Body</c>가 non-null임이
+        /// 그 계약으로 보장된다. 같은 사실을 두 곳에서 판정하면 그 둘이 갈라진다 — 게다가 먼저 걸리면
+        /// 원인이 로그에 안 남았다.</para>
         /// </summary>
         private void ResolveFocusGlanceTurn()
         {
             _focusGlanceFlipApplied = false;
             _focusGlanceTurnsAround = false;
-            if (Body == null) return;
-            if (!TryGetCursorWorldPosition(out Vector2 cursorWorld)) return;
+
+            CursorReadOutcome cursor = ReadCursorWorldPosition(out Vector2 cursorWorld);
+            if (_focusGlanceCursorLog.ShouldEmit(cursor))
+            {
+                Debug.Log(
+                    $"[집중자세] G3(화면 쪽 돌아보기)가 돌아볼 방향을 정하지 못했습니다 — 커서 조회 실패({cursor}).\n" +
+                    "      제스처 자체는 시작되고 방향만 «그대로»가 됩니다(없는 대상을 향해 돌지 않는다 — 원칙 1).\n" +
+                    $"      이 자리는 세션당 {CursorReadFailureEdgeLog.MaxLinesPerSite}줄이 상한이라 " +
+                    "이 줄이 마지막입니다(좌표 축). 추첨 자격 쪽은 [배회]가 따로 찍습니다.");
+            }
+            if (cursor != CursorReadOutcome.Ok) return;
 
             float dx = cursorWorld.x - Body.position.x;
             // 커서가 몸통 바로 위(부호가 떨리는 자리)면 돌지 않는다 — 제자리 회전이 깜빡인다.

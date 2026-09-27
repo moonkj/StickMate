@@ -223,6 +223,23 @@ PlaneFold   (+1.0000,+0.0000) (-0.4200,+0.0000)
 PlaneTrail  (-1.1200,+0.0000) (-1.6800,+0.0000) (-2.0500,+0.1200) (-2.4500,+0.1200)
 ```
 
+> ★ as-of (2026-09-27 · design-equipment · HEAD `ee17c03` 기준) — 위 표의 `PlaneBody`·`PlaneFold` 두 행의
+> 「현행 유지」와 바로 위 좌표 두 줄은 **2026-09-06(이 문서 작성일) 시점의 현행**이다. 그때는 참이었다 —
+> 교체 커밋이 **하루 뒤**다. 그래서 취소선이 아니라 as-of다.
+> - ① 사라진 것: `PlaneBody`(닫힘 4점, 주색) · `PlaneFold`(열림 2점, 보조색).
+> - ② 교체 커밋: `91f14c2`(2026-09-07). 좌우 대칭 나비형(몸통 + 장식 접힘선)을
+>   **기수와 척추를 공유하는 접은 종이** 두 조각으로 바꿨다.
+> - ③ 지금 실재하는 것: `PlaneWing`(닫힘 3점, 주색) + `PlaneKeel`(닫힘 4점, 보조색).
+>   `PlaneWingSpanInR` 1.00 R은 그대로다. 계수(HEAD · 범위 `Assets` · `git grep -w -F`):
+>   살아 있는 호출 `PlaneWing(` 5 · `PlaneKeel(` 5 / `PlaneFold(` 0 · `PlaneBody(` 0.
+>   옛 이름의 남은 히트 12건은 전부 주석이다.
+> - ④ 그래서 판단이 어떻게 바뀌나: **이 항의 지시를 그대로 실행할 수 없다.** 「현행 유지」는 유지할 대상이
+>   없어졌다는 뜻이 되고, 신설하려던 `PlaneTrail`은 **바탕 도형이 다른 2조각으로 바뀐 위에** 올라가야 한다.
+>   다시 재야 하는 값이 셋이다 — ⑴ 기체 뒤끝(옛 x = −0.75)과 비드 0 앞 끝의 간격 1.80획,
+>   ⑵ §5 카드 표의 보조색 담당(옛 `PlaneFold` → 지금은 `PlaneKeel`), ⑶ 카드 R → viewBox 배율 9.9710.
+>   **이 셋을 다시 재기 전까지 `PlaneTrail`을 구현하지 마라.** 이 라운드에서는 재지 않았다(미확인).
+> - 같은 경로가 닿는 자리(이 문서 안): §5 카드 표의 「1 (`PlaneFold`)」 행 · §9-1 표의 `PlaneBody`·`PlaneFold` 행.
+
 **「픽셀 점선 꼬리」를 만드는 법 — 폭곡선 계단**
 
 `LineRenderer`에는 대시 패턴이 없고, 점 3개를 따로 두면 도형 정원(2~4)과 보조색 1개가 동시에
@@ -678,6 +695,23 @@ $ cd design/equipment/verify && python3 r22_pets.py
 | `SnailSizeInR · SnailShell*` · `SnailFoot · SnailShell · SnailShellCore` · `SnailShellSegments · SnailCoreSegments` | **삭제** → `BhHalo / BhOrbitA / BhOrbitB / BhCore` |
 | — | **신설 헬퍼 3개**: `EllipseEqualArc(a,b,n,tiltDeg)` · `EllipseArcEqualArc(a,b,n,tiltDeg,sweep,start)` · `Dot(cx,cy,diameter,n)` |
 
+> ★ as-of (2026-09-27 · design-equipment · HEAD `ee17c03` 기준) — 위 §9-1 표는 **아직 실행되지 않은 지시**다.
+> 표를 고치지 않고, 표가 딛고 있는 사실 중 **하나만 무너졌다**는 것을 적는다.
+> - ① 사라진 것: `BallSpoke` 한 항목뿐이다.
+> - ② 개명 커밋: `912fd8c`(2026-09-06) — 이 문서와 **같은 날**이고, 이 「삭제」 지시가 쓰이기 전에 이미
+>   `BallSeam`으로 개명하고 별칭까지 지워져 있었다. HEAD `Assets`에 남은 `BallSpoke` 1건은
+>   그 삭제 사실을 적은 주석이다.
+> - ③ **이 넷은 실재한다 — 지우지 마라**(HEAD `Assets` 계수, `git grep -w -F`):
+>   `BallRadiusInHeight` 11 · `BallSegments` 7 · `BallSeamBulgeRatio` 5 · `BallRing` 6.
+>   개명 후신 `BallSeam`도 13으로 살아 있다.
+> - ④ 그래서 판단이 어떻게 바뀌나: 이 행의 삭제 대상은 **6개가 아니라 5개**다. 나머지 다섯의 판단은 그대로 유효하다.
+>
+> ★ 같은 계수로 확인한 **이 문서 §9 전체의 착지 상태** — 새 이름 여섯(`SatCore` · `CatHead` · `GhostBody` ·
+> `DragonBody` · `BhHalo` · `PlaneTrail`)이 HEAD `Assets`에 **전부 0건**이고, 지우라던 `MiniFigure` 48 ·
+> `BalloonBody` 10 · `SnailShell` 9는 살아 있다. ⇒ **§9는 지시서로 남아 있고 코드에 반영되지 않았다**(미착지).
+> 예외 하나: `CursorArrow`는 이미 사라졌다(0건) — 2026-09-06 커서친구 머리/꼬리 분할로
+> `CursorHead`(11) + `CursorTail`(10)로 쪼개졌다. 같은 행의 `CursorSizeInR`(13)은 실재한다.
+
 ★ **등호장(equal-arc) 표본이 계약이다.** 균등각 표본은 장축 끝에서 현이 급격히 짧아진다 —
 실측: `a=1.00 b=0.26 n=8` 균등각 최단 현 **0.62획**, 등호장 **1.57획**.
 파이썬 참조 구현은 `design/equipment/verify/r22_pets.py`의 `ellipse_equal_arc`다.
@@ -760,6 +794,23 @@ $ cd design/equipment/verify && python3 r22_pets.py
 | `Tests/EditMode/Golden/ItemCatalogGolden.txt` | PET 6종 블록 전체 | 재생성 |
 | `Tests/EditMode/AppearanceShapeBudgetTests` | 면제 대장의 「커서친구 머리/꼬리 분할 미완」·「BallSpoke 별칭」 | 그 미완이 **사라진다** — 면제도 지워야 한다 |
 | `Platform/ViewerPresence.cs:137` | 주석이 `PetCursor`를 인용 | 코드는 아니지만 개명 시 낡은 인용이 된다(§10) |
+
+> ★ 정정 (2026-09-27 · design-equipment · HEAD `ee17c03` 기준) — 위 표의
+> `Tests/EditMode/AppearanceShapeBudgetTests` 행은 **두 항목 중 하나가 실재한 적이 없다.**
+> 이 한 건만 as-of가 아니라 정정이다(내가 잘못 적었다).
+> - ① 「커서친구 머리/꼬리 분할 미완」은 **실재했다** — `912fd8c^` 판 그 파일에
+>   `★ 미완 — 스펙은 머리(주색)+꼬리(보조색) 2조각인데 지금은 한 획이다(면제 대장 참고).`로 있었다.
+> - ② 「`BallSpoke` 별칭」은 **면제 대장 항목이 아니었다.** 테스트 폴더 전체 이력에서 `BallSpoke`를
+>   넣거나 뺀 커밋이 **0개**다(`git log -S`, 범위 `Assets/_Project/Scripts/Tests`. 같은 명령의 **양성 대조**로
+>   `BallSeam`은 커밋 2개가 잡힌다 — 프로브는 살아 있다). 별칭 자체는 **빌더**
+>   (`Interaction/AppearanceShapeBuilder.cs`)에 있었고 `912fd8c`가 지웠다.
+>   ⇒ 내가 「대장 항목」과 「빌더의 별칭」을 한 칸에 섞어 적었다.
+> - ③ 지금 실재하는 것: 면제 대장은 **비어 있다.** 코드가 스스로
+>   `★ 2026-09-06 — 면제 대장이 <b>비었다</b>. 두 건 다 실제로 고쳐졌다`고 적고, 옛 두 건을
+>   `발자국이 둥근 점 / 커서친구가 한 획`으로 적는다 — 내 표의 두 항목과 **한 건만** 겹친다.
+>   대장 대신 되돌림 방지 계약 두 검사가 들어갔다.
+> - ④ 그래서 판단이 어떻게 바뀌나: 이 행의 지시(「면제도 지워야 한다」)는 **이미 달성됐다** — 구현 라운드가
+>   할 일이 남아 있지 않다. 이 행을 근거로 면제 항목을 찾으면 없는 것을 찾게 된다.
 
 ★ **부재 단언 주의**(CLAUDE.md): 위 니들 중 **「없어야 한다」로 쓰인 것**은 이름이 바뀌면
 **조용히 초록**이 된다. 이름 교체 라운드는 각 니들에 대해 *"바뀌기 전에는 실재했는가"*를

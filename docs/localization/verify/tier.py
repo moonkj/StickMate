@@ -117,7 +117,10 @@ def drift_between(old, new):
     return {'stale': bool(gone or born or a_gone or a_born),
             'gone': sum(gone.values()), 'born': sum(born.values()),
             'asset_gone': sum(a_gone.values()), 'asset_born': sum(a_born.values()),
-            'files': files}
+            'files': files,
+            # ★ 규칙 24(2026-09-27) — 합계만 남기면 「계수는 같은데 내용이 다른」 변경을 못 본다.
+            'gone_rows': gone, 'born_rows': born,
+            'asset_gone_rows': a_gone, 'asset_born_rows': a_born}
 
 
 def drift_lines(d):
@@ -125,6 +128,13 @@ def drift_lines(d):
            % (d['gone'], d['born'], d['asset_gone'], d['asset_born'], len(d['files']))]
     for f, c in d['files'].most_common(5):
         out.append('  %5d  %s' % (c, f))
+    # ★ 규칙 24 — 키 집합을 함께 찍는다(공용 구현: driftkeys.py). 차이가 0이면 아무 줄도 늘지 않는다.
+    import driftkeys  # noqa
+    empty = collections.Counter()
+    out.extend(driftkeys.key_lines(d.get('gone_rows', empty), d.get('born_rows', empty),
+                                   label='cs 키(파일, 분류, 문자열)'))
+    out.extend(driftkeys.key_lines(d.get('asset_gone_rows', empty), d.get('asset_born_rows', empty),
+                                   label='.asset 키(파일, 문자열)'))
     return out
 
 
@@ -219,6 +229,9 @@ def selftest():
     real = drift_between(d, fresh)
     chk('★ 입력 신선도 — census.json 이 지금 소스로 census.py 가 낼 결과와 같다',
         not real['stale'], '\n           '.join(drift_lines(real)), undecidable=True)
+    chk('★ 규칙 24 — 차이 dict가 키 집합을 실제로 들고 있다(합계만 남기지 않았다)',
+        'gone_rows' in real and 'born_rows' in real
+        and 'asset_gone_rows' in real and 'asset_born_rows' in real)
 
     # ---- ★ 변이 대조 — 가드가 «살아 있는 초록/빨강»인가(메모리 사본만 바꾼다) ----
     def copy(x):
@@ -235,6 +248,9 @@ def selftest():
         dm = drift_between(m, fresh)
         chk('★ 변이 ② 리터럴 한 개의 글자를 바꾸면 → 낡음(사라짐 1 · 생김 1)',
             dm['stale'] and dm['gone'] == 1 and dm['born'] == 1, drift_lines(dm)[0])
+        chk('★ 규칙 24 양성 — 그 변이가 키 목록에 글자로 찍힌다(합계 차는 0인데도)',
+            dm['gone'] == dm['born'] and any(u'변이' in ln for ln in drift_lines(dm)[1:]),
+            '키 줄 %d개' % len(drift_lines(dm)[1:]))
         ml = copy(fresh)
         ml['cs'][others[0]]['line'] = ml['cs'][others[0]]['line'] + 7
         dl = drift_between(ml, fresh)

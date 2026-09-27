@@ -1425,13 +1425,36 @@ namespace StickMate.Tests.PlayMode
 
             yield return WaitUntilOrTimeout(CharacterCanTakeCommand, CommandReadyBudgetSeconds);
             yield return OpenCommandPopoverFromFan("R6b 약속 확인(등급 없음에서 다시 연 명령창)", expectGrant: false);
-            yield return WaitUntilOrTimeout(() => _popover.IsCommandReady(GraffitiCommand), CommandReadyBudgetSeconds);
-            CommandAvailability after = _graffiti.GetAvailability();
-            Debug.Log($"{LogPrefix} R6b 약속 확인 — 다시 연 명령창의 [낙서하기] 가능={after.IsReady} 사유=«{after.Reason}» · 타일 가능={_popover.IsCommandReady(GraffitiCommand)}");
+
+            // ★★ 2026-09-27 — 이 자리가 «간헐 빨강»을 냈다(전량 1회 빨강, 같은 판 격리 반복은 통과).
+            //    프로덕션이 아니라 <b>이 하네스가 난수 한 번에 매달려 있었다</b>: 감독의 가능 판정은 마지막에
+            //    «발판과 겹치지 않는 빈 자리»를 찾는데, 그 탐색이 무작위 각도·반경 후보를 설정값 횟수만큼
+            //    뽑아 화면 밖·발판 겹침이면 버린다 ⇒ <b>같은 세계에서도 호출마다 답이 달라진다</b>.
+            //    옛 판은 표본을 <b>둘</b> 썼다: (가) 0.25초 주기로 갱신되는 <b>캐시된 타일</b>만 기다린 뒤
+            //    (나) 감독을 <b>새로 한 번</b> 불러 그 한 번의 실패가 곧 단언 실패가 됐다. 그래서 실패 로그에
+            //    «타일 가능=True · 감독 가능=False»가 함께 찍혔다(한 세계의 두 표본이지 모순이 아니다).
+            //    ⇒ <b>단언이 보는 그 값을 기다리면서 그대로 집어</b> 표본을 하나로 만든다. 벽시계 예산 안에서
+            //      매 프레임 다시 뽑으므로 «빈 자리 없음»이 단독으로 이 판정을 뒤집지 못한다.
+            //    ★ 가드 검사는 그대로 살아 있다 — 7-b 가드가 되살아나면 조건이 끝까지 거짓이고, 마지막 표본의
+            //      사유가 7-b 문구라 아래 두 단언이 <b>둘 다</b> 빨개진다(건너뛰지 않는다).
+            CommandAvailability after = default;
+            bool tileReadyAtEnd = false;
+            int availabilityProbes = 0;
+            yield return WaitUntilOrTimeout(() =>
+            {
+                availabilityProbes++;
+                after = _graffiti.GetAvailability();
+                tileReadyAtEnd = _popover.IsCommandReady(GraffitiCommand);
+                return after.IsReady && tileReadyAtEnd;
+            }, CommandReadyBudgetSeconds);
+
+            Debug.Log($"{LogPrefix} R6b 약속 확인 — 다시 연 명령창의 [낙서하기] 가능={after.IsReady} 사유=«{after.Reason}» · 타일 가능={tileReadyAtEnd}" +
+                $" · 표본 {availabilityProbes}회(표본마다 빈 자리 후보 {(_config != null ? _config.graffitiCandidateSearchAttempts : 0)}개를 다시 뽑는다)");
             Assert.AreNotEqual(ExpectedUnsummonedReason, after.Reason,
                 $"{LogPrefix} ★ R6b — 사유가 약속한 조건을 다 채웠는데 같은 사유가 다시 나옵니다. 문구가 거짓 약속이 됩니다.");
-            Assert.IsTrue(after.IsReady && _popover.IsCommandReady(GraffitiCommand),
-                $"{LogPrefix} R6b — 조건을 채우고 다시 연 명령창에서 [낙서하기]가 가능해지지 않았습니다(사유 «{after.Reason}»). " +
+            Assert.IsTrue(after.IsReady && tileReadyAtEnd,
+                $"{LogPrefix} R6b — 조건을 채우고 다시 연 명령창에서 [낙서하기]가 {CommandReadyBudgetSeconds:F0}초 동안 " +
+                $"<b>한 번도</b> 가능해지지 않았습니다(마지막 사유 «{after.Reason}», 표본 {availabilityProbes}회). " +
                 "위 «회색»이 «원래 못 누르는 세계»와 구별되지 않습니다.");
             Debug.Log($"{LogPrefix} R6b 확인 — FFT 칸에서 회색 + 7-b 사유, 낙서 0. 연 것을 다 닫고 다시 열자 [낙서하기]가 가능해졌습니다.");
         }
@@ -1453,15 +1476,46 @@ namespace StickMate.Tests.PlayMode
                 "이 세계에서 낙서가 원래 불가면 R6a · R6b · R6d · R7a의 «회색 · 0»은 전부 무효입니다. " +
                 "사유가 «낙서할 빈 자리가 없어요»면 발판 환경 탓이고, 7-b 사유면 가드가 등급 없음에서도 무는 것입니다.");
 
-            _paint.Reset();
-            _popover.FeedClickForTests(_popover.CommandScreenRect(GraffitiCommand).center);
-            yield return ObserveGraffiti(GraffitiObserveSeconds());
-            GraffitiTally t = _paint.Snapshot();
-            StickmanStateId state = _agent.Blackboard.Machine.CurrentStateId;
-            Debug.Log($"{LogPrefix} R6c — 등급 없음 클릭: [{t}] · 상태 {state} · 명령창 열림={_popover.IsOpen}");
+            // ★★ 2026-09-27 — R6b와 <b>같은 병</b>이 여기에도 있었고, 이쪽이 더 넓게 노출돼 있다.
+            //    실측(이 라운드 격리 반복 4회 중 <b>1회</b>): 타일이 «가능»이라 클릭이 접수됐는데 실행이
+            //    «빈 자리 없음(영역 재계산 단계)»으로 거절돼 Started가 0이 됐다.
+            //    클릭 한 번이 무작위 탐색을 <b>최대 네 번</b> 돌린다(타일 판정 → 실행 안의 판정 → 실행 안의 재탐색
+            //    → 거절 사유 재조회). 네 번이 서로 독립이라 <b>앞이 성공해도 뒤가 실패할 수 있다</b>.
+            //    ⇒ 하네스는 «환경 탓 거절»만 벽시계 예산 안에서 다시 시도한다. 다른 사유(7-b 가드 · 락 · 상태)면
+            //      즉시 빠져나가 아래 단언이 그대로 말한다 — 음성 대조의 사정거리는 줄지 않는다.
+            //    ★ 재시도 간격은 <b>프로덕션 상수를 참조</b>해 띄운다(문자로 베끼지 않는다 — 그 상수가 public인
+            //      이유가 바로 이것이라고 PopoverPanel이 적어 두었다). 같은 타일 키로 그 창 안에 다시 누르면
+            //      클릭이 <b>조용히 삼켜져</b>(TryClaimAction=false) «Started 0»이 전혀 다른 이유로 재현된다 —
+            //      측정기가 죽은 채 빨간, 이 저장소의 표준 함정이다.
+            GraffitiTally t = null;
+            StickmanStateId state = default;
+            int clickAttempts = 0;
+            float clickDeadline = Time.realtimeSinceStartup + CommandReadyBudgetSeconds * 2f;
+            while (true)
+            {
+                clickAttempts++;
+                _paint.Reset();
+                _popover.FeedClickForTests(_popover.CommandScreenRect(GraffitiCommand).center);
+                yield return ObserveGraffiti(GraffitiObserveSeconds());
+                t = _paint.Snapshot();
+                state = _agent.Blackboard.Machine.CurrentStateId;
+                if (t.Started > 0 || Time.realtimeSinceStartup >= clickDeadline) break;
+
+                CommandAvailability afterRefusal = _graffiti.GetAvailability();
+                bool environmental = afterRefusal.IsReady || afterRefusal.Reason == GraffitiDirector.NoEmptyRegionReason;
+                Debug.Log($"{LogPrefix} R6c — 클릭 {clickAttempts}회차가 시작되지 않았습니다(판정 가능={afterRefusal.IsReady} 사유=«{afterRefusal.Reason}»). " +
+                    (environmental ? "빈 자리 탐색의 난수 탓이므로 다시 누릅니다." : "환경 사유가 아니므로 여기서 멈추고 단언에 맡깁니다."));
+                if (!environmental) break;
+
+                yield return Wait(PopoverPanel.ActionDedupSeconds + SettleSeconds);   // 같은 키 중복 제거 창을 넘긴다.
+                yield return WaitUntilOrTimeout(() => _graffiti.GetAvailability().IsReady && _popover.IsCommandReady(GraffitiCommand), CommandReadyBudgetSeconds);
+            }
+            Debug.Log($"{LogPrefix} R6c — 등급 없음 클릭({clickAttempts}회 시도): [{t}] · 상태 {state} · 명령창 열림={_popover.IsOpen}");
 
             Assert.AreEqual(0, t.UnknownPhase, $"{LogPrefix} R6c — 관측기가 모르는 오버레이 단계가 나왔습니다.");
-            Assert.AreEqual(1, t.Started, $"{LogPrefix} ★ R6c 음성 대조 실패 — 가능한 타일을 눌렀는데 낙서가 시작되지 않았습니다([{t}]). 관측기가 죽었을 수 있습니다.");
+            Assert.AreEqual(1, t.Started,
+                $"{LogPrefix} ★ R6c 음성 대조 실패 — 가능한 타일을 {clickAttempts}회 눌렀는데 낙서가 시작되지 않았습니다([{t}], 마지막 판정 사유 «{_graffiti.GetAvailability().Reason}»). " +
+                "관측기가 죽었거나, «빈 자리 없음»이 아닌 이유로 계속 거절된 것입니다.");
             Assert.AreEqual(1, t.GraffitiTransitions, $"{LogPrefix} ★ R6c 음성 대조 실패 — 낙서 상태 전이가 {t.GraffitiTransitions}회입니다(기대 1).");
             Assert.AreEqual(0, t.Cancelled,
                 $"{LogPrefix} ★ R6c — 등급 없음에서 낙서가 취소됐습니다([{t}]). 7-b 가드가 등급 없음에서도 물거나 빈 자리에 발판이 겹친 것이고, " +

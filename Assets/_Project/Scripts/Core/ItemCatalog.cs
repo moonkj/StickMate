@@ -1096,8 +1096,25 @@ namespace StickMate.Core
             //     enableAutonomousHardwareReactions false). 그 사실은 이 카드 문구의 문제가 아니라
             //     <b>바탕화면 정리·블랙홀과 공유하는 별건</b>이라 리더에게 따로 올렸다 — 여기서
             //     조용히 확률을 올리면 사용자가 끄라고 한 연출이 되살아난다(2026-08-29 사용자 신고).
+            // ★★ 2026-09-27 문구 교체 — 이 카드가 <b>삭제된 기능</b>을 설명하고 있었다.
+            //   옛 문구: 「타이머가 도는 동안 곁을 지킨다. 창을 자주 바꾸면 조용히 쳐다본다.」
+            //   · <b>뒷문장</b>은 「지켜보기(딴짓 감지)」다 — 2026-09-06 사용자 지시로 이 파일 밖
+            //     (Interaction/FocusWatchDirector.cs)에서 삭제됐고, 그 파일 클래스 문서가 「이 파일에
+            //     있던 <b>「딴짓 감지」 + 3단계 에스컬레이션</b>」이 걷혔다고 적고 있다. 없는 기능을
+            //     출하 표면이 계속 가르치고 있었다.
+            //   · <b>앞문장</b>「곁을 지킨다」는 <b>공간 약속</b>인데 코드가 그것을 주지 않는다.
+            //     세션 중 관망 자세·제스처는 살아 있지만(focusSessionAmbientEnabled) 그것은 <b>자세</b>이고
+            //     위치가 아니다. 실제로 걷기 확률만 0.75 -> 0.40으로 낮아질 뿐이라(focusSessionWalkChance)
+            //     25분 세션에서 <b>여전히 약 3.2분을 걷는다</b>(States/AutoWanderController의 그 주석과
+            //     같은 수). 게다가 한 걷기 구간의 목표 거리가 걸을 수 있는 화면 폭의 22%
+            //     (wanderWalkTargetScreenFraction)라, 25분이면 <b>화면 폭 끝까지 왕복</b>한다.
+            //     ⇒ 「곁을 지킨다」는 확인 불가가 아니라 <b>거짓</b>이므로 되살리지 마라.
+            //   새 문구는 검증된 사실만 말한다: 프리셋 3개(FocusSessionPopover.DurationMinutes = 15/25/50)에 <b>[직접]</b> 칩이 더 있고(DurationLabels 4개,
+            //   1~60분), <b>뒷문장은 표면을 주장하지 않는다</b>. 남은 시간 표면은 둘: 창의 mm:ss(유일)와 부채꼴 ① 버튼 <b>안</b>의 링(StopwatchRingDiameterPoints 20pt
+            //   < ButtonDiameterPoints 44pt이라 「둘레」 아님. 호만·숫자 0. RingFill.fillAmount = RemainingSeconds / SessionDurationSeconds).
+            //   무입력 180초면(DefaultIdleAutoCloseSeconds) 창이 닫히고 부채꼴도 접혀 둘이 함께 걷혀도 세션은 돈다 — 종료 대입은 FocusWatchDirector 세 곳뿐, 창 닫기가 없다.
             ItemCatalogEntry.ForMenuAction("action.focus_watch", "집중 모드",
-                "타이머가 도는 동안 곁을 지킨다. 창을 자주 바꾸면 조용히 쳐다본다."),
+                "15·25·50분이나 직접 정한 시간을 잰다. 창을 닫아도 세션은 남는다."),
             ItemCatalogEntry.ForAction("action.todo_reminder", "할일 알림", null,
                 "적어둔 할일을 때가 되면 들고 온다. 재촉은 한 번뿐이다."),
             ItemCatalogEntry.ForAction("action.hardware_reaction", "하드웨어 반응", null,
@@ -1995,7 +2012,7 @@ namespace StickMate.Core
             }
         }
 
-        /// <summary>행동 항목 수(보관함 헤더 "할 줄 아는 것 (13)").</summary>
+        /// <summary>행동 항목 수(보관함 헤더 "할 줄 아는 것  (n)"의 n — 숫자를 여기 베껴 적지 않는다: 2026-09-02 격파 놀이 삭제로 13에서 12가 됐을 때 이 주석만 낡았다).</summary>
         public static int ActionCount => _actions.Length;
 
         /// <summary>지금 보유한 장비 수 — <b>카탈로그 전량</b> 기준. 화면용 분자는

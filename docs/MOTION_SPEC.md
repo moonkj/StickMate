@@ -81,6 +81,13 @@
 | 4 | `rollLandingHeightThreshold` | `2.0` (0.88H) | 0.72H < 0.88H | 무릎앉아 **1회**(초기 스폰만) |
 | 5 | `LedgeHangMinDropDepth` | `2.507` (1.10H) | 0.72H < 1.10H | 매달리기 **0회** |
 
+★ 2026-09-27 as-of 주 — 위 표 #1행의 `BattleMinigameState`는 지금 없다. 사용자 지시
+「격파놀이는 아예없애줘 별로임」으로 `7ab0468`(2026-09-02 10:39:23)이 격파 미니게임을 파일째 걷었다.
+이 표는 `2051739`(같은 날 02:08:22, 8시간 31분 1초 전)에 커밋됐으므로 그때는 참이었다 — as-of이고
+취소선이 아니다. 이 문서 머리의 ⚠ 배너가 이미 같은 판정을 적어 두었고(1절·2절 폐기), 이 줄은 그
+배너를 표 자리에서 다시 가리키는 앵커다. 다섯 행 중 대상이 소멸한 것은 #1뿐이다 — #5는 아래 14절이
+배율 조건부로 이미 정정했고, `#2~#4`는 배너가 「폐기되지 않은 것」으로 남긴 3건이다. 전수는 31절.
+
 > ### ★★ 2026-09-01 후속 정정 (같은 담당자) — 이 표의 "0.72H"는 **배율 1.0 가정**이다
 >
 > 위 표의 `Dock 단차(0.72H)` 열은 `1.637유닛 ÷ BaselineCharacterTotalHeight(2.2747)`로 계산했다.
@@ -658,6 +665,27 @@ DROP_DECIDE → DROP_STEP → CLIMB_DONE → DROP_DECIDE → DROP_STEP → CLIMB
 | **P3** | M3-c T4 엎어짐 | 새 곡선/새 상태 | **높음** | 11절 보고 대상 |
 | **P3** | M4 R2 모서리 멈칫 | 새 짧은 상태 | **높음** | 11절 보고 대상 |
 | **P3** | 1절 #2/#3 대사 임계값 H 배수화 + 대사표 확장 | `ParkourClimbState`, `LedgeHangState` | 낮음 | 등반 라운드와 충돌 가능 — coder 작업 후로 |
+
+★ 2026-09-27 — 위 표 첫 행(P0 · M1 격파 결과 축)의 처분: 폐기다. 다른 축으로 재수립하지 않는다.
+
+- 사라진 것: `States/BattleMinigameState.cs` 파일째(`7ab0468` 2026-09-02 10:39:23, 사용자 지시
+  「격파놀이는 아예없애줘 별로임」). 같은 커밋에서 2절이 설계한 이름도 전부 사라졌다 —
+  `BattleRelease` · `BattleDialogueParams` · `ResolveOutcome` · `TriggerResolution` · `RetriesLeft` ·
+  `Terminal` · `SweetStart` · `ChargeRatio` · `EarlyMiss` · `LateMiss` · `NoInput`.
+  계기: 그 커밋의 부모에서 `BattleMinigameState`는 10개 파일 25건, HEAD는 0건이다(낱말 고정 문자열).
+- 지금 실재하는 것: 없다. 그리고 재수립할 대상 상태도 없다 — HEAD의 `IHasDialogueParams` 구현 8종
+  (`Idle` · `Walk` · `Attack` · `Ragdoll` · `LedgeHang` · `ParkourClimb` · `RopeClimb` · `DragThrow`)
+  가운데 성공/실패 결과 축을 파라미터로 싣는 상태는 하나도 없다. 가장 가까운 `AttackState`조차
+  `ShotsRemaining` 하나뿐이고, 그 필드 문서가 「지금은 채우는 호출자가 없어 항상 기본값 0」이라고
+  스스로 적어 둔다.
+- 그래서 판단이 어떻게 바뀌는가: 이 행은 구현 배정 대상에서 빠진다. 순위표에서 지우지는 않는다 —
+  P0였다는 사실 자체가 기록이다. 다만 이 행이 만든 규칙은 죽지 않았다. 9절 요약 카드 C2
+  「결과가 있는 상태의 대사는 결과 축을 파라미터에 반드시 싣는다」는 상태 이름에 묶이지 않은 계약이라
+  그대로 살아 있고, `docs/UX_FLOW.md` 31-2 #5 행도 취소선 + 「설계 이력으로만 읽어라」로 정리돼 있다
+  (ux-designer 소유 파일이라 내가 고치지 않았다). ⇒ 다음에 결과가 있는 상태(미니게임·대결 등)가
+  생기면 인계본은 이 행이 아니라 C2다.
+- 10절 L5 행(`BattleMinigameState.TriggerResolution()` 시그니처)도 같은 처분이고, 문서 머리 ⚠ 배너가
+  이미 그렇게 적어 두었다. 전수는 31절.
 
 ---
 
@@ -1968,6 +1996,14 @@ drop-through 유예(`BeginDropThroughIgnore`, 0.25초)는 **논리 발판 스윕
    `Assert.Less(1.63747, 0.88 × 1.70602 = 1.50130)`은 **false**다.
    ★ **미확인**: 이 개발 머신에 그 테스트의 최신 결과 XML이 없어 "실제로 빨간지"는 확인하지 못했다.
    유도상 빨개야 한다 — **리더가 가장 먼저 확인할 한 줄이다.**
+   ★ 2026-09-27 as-of 주 — 이 지침은 착지했고, 그래서 그 이름이 없어졌다. 취소선이 아니다 —
+     처방이 성공한 자리에 취소선을 걸면 실패한 것처럼 읽힌다. 이 절을 쓴 커밋 자신
+     (`a1c64b5` 2026-09-02 04:52:24)이 그 테스트를
+     `DockStepDropNeverLooksLikeKneelingAtAnySelectableScale`로 다시 쓰면서 아래 지침 2·3을 함께 넣었다.
+     계기(파일 수, 낱말 고정 문자열): 부모에서 옛 이름 1 · 새 이름 0 · `LandingSitDownBodyDropHeights` 0 ·
+     `ScaleSweep` 0 → 그 커밋에서 옛 이름 0 · 새 이름 1 · `LandingSitDownBodyDropHeights` 2 ·
+     `ScaleSweep` 2이고 HEAD도 같다. HEAD의 그 테스트는 실제로 `limit = StickConfig.LandingSitDownBodyDropHeights`
+     와 `scales = ScaleSweep`를 읽는다 — 즉 티어 이름 assert가 실루엣 assert로 바뀌고 배율 루프도 들어갔다.
 2. 잠글 대상을 **티어 이름에서 실루엣으로** 바꾼다:
    `Assert.AreEqual(SoftAbsorb, Tier)` → **`몸(머리) 하강 < 0.12 H`**.
    티어 이름은 배율에 따라 정당하게 바뀌는 **구현 세부**이고, "무릎을 꿇지 않는다"는 **그림의 계약**이다.
@@ -2055,6 +2091,10 @@ macOS 빌드 기준이다. 다만 **바꾸자고 제안한 것은 전부 플랫�
 2. **임무 2·3의 (나)(주저앉는 시점 지연) — 관측 0회.** 볼 수 있는 착지가 부팅 때 한 번뿐이다.
 3. **`DockStepDropAbsorbsSoftlyWithoutKneeling`이 실제로 빨간지 — 확인 못 했다.**
    유도상 전제 assert가 깨져야 한다(23-4-1). 결과 XML이 이 머신에 없다.
+   ★ 2026-09-27 — 이 미확인은 「아직 못 쟀다」가 아니라 대상 소멸로 닫힌다. 그 이름의 테스트는 같은
+     커밋 `a1c64b5`에서 `DockStepDropNeverLooksLikeKneelingAtAnySelectableScale`로 다시 쓰였고
+     (23-4-1의 as-of 주에 계기), HEAD에도 그 이름으로 있다. 옛 이름은 추적 트리에 0건이다.
+     「빨간지」를 물을 대상이 없으므로 이 항목은 미확인이 아니라 as-of 기록이다.
 4. **배율을 바꿔 보지 못했다.** 설정 배율 변경은 실행 중인 다른 담당자 인스턴스 2대에 그대로
    영향을 주고(세이브 공유 + 전역 단축키), 리더가 "신빌드 인스턴스가 필요하면 요청하라"고 했다.
    **내 전용 신빌드 인스턴스 1대**를 주면 23-2의 표를 캡처로 직접 검증할 수 있다.
@@ -4432,3 +4472,62 @@ macOS 영향: 없음(같은 이유. `xcheck.sh osx`도 5유닛 errors=0).
 - 「금만 남는 2.6초는 **채우지 않는다**(`design-motion` 판정). 캐릭터는 실제로 한가하므로 원칙 1은 이미 지켜지고,
   채우면 프레임 등급 Still 진입이 2.6초 늦는다. 문구 쪽 수정은 `ux-widgets` 소관.」
 - 「`docs/MOTION_SPEC.md`에 닫히지 않는 굵게가 **24줄 더** 남아 있다(전수 목록은 29-2-1). 이번 라운드는 지시대로 1건만 고쳤다.」
+
+---
+
+# 31. 정정 기록 — 사라진 이름 위에 서 있던 현재형 문장 (2026-09-27 · `design-motion`)
+
+리더 배정(`code-inspection` 전수 274건 중 내 소관 8건, 이 문서 몫 **4곳**). 원문은 한 글자도 지우지
+않았다 — 1절 표 뒤 · 6절 표 뒤 · 23-4-1 · 23-8-3 네 자리에 as-of 주를 삽입했다.
+네 곳 모두 취소선을 쓰지 않았다. 이유가 두 가지로 갈린다: 앞 둘은 **기능이 사용자 지시로 삭제**돼
+대상이 없어진 것이고, 뒤 둘은 **이 문서의 처방이 착지해서 이름이 바뀐 것**이다. 후자에 취소선을
+걸면 성공한 처방이 실패한 것처럼 읽힌다.
+
+## 31-1. 네 자리의 ①②③④
+
+| # | 사라진 이름 (어디) | ② 커밋 | ③ 지금 실재하는 것 | ④ 판단이 어떻게 바뀌는가 | 성격 |
+|---|---|---|---|---|---|
+| ① | `BattleMinigameState` — 1절 표 #1행 | `7ab0468` 2026-09-02 10:39:23, 격파 미니게임 파일째 삭제(사용자 지시 「격파놀이는 아예없애줘 별로임」) | 없다. 그 커밋에서 `BattleRelease` · `BattleDialogueParams` · `ResolveOutcome` · `TriggerResolution` · `RetriesLeft` · `Terminal` · `SweetStart` · `ChargeRatio` · `EarlyMiss` · `LateMiss` · `NoInput`이 함께 사라졌다(부모 10파일 25건 → HEAD 0건) | 표의 다섯 행 중 #1만 대상 소멸이다. #5는 14절이 이미 배율 조건부로 정정했고 `#2~#4`는 문서 머리 ⚠ 배너가 「폐기되지 않은 것」으로 남긴 3건이다. 즉 1절의 통합 근본원인(절대 월드 유닛 분기)은 표본이 5에서 4로 줄어도 그대로 성립한다 | 기록 |
+| ② | 같은 이름 — 6절 구현 순서 표 **P0 행** | 같은 커밋 | 없다. **재수립할 대상 상태도 없다** — HEAD의 `IHasDialogueParams` 구현 8종(`Idle` · `Walk` · `Attack` · `Ragdoll` · `LedgeHang` · `ParkourClimb` · `RopeClimb` · `DragThrow`) 가운데 성공/실패 결과 축을 파라미터에 싣는 상태가 하나도 없다. 가장 가까운 `AttackState`도 `ShotsRemaining` 하나뿐이고 그 필드 문서가 「지금은 채우는 호출자가 없어 항상 기본값 0」이라 적는다 | ★ **처분 = 폐기.** 다른 축으로 재수립하지 않는다. 다만 이 행이 만든 규칙은 죽지 않았다 — 9절 요약 카드 C2는 상태 이름에 묶이지 않은 계약이라 그대로 살아 있고, `docs/UX_FLOW.md` 31-2 #5도 취소선 + 「설계 이력으로만 읽어라」로 정리돼 있다. 다음에 결과가 있는 상태가 생기면 인계본은 이 행이 아니라 C2다. 10절 L5도 같은 처분 | 기록 |
+| ③ | `LandingCrouchTests.DockStepDropAbsorbsSoftlyWithoutKneeling` — 23-4-1 | `a1c64b5` 2026-09-02 04:52:24 — **이 절을 쓴 커밋 자신이다** | `DockStepDropNeverLooksLikeKneelingAtAnySelectableScale`(HEAD `Tests/PlayMode/LandingCrouchTests.cs`). 그 테스트가 `StickConfig.LandingSitDownBodyDropHeights`를 한계로 읽고 `ScaleSweep`로 배율 루프를 돈다 | ★ **처방이 착지해서 이름이 없어진 것**이라 as-of다. 계기(파일 수): 부모에서 옛 이름 1 · 새 이름 0 · `LandingSitDownBodyDropHeights` 0 · `ScaleSweep` 0 → 그 커밋에서 0 · 1 · 2 · 2이고 HEAD도 같다. 즉 23-4의 지침 2(티어 이름 → 실루엣)와 3(배율 루프)이 그 자리에서 들어갔다. 판단은 바뀌지 않고 **완료로 바뀐다** | 기록(처방 착지) |
+| ④ | 같은 이름 — 23-8 미확인 3번 | 같은 커밋 | 같음 | 그 미확인은 「아직 못 쟀다」가 아니라 **대상 소멸로 닫힌다.** 옛 이름은 추적 트리에 0건이므로 「실제로 빨간지」를 물을 대상이 없다. 남은 미확인(1 · 2 · 4 · 5)은 그대로다 | 기록(미확인 해소) |
+
+## 31-2. 같은 병 추가 스캔 (이 문서 전수)
+
+백틱 인용에서 식별자 후보 **584개**를 뽑아(대상 = 이 문서의 기준판 `ee17c03`, 즉 이 정정 절을 넣기
+전. 기준 = 백틱 안 토큰) 추적 트리 `Assets/` 낱말 고정 문자열로 셌다. 0건은 **90개**이고
+세 갈래로 갈린다. **삭제된 이름은 22개이고 전부 위 네 자리가 덮는 두 가족이다** — 격파 20
+(`BattleMinigameState` · `BattleRelease` · `BattleDialogueParams` · `BeginCharge` · `ChargeDurationSeconds` ·
+`ChargeRatio` · `chargeRatio` · `EarlyMiss` · `LateMiss` · `NoInput` · `ResolveOutcome` · `RetriesLeft` ·
+`SweetStart` · `TickResolving` · `TriggerResolution` · `inputTimeout` · `_chargeDuration` · `_noInputTimer` ·
+`_pendingClicked` · `_retryCount`)와 착지한 테스트 이름 2(`DockStepDropAbsorbsSoftlyWithoutKneeling` ·
+`WithoutKneeling`). **새 가족은 나오지 않았다.**
+
+나머지 68개는 둘이다.
+- **접두·접미 인용 20개** — 내 추출기가 긴 인용을 토큰으로 쪼갠 결과다(`landingCrouchTorsoPitch*`의
+  `RearKnee`, `parkourClimbRiseAt*01`의 `parkourClimbRiseAt`, `FootholdLeftX/RightX`의 `RightX` 등).
+  부분 문자열로는 전부 실재한다. ★ 여기에 격파 가족의 짧은 토막(`Battle` · `Charge` · `Opening` ·
+  `Terminal`)이 섞여 있다 — **「부분 문자열로 실재」는 「그 이름이 산다」는 뜻이 아니다.** 다른 낱말에
+  걸린 것이다.
+- **제안 이름 48개** — 이 문서가 「신설」로 낸 상수·인터페이스·박자 표기라 코드에 없는 것이 정상이다
+  (`landingCrouchHeadLagDegrees` · `climbMantleEdgeCooldownSeconds` · `IFxBehaviour` 계열 등).
+  ★ 그중 **6개는 범위 밖에 실재한다** — `NetCoreRuntime` · `DOTNET` · `CSCDLL` ·
+  `PLATFORM_STANDALONE_WIN` · `UNITY_EDITOR_OSX` · `SPECTACLE_POSES_AND_CRACK_ALPHA`는 `Tools/`와
+  생성 rsp, 그리고 `design/motion/` 문서 이름이라 `Assets/` 안에 없을 뿐이다. 내 음성 프로브의
+  범위가 `Assets/`였다는 사실을 함께 적는다(`docs/TEAM.md` 규칙 8).
+  ★ **미확인**: 제안 48개가 각각 다른 이름으로 착지했는지는 개별로 재지 않았다.
+
+## 31-3. 계기 설계 — 「0건」에 붙인 대조
+
+사라진 이름은 원래 0이 정상이라 **죽은 프로브와 구별되지 않는다.** 그래서 매 실행 넷을 함께 쟀다:
+양성 대조 `StickConfig` HEAD **1735건** · 매 실행 새로 만든 센티널 **0건**(문서에 적지 않는다) ·
+사라진 이름이 옛 판에서는 걸린다(`BattleMinigameState` @`7ab0468^` **25건**) · 같은 이름 HEAD **0건**.
+넷이 다 맞은 뒤에만 숫자를 썼다. 니들은 셸을 거치지 않게 고정 문자열로 넘겼고, 짧은 한국어 니들은
+쓰지 않았다(합성어가 삼킨다 — 규칙 11).
+
+## 31-4. 플랫폼 영향
+
+**Windows 영향: 없음(문서만).** 프로덕션 `.cs` 0줄 · 새 `#if UNITY_STANDALONE_*` 분기 0건이라
+크로스 컴파일 대상이 없다. 23-7의 Windows 절(작업표시줄 교차 배율 0.4883 · 낙차 0.977유닛)은
+이 라운드가 건드리지 않았고 **여전히 미확인**이다.
+**macOS 영향: 없음(문서만).** `Platform/MacOS/` 아래 파일을 읽지도 건드리지도 않았다.

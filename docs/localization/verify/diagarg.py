@@ -174,7 +174,10 @@ def ship_drift(ship):
     files = collections.Counter(k[0] for k in list(gone.elements()) + list(born.elements()))
     return {'stale': bool(gone or born or a_gone or a_born), 'gone': sum(gone.values()),
             'born': sum(born.values()), 'asset_gone': sum(a_gone.values()),
-            'asset_born': sum(a_born.values()), 'files': files}
+            'asset_born': sum(a_born.values()), 'files': files,
+            # ★ 규칙 24(2026-09-27) — 합계만 남기면 「계수는 같은데 내용이 다른」 변경을 못 본다.
+            'gone_rows': gone, 'born_rows': born,
+            'asset_gone_rows': a_gone, 'asset_born_rows': a_born}
 
 
 SINK = re.compile(r'\.text\s*=(?!=)|new\s+DialogueIntent|DialogueIntent\s*\(|'
@@ -360,6 +363,16 @@ def run():
               % (drift['gone'], drift['born'], drift['asset_gone'], drift['asset_born'], len(drift['files'])))
         for f, c in drift['files'].most_common(5):
             print("    %5d  %s" % (c, f))
+        # ★ 규칙 24 — 무엇이 바뀌었는지의 키 집합을 함께 찍는다(공용 구현: driftkeys.py).
+        import driftkeys  # noqa
+        empty = collections.Counter()
+        for ln in driftkeys.key_lines(drift.get('gone_rows', empty), drift.get('born_rows', empty),
+                                      label='ship 키(파일, 줄, 판정, 문자열)'):
+            print("  " + ln)
+        for ln in driftkeys.key_lines(drift.get('asset_gone_rows', empty),
+                                      drift.get('asset_born_rows', empty),
+                                      label='.asset 키(파일, 문자열)'):
+            print("  " + ln)
         return RC_UNDECIDABLE
 
     want = collections.defaultdict(set)
@@ -531,6 +544,13 @@ def selftest():
     gone = [e for e in MANUAL_NONTRANSLATABLE if e[5]]
     chk("★ 양성 — 살아 있는 항목과 사라짐 기록 항목이 둘 다 실재한다(빈 목록 초록 방지)",
         len(live) > 0 and len(gone) > 0, '살아 있음 %d · 사라짐 기록 %d' % (len(live), len(gone)))
+    import driftkeys  # noqa
+    _kl = driftkeys.key_lines(collections.Counter({('X.cs', 12, 'SHIP', u'옛 원문'): 1}),
+                              collections.Counter({('X.cs', 12, 'SHIP', u'심은 변이'): 1}))
+    chk("★ 규칙 24 — 키 집합 출력이 심은 변이를 글자로 찍는다(합계 차 0인 교체도 보인다)",
+        any(u'심은 변이' in ln for ln in _kl) and any(u'옛 원문' in ln for ln in _kl)
+        and driftkeys.key_lines(collections.Counter(), collections.Counter()) == [],
+        '%d줄' % len(_kl))
     if live and not problems:
         e0 = live[0]
         path0 = os.path.join(SCRIPTS, e0[1])

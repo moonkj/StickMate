@@ -550,7 +550,7 @@ namespace StickMate.Tests.PlayMode
         /// 1차 클릭에 종료가 걸렸다면 이 줄에 도달하지 못한다.</para>
         /// </summary>
         [UnityTest]
-        public IEnumerator QuitSatelliteArmsOnFirstClickAndDisarmsByItself()
+        public IEnumerator QuitArmsOnFirstClickAndDisarmsByItself()
         {
             yield return LoadSceneAndResolve();
             yield return OpenMenuByShortClick();

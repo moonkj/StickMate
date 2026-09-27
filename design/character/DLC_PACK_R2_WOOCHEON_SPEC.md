@@ -22,6 +22,28 @@ design-character / 2026-09-02 R2 (경쟁 라운드 · 형태 언어 관점)
 왕관·베레모(처방이 안 건드린 2종)만 소수점까지 맞았고, **그 2종이 자가 옳다는 증거**였다.
 after 열로 바꾸니 24/24가 오차 0.06%p / 0.006획 안에 들어왔다.
 
+> 정정 (2026-09-27, design-character) — 위 괄호의 두 상수는 지금 **갈린다**. 하나는 실재하고 하나는 없다.
+>
+> - ★ **`HatBrimRootDropRatio = 0.18f`는 실재한다**. `Interaction/AccessoryShapeBuilder.cs:128`에
+>   값까지 그대로 있다(`internal const float HatBrimRootDropRatio = 0.18f;`). **이 하나는 지우지 마라**.
+> - ① 무엇이 사라졌는가: `BeanieBandBottomRatio`. ② 삭제 커밋 `1f7e139`(2026-09-05) — 그 직전 판
+>   `Assets/**/*.cs`에 2건, 그 커밋에서 0건. 저장소 전체로도 `.cs` 0건이고, 남은 7파일은 전부 문서·설계다
+>   (그중 하나가 이 라운드의 검증 스크립트 `design/character/verify/r2_body.py:62`다 — 내 소관 밖이라
+>   고치지 않았다. **리더 경유 필요**).
+> - ③ 지금 실재하는 것: 털모자 밑단이 **다시 파라미터화됐다** — `BeanieBandTopRatio = 0.3282f`(커버선 = 착용선),
+>   `BeanieCuffTopRatio = 0.52f`, `BeanieDomeFootRatio = 0.56f`, `BeanieBandHalfWidthRatio = 1.05f`.
+>   `BeanieBandBottomRatio`에 **1대1로 대응하는 상수는 없다**.
+> - ④ 그래서 판단이 어떻게 바뀌는가: **이 문장은 그때 참이었다 — as-of 2026-09-02이고 취소선을 걸지 않는다**.
+>   처방은 실제로 착지했고, 이름이 없어진 것은 그 뒤 **털모자가 인계본 조각으로 넘어가면서 v1 좌표가
+>   재저작됐기 때문이다**(`AccessoryShapeBuilder.cs:425`~`:428` 「그 −0.06R은 이제 없다 …
+>   이 case는 도달하지 않는다」, `IsHandoffCode`가 `HeadBeanie`에 참을 돌려준다).
+>   취소선을 걸면 **성공한 처방이 실패한 것처럼 읽힌다**.
+>   ⇒ §0의 교정 이력은 기록으로 그대로 두고, **이 문단의 상수 이름으로 코드를 찾지만 마라**.
+>
+> ★ 참고 — 이 문서 §3의 좌표 이름(`PaperHatBody` · `FogLensBack` · `CollarLeft` · `UmbrellaCanopy` 등 10개)은
+> **사라진 이름이 아니다**. 전 커밋 이력에서 `Assets/**` 등장 0건이다(양성 대조: `BowTieRightWing` 4 ·
+> `CapeCollar` 8 · `BeanieBandBottomRatio` 4). **한 번도 구현된 적 없는 제안이라 코드에 없는 것이 정상이다**.
+
 ---
 
 ## 1. 프로덕션 값 대조 — 애셋이 코드를 덮는가

@@ -252,8 +252,10 @@ Proton으로 Windows 빌드가 돌더라도 **Win32 창 열거가 Wine 창만 �
   - EN 스토어용 `When an app Windows lists as a game covers the screen, the character hides too` (78자). ★ 앱 안 **타일 자리**에 넣을 때는 짧은 형 `Hides the character over apps Windows lists as games` (52자 · 0.55F **266.0pt** · 0.70F **332.0pt** — **두 가정 모두 한도 안**, 영어 사유 문구가 0.70F에서 초과했던 것과 다르다)
   - 경계 한 줄(함께 싣는다 — 조건 서술이라 헤지가 아니다) KO `게임 바 목록에 없는 게임은 그 대상이 아닙니다` (26자 · 211.0pt) / EN `Games not in that list aren't detected` (38자 · 194.0pt)
 - **무엇이 이 문장을 참으로 만드는가**(검증 가능한 사실만 담았다): Windows는 전경 앱의 실행 파일 경로를 **게임 바 등록 목록**(`HKCU\System\GameConfigStore\Children`의 `MatchedExeFullPath`)과 맞춰 보고(`Platform/Windows/WindowsGameProcessProbe.cs` 앵커 `GameConfigStoreChildrenKey` · `MatchedExeValueName`), **덮음 ∧ 게임**일 때만 등급 2가 되어 캐릭터까지 숨는다(`Platform/FullscreenSuspendPolicy.cs` 앵커 `SuspendsCharacter`). macOS 기준은 앱 번들의 `LSApplicationCategoryType`이 게임 계열인지다(같은 파일 앵커 `public.app-category.games`) — **1.0 선언 OS가 Windows**라 스토어 문장은 Windows 기준으로 적었다.
-- ★ **이것은 제품 정체성이 아니라 「설정 하나의 기본값」이다**(2026-09-26 보강). 실제 스위치는 설정창 [일반]의 `전체화면 게임 감지 시 자동 숨김`이고(`Interaction/SettingsWindow.cs` 앵커 `general.autoHide`), 기본값이 켜짐이다(`Core/AppSettingsModel.cs` 앵커 `AutoHideOnFullscreen { get; private set; } = true`). 끄면 두 등급이 **모두** 죽는다(`CLAIM_AUDIT_R4.md` C3). ⇒ **「게임 위에 절대 안 뜹니다」를 정체성으로 팔지 않는다** — 게임 화면 위 오버레이를 **원해서** 쓰는 반대 세그먼트가 실재한다(리더 전달 · 저장소 미수록). 정체성으로 팔면 그 층을 스스로 잘라 낸다. **기본값 + 끌 수 있음**으로 쓴다. ★ 곁가지 사실: 라벨은 「게임」만 말하는데 스위치는 두 등급을 다 끈다 — 라벨·동작 어긋남은 `ux-designer`·`design-narrative` 소관이라 여기서는 사실만 적는다.
-  - ★ **as-of 2026-09-26 (R13-M)**: 위 라벨 인용 `전체화면 게임 감지 시 자동 숨김`은 **지금 참이다**(`Interaction/SettingsWindow.cs` 앵커 `general.autoHide`에 그대로 있다). `design-narrative`가 확정한 교체 문안(라벨 `전체화면 앱이 뜨면 자동으로 물러나기`)은 **아직 `.cs`에 없다** — 착지하는 라운드에 이 인용과 `DIFFERENTIATION.md` 2곳을 **함께** 갱신한다. 지금 취소선을 걸면 참인 문장을 거짓으로 기록하게 된다(TEAM §5) → `TRUTH_INVENTORY.md` R13-M-8
+- ★ **이것은 제품 정체성이 아니라 「설정 하나의 기본값」이다**(2026-09-26 보강). 실제 스위치는 설정창 [일반]의 `전체화면 게임 감지 시 자동 숨김`이고(`Interaction/SettingsWindow.cs` 앵커 `general.autoHide`), 기본값이 켜짐이다(`Core/AppSettingsModel.cs` 앵커 `AutoHideOnFullscreen { get; private set; } = true`). 끄면 두 등급이 **모두** 죽는다(`CLAIM_AUDIT_R4.md` C3). ⇒ **「게임 위에 절대 안 뜹니다」를 정체성으로 팔지 않는다** — 게임 화면 위 오버레이를 **원해서** 쓰는 반대 세그먼트가 실재한다(리더 전달 · 저장소 미수록). 정체성으로 팔면 그 층을 스스로 잘라 낸다. **기본값 + 끌 수 있음**으로 쓴다. ~~★ 곁가지 사실: 라벨은 「게임」만 말하는데 스위치는 두 등급을 다 끈다 — 라벨·동작 어긋남은 `ux-designer`·`design-narrative` 소관이라 여기서는 사실만 적는다.~~ 〔**R14-M: 그 어긋남이 해결됐다** (2026-09-27 · **처방 착지**) — 새 라벨이 「앱」으로 넓어져 라벨이 더 이상 「게임」만 말하지 않는다. ★★ **대신 「두 등급」이 불완전해졌다: 끄면 죽는 것은 셋이다** — 축 5(음악 춤 억제)도 같은 스위치 아래다(`Core/StickmanAgent.cs` 앵커 `_foreignFullscreenSuppressesDance = AppSettingsModel.AutoHideOnFullscreen`). 위 본문의 「두 등급」은 **거짓이 아니라 셋 중 둘만 센 것이다** → `TRUTH_INVENTORY.md` R14-M-4〕
+  - ~~★ **as-of 2026-09-26 (R13-M)**: 위 라벨 인용 `전체화면 게임 감지 시 자동 숨김`은 **지금 참이다**(`Interaction/SettingsWindow.cs` 앵커 `general.autoHide`에 그대로 있다). `design-narrative`가 확정한 교체 문안(라벨 `전체화면 앱이 뜨면 자동으로 물러나기`)은 **아직 `.cs`에 없다** — 착지하는 라운드에 이 인용과 `DIFFERENTIATION.md` 2곳을 **함께** 갱신한다. 지금 취소선을 걸면 참인 문장을 거짓으로 기록하게 된다(TEAM §5) → `TRUTH_INVENTORY.md` R13-M-8~~
+  - ★★ **R14-M 정정 (2026-09-27 · HEAD `ee17c03` · 코드는 작업 트리 판독)** — **윗줄은 착지로 거짓이 됐다.** 교체 문안이 **작업 트리 `.cs`에 들어왔다**: 라벨은 ~~지금~~ 〔**R14-S 2026-09-27: 또 바뀌었다 — 이 줄도 as-of가 됐다.** 현행 3차 변종은 **`전체화면 앱이 뜨면 창부터 물러나기`**다. 사유: 2차 변종은 **주어가 없어** 처음 보는 사람이 「캐릭터가 사라진다」로 읽었고 **그건 등급 1의 실재와 반대**다 ⇒ R14-S-1〕 `전체화면 앱이 뜨면 자동으로 물러나기`이고 캡션은 `춤도 멈추고, 게임이면 캐릭터까지 숨어요. 끄면 창이 막는 클릭까지 그대로 남아요.`다(같은 파일 앵커 `general.autoHide` · 앵커 `caption: "`). ★ **as-of가 아니라 취소선인 이유**: 윗줄은 「아직 없다」는 **부재 단정**이고 **실행 지시**였다 — 참이 되는 순간 조용히 거짓이 되는 형태라 시점만 박으면 읽는 사람이 없는 것을 있다고 믿는다(TEAM §4 규칙 17·18).
+  - ★ **그래서 위 본문 칸의 라벨 인용은 「as-of 2026-09-26 참」으로 읽어라** — 그 시점에는 실제로 참이었다(관찰 기록이라 as-of가 맞다). **현행 라벨은 위 정정 줄의 것이다.** ⇒ **어떤 빌드에도 아직 없다.** 촬영·게시 판단은 빌드 기준이다 → `TRUTH_INVENTORY.md` R14-M-1 · R14-M-9
 - ★ **메커니즘형에는 선례가 있다**(리더 전달 · **저장소 미수록 · 내가 재현하지 못했다**): 한 유료 경쟁 제품이 `while selected foreground apps are active` 처럼 **주어를 「사용자가 고른 앱」으로 두고 조건을 문장 안에** 넣는다. **포괄 헤지 0개인데 무조건형도 아니다** — 우리 형태 판정과 같은 모양이다. ★ 단 그 제품은 출시 18일 차 · 리뷰 0건이라 **「성공한 형태」의 증거는 아니다.** 선례로 쓰는 것은 **형태까지**이고 성과는 인용하지 않는다.
 - ★ **조건을 문장 밖에 붙이면 헤지, 문장 안에 넣으면 스펙이다**(리더 채택 형태 판정). 「환경에 따라 다를 수 있습니다」는 밖이고, 「Windows가 게임으로 기록해 둔 앱이」는 안이다. **밖은 전환율만 깎고 안은 사실을 더한다.**
 - ★ **우리 쪽 사실만 쓴다 — 비교 표 금지.** 등급을 둘로 가르는 것(전체화면 앱 vs 전체화면 게임)은 우리 코드 사실이고(`Platform/FullscreenSuspendPolicy.cs` 앵커 `Resolve(coversDisplay, isGame)` · `RetreatsPanels` · `SuspendsCharacter`), 그 사실만 적는다. 남의 제품이 그 구분을 하는지는 **실기로 재지 않았으므로 문장에 넣지 않는다** → 7절 앵커 `경쟁 제품 리뷰·불만 분포를 근거로 드는 문장`
@@ -288,6 +290,7 @@ Proton으로 Windows 빌드가 돌더라도 **Win32 창 열거가 Wine 창만 �
 | 12 | 언제든 한 키로 숨기고 한 키로 되돌린다 | Hide it and bring it back with one key | ★ 2-6절. **실기 검증 대기** |
 | 13 | 걸치는 것 42가지 — 함께 지낸 시간으로 열린다 | 42 things to wear, unlocked by time spent together | ★ 3-1절 조건 필독 |
 | 14 | 한국어 / English | Korean / English | ★ **앱 내부 영어화 착지 전에는 이 줄도 페이지도 올리지 않는다** |
+| ★ 15 | 전체화면 앱을 켜면, 직접 창을 열어 두지 않은 동안 창과 패널이 스스로 물러납니다(캐릭터는 남습니다). Windows가 게임으로 기록해 둔 앱이 화면을 덮으면 캐릭터까지 숨습니다. | Open a fullscreen app and, while you haven't opened one of our windows yourself, the panels retreat on their own (the character stays). When an app Windows lists as a game covers the screen, the character hides too. | ★★ **R14-S 신규 — 리더 판정 2 승인.** 두 단계를 **한 문장 안에서 갈랐다** · 등급 2는 **메커니즘형**이라 결과형 무조건형 0(N-23) · **「항상」·「전부」·「절대」·「늘」 0**(7절 앵커 `남은 시간 상시 가시성 약속`과 충돌 없음) · 글자는 **새로 짓지 않고 이미 승인된 한정형**을 그대로 썼다 · ★ **게시는 게이트 뒤**: N-15 · N-20 해제 + Windows 실기 |
 
 ★ **9번을 "행동 5가지"로 적었다.** 보관함의 「할 줄 아는 것」은 12종이지만 **명령창 타일은 5개**다 —
 큰 수를 쓰고 싶어서 12를 적으면 설치한 사람이 5개를 보고 속았다고 느낀다.
@@ -314,20 +317,26 @@ Proton으로 Windows 빌드가 돌더라도 **Win32 창 열거가 Wine 창만 �
 
 **오늘 실측으로 참인 것 — 이만 쓸 수 있다** (`FocusSessionPopover` · `FocusWatchDirector` · `GearRadialMenuWidget`):
 
+> ### ★★★ R14-M 경고 (2026-09-27) — **아래 표 6행 중 2행이 지금 거짓이다. 이 머리글을 그대로 믿지 마라**
+> 「지켜보기(딴짓 감지)」가 **2026-09-06 사용자 지시로 통째로 삭제됐다**(원문 *"집중모드에서 지켜보기 기능 삭제해줘"* — `Interaction/FocusWatchDirector.cs` 클래스 문서).
+> 함께 사라진 것에 **전경 창 전환 카운터**와 **민감도**(관대/보통/예민)가 들어 있다 ⇒ 아래 「창을 자주 바꾸면 반응한다」 행과 「반응 민감도」 행이 **둘 다 삭제된 거동을 판다.**
+> ★ **되살리기 전에 읽어라 — 이건 결함이 아니라 사용자가 닫은 문이다.** 「감시가 안 돈다」는 신고가 와도 회귀가 아니다.
+
 | 사실 | 근거(실측) |
 |---|---|
-| 세션 길이를 **15 / 25 / 50분** 중에 고른다 | `FocusSessionPopover.DurationMinutes = {15,25,50}` · 기본 25분 |
+| 세션 길이를 **15 / 25 / 50분** 중에 고른다 〔R14-M 보강: **불완전**(거짓 아님) — 「직접」 입력 칸이 하나 더 있다. `DurationLabels = {"15분","25분","50분","직접"}` · `_customMinutes = 25`〕 | `FocusSessionPopover.DurationMinutes = {15,25,50}` · 기본 25분 |
 | 톱니 → 부채꼴 **첫 번째 버튼**이 집중 모드다 | `GearMenuButton.FocusMode = 0` · `ButtonNames[0] = "집중 모드"` |
-| 세션 중에는 **톱니 링이 잔여 시간 호**가 된다 | `RingTrack` — *"집중 모드 전용 — 세션 중에는 잔여 시간 호가 된다"* |
-| **창을 자주 바꾸면 반응한다** | `FocusWatchDirector` — 전경 창 전환 빈도. ★ **신규 폴링을 만들지 않고 이미 도는 발판 캐시를 읽는다** |
-| 반응 민감도를 **관대/보통/예민** 3단계로 고른다 | 팝오버 칩 3개 |
+| ~~세션 중에는 **톱니 링이 잔여 시간 호**가 된다~~ ★ **정정본: 세션 중에는 부채꼴 [집중 모드] 버튼의 스톱워치 링(Ø20pt)이 잔여 시간 호가 되고, 집중 모드 창을 열면 남은 시간이 분·초로 보인다** 〔**R14-R 2026-09-27: 이 칸의 「톱니 링」은 오명이다** — 아래 v2.3-3이 **고치라고 지시한 바로 이 줄인데 지시가 실행되지 않았다.** 그 링은 톱니의 것이 아니라 **부채꼴 ①(집중 모드) 버튼의 스톱워치 링**이다. 교체 문안은 `TRUTH_INVENTORY.md` R14-R-1 → 판정 대기〕 | `RingTrack` — *"집중 모드 전용 — 세션 중에는 잔여 시간 호가 된다"* 〔R14-R 재측정: 앵커 `public Image RingTrack;` · 글리프 앵커 `① 집중 모드 — 스톱워치` · 채움 앵커 `focus.RingFill.fillAmount`〕 |
+| ~~**창을 자주 바꾸면 반응한다**~~ 〔**R14-M: 삭제된 거동이다 — 쓰지 마라**〕 | ~~`FocusWatchDirector` — 전경 창 전환 빈도. ★ **신규 폴링을 만들지 않고 이미 도는 발판 캐시를 읽는다**~~ 〔2026-09-06 사용자 지시로 **전경 창 전환 카운터가 삭제**됐다. 내 실측: `FocusWatchTierChanged` · `FocusWatchTier` **전문 계수 1 · 주석 제거 계수 0**(규칙 19 정확한 서술 — **코드에서는 사라졌고 클래스 문서 주석에만 남았다**). 양성 대조 `FocusWatchDirector` 전문 131 · 주석 제거 83〕 |
+| ~~반응 민감도를 **관대/보통/예민** 3단계로 고른다~~ 〔**R14-M: 삭제됐다**〕 | ~~팝오버 칩 3개~~ 〔`Interaction/FocusSessionPopover.cs` 클래스 문서: 「지켜보기」 토글과 「민감도」 칩 3개가 **삭제됐고** 그 자리가 **64pt 짧아졌다**. 그 칩이 조절하던 값은 **오직** 딴짓 감지 에스컬레이션용이었다〕 |
 | ★ **소리를 내지 않는다** | `m_DisableAudio=1`(빌드 강제) — **집중 도구에서 이건 기능 목록 10번보다 이 자리에서 더 값이 크다** |
 
 **쓰면 안 되는 것** (7절에 등재했다): *뽀모도로 · 타이머 앱 · 생산성 도구 · 집중력 향상*.
 - **시계 위젯은 아직 없다.** 사용자가 확정한 것은 **방향**이고 코드에는 없다 — **미구현을 확정처럼 파는 것**이다.
 - 이 단어를 쓰는 순간 **생산성 앱의 자로 재진다** — 통계·리포트·기기 동기화가 전부 없다.
-- ★ **감시 민감도는 설정창에 없다**(팝오버에만 있다 — `FocusWatchDirector` 클래스 문서가 그렇게 자백한다).
-  *"설정에서 조절합니다"*라고 쓰면 그 자리에서 거짓이다.
+- ~~★ **감시 민감도는 설정창에 없다**(팝오버에만 있다 — `FocusWatchDirector` 클래스 문서가 그렇게 자백한다).~~
+  ~~*"설정에서 조절합니다"*라고 쓰면 그 자리에서 거짓이다.~~
+  - ★★ 〔**R14-M 정정 2026-09-27**〕 **이제 팝오버에도 없다.** 감시 민감도는 **어디에도 없다** — 기능 자체가 삭제됐다. 금지는 더 넓어진다: *"설정에서 조절합니다"*뿐 아니라 **민감도를 고른다는 서술 전부**가 거짓이다.
 
 > ### ★ 배치 판정 — **3-1절(42종)과 같은 처방**
 > **기능 목록에 사실로 한 줄 적고, 헤드라인·짧은 설명·태그에는 넣지 않는다.**
@@ -341,9 +350,47 @@ Proton으로 Windows 빌드가 돌더라도 **Win32 창 열거가 Wine 창만 �
 
 | 한국어 | English |
 |---|---|
-| 15분·25분·50분 집중 세션을 켜 두면 끝날 때까지 곁에 있는다. 창을 자주 바꾸면 조용히 쳐다본다. | Start a 15/25/50-minute focus session and it stays beside you until the timer runs out. Switch windows too often and it just… looks at you. |
+| ~~15분·25분·50분 집중 세션을 켜 두면 끝날 때까지 곁에 있는다. 창을 자주 바꾸면 조용히 쳐다본다.~~ | ~~Start a 15/25/50-minute focus session and it stays beside you until the timer runs out. Switch windows too often and it just… looks at you.~~ |
 
-★ **"조용히 쳐다본다"에 「조용히」를 넣은 것은 수사가 아니라 사실이다** — 이 앱은 소리를 내지 않는다.
+〔**R14-M 정정 (2026-09-27) — 뒷문장이 삭제된 기능을 팔고 있었다. 취소선만 걸면 페이지에 구멍이 나므로 정정본을 함께 낸다**〕
+
+- ✖ **뒷문장은 폐기다**(한·영 모두). 「창을 자주 바꾸면 조용히 쳐다본다」 / *"Switch windows too often and it just… looks at you"*는 **2026-09-06에 삭제된 거동**이다. **대체 문안을 만들지 않는다** — 그 자리에 들어갈 참인 문장이 없다.
+- ★ **앞문장도 그대로 쓰지 않는다.** 「끝날 때까지 곁에 있는다」는 **지속형 약속**이고 이미 `TRUTH_INVENTORY.md` R9에서 ✖ **게시 보류**다(세션 중 언도킹). **확인 필요**로 남긴다 — 아래 M13.
+- ✅ **정정본(기능 목록 15번 · 여전히 게시 금지 · Windows 실기 확인 후)**:
+
+| 한국어 | English |
+|---|---|
+| ~~15·25·50분 집중 세션을 켭니다(직접 입력도 됩니다). 세션이 도는 동안 톱니 링이 **남은 시간 호**가 됩니다. 소리는 내지 않습니다.~~ | ~~Start a 15/25/50-minute focus session (or type your own). While it runs, the gear ring becomes a **countdown arc**. It never makes a sound.~~ |
+
+〔**R14-R 정정 (2026-09-27 · HEAD `ee17c03` · 코드는 작업 트리 판독) — ★★★ 위 칸은 한국어와 영문이 같은 오명을 쓴다. 두 줄 다 폐기한다**〕
+
+**남은 시간을 그리는 표면은 2개이고 둘 다 톱니가 아니다**(내가 코드에서 직접 확인했다):
+
+| # | 표면 | 무엇을 보여주는가 | 앵커 |
+|---|---|---|---|
+| **1** | **집중 모드 창**(팝오버) 진행 페이지 | **숫자 `분:초` + 60분 절대 다이얼 호** | `Interaction/FocusSessionPopover.cs` 앵커 `private void RefreshTimerReadout()` · 숫자 앵커 `_timeText.text = $"{seconds / 60:00}:{seconds % 60:00}";` · 절대 다이얼 앵커 `bool absolute = duration <= DialSpanSeconds;` |
+| **2** | **부채꼴 ① [집중 모드] 버튼 글리프**의 **Ø20pt 스톱워치 링** | **호만. 숫자는 없다** | `Interaction/GearRadialMenuWidget.cs` 앵커 `// ---- 집중 모드 잔여 시간 ----` · 채움 앵커 `focus.RingFill.fillAmount = Mathf.Clamp01(_focusDirector.RemainingSeconds / _focusDirector.SessionDurationSeconds);` · 지름 앵커 `private const float StopwatchRingDiameterPoints = 20f;` |
+
+- ✖ **톱니(기어) 위젯에는 남은 시간 표시가 아예 없다** — `Interaction/InfoGearIconWidget.cs`에 `Remaining` **0건** · `Countdown` **0건**(양성 대조: 같은 파일 `private` 117건으로 프로브 생존 확인). 그 파일의 「링」은 **정적인 「허브 링」**(앵커 `private const float HubRadiusPoints = 4.2f;     // 가운데 축(링).`)이고 시간을 나르지 않는다.
+- ✖ **게다가 톱니는 평상시 화면에 없다** — 앵커 `public static bool ShouldShow(bool userHiddenOnly, bool runawayActive)`(`InfoGearIconWidget.StandbyGearPolicy`, 호출부 앵커 `return StandbyGearPolicy.ShouldShow(ResolveUserHiddenOnly(), ResolveRunawayActive());`). **캐릭터가 보이면 톱니는 걷힌다.** ⇒ 「톱니 링」은 **없는 부품을, 평소에 없는 위젯에서** 찾으라고 말한다.
+- ★ **「버튼 둘레」로 고치지 마라.** 그 링은 Ø**20**pt 스톱워치 **그림의 몸통**이고 버튼은 Ø**44**pt다(앵커 `public const float ButtonDiameterPoints = 44f;` · 축소 폴백 앵커 `ShrunkDiameterPoints = 36f`). 「버튼 둘레」로 쓰면 사용자가 **Ø44 테두리를 쳐다본다.**
+
+✅ **정정본 (기능 목록 15번 · 여전히 게시 금지 · Windows 실기 확인 후)**:
+
+| 한국어 | English |
+|---|---|
+| 15·25·50분 집중 세션을 켭니다(직접 입력도 됩니다). 세션이 도는 동안 부채꼴 [집중 모드] 버튼의 **스톱워치 링이 남은 시간 호**가 되고, 그 창을 열면 남은 시간이 **분·초로** 보입니다. 소리는 내지 않습니다. | Start a 15/25/50-minute focus session (or type your own). While it runs, the stopwatch ring on the fan's focus button becomes a **countdown arc**, and opening that panel shows the time left in minutes and seconds. It never makes a sound. |
+
+★★ **그리고 이 문안은 「항상 볼 수 있다」를 말하지 않는다 — 말할 수 없다.**
+커서가 3분간 멈추면 **팝오버가 스스로 닫히고**(`Interaction/PopoverPanel.cs` 앵커 `public const float DefaultIdleAutoCloseSeconds = 180f;` · 닫기 로그 앵커 `자리를 비운 것으로 보고 차단막까지 거둡니다`) **부채꼴까지 접힌다**(`Interaction/GearRadialMenuWidget.cs` 앵커 `Collapse(GearMenuCollapseMode.User, "팝오버가 닫힘");`). **그런데 세션은 계속 돈다.**
+★ 그 180초 시계는 **다른 앱에서 치는 키보드로 멈추지 않는다** — 앵커 `if (Input.anyKey) { NoteUserActivity(); return false; }` 위의 코드 자백이 그대로 적어 뒀다: *"`Input.anyKey`는 **이 앱이 포커스를 가졌을 때만** 참이므로, 남의 앱에서 치는 키는…"*. 같은 사실을 `Interaction/TodoPostItWidget.cs`도 독립으로 적어 뒀다.
+⇒ **「남은 시간을 항상 볼 수 있습니다」 · 「한눈에 남은 시간」 · EN *"always visible"* · *"at a glance"* 류는 쓸 수 없다.** 위 정정본이 「**그 창을 열면**」이라는 조건을 문장 **안**에 둔 것은 수사가 아니라 이 사실 때문이다(조건을 문장 밖에 붙이면 헤지, 안에 넣으면 스펙 — 2-7절 형태 판정과 같은 규칙). 7절에 예방 금지 행을 넣었다.
+
+- **정정본이 기대는 사실 셋** — 전부 이 라운드 실측이다: ① `FocusSessionPopover.DurationMinutes = {15f,25f,50f}` + `DurationLabels`의 「직접」 ② `RingTrack` — *"집중 모드 전용 — 세션 중에는 잔여 시간 호가 된다"* ③ `m_DisableAudio=1`(빌드 강제).
+- ★ **정정본에 없는 것**: 감시 · 민감도 · 쳐다봄 · 「곁에 있는다」. **넣지 마라.**
+
+~~★ **"조용히 쳐다본다"에 「조용히」를 넣은 것은 수사가 아니라 사실이다** — 이 앱은 소리를 내지 않는다.~~
+〔**R14-M**: 「쳐다본다」가 사라졌으니 이 변호도 함께 죽는다. ★ 다만 **「소리를 내지 않는다」는 그대로 참이다**(`m_DisableAudio=1`) — 위 정정본이 그 사실을 **쳐다봄과 분리해서** 싣는다.〕
 
 ### 3-3. ★ v2.2 신규 (R7) — **P21(자국 통화로 값을 보는 사람)이 이 페이지에 만드는 규칙은 하나뿐이다**
 
@@ -551,6 +598,7 @@ Steamworks 태그 목록은 사용자가 브라우저로 확인해야 한다.
 | ★★★ **착석 소품 시각 소재** — 캐릭터가 **왕좌 · 벤치 · 의자에 앉아 있는** 스토어 이미지 · DLC 팩 소재 · 트레일러 콘티, 그리고 *"앉아 쉬는 자리를 팩으로 늘립니다"*류 | ★ **R13-M 신규 (2026-09-26 · `game-architect` 실측 인계 · 예방 — 전수 0건).** **착석 자세가 없다** — `ApplySeatedFocusPose` 0건(양성 대조 `ApplyFocusPose` 6 · `ApplyFocusWatchStancePose` 5). 착지한 것은 **옆에 세우는 프롭**뿐이다(`Interaction/CostumePropRenderer.cs` 앵커 `램프·책상·광맥벽·마법진은 움직이지 않으므로 갱신이 0이다`) ⇒ 「앉는」 소품은 **그림 자체를 만들 수 없다.** ✅ **경계 — 지우면 안 되는 참인 문장**: 2-5절의 *"가만히 두면 걷고, 앉고, 기지개를 켜고"*는 **유휴 앉아 쉬기**이고 실재한다(`Core/StickConfig.cs` 앵커 `public float wanderRestExtendSitChance = 0.15f` — 이름만 쓰면 그 파일에서 2회라 선언 전체를 앵커로 쓴다). 「앉」을 검색해 이 문장을 지우면 **그게 새 거짓이 된다.** ★ 함께 금지 — *"팩은 코드 0줄로 계속 낼 수 있습니다"*류: 0줄은 **7번째 팩부터** 참이고 첫 팩에 602줄 들어갔다 → `TRUTH_INVENTORY.md` R13-M-4 |
 | ★★ **등급 1 자동 연출 전칭** — *"발표 중에는 자동 연출이 멈춥니다"* · *"전체화면 앱 위에서는 알아서 조용해집니다"* / EN *"it stops doing things on its own during presentations"*류 | ★ **R13-M 신규 (2026-09-26 · 예방 — 전수 0건).** 등급 1에서 멈추는 **자동 연출은 음악 춤 하나**다(`Platform/FullscreenSuspendPolicy.cs` 앵커 `public static bool SuppressesAutoDance` · 소비자 `Core/AudioReactiveDanceGate.cs`). **캐릭터는 계속 걸어다니고 말풍선도 뜬다** — 잡담 `idleChatterChance: 0.28` · 밧줄 등반 `ropeClimbChance: 0.85` · 매달리기 `ledgeHangChance: 0.35`(`Data/DefaultStickConfig.asset`). 코드가 같은 말을 한다: `Core/AudioReactiveDanceGate.cs` 앵커 `캐릭터는 한 비트도 건드리지 않는다`. ✅ **쓸 수 있는 형태**: *"음악에 맞춘 자동 춤은 멈춥니다"* — 멈추는 것이 그 하나라서 그대로 적는다(**실기 전 게시 금지**) → `TRUTH_INVENTORY.md` R13-M-1 |
 | ★★ **「테두리 없는 창 모드 포함」류 감지 범위 명시** — *"전체화면(테두리 없는 창 모드 포함)을 감지합니다"* / EN "*including borderless windowed mode*"류 | ★ **R9-F 신규 — 보류다(금지가 아니라 미측정).** 우리 Windows 판정은 전경 창 사각형과 모니터 사각형의 **정확 일치**이고(`Platform/FullscreenSuspendPolicy.cs` 앵커 `MatchesExactly`), macOS는 상단 시스템 스트립 ≤5%를 허용해 **관용도가 다르다**(같은 파일 클래스 문서). **DPI 스케일링에서 그 정확 일치가 깨지는지 아무도 재지 않았다.** ⇒ `dev-platform` 확인 전까지 쓰지 않는다. 확인되면 해제하고 **괄호로 범위를 적는 스펙형**으로 쓴다(조건이 문장 안에 있으면 헤지가 아니다) |
+| ★★ **남은 시간 상시 가시성 약속** — *"남은 시간을 항상 볼 수 있습니다"* · *"한눈에 남은 시간"* · *"타이머가 늘 떠 있습니다"* / EN *"always visible"* · *"at a glance"* · *"see the time left anytime"*류 | ★ **R14-R 신규 (2026-09-27 · 예방 — 내 폴더 전수 0건).** **세션 중 남은 시간을 볼 수 있음이 보장되지 않는다.** 커서가 3분간 멈추면 집중 모드 창이 **스스로 닫히고**(`Interaction/PopoverPanel.cs` 앵커 `public const float DefaultIdleAutoCloseSeconds = 180f;` · 닫기 로그 앵커 `자리를 비운 것으로 보고 차단막까지 거둡니다`) **부채꼴까지 접힌다**(`Interaction/GearRadialMenuWidget.cs` 앵커 `Collapse(GearMenuCollapseMode.User, "팝오버가 닫힘");`). **그런데 세션은 계속 돈다.** ★ 그 180초 시계는 **다른 앱에서 치는 키보드로 멈추지 않는다** — 앵커 `if (Input.anyKey) { NoteUserActivity(); return false; }` 와 그 위 코드 자백(*"`Input.anyKey`는 **이 앱이 포커스를 가졌을 때만** 참이므로, 남의 앱에서 치는 키는…"*), 같은 사실을 `Interaction/TodoPostItWidget.cs`도 독립으로 적어 뒀다. ⇒ **집중 도구를 파는 문장에서 가장 쓰고 싶은 형태가 정확히 이것이라 예방으로 먼저 막는다.** ✅ **쓸 수 있는 형태**: 조건을 문장 **안**에 넣는다 — *"그 창을 열면 남은 시간이 분·초로 보입니다"*(3-2절 정정본). 제품 결함 자체는 **다음 묶음 배정**이고, 이 행은 **팔지 않은 것을 팔지 않기 위한 것**이다 → `TRUTH_INVENTORY.md` R14-R-10 |
 
 > 〔**R11-c 표기 주 (2026-09-14)**: 위 표의 금지 문구는 **판정 당시 원문 그대로** 둔다(「작업표시줄」 붙여 씀 포함). 사용자에게 보일 문장의 표기는 「작업 표시줄」로 통일했지만 **띄어 쓴 형태도 똑같이 금지다.** 금지 문구를 문자열로 대조할 때는 **두 표기를 모두 찾는다** — 한 표기만 찾으면 다른 표기로 쓴 금지 문장이 조용히 통과한다(`CLAUDE.md` 부재 단언 규칙과 같은 병).〕
 

@@ -25,6 +25,10 @@ namespace StickMate.Tests.PlayMode
     {
         private const string LogPrefix = "[할일날짜축-TEST]";
 
+        /// <summary>씨앗 항목을 넣을 때 쓰는 소프트캡 인자. <b>값 자체는 관심사가 아니다</b> —
+        /// 이 인자는 «넘쳤는가»라는 반환값만 정하고 이 파일은 그 반환값을 쓰지 않는다.</summary>
+        private const int SeedSoftCap = 99;
+
         private TodoBoardPopover _popover;
 
         [OneTimeSetUp]
@@ -165,24 +169,82 @@ namespace StickMate.Tests.PlayMode
             yield return LoadSceneAndOpen();
 
             int today = RequireDayAxis();
+
+            // ★★ 2026-09-27 — 아래 «오늘이 아닌 날로 옮기기»는 첫 등장(09-14) 이래 <b>한 번도 통과한 적이 없다</b>
+            //    (17회 연속 판정 불가). 환경 차이가 아니라 <b>전제가 구조적으로 거짓</b>이었다:
+            //    LoadSceneAndOpen이 목록을 비우므로 탐색 하한 min(오늘, 가장 이른 예정일)이 «오늘»이 되고,
+            //    [‹]의 Clamp가 오늘을 그대로 돌려줘 버튼이 <b>비활성</b>이 된다. 비활성 컨트롤은 클릭을
+            //    <b>삼키되 아무 일도 하지 않으므로</b>(HitControl), 날짜가 안 움직인 채 전제만 무너졌다.
+            //    ⇒ 옮겨 갈 자리를 <b>먼저 만든다</b>.
+            //    ★ 달 경계 함정: 달력은 <b>선택된 날의 달</b>에 앵커한다(SelectPage → RefreshCalendar의 inMonth).
+            //      1일에 어제로 가거나 말일에 내일로 가면 앵커가 이웃 달로 넘어가 «오늘 칸»이 사라지고
+            //      아래 target 탐색이 -1이 된다 — 순진한 수정은 <b>매달 하루</b> 빨개진다.
+            //      달은 최소 2일이므로 옮길 자리는 «어제 쪽»이나 «내일 쪽» 중 적어도 하나가 이 달에 남는다.
+            //
+            // ★★ 2026-09-27 <b>2차 정정 — 첫 수정이 서로 다른 두 계를 섞었다</b>(리더 적발, 내가 재확인).
+            //    옛 판은 «오늘이 1일인가»를 <b>로컬 벽시계</b>(경계 오프셋이 없는 그 프로퍼티 — 이름을 여기 다시
+            //    적지 않는다. 적으면 «벽시계를 읽는 테스트» 훑기가 이 주석을 잡아 거짓 양성을 낸다)로 갈랐는데
+            //    <c>today</c>는 <c>CurrencyModel.DayIndex</c>(= <c>CurrencyRules.LocalDayIndex(utcNow, 오프셋)</c>)에서 온다.
+            //    그 오프셋은 애셋이 아니라 <b>세이브</b>에 실리고(없으면 로컬 UTC 오프셋으로 채워진다),
+            //    클램프 폭이 <b>±14시간</b>이다(<c>CurrencyRules.MaxDayBoundaryOffsetMinutes</c>).
+            //    ⇒ 두 계가 1일·말일 부근에서 갈리면 <b>분기가 반대로 잡혀</b> 앵커가 이웃 달로 넘어가고
+            //      아래 «오늘 칸» 탐색이 -1이 된다. 게다가 그 분기는 <b>매달 1일에만</b> 돌아 사실상 검증되지 않는다 —
+            //      이 파일이 13일간 당한 병(«건너뛴 것은 잊힌다»)의 씨앗을 새로 심는 셈이었다.
+            //    ⇒ 그래서 <b>벽시계를 읽지 않고 분기 자체를 없앤다</b>: 제품의 달력이 스스로 말하는 정의역에서
+            //      «이 달에서 고를 수 있는, 오늘이 아닌 칸»을 찾아 누른다. 달력은 <b>선택된 날의 달</b>에
+            //      앵커하므로(SelectPage → RefreshCalendar의 inMonth) 그 칸을 누르면 앵커가 이 달에 남는 것이
+            //      <b>보장</b>되고, 그런 칸은 항상 있다(달은 최소 2일 + 아래에서 어제를 정의역에 넣는다:
+            //      1일에는 내일 칸이, 말일에는 어제 칸이 이 달 안에 남는다).
+            //    ★ 일자→날짜 환산을 테스트가 직접 하지 않는 이유: <c>LocalDayIndex</c>의 기산점이 private이다
+            //      (<c>Tests/EditMode/TodoBoardDateAxisLayoutTests</c>가 적어 둔 그 제약을 우회하지 않고 따른다).
+            // 어제를 정의역 안으로 들인다(하한 = min(오늘, 가장 이른 예정일)). 소프트캡 값은 관심사가 아니다.
+            TodoListModel.Add("어제 자리를 여는 항목(날짜 축 테스트)", SeedSoftCap, today - 1);
+
             _popover.Open(new Rect(Screen.width * 0.5f - 22f, Screen.height * 0.5f - 22f, 44f, 44f),
-                "날짜 축 재확인");   // 축이 방금 섰다면 화면을 그 값으로 다시 그린다.
+                "날짜 축 재확인");   // 축이 방금 섰다면 화면을 그 값으로 다시 그린다(정의역도 함께 다시 잡힌다).
             yield return null;
             Assert.AreEqual(today, _popover.TodayIndexForTests,
                 $"{LogPrefix} 창이 아는 «오늘»이 CurrencyModel.DayIndex와 다릅니다 — 두 번째 시계가 생겼습니다(UW-6-2).");
 
             // ★ 먼저 «오늘이 아닌 날»로 옮겨 둔다. 이걸 안 하면 아래 «오늘이 선택됐다»는 단언이
             //   «원래 그 값이었다»로도 통과한다(이 저장소의 거짓 통과 형태 그대로).
-            _popover.FeedClickForTests(_popover.PrevDayScreenRect.center);
+            // ★ Assume이 아니라 Assert다 — 이 파일의 RequireDayAxis가 이미 적어 둔 규칙(«건너뛴 테스트는
+            //   잊힌다 … 건너뛸 것이 아니라 빨개져야 한다»)을 정작 이 줄이 13일 동안 당했다.
+            Assert.IsFalse(_popover.IsCalendarPage, $"{LogPrefix} 전제 — 처음부터 달력이 떠 있습니다.");
+            _popover.FeedClickForTests(_popover.DateToggleScreenRect.center);
             yield return null;
-            Assume.That(_popover.SelectedDayIndexForTests, Is.Not.EqualTo(today),
-                $"{LogPrefix} [‹]를 눌렀는데 날짜가 안 옮겨졌습니다 — 아래 판정의 전제가 성립하지 않습니다.");
+            Assert.IsTrue(_popover.IsCalendarPage,
+                $"{LogPrefix} 전제 — 날짜 라벨을 눌렀는데 달력이 열리지 않아 옮길 칸을 고를 수 없습니다.");
+
+            int moveCell = -1;
+            for (int i = 0; i < TodoBoardPopover.CalendarCellCountForTests; i++)
+            {
+                if (!_popover.CalendarCellSelectable(i)) continue;
+                if (_popover.CalendarCellDayIndex(i) == today) continue;
+                moveCell = i;
+                break;
+            }
+            Assert.GreaterOrEqual(moveCell, 0,
+                $"{LogPrefix} 이 달 달력에 «오늘이 아닌 고를 수 있는 칸»이 없습니다(오늘 «{today}»). " +
+                "달은 최소 2일이고 어제를 정의역에 넣었으므로 1일에는 내일 칸이, 말일에는 어제 칸이 남아야 합니다 — " +
+                "정의역 계산이나 inMonth 판정이 바뀐 것입니다.");
+
+            int movedTo = _popover.CalendarCellDayIndex(moveCell);
+            _popover.FeedClickForTests(_popover.CalendarCellScreenRect(moveCell).center);
+            yield return null;
+            Assert.AreEqual(movedTo, _popover.SelectedDayIndexForTests,
+                $"{LogPrefix} 옮기려고 누른 칸(일자 «{movedTo}»)이 선택되지 않았습니다 " +
+                $"(지금 «{_popover.SelectedDayIndexForTests}»). 아래 판정의 전제이므로 건너뛰지 않고 실패로 남깁니다.");
+            Assert.AreNotEqual(today, _popover.SelectedDayIndexForTests,
+                $"{LogPrefix} 옮겼는데도 «오늘»이 선택돼 있습니다 — 아래 «오늘이 선택됐다»가 " +
+                "«원래 그 값이었다»로도 통과하게 됩니다(이 저장소의 거짓 통과 형태 그대로).");
             Assert.IsFalse(_popover.FollowsTodayForTests,
                 $"{LogPrefix} 특정 날짜를 골랐는데도 «오늘 추종»이 켜져 있습니다 — 자정에 " +
                 "읽고 있던 화면을 빼앗깁니다(UW-6-2).");
 
             // ---- 날짜 라벨이 곧 달력 토글이다(탭을 늘리지 않는다 — UW-6-1) ----
-            Assert.IsFalse(_popover.IsCalendarPage, $"{LogPrefix} 처음부터 달력이 떠 있습니다.");
+            Assert.IsFalse(_popover.IsCalendarPage,
+                $"{LogPrefix} 칸을 눌렀는데 일별 페이지로 돌아오지 않았습니다 — 아래 토글 판정의 전제입니다.");
             _popover.FeedClickForTests(_popover.DateToggleScreenRect.center);
             yield return null;
             Assert.IsTrue(_popover.IsCalendarPage,

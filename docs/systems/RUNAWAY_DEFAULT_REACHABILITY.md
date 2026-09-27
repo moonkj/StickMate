@@ -181,7 +181,7 @@ git log -S "RaiseGlobalEmergencyStop" -- Assets/_Project/Scripts
 | `Tests/PlayMode/Phase5VisualLayerTests.cs:306` | `ForceTriggerNow` 직접 | 개발 게이트(`AppControlDirector.cs:679`)와 임계(`RunawayDirector.cs:70`)를 **둘 다 우회** |
 | `Tests/PlayMode/StandbyGearVisibilityTests.cs:331` | `TryForceRunawayNow` 직접 | 동일. 주석 `:307` *"발동은 프로덕션 경로 그대로"* — **출하 빌드에서 사용자가 탈 수 없는 경로다** |
 | `Tests/PlayMode/CharacterPreservationFreezeAgentTests.cs:504` · `:511` | `TryForceRunawayNow` 직접 | 동일(동결 입구 검증 목적이라 타당) |
-| `Tests/PlayMode/ManualHideUserAxisTests.cs:615` | `ForceTriggerNow`(**막히는지** 확인) | 부재 단언 — 타당 |
+| ~~`Tests/PlayMode/ManualHideUserAxisTests.cs:615`~~ 〔앵커 전환 2026-09-27: `Tests/PlayMode/ManualHideUserAxisTests.cs` · `runaway.ForceTriggerNow(` · 1회. 취소선 줄 번호는 **죽은 키** 다. 맨 `ForceTriggerNow`로 세면 같은 파일에서 2회 잡히고 그중 하나는 그라피티라, 앵커에 수신자를 붙여야 유일해진다〕 | `ForceTriggerNow`(**막히는지** 확인) | 부재 단언 — 타당 |
 | `Tests/PlayMode/BodyTeleportTransformSyncTests.cs:224` | `ChangeState` 직접 | 좌표 동기 검증 목적 — 타당 |
 
 - **스트레스 경로 → 가출을 끝까지 모는 테스트: 0건.** `Tests/`에서 `stressRunawayThreshold` 0건(양성 대조: 같은 grep이 `TryForceRunawayNow` 2파일을 잡음 — `StandbyGearVisibilityTests` · `CharacterPreservationFreezeAgentTests`).

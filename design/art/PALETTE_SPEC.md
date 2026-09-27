@@ -603,6 +603,47 @@ W=0.10은 게이트를 **하나도 깨지 않는다**(대역 25/25 · 항등 25/
 `tier`는 `FramePacingTier` / `FocusWatchTier`(프레임 페이싱)다. `ItemCatalog.cs` 705행에는
 등급 어휘가 한 번도 안 나오고, `.asset` 스키마에도 등급 필드가 없다.
 
+> ★★ **2026-09-27 정정 — 이 문단의 이름 하나가 삭제되고, 「0건」 넷 중 셋이 뒤집혔다**(design-art 전수).
+> **원문은 한 글자도 고치지 않았다.** 아래는 as-of 병기이고 취소선이 아니다 — 위 숫자는 **2026-09-02 시점에 참이었고**,
+> 뒤집힌 이유는 **이 문서 §14의 이음매가 실제로 착지한 것**이다. 성공한 처방을 실패로 적지 않는다.
+>
+> **① 무엇이 사라졌는가** — `FocusWatchTier`. 타입·이벤트째 없다(선언 형태 `enum`/`event` 적중 **0건**,
+> 양성 대조로 살아 있는 열거형 선언 4종은 같은 정규식에 걸린다: `StressMoodTier` · `ForeignFullscreenTier` ·
+> `FramePacingTier` · `LandingTier`).
+> ★ **다만 「`Assets/` 0건」이라고 쓰면 틀린다** — 이름 문자열은 주석 **2곳에 남아 있다**:
+> `Assets/Editor/SceneBootstrapper.cs:1112`(스스로 「2026-09-06 삭제」라고 적는다) ·
+> `Interaction/FocusWatchDirector.cs:15`(**삭제 사실을 적는 문단 안**이다).
+>
+> **② 삭제 커밋** — `912fd8c`(2026-09-06). 사용자 지시 «집중모드에서 지켜보기 기능 삭제해줘»로
+> 「딴짓 감지」가 통째로 사라졌고 `Interaction/FocusWatchRenderer.cs`는 **파일째** 삭제됐다.
+> **되살리지 마라 — 사용자가 닫은 문이다.**
+>
+> **③ 지금 실재하는 것** — `FramePacingTier`는 **실재한다**(`Platform/ViewerPresence.cs:99`에 `enum FramePacingTier`,
+> `Assets/` 안 **231건**). 즉 이 문장의 두 이름 중 **하나는 죽고 하나는 살아 있다.**
+> 같은 문단의 나머지 계수는 HEAD `ee17c03` 기준으로 이렇게 움직였다(범위는 전부 `Assets/_Project/Scripts`, `git grep -c -w`):
+>
+> | 원문 (2026-09-02) | 지금 | 뒤집혔나 |
+> |---|---:|---|
+> | `rarity` 0건 | **162** | 뒤집힘 — `Core/ItemRarity.cs`가 생겼다 |
+> | `legendary` 0건 | **8** | 뒤집힘 |
+> | `epic` 0건 | **6** | 뒤집힘 |
+> | `grade` 0건 | **0** | 그대로 참 |
+> | `rank` 3건 | **62** | 늘었다(등급 파생이 rank를 쓴다) |
+> | `tier` 70건 | **207** | 늘었다 |
+> | `ItemCatalog.cs` 705행 | **2,194행** | 늘었다 |
+> | `.asset` 스키마에 등급 필드 없음 | **없음 그대로** | 그대로 참 |
+>
+> ★ **마지막 칸이 중요하다** — `Resources/Items/*`에 등급 필드는 **여전히 0건**이고(양성 대조:
+> `requiredLevel`은 **54파일**에서 걸린다), `Core/ItemRarity.cs`가 스스로 「**저장 필드가 0개다**」라고 적는다.
+>
+> **④ 그래서 판단이 어떻게 바뀌는가 — 바뀌지 않는다. 오히려 더 강해졌다.**
+> 이 문단이 받치던 결론은 「**등급이 휘도로 인코딩돼 있지 않다**」였고, 그 결론은 지금 **코드로 확정됐다**:
+> `ItemCatalog.Rarity(slot, itemIndex)`(`:1224`)가 `RarityOfRank(rank, counted)`(`:1274`)로 내려가고
+> rank의 정렬 키는 `UnlockRankKey(entry) => entry.RequiredLevel ?? 0`(`:1279`)이다 — **요구 레벨 순위이고 휘도가 아니다.**
+> 2026-09-02에는 「코드에 없다」가 근거였고, 지금은 「**코드에 있는데 휘도와 무관하다**」가 근거다.
+> ⇒ **W = 0.10 채택과 14쌍 휘도 역전 판정은 그대로 유효하다.**
+> 덤으로 `Core/ItemRarity.cs`가 이 문서를 **역참조**한다(「색은 주 채널이 아니다」 + `PALETTE_SPEC §12-0 / §12-1`).
+
 > ★ **이건 "없음" 판정이라 양성 대조를 붙였다**(TEAM.md §4-2 4번). 같은 `grep`이
 > `WornColor` 6건 · `InkTone` 5건 · `requiredLevel` 5건 · `itemIndex` 15건을 잡는 것을
 > 먼저 확인했다. `.asset` 쪽도 `requiredLevel`은 잡히고 등급 어휘만 0건이다.
@@ -1334,6 +1375,35 @@ packfinal.py     ★ 확정 유도. **폴백 금지(assert)** · 여유 8단 민
 > 대신 `StaleInkPieceCount`의 **기준만** `잉크` → `그 FX 아이템의 기대색`으로 일반화한다
 > (잉크 표식 3종에 대해서는 바이트 단위로 오늘과 같은 값 = 순수 확장).
 
+> ★★ **2026-09-27 정정 — 이 권고는 폐기가 아니다. 착지했다**(design-art 전수).
+> **원문은 한 글자도 고치지 않았고 취소선도 걸지 않았다.** 취소선을 걸면 **성공한 처방이 실패한 것처럼 읽힌다.**
+> 위 문장은 **2026-09-02 시점의 권고로서 참이었고**, 지금 이름이 없는 이유는 **권고대로 옮겨졌기 때문이다.**
+>
+> **① 무엇이 사라졌는가** — `StaleInkPieceCount`. 프로덕션에서 **0건**이다.
+> ★ **범위를 좁혀 적는다**: 「`Assets/` 0건」이지 「저장소 전체 0건」이 아니다 — 저장소 전체로는 **13건**이고
+> 그중 **5건이 이 문서 자신**이다(`:1334` · `:1438` · `:1573` · `:1593` · `:2187`).
+>
+> **② 개명 커밋** — `1eb0e2b`(2026-09-03). 기준 일반화는 `912fd8c`(2026-09-06)에서 `ResolvePiecePalette`로 들어갔다.
+>
+> **③ 지금 실재하는 것** — `CharacterFxRenderer.StalePieceCount`(`:338`). 권고가 제안한 그 이름 그대로다.
+> 처방 넷이 전부 착지했다:
+>
+> | 이 절이 시킨 것 | 지금 코드 | 어디 |
+> |---|---|---|
+> | 이름을 `StalePieceCount`로 | 착지 | `CharacterFxRenderer.cs:338` |
+> | 기준을 「그 FX의 기대색」으로 일반화 | 착지 | 같은 파일 `:333` 문서가 「**그 FX가 지금 칠해야 할 색**」이라 적는다 |
+> | 애셋 `look_fx_footprint` tone 0·1을 `InkTone`으로 | 착지 | `.asset:31` · `:41` · `:51` 세 곳 모두 `#D6DBE3` |
+> | 색을 돌려주는 창구(§18-2 요청) | 착지 | `LivePieceColorsForTests`(`:1020`) |
+>
+> ★ **`ResolveFxPrimary`는 그 이름으로 착지하지 않았다**(저장소 전체 3건, 전부 이 문서). 같은 일을 `ResolvePiecePalette`가 한다.
+> ★ **코드가 권고보다 한 걸음 더 갔다** — 권고는 기준을 「지금 착용 중인 아이템」으로 잡았는데,
+> 착지본은 「**그룹마다 자기 아이템**」으로 잡아 갈아입는 동안 아직 떠 있는 옛 조각이 거짓 경보를 내는 구멍까지 막았다.
+> ★ **`CharacterAppearanceLayerTests.cs:604`는 줄이 밀렸다** — 지금 `:614` · `:618` · `:625`다(단언 3개, 파일은 그대로).
+>
+> **④ 그래서 판단이 어떻게 바뀌는가 — 권고를 폐기하지 않고 「착지 완료」로 닫는다.**
+> 다른 이름 위에 다시 세울 필요도 없다. 권고가 지목한 대상이 **그 권고가 제안한 이름으로 이미 존재하기 때문이다.**
+> 남는 의무는 하나뿐이다: **이 절을 읽는 사람이 `StaleInkPieceCount`를 찾아 헤매지 않게 하는 것** — 그래서 이 블록을 둔다.
+
 검산 `verify/fxink.py` — **교정 5행(colorlab 16건 포함) + 판정 22건 = PASS / 0 FAIL** ·
 양성 대조 `fxink.py --control` **7/7 잡힘** · 산출 `fxink.out.txt` / `fxink.control.out.txt`.
 **프로덕션 `.cs`/`.asset` 수정 0건. 새로 고른 hex 0개.**
@@ -1439,6 +1509,11 @@ E-1의 문장은 옳았지만 근거 수치가 약했다 — **여기서 교체�
    잉크 표식 3종(발자국·먼지·없음)에 대해 `WornColor`가 잉크를 그대로 돌려주므로
    **오늘과 바이트 단위로 같은 값**을 낸다 = 순수 확장. 이름도 같이 옮기는 편이 정직하다
    (`StalePieceCount` + "기대색과 다른 조각 수").
+   > ★★ **2026-09-27 — 이 처방 3번은 착지했다**(design-art 전수). 원문 무수정 · 취소선 없음.
+   > `StaleInkPieceCount`는 `1eb0e2b`에서 `StalePieceCount`로 개명됐고(이 줄이 제안한 그 이름이다),
+   > 기준 일반화는 `912fd8c`에서 `ResolveFxPrimary` 대신 `ResolvePiecePalette`로 들어갔다.
+   > 처방 1번(애셋 3곳 `#D6DBE3`)과 §18-2의 `LivePieceColorsForTests`도 함께 착지했다.
+   > 표와 근거는 **§16 머리의 정정 블록**에 있다. `:604` 인용은 지금 `:614` · `:618` · `:625`다.
 4. **`:604` 양성 대조는 그대로 둔다.** 다만 **왜 여전히 성립하는지 한 줄**을 주석에 남겨라 —
    *"발자국은 잉크 표식(`look_fx_footprint` tone 0 == `ItemCatalog.InkTone`)이라 기대색이 곧 잉크다"*.
    없으면 다음 사람이 이걸 **운**으로 읽는다.
@@ -1592,6 +1667,10 @@ C# 기본값으로만 존재하고 Unity가 아직 재직렬화하지 않았다.
 ★ **필요한 신규 노출 1건 — `CharacterFxRenderer.LivePieceColorsForTests`.**
 지금 `StaleInkPieceCount`는 **세기만** 하고 색을 안 돌려줘서 색 동일성을 잴 수 없다.
 `.cs` 변경이라 **내 권한 밖** — 리더 경유로 `coder-ui`에 붙인다.
+
+> ★ **2026-09-27 — 이 요청은 착지했다.** `LivePieceColorsForTests`가 `CharacterFxRenderer.cs:1020`에 있고,
+> 여기 적힌 `StaleInkPieceCount`는 `1eb0e2b`에서 `StalePieceCount`로 개명됐다(§16 머리 정정 블록).
+> 원문 무수정 — 이름이 없어진 이유가 **처방의 착지**라서 취소선을 걸지 않는다.
 
 ---
 
@@ -2186,6 +2265,11 @@ grep -rn "TintNeck|TintBack|TintHead|TintEyes|NeckDeep" --include=*.cs Assets
 | `ux-designer` | `CategoryTint`가 **UI 전용 토큰**으로 확정됐다(§24-1). 카드/보관함 4곳이 유일한 소비처다 | `UI_SURFACE_SPEC.md` 카테고리 점·wash |
 | `coder` / `coder-ui` | §24-7 애셋 4건 · §25-3 여백 하한 단언 · §25-4 대조 3종 재설계 | `CharacterFxRenderer.StaleInkPieceCount` · `ItemPaletteBandGateTests` |
 | 리더 | 승인된 감사의 **전제 반박**(§24-6) — 대체안을 함께 냈다 | `CategoryTintAssetAlignmentAuditTests` |
+> ★ **2026-09-27 정정 — 이 표의 코드 이름 둘이 지금 없다**(design-art 전수, 원문 무수정).
+> `CharacterFxRenderer.StaleInkPieceCount` → `1eb0e2b`에서 `StalePieceCount`로 개명(§16 머리 정정 블록).
+> `CategoryTintAssetAlignmentAuditTests` → **`Assets/`에 한 번도 존재한 적이 없다**(`git log -S` 적중 0,
+> 양성 대조로 `CategoryTintMappingTests`는 `1eb0e2b`에서 잡힌다). 즉 §24-6이 반박한 그 감사는 **작성되지 않았고**,
+> 자리에 들어온 것은 `CategoryTintMappingTests`다(`Assets/` 2건). `ItemPaletteBandGateTests`는 **실재한다**(7건).
 
 ### 26-2. Windows 영향 — **함께 검토했다(설계 산출물뿐, `.cs` 0줄)**
 
@@ -4313,3 +4397,114 @@ ux 문서 쪽이 옳다(`§9 L-6`: *"밝은 무대(**검은 잉크**)에서"*).
 | K-14 | **흰 잉크** | 액자 경계가 보이는가(N-1). 테두리 없이 찍은 것과 `AccentBorder`를 넣은 것 **두 장** |
 | K-15 | **검정 잉크** | 바닥 광원이 보이는가(N-2, 계산 ΔE 6.47) |
 | K-16 | 둘 다 | 스탯 카드 `+8`(브라스)과 **컬럼 3 영웅 리본**이 한 화면에서 같은 가족으로 읽히는가(§31-5, 간격 70pt) |
+
+---
+
+## 32. 【2026-09-27 정정 스윕】 사라진 이름 위에 서 있던 현재형 문장 — 전수와 처분
+
+리더 배정으로 `code-inspection`이 센 「파일은 살아 있는데 타입·멤버만 사라진 것」 **274건** 중
+이 문서 소관 3건을 처리하고, **같은 병을 이 문서 안에서 전수로 다시 스캔했다.**
+**프로덕션 `.cs` 0줄 · 커밋 0 · Unity 미실행.** 원문은 **한 글자도 지우지 않았다**(삽입만).
+
+### 32-1. 배정 3건의 처분
+
+| 자리 | 사라진 이름 | 성격 | 처분 |
+|---|---|---|---|
+| `:603` | `FocusWatchTier` | **현재 상태표**(판정 근거) | as-of 병기. `FramePacingTier`는 **실재하므로 살려 뒀다** |
+| `:1334` | `StaleInkPieceCount` | **현재 상태표**(권고) | **착지 완료로 닫음** — 폐기 아님 |
+| `:1438` | `StaleInkPieceCount` | **현재 상태표**(처방) | **착지 완료로 닫음** — 폐기 아님 |
+
+★ **권고 3번의 처분은 「폐기」가 아니라 「착지 완료」다.** 근거는 하나로 충분하다 —
+**권고가 제안한 새 이름(`StalePieceCount`)이 바로 그 자리에 존재한다.** 선례(ux-designer의 「지시 폐기」)는
+*"막으려던 돌연변이를 구조적으로 만들 수 없게 됐고 대체 잠금이 이미 있다"* 를 근거로 삼았는데,
+이 건은 그보다 강하다 — **막으려던 것이 아니라 시키려던 것이 실제로 시켜졌다.**
+
+### 32-2. 같은 병 추가 스캔 — 이 문서의 백틱 코드 이름 전수
+
+임시 도구로 이 문서의 백틱 코드 스팬에서 **대문자 시작 식별자 177개**를 뽑아
+`git grep -c -w -F`로 `Assets/` 적중을 셌다. **`-w`(낱말 경계)를 반드시 준다** — 없으면
+`Rarity`가 `ItemRarity`에 걸려 **생존 오판**이 난다(실측: 낱말 `Rarity` 75 대 `ItemRarity` 233).
+대조: 양성 3종(`ItemCatalog` 1,051 · `StalePieceCount` 5 · `FramePacingTier` 231) · 음성 2종 0건 — **전부 PASS**.
+
+★ **판과 범위를 박아 둔다** — 위 177개와 아래 22자리는 **HEAD `ee17c03`의 blob**을 센 값이고, 적중 범위는 `Assets/`다.
+**이 정정 블록들을 넣은 뒤 같은 도구를 새 판에 돌리면 24자리가 나온다** — 늘어난 둘(`ResolveFxPrimary` ·
+`CharacterFxRenderer.StalePieceCount`)은 **정정 블록이 「그 이름은 없다」고 적으면서 생긴 인용**이라
+결함이 아니다(`ToRgb24`와 같은 부류). **세는 판을 안 적으면 다음 라운드가 이걸 「증가」로 오진한다.**
+
+`Assets/` 0건은 **22자리**였고(같은 이름의 점 표기 포함), 분류하면 **실제 결함은 4종**이다.
+자리 수로는 5 + 2 + 2 + 10 + 3 = 22다.
+
+| 분류 | 자리 | 무엇 | 처분 |
+|---|---:|---|---|
+| **실제로 사라진 코드 이름**(4종) | 5 | `StaleInkPieceCount`(4자리) · `CategoryTintAssetAlignmentAuditTests`(2자리, 한 자리는 위와 같은 행) · `SectionCountWidth` · `StyleStatCard` | 아래 32-3 |
+| 점 표기라 문자열로만 0건(멤버는 실재) | 2 | `UiChrome.TintWash`(`TintWash` 1건) · `PackPaletteGateTests.FrozenPacks`(`FrozenPacks` 9건) | **정정 불필요** |
+| 이름 줄기만 인용(실체는 접미사 붙은 타입) | 2 | `CharacterAccessory` · `IdleAmbientMotion` | 32-3 ㈁에서 함께 다룸 |
+| **우리 팔레트·인계본 토큰**(코드 주장이 아니다) | 10 | `HairDark` · `HairDarkLit` · `Rust` · `Teal` · `Moss` · `MossDeep` · `RAR_A` · `MAT.longcape` · `MAT.shortcape` · `PortraitSurfaceInverted` | **기록/제안이라 조치 불필요** |
+| 다른 문서·검산 스크립트의 이름 | 3 | `FloorGlow`(`UX_EQUIPMENT_WINDOW_3COL_PORT.md:438`) · `ToRgb24`(문서가 스스로 「없다」고 적는다) · `SystemExit`(파이썬) | **조치 불필요** |
+
+★ **「조치 불필요」로 넘긴 것들의 근거를 적어 둔다** — `Rust` · `Teal` · `Moss` 등은 `:2074`의
+「지금 / 제안」 표의 **제안 칸**이고, 제안은 착지하지 않았다(현행 `TintHead` · `TintEyes` · `TintNeck` ·
+`NeckDeep` · `TintBack`이 `Assets/`에 그대로 있다). **제안이 안 착지한 것은 사라진 이름이 아니다.**
+`PortraitSurfaceInverted`도 §31 T-1이 **만들자고 제안한** 토큰이다.
+
+### 32-3. 추가로 발견한 자리 넷
+
+**㈀ `:2031` · `:2188` — `CategoryTintAssetAlignmentAuditTests`는 한 번도 없었다.**
+§24-6은 *"승인된 감사"* 의 전제를 반박하는데, 그 감사는 **`Assets/`에 작성된 적이 없다**(`git log -S` 적중 0 ·
+양성 대조 `CategoryTintMappingTests`는 `1eb0e2b`에서 잡힌다). ⇒ **반박이 이겼고 감사는 만들어지지 않았다.**
+as-of로 적고 **폐기하지 않는다** — 그 반박 문단이 왜 감사를 만들지 않았는지의 유일한 기록이다.
+
+**㈁ `:1143-1147` — 「렌더러 14종」 목록이 낡았다.**
+`Interaction/*Renderer.cs`는 지금 **15개**이고 명단이 바뀌었다: `FocusWatch`가 **파일째 삭제**됐고(`912fd8c`),
+`CostumeProp` · `RopeClimb` **둘이 새로 생겼다**. 목록에 쓰인 `CharacterAccessory` · `IdleAmbientMotion`은
+접미사 `Renderer`가 붙은 실체가 있다(140건 · 14건) — **이 둘은 실재한다.**
+★ **결론은 살아남는다** — 그 문단의 주장은 *"파쿠르 전용 파티클 렌더러가 없다"* 였고, 새로 생긴 둘 중
+`RopeClimbRenderer`는 **파쿠르 계열이지만 파티클이 아니다**(로프 선 + 후크 원, `:26-30`).
+`CostumePropRenderer`는 코스튬 소품이다. ⇒ **「파쿠르 전용 파티클은 여전히 없다」로 좁혀 참이다.**
+
+**㈂ `:915-918` — `= 44f` 여섯 곳 계수가 낡았고, 이름 하나는 사라졌다.**
+지금 `= 44f`는 **7파일 10곳**이고, 인용된 여섯 이름 중 `SectionCountWidth`는 **0건**(사라짐),
+`IconSize`는 실재하지만 **더는 44f가 아니다.** 살아 있는 것은 `ButtonDiameterPoints` · `RowHeight` ·
+`ValueLabelWidth` · `CloseChipWidth` 넷이다. 새로 들어온 이름: `SetCostumePercentWidth` ·
+`HeaderLevelWidth` · `CategoryCountWidth` · `CardRarityWidth` · `CustomValueWidth` ·
+`parkourClimbPoseSmoothingRate`.
+★ **결론은 살아남는다** — *"44pt짜리 카드는 없다"* 는 여전히 참이다. `CardRarityWidth`에 `Card`가 들어가지만
+그것은 **카드 안 리본 칸의 폭**이고 카드 치수가 아니다(카드는 **161 × 108**).
+
+**㈃ `:4030` — `StyleStatCard`는 없다. 그런데 이 줄은 지시다.**
+*"보너스 색 분기를 `StyleStatCard` 밖에 쓰지 않는다"* 는 **존재하지 않는 이름 위에 서 있는 지시**다
+(`Assets/` 0건 · 저장소 1건 = 이 줄 자신).
+⇒ **처분: 폐기가 아니라 다른 이름 위에 다시 세운다.** 지금 그 자리는
+`Interaction/CharacterInfoWindow.Stats.cs`의 `StatCardView`(`:301`)와 `BuildStatCard`(`:454`) ·
+`RefreshStatCard`(`:749`)다. 지시의 뜻(색 분기를 스탯 카드 빌더 **한 곳에** 가둔다)은 그대로 유효하다.
+
+### 32-4. 출시 관문 판정 — **1.0 필수가 아니다**
+
+`docs/strategy/ROADMAP.md` §60-9의 게이트는 그 문서 자신의 계수 기준으로 **9행**(차단 2 = N-10 · N-15 /
+필수 7 = N-17 · N-18 · N-19 · N-20 · N-21 · N-22 · N-23)이고, 그 문단은 **게이트 인플레이션을 명시적으로 경계**한다.
+이 건은 새 행을 만들 근거가 없다:
+
+- **사용자에게 보이는 표면이 0이다.** 전부 설계 문서 안의 낡은 인용이고, 화면·저장·비침해에 닿지 않는다.
+- **원칙 위반이 없다.** 원칙 1~4 어디에도 걸리지 않는다.
+- **선례가 같은 방향이다** — 같은 성격의 건을 `game-architect`와 `ux-designer`는 **문서 묶음으로 닫았다.**
+- **이 정정 자체가 조치의 전부다.** 뒤따를 코드 작업이 없다(㈃의 지시 재수립도 문서 안에서 끝난다).
+
+⇒ **판정: 1.0 필수 아님. 문서 묶음으로 닫는다.** 다만 ㈃은 **다음 스탯 카드 라운드의 선행 읽을거리**로 남긴다.
+
+### 32-5. 플랫폼 영향
+
+| | 내용 |
+|---|---|
+| **Windows 영향** | **없음(문서만).** 이 절이 바꾼 것은 이 파일 하나이고 프로덕션 `.cs` **0줄** · `.asset` **0바이트** · `#if UNITY_STANDALONE_*` 분기 **0건**이라 `Tools/CrossCompile/xcheck.sh` 대상이 없다 |
+| **macOS 영향** | **없음(문서만).** 같은 이유다. 인용을 고친 코드 이름 넷(`StalePieceCount` · `ResolvePiecePalette` · `StatCardView` · `CategoryTintMappingTests`)은 **전부 플랫폼 분기 없는 공용 파일**에 있다 |
+| **교차 레이어** | ㈃의 지시 재수립은 `coder-ui`의 스탯 카드 파일을 가리킨다(구현 요청 아님, 인용 정정뿐). `Interaction/FocusWatchDirector.cs:15`가 **삭제된 `FocusWatchTier`를 현재형으로 인용**하는 것은 프로덕션 주석이라 **내 권한 밖** — `code-inspection` 소관으로 리더에 보고했다 |
+
+### 32-6. 검산 — 렌더 증가분과 글자 삭제
+
+| 검사 | 도구 | 교정 | 결과 |
+|---|---|---|---|
+| 굵게-조사 깨짐 자리 | 실제 CommonMark 렌더러(`markdown_it` 3.0.0) · `code`/`pre` 제거 후 리터럴 `**` 개수 ÷ 2 | 12건 **PASS**(깨지는 4형태 + 정상 6형태 + 코드 스팬·펜스 제외 2) | 아래 라운드 보고에 실측값 |
+| 커밋판 글자 삭제 | 선형 부분수열 검사(삽입만 허용) | 4건 **PASS**(항등 · 삽입만 통과 · **공백 한 글자 삭제 걸림** · 한 글자 치환 걸림) | 기준판 185,041자 전부 순서대로 생존 |
+
+★ **교정이 깨지면 위 숫자는 전부 무효다.** 두 검사기 모두 교정을 먼저 돌리고 FAIL이면 측정을 중단한다.
+★ 기준판은 HEAD `ee17c03`의 blob이고 작업 트리와 sha가 같았다(`b0c41648fd224b92`).

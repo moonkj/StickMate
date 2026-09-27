@@ -367,6 +367,29 @@ if (sagitta > MaxSagittaPerStrokeWidth * width) t *= maxSagitta / sagitta;   // 
 | **M3-1** | `SolveFilletLength`에 넘기는 획 두께를 **로컬 단위로 환산**한다(획 ÷ 루트 lossyScale). 또는 `Rebuild`가 `limb.LowerLine.startWidth / transform.lossyScale.y`를 넘긴다 | 4-3. 단독으로 위반 폭 22% → 1% |
 | **M3-2** | `FilletLengthRatio` **0.35 → 0.42** | M3-1 이후에야 효력이 있다. 4-5의 검산 참조 |
 
+> ### 정정 (2026-09-27, design-character) — M3-1·M3-2는 이미 착지했다. 위 표는 제안 시점 기록이다
+>
+> 위 M3-1 칸과 4-3 코드 블록의 `limb.LowerLine.startWidth`는 **지금 코드에 없다**.
+> 권고를 집어 드는 사람이 없는 필드로 구현하려 할 수 있어 여기에 못박는다.
+>
+> - ① 무엇이 사라졌는가: `Limb.LowerLine` 필드. 팔다리 하나가 위·아래 **두** `LineRenderer`였던
+>   구조가 **하나**로 병합됐다.
+> - ② 삭제·개명 커밋: `1f7e139`(2026-09-05). 그 직전 판 `Assets/**/*.cs`에 `LowerLine` 7건,
+>   그 커밋에서 0건(`git grep -w -F`, 양성 대조 `startWidth` 83건 · `SolveFilletLength` 12건).
+> - ③ 지금 실재하는 것: `Limb.Line`(`States/LimbCurveRenderer.cs:257`). 옛 이름은
+>   `LegacyLowerLine`(`:258`)으로만 남아 **옛 프리팹을 꺼서 이중 그리기를 막는 용도**로 쓰인다.
+>   ★ `-w` 없이 `LowerLine`을 찾으면 이 `LegacyLowerLine`에 걸려 「아직 있다」로 오판한다(실측 5건).
+> - ④ 그래서 판단이 어떻게 바뀌는가: **권고 M3-1은 폐기도, 다른 API 위의 재수립도 아니다 — 완료로 닫는다**.
+>   처방이 그대로 들어갔다. `LimbCurveRenderer.LocalStrokeWidth`(`:480`~`:489`)가
+>   `limb.Line.startWidth ÷ |limb.UpperTransform.lossyScale.y|`를 돌려주고,
+>   `BuildCurve`(`:507`)가 그 값을 `SolveFilletLength`에 넘긴다. M3-2도 착지해
+>   `FilletLengthRatio = 0.42f`(`:157`)다. 착지 커밋은 `2051739`(2026-09-02) 하나이고,
+>   그 판에서 `LocalStrokeWidth`가 처음 나타나며 **같은 커밋에 비율이 0.42가 됐다**.
+>   ★ 이름이 없어진 것은 처방이 실패해서가 아니라 **착지한 뒤 구조가 병합돼서다** —
+>   그래서 취소선이 아니라 as-of로 둔다. 취소선을 걸면 성공한 처방이 실패한 것처럼 읽힌다.
+>   프로덕션이 이 문서 4-3을 인용해 두고 있다(`:459`~`:478`, 「2026-09-01 단위 불일치 수정,
+>   docs/CHARACTER_FORM_SPEC.md 4-3」).
+
 **M3-1 + M3-2 적용 후 검산(최악값):**
 
 | 배율 | 다리 여유(B) | 다리 r/ρ | 팔 여유(B) | 팔 r/ρ | 다리 sagitta/W |
@@ -470,6 +493,10 @@ if (sagitta > MaxSagittaPerStrokeWidth * width) t *= maxSagitta / sagitta;   // 
 | **보류** | M2-C 펫 머리 채움 | — | — | 3-6. 사용자 확인 필요(펫 성격이 바뀐다) |
 | **보류** | M1-B 무채색일 때 머리 링 | — | — | 2-4. 사용자 직접 지시와 충돌 |
 | **반려** | `StrokeRatio` 0.022 → 0.036 | — | — | 3-3. 참고 법칙과 반대 방향 |
+
+> 정정 (2026-09-27, design-character) — 위 표 P0 첫 행의 「다이얼 하단이 지금 깨져 있다」는
+> **지금은 참이 아니다**. M3-1·M3-2가 `2051739`(2026-09-02)에 착지했다(4-4 정정 블록 참조).
+> 이 행은 **배정 시점 기록**으로 읽어라. 나머지 행의 착지 여부는 이 라운드에서 재지 않았다 — **미확인**.
 
 ---
 
@@ -1522,6 +1549,9 @@ Core/StickConfig.cs
 판정 기호: `OK` = 색면 폭 ≥ 1획 / `△` = 색면은 있으나 1획 미만 / `✗0` = **색면 없음**.
 "현행 0.60" = 펜 0.37030 R, "1.00pt 후" = 펜 0.21818 R.
 
+> ★ 이 표는 **2026-09-02 R3 시점의 v1 좌표 전수표**다(as-of). 도형 이름 51개 중
+> **12개는 지금 코드에 없다** — 표 바로 아래 26-1 정정 블록의 대응표를 거친 다음에 이름으로 코드를 찾아라.
+
 | ρ_max(R) | 카테고리 | 아이템 | 도형 | ρ/W_design | 현행 0.60 | 1.00pt 후 |
 |---:|---|---|---|---:|:--:|:--:|
 | 0.1850 | EYES | 안대 | PatchEye | 0.848 | ✗0 | △ |
@@ -1585,6 +1615,43 @@ Core/StickConfig.cs
 | 1.2340 | BACK | 긴망토 | CapeOutline | 5.656 | OK | OK |
 | 1.3261 | BACK | 판초 | CapeOutline | 6.078 | OK | OK |
 | 1.3637 | BACK | 짧은망토 | CapeOutline | 6.250 | OK | OK |
+
+### 26-1. 정정 (2026-09-27, design-character) — 위 표의 도형 이름 12개는 지금 코드에 없다
+
+원문은 한 글자도 고치지 않았다. 위 표의 **숫자는 그대로 유효하되 v1 좌표의 것**이고,
+**이름으로 코드를 찾으면 0건이 나온다**. 리더 배정은 이 중 3개(`BowTieRightWing` · `BowTieLeftWing` ·
+`BowTieKnot`)만 지목했고, 같은 표를 전수로 다시 재서 **9개를 더 찾았다**.
+
+| 표의 이름(①) | 행 | ② 커밋 | ③ 지금 실재하는 것 |
+|---|---|---|---|
+| `BowTieRightWing` · `BowTieLeftWing` · `BowTieKnot` | 1537 · 1538 · 1549 | `7ed996d` (2026-09-02) | `equip_neck_bowtie.asset`의 `Piece_B0` `Piece_B1` `Piece_RB2` `Piece_H3` |
+| `TieStripe` · `TieKnot` · `TieBlade` | 1534 · 1552 · 1566 | `7ed996d` (2026-09-02) | `equip_neck_striped.asset`의 `Piece_B0` `Piece_B1` `Piece_F2` `Piece_F3` `Piece_H4` |
+| `ScarfTailFront` · `ScarfTailBack` · `ScarfWrap` | 1553 · 1555 · 1559 | `7ed996d` (2026-09-02) | `equip_neck_scarf.asset`의 `Piece_B0` `Piece_B1` `Piece_S2` `Piece_S3` `Piece_S4` `Piece_H5` |
+| `Bell` | 1550 | `7ed996d` (2026-09-02) | `equip_neck_bell.asset`의 `Piece_S0` `Piece_CF1` `Piece_CF2` `Piece_CF3` `Piece_B4` `Piece_RB5` `Piece_CB6` `Piece_H7` |
+| `CapeCollar` | 1531 · 1532 · 1533 | `0229f52` (2026-09-06) | `CapeYoke`(`Interaction/AccessoryShapeBuilder.cs:2567` · `:2586` · `:2685`). 같은 파일 `:226`이 「옷깃 띠를 어깨 요크로 대체했다」고 적었다 |
+| `StrawBrim` | 1535 | `0229f52` (2026-09-06, R25) | 2층 챙 4조각 `StrawBrimFar` · `StrawBrimFarArc` · `StrawBrimNear` · `StrawBrimNearArc`(`:2228`~`:2234`) |
+
+★ **이 하나는 실재한다 — 지우지 마라**: `BandanaWrap`(1543행)은 `.cs`에 0건이지만
+`equip_neck_bandana.asset`에 **이름 그대로 살아 있다**(`BandanaTail`도 같다). 반다나·펜던트는
+2026-09-02 이행에서 **v1 파일럿 2종으로 이름이 보존된 쪽**이다
+(`Tests/EditMode/Golden/NeckWornShapeGolden.txt` 머리말이 그 둘만 남았다고 적었다).
+
+④ 그래서 판단이 어떻게 바뀌는가:
+
+- **개명이지 폐기가 아니다**. 여섯 아이템은 전부 화면에 그대로 있다. 바뀐 것은 **조형의 출처**다 —
+  NECK 4종은 `AppendNeck`의 아이템 case 6개가 통째로 `Resources/Items/*.asset`으로 이관됐고
+  (`Interaction/AccessoryShapeBuilder.cs:2471`~`:2485`가 그 이관을 적어 뒀다. `AppendNeck` 자체가
+  지금 `.cs` 정의 0건이고 남은 3건은 전부 주석이다), 망토 옷깃과 밀짚 챙은 **재저작**됐다.
+- **`ρ_max` 숫자를 현행 조각에 그대로 옮기지 마라**. 좌표가 바뀌었으므로 위 12개 이름이 걸린 15개 행은
+  **현행 조형의 근거가 될 수 없다**. 다시 재려면 `design/equipment/verify/`의 스크립트를 현행 에셋
+  좌표로 돌려야 한다 — 이 라운드에서는 재지 않았다. **미확인**.
+- 나머지 39개 이름은 **지금도 실재한다**(전수 확인, 양성 대조 포함).
+
+계기: 도형 이름 51개를 「발행원 3파일(`AccessoryShapeBuilder.cs` · `.Handoff.cs` · `.FxPetCard.cs`)의
+문자열 리터럴 ∪ `Resources/Items/*.asset`의 `- name:`」 집합과 대조했다. 교정 13 IN / 13 OUT /
+음성 대조 2 전부 통과. ★ 첫 계기는 `new Shape("…")`만 봐서 `StrawCrown`·`BeretBody`를 「사라짐」으로
+**오판했다** — `HeadV1Piece(sink, rig, "StrawCrown", …)` 같은 발행 헬퍼를 못 봤기 때문이고,
+교정이 그것을 잡았다. **주석에만 남은 이름을 `grep` 계수로 「생존」이라 읽으면 같은 오판이 난다**.
 
 > 산출 스크립트는 `design/equipment/verify/`의 `rig.py` `items.py` `hair.py` `headroom.py`를
 > 그대로 읽어 계산했다(그 파일들은 **수정하지 않았다** — 장비 담당 소유).

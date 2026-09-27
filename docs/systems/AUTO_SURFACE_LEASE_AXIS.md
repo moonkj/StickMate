@@ -289,7 +289,7 @@ if (_agent != null && UserSurfaceSummonPolicy.SuppressesUnsummonedSurfaces(
   - 〔★ **정정 2026-09-15 — 취소선 문장은 거짓이었다.**
     - `TodoPostItWidget.IsClickBlockerEnabled`(`:308`, `_clickThroughBlocker != null && _clickThroughBlocker.enabled`)가 **`2051739`(2026-09-02)부터** 있다.
     - 근거: 파일 경로로 한정한 `git log -S "IsClickBlockerEnabled" -- Interaction/TodoPostItWidget.cs`의 첫 커밋이 `2051739`이다. 그 커밋 diff에 `+ public bool IsClickBlockerEnabled …` 한 줄이 있고, 부모 커밋의 같은 파일에는 0건이다(음성 대조).
-    - HEAD 테스트가 이미 읽는다 — **3파일 7줄**, 변수의 형 선언으로 확인: `FullscreenSuspendUiHidingTests.cs:286·317·350·377` · `TodoPostItExpansionTests.cs:170·283` · `TodoBoardDateNavigationTests.cs:384`. 리더가 전달한 「4곳」과는 세는 단위가 다르다.
+    - HEAD 테스트가 이미 읽는다 — **3파일 7줄**, 변수의 형 선언으로 확인: ~~`FullscreenSuspendUiHidingTests.cs:286·317·350·377`~~ · ~~`TodoPostItExpansionTests.cs:170·283`~~ · ~~`TodoBoardDateNavigationTests.cs:384`~~. 리더가 전달한 「4곳」과는 세는 단위가 다르다. 〔★ 앵커 전환 2026-09-27(code-inspection) — 취소선 줄 번호는 **죽은 키** 이고 지우지 않고 남긴다. 판정은 (파일 · 문자열 앵커 · 기대 횟수)로 한다: `FullscreenSuspendUiHidingTests.cs` · `_postIt.IsClickBlockerEnabled` · 4회 / `TodoPostItExpansionTests.cs` · `_widget.IsClickBlockerEnabled` · 2회 / `TodoBoardDateNavigationTests.cs` · `postIt.IsClickBlockerEnabled` · 1회. 합 7회로 위 「7줄」과 같다. 셋 다 그 파일 안에서 적중 횟수가 기대와 일치함을 확인했다. 새 줄 번호는 이 문서에 박지 않는다 — 삽입이 다시 계수를 흔들기 때문이고, 실측값은 그 라운드 보고에 있다.〕
     - N-20 구현은 새 게터를 만들지 않고 이 게터를 썼다(코드(`Assets/`)에서 `IsClickBlockerEnabledForTests` 0건 — 이름 자체는 `Tasklist.md`와 이 문서에 남아 있다 · `AutoSurfaceLeaseAxisTests.cs`의 `_postIt.IsClickBlockerEnabled` 적중).
     - **뒷문장(FPRT 문자열 방식을 따르지 않는다)은 유효하다.**〕
   - 〔★ **자백** — 이 부재 주장에는 §2-1 같은 프로브 기록도, 양성 대조도 **0건**이었다(TEAM 거짓 통과 규칙 4 「모든 없음 판정에 양성 대조」 위반).

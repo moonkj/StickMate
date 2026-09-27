@@ -168,7 +168,7 @@ v1(R4)의 훅은 **획득 축** 하나였다: *"하나가 아니라 전부. 최�
 |---|---|
 | **등급이 둘이다** — 전체화면 앱(등급 1)과 전체화면 게임(등급 2)을 갈라서 대응한다 | `Platform/FullscreenSuspendPolicy.cs` 앵커 `Resolve(coversDisplay, isGame)` |
 | 등급 1은 **표면만** 걷고 캐릭터는 남는다 · 등급 2에서만 캐릭터가 숨는다 | 같은 파일 앵커 `RetreatsPanels` · `SuspendsCharacter` |
-| **기본값이 켜짐이고, 끄면 두 등급이 모두 죽는다** | `Core/AppSettingsModel.cs` 앵커 `AutoHideOnFullscreen { get; private set; } = true` · 스위치 `Interaction/SettingsWindow.cs` 앵커 `general.autoHide`(라벨 `전체화면 게임 감지 시 자동 숨김`) · `CLAIM_AUDIT_R4.md` C3 |
+| **기본값이 켜짐이고, 끄면 두 등급이 모두 죽는다** 〔**R14-M 보강**: 셋이 죽는다 — 축 5(음악 춤 억제)도 같은 스위치 아래다. 거짓이 아니라 **셋 중 둘만 센 것**이다〕 | `Core/AppSettingsModel.cs` 앵커 `AutoHideOnFullscreen { get; private set; } = true` · 스위치 `Interaction/SettingsWindow.cs` 앵커 `general.autoHide`(라벨 ~~`전체화면 게임 감지 시 자동 숨김`~~ 〔R14-M 현행: ~~`전체화면 앱이 뜨면 자동으로 물러나기`~~ → **R14-S 현행(3차 변종): `전체화면 앱이 뜨면 창부터 물러나기`**〕) · `CLAIM_AUDIT_R4.md` C3 · 축 5 `Core/StickmanAgent.cs` 앵커 `_foreignFullscreenSuppressesDance = AppSettingsModel.AutoHideOnFullscreen` |
 | 게임 판정 기준 | Windows 앵커 `GameConfigStoreChildrenKey`(게임 바 등록 목록) · macOS 앵커 `public.app-category.games` |
 
 ## R9-F-3. ★ 쓸 수 있는 문장 — **우리 쪽 사실만**
@@ -177,7 +177,9 @@ v1(R4)의 훅은 **획득 축** 하나였다: *"하나가 아니라 전부. 최�
 >
 > 전체화면 앱 위에서는 창과 패널이 물러나고 캐릭터는 남습니다.
 > `Windows가 게임으로 기록해 둔 앱이 화면을 덮으면 캐릭터까지 숨습니다.`
-> 이 동작은 설정 [일반]의 `전체화면 게임 감지 시 자동 숨김`이고 **기본값은 켜짐이며 끌 수 있습니다.**
+> ~~이 동작은 설정 [일반]의 `전체화면 게임 감지 시 자동 숨김`이고 **기본값은 켜짐이며 끌 수 있습니다.**~~
+> 〔**R14-M 2026-09-27 정정 — 라벨이 바뀌었다**〕 이 동작은 설정 [일반]의 ~~`전체화면 앱이 뜨면 자동으로 물러나기`~~ **`전체화면 앱이 뜨면 창부터 물러나기`**〔R14-S 3차 변종〕이고 **기본값은 켜짐이며 끌 수 있습니다.**
+> ★ **이 상자는 여전히 게시 금지다**(R9-F-5 · 위 첫 줄 한정형 문제 · 실기 0). 라벨이 현행이 된 것과 게시 허가는 **다른 문제**다.
 
 ★ 영어: `When an app Windows lists as a game covers the screen, the character hides too`
 (타일 자리에는 짧은 형 `Hides the character over apps Windows lists as games` — 52자 · 266.0pt · 0.70F 332.0pt로 두 가정 모두 372pt 한도 안)
@@ -188,8 +190,11 @@ v1(R4)의 훅은 **획득 축** 하나였다: *"하나가 아니라 전부. 최�
   **한정형**: *"전체화면 앱 위에서는, 직접 창을 열어 두지 않은 동안 창과 패널이 물러나고 캐릭터는 남습니다."*
   ★ 한정을 떼는 것은 N-20 게시 게이트 뒤 재판정이다(`docs/strategy/ROADMAP.md` N-20 해제 조건 5 · 6).
 - ★ **주어를 지우지 마라.** 이 문장이 지금 안전한 이유는 **「창과 패널이」라는 주어가 있어서**다. 주어를 빼고 *"전체화면 앱 위에서는 알아서 물러납니다"*로 줄이면 **등급 1에서 거짓이 된다** — 캐릭터는 물러나지 않는다(`Platform/FullscreenSuspendPolicy.cs` 앵커 `public static bool SuspendsCharacter`는 등급 2에서만 참). 같은 함정이 `TRAILER.md` C1 자막에 실재한다 → `TRUTH_INVENTORY.md` R13-M-1 M1-a
-- ★ **as-of 2026-09-26**: 이 절이 두 곳에서 인용한 설정 라벨 `전체화면 게임 감지 시 자동 숨김`은 **지금 참이다**(`Interaction/SettingsWindow.cs` 앵커 `general.autoHide`). `design-narrative` 확정 교체 문안(`전체화면 앱이 뜨면 자동으로 물러나기`)은 **아직 `.cs`에 없다** — 착지 라운드에 `STORE_PAGE.md` 2-7과 **함께** 갱신한다 → `TRUTH_INVENTORY.md` R13-M-8
+- ~~★ **as-of 2026-09-26**: 이 절이 두 곳에서 인용한 설정 라벨 `전체화면 게임 감지 시 자동 숨김`은 **지금 참이다**(`Interaction/SettingsWindow.cs` 앵커 `general.autoHide`). `design-narrative` 확정 교체 문안(`전체화면 앱이 뜨면 자동으로 물러나기`)은 **아직 `.cs`에 없다** — 착지 라운드에 `STORE_PAGE.md` 2-7과 **함께** 갱신한다 → `TRUTH_INVENTORY.md` R13-M-8~~
+- ★★ **R14-M 정정 (2026-09-27 · HEAD `ee17c03` · 코드는 작업 트리 판독)** — **윗줄은 착지로 거짓이 됐다.** 현행 라벨은 ~~`전체화면 앱이 뜨면 자동으로 물러나기`~~ 〔**R14-S 2026-09-27: 또 바뀌었다 — 이 줄도 as-of가 됐다.** 현행 **3차 변종**은 **`전체화면 앱이 뜨면 창부터 물러나기`**다. 사유: 2차 변종은 **주어가 없어** 처음 보는 사람이 「캐릭터가 사라진다」로 읽었고 **그건 등급 1의 실재와 반대**다. ★ 이 절의 R9-F-3 상자가 이미 경고한 그 함정과 **같은 뿌리**다 — 「주어를 지우지 마라」〕 이고 캡션은 `춤도 멈추고, 게임이면 캐릭터까지 숨어요. 끄면 창이 막는 클릭까지 그대로 남아요.`다. ★ **as-of가 아니라 취소선인 이유**: 「아직 없다」는 **부재 단정**이라 참이 되는 순간 **조용히** 거짓이 된다(TEAM §4 규칙 17·18). 위 두 인용 자리는 각각 제자리에서 정정했다. **어떤 빌드에도 아직 없다** → `TRUTH_INVENTORY.md` R14-M
 - ★ **덧붙이지 않은 것**: 등급 1에서 **음악에 맞춘 자동 춤은 멈춘다**(같은 파일 앵커 `public static bool SuppressesAutoDance`). 사실이지만 이 상자에 넣지 않았다 — **실기 0**이고, 한 줄 늘리면 「자동 연출이 멈춘다」는 전칭으로 읽힐 위험이 크다(7절 앵커 `등급 1 자동 연출 전칭`).
+  - ★★ **R14-M (2026-09-27): 이제 제품이 그 말을 먼저 한다.** 새 캡션이 `춤도 멈추고, 게임이면 캐릭터까지 숨어요.`다. **이 상자에 안 넣은 판단은 그대로 유지한다** — 실기 0은 안 바뀌었다. 대신 규칙 하나가 생겼다: ★ **그 캡션을 라벨과 떼어 인용하지 않는다.** 라벨 없이 옮기면 「이 스위치가 춤을 멈춘다」로 읽히고 **평상시 바탕 화면에서는 거짓이다**(춤 억제는 전체화면 앱이 떠 있는 동안만 걸린다).
+  - ★ **그리고 이 줄의 앵커는 게이트가 실제로 읽는 값이 아니다** — 게이트는 `Core/AudioReactiveDanceGate.cs` 앵커 `if (player.IsForeignFullscreenAppPresent) return true;`를 읽는다. 위 정책 함수의 비주석 소비자는 `Core/StickmanAgent.cs` 한 곳뿐이다 → `TRUTH_INVENTORY.md` R14-M-4 · R14-M-6
 
 ## R9-F-4. 쓰지 않는 것
 

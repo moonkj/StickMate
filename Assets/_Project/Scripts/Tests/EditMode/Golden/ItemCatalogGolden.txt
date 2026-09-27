@@ -524,7 +524,7 @@ actions=12
     icon=none
   item id=action.focus_watch cat=Action slot=- idx=-1 lv=- invocable=1 cohort=0 rarity=Derived
     name=집중 모드
-    desc=타이머가 도는 동안 곁을 지킨다. 창을 자주 바꾸면 조용히 쳐다본다.
+    desc=15·25·50분이나 직접 정한 시간을 잰다. 창을 닫아도 세션은 남는다.
     status=캐릭터 우클릭
     primary=(0.83922,0.85882,0.89020,1.00000) secondary=(0.83922,0.85882,0.89020,1.00000)
     icon=none

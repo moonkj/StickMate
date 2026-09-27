@@ -1422,24 +1422,24 @@ namespace StickMate.Interaction
         private float BuildGeneralTab(RectTransform page, float y)
         {
             var display = new SettingsCardBuilder(page, "표시", y, _host);
-            _autoHideToggle = display.AddToggle("general.autoHide", "전체화면 게임 감지 시 자동 숨김",
+            _autoHideToggle = display.AddToggle("general.autoHide", "전체화면 앱이 뜨면 창부터 물러나기",
                 AppSettingsModel.AutoHideOnFullscreen,
                 on =>
                 {
                     AppSettingsModel.SetAutoHideOnFullscreen(on);
                     CharacterSaveStore.Save();
                     Debug.Log($"[설정창] 전체화면 자동 숨김 {(on ? "켬" : "끔")} — 이 스위치는 캐릭터만이 " +
-                        "아니라 StickmanAgent의 <b>두 창구를 함께</b> 좌우합니다: IsSuspended(등급 2, " +
-                        "전체화면 게임 → 캐릭터까지)와 ArePanelsSuppressed(등급 1, 게임이 아닌 전체화면 앱 → " +
-                        "창·팝오버·부채꼴과 그 차단막만). 끄면 전체화면 앱 위에 이 창들과 그 클릭관통 " +
-                        "차단막(BoxCollider2D)까지 남습니다 — 절대 불변 원칙 2의 사용자 예외이므로 " +
-                        "그 대가를 캡션에 적어 두었습니다.");
+                        "아니라 StickmanAgent의 <b>세 창구를 함께</b> 좌우합니다: IsSuspended(등급 2, 전체화면 " +
+                        "게임 → 캐릭터까지) · ArePanelsSuppressed(등급 1, 게임이 아닌 전체화면 앱 → 창·팝오버· " +
+                        "부채꼴과 그 차단막만) · IsForeignFullscreenAppPresent(축 5, 등급 1 이상 → 자동 발동 춤만, " +
+                        "읽는 곳은 Core/AudioReactiveDanceGate). 끄면 전체화면 앱 위에 이 창들과 그 클릭관통 " +
+                        "차단막(BoxCollider2D)까지 남고 음악 춤도 계속 발동합니다 — 원칙 2의 사용자 예외입니다.");
                 },
                 // ★ 2026-09-01(페르소나 J3) — 예전 캡션은 "게임 · 영상이 전체화면이 되면 즉시
                 //   사라집니다."로 <b>캐릭터 얘기만</b> 했다. 그런데 이 스위치를 끄면 IsSuspended가
                 //   영원히 false가 되어 창과 <b>720×560 클릭 차단막</b>도 게임 위에 남는다. 사용자는
                 //   캐릭터가 남는 데 동의한 것이지 "클릭이 안 먹는 구멍"에 동의한 적이 없다.
-                caption: "켜면 캐릭터도 열린 창도 함께 사라집니다. 끄면 창이 막는 클릭까지 그대로 남아요.");
+                caption: "춤도 멈추고, 게임이면 캐릭터까지 숨어요. 끄면 창이 막는 클릭까지 그대로 남아요.");
 
             // ★★★ 2026-09-06 리더 판정(L-5 확정) — <b>「이번 세션만 끄기」</b>.
             //

@@ -126,8 +126,58 @@ SRCROOT="$REPO/Assets/_Project/Scripts"
 #   = **817건이 조용히 사라져도 G4가 초록**, 러너 자체 경고문). 같은 라운드 실측: edit 2729건 /
 #   play 743건. play 하한 660도 실측 743 대비 «직전 최대의 95%»(=705)에 못 미쳐 함께 올린다.
 #   규칙대로 2592(= 2729 × 95 / 100) / 705(= 743 × 95 / 100)로 갱신한다.
-MIN_EDIT_CASES=2592
-MIN_PLAY_CASES=705
+# ★★ 2026-09-27 qa-regression 갱신 — **다섯 번째 노후다. 이번엔 두 모드가 같이 낡아 있었다.**
+#   실측(`docs/verify/runs/` 최대 total, prev_best와 같은 자):
+#     edit 3206(codersys-wording_edit.xml) vs 하한 2592 → **614건이 조용히 사라져도 G4가 초록**
+#     play  827(codersys-wording_play.xml) vs 하한  705 → **122건이 조용히 사라져도 G4가 초록**
+#   ⇒ 규칙(«직전 최대의 95%» 이상, 정수 나눗셈)대로 3045(= 3206 × 95 / 100) / 785(= 827 × 95 / 100).
+#   ★ play만 지적받았지만 **edit 쪽이 더 크게 낡아 있었다**(614 > 122). 한쪽만 고치면 반대쪽이
+#     조용히 남는다 — 그게 이 상수의 병이다.
+#   ★ 이 숫자는 **또 낡는다.** 고정값으로는 못 막는다는 것이 다섯 번의 결론이다. 그래서 이번에
+#     두 장치를 같이 넣었다(숫자만 올리면 여섯 번째가 온다):
+#       ① `.meta` 사이드카에 `floor`·`floor_prev_best`·`floor_stale`을 **적는다** — G4a 경고가
+#          그전까지 러너 stdout으로만 나가서 라운드가 끝나면 사라졌다(실측: 옛 .meta 11키에
+#          하한 관련 0건. `runs/*.log`는 Unity의 `-logFile`이라 러너 출력이 애초에 안 들어간다).
+#       ② `selfcheck`의 **양성 대조 E** — 출하된 하한을 디스크 최신 실행과 대조해 낡으면 ✗.
+#          옛 selfcheck는 합성 숫자(1390/1800)로 «G4a가 무는가»만 봤고 **출하값이 낡았는지는
+#          한 번도 묻지 않았다.** 그래서 705가 827 앞에서 조용할 수 있었다.
+#   ★ 기각한 안 「하한을 BASELINE.md에서 읽는다」: 대장이 낡으면 하한도 같이 낡는다
+#     (TEAM.md 「기준과 대상이 같이 낡은 스냅숏」). 게다가 대장은 추적되지만 그 입력인
+#     `docs/verify/runs/*`는 `.gitignore` 대상이라(실측) 새 클론에서는 대장의 옛 큰 수만 남아
+#     G4가 늘 빨강이 된다. 정적 하한은 **실행 이력이 없는 트리의 유일한 방어선**이라 남긴다.
+# ★★★ 2026-09-27 qa-regression — **여섯 번째 노후다. 그리고 이번엔 조용히 지나가지 않았다.**
+#   바로 위 항목에서 「이 숫자는 또 낡는다 · 고정값으로는 못 막는다」고 적고 장치 둘을 같이 넣었는데,
+#   같은 날 새벽 `coder` 라운드가 EditMode 테스트를 신설해 **여섯 번째가 실제로 왔다.**
+#   사람이 눈치챈 것이 아니라 **selfcheck 양성 대조 E가 ✗로 잡았다**(그 실행 rc=1).
+#     · 상향 전 selfcheck 실측: ✓ 69 / ✗ 1 — 그 ✗ 하나가 edit 하한 노후였다.
+#       같은 실행에서 **play는 ✓**였다 ⇒ 이 대조는 「항상 신고」가 아니다(양성·음성이 한 실행에 같이 섰다).
+#     · 키 집합 대조(규칙 24): 그 라운드의 EditMode 증가는 **삭제 0 · 신설만**이었다. 수 델타만
+#       봤다면 「신설 N − 삭제 M」을 구분할 수 없었다 — 그래서 수와 **이름 집합**을 함께 본다.
+#   ★ 유도 규칙(이것이 정본이다): **하한 = 직전 최대 total × STALE_FLOOR_RATIO_PCT / 100**(정수 나눗셈).
+#     이번 근거는 `coder-r10*_edit`(2026-09-27 새벽) 전량 실행이고, **그 total 값은 여기 적지 않는다.**
+#     적으면 그것이 다음 라운드에 낡는 「값」이 된다 — 위 항목에서 BASELINE.md 참조안을 기각한 바로 그 이유다.
+#     **다시 재는 곳은 한 곳이다: `regress.sh selfcheck`의 양성 대조 E가 매번 디스크에서 직전 최대를 구한다.**
+#   ★ MIN_PLAY_CASES는 **건드리지 않는다** — 그 라운드에서 PlayMode 총계가 불변이었고 785가 여전히
+#     95% 기준을 만족한다(대조 E가 play를 ✓로 찍어 확인). 「한쪽만 움직였다」는 사실도 기록이다.
+# ★★★ 2026-09-27 qa-regression — **일곱 번째 노후다. 그리고 예고한 대로 왔다.**
+#   값 교체이므로 원문을 여기 남긴다(글자 삭제 0):
+#     원문: MIN_EDIT_CASES=3050  ·  MIN_PLAY_CASES=785
+#     신문: MIN_EDIT_CASES=3054  ·  MIN_PLAY_CASES=785(그대로)
+#
+#   같은 날 test-engineer가 EditMode 잠금 테스트 4건을 신설해 전량이 3211 -> 3215가 됐고,
+#   그 순간 하한 3050이 «직전 최대의 95%»(3054)에 미달했다. 사람이 눈치챈 것이 아니라
+#   **정본 판 실행이 G4a 경고를 냈고 `.meta`에 floor_stale=1이 처음으로 찍혔다**(그 키를 넣은 값이다).
+#   ⇒ 유도 규칙 그대로: 하한 = 직전 최대 total × STALE_FLOOR_RATIO_PCT / 100(정수 나눗셈).
+#     ★ 검산은 **러너 자신의 stale_floor_report를 격리 실행**해서 했다 — 3050/3215를 주면 그 함수가
+#       «MIN_EDIT_CASES를 3054 이상으로 올려라»를 직접 출력하고, 3054를 주면 조용하다.
+#       즉 이 값은 내 산식이 아니라 **판정하는 그 함수가 낸 값**이다.
+#     ★ 그 total 값은 여기 적지 않는다(위 항목과 같은 사유 — 적으면 그것이 다음에 낡는 「값」이 된다).
+#   ★ MIN_PLAY_CASES는 **건드리지 않는다.** 정본 play 총계가 827로 불변이었고 785가 여전히 95%
+#     기준을 만족한다. 「한쪽만 움직였다」는 사실도 기록이다. 구조적 근거: 신설 4건은
+#     Tests/EditMode/ 폴더이고 그 asmdef가 includePlatforms=['Editor']라 PlayMode 어셈블리에
+#     들어갈 수 없다(실측). 그래서 play 총계 827을 **미리 예측해 못박고** 실행으로 확인했다.
+MIN_EDIT_CASES=3054
+MIN_PLAY_CASES=785
 
 # 하한 노후 판정 계수 — 직전 최대치의 이 비율보다 하한이 낮으면 노후로 본다.
 STALE_FLOOR_RATIO_PCT=95
@@ -285,12 +335,34 @@ PY
 #   원래 마커는 "Aborting batchmode due to failure"였는데 그 문장은 Unity의 **stdout에만** 나오고
 #   `-logFile`이 받는 로그 파일에는 **한 번도 안 찍힌다**. 실제 컴파일 실패 로그
 #   (qa-r7_edit.log, 12×CS0103)에서 그 마커의 등장 횟수는 **0**이었다.
+#   ★★ 2026-09-27 qa-regression — **위 줄의 파일 인용은 썩었다.** 줄은 지우지 않고 남긴다.
+#     지금 디스크의 그 파일은 컴파일 실패 로그가 아니라 **정상 완주 실행**이다(`error CS` 0).
+#     이름이 `<라벨>_<모드>.log`라서 **러너 자신의 쓰기 경로 안**에 있었기 때문이다 —
+#     **라벨 재사용은 증거를 지운다.**
+#     ★ 다만 **주장 자체는 더 강해졌다**: 디스크의 로그 **1318개 전수에서 이 마커는 0건**이다
+#       (양성 대조: 같은 스윕이 "Unity"를 1301개에서 잡는다 ⇒ 그 0은 죽은 프로브가 아니다).
+#       ⇒ 근거를 «한 파일»에서 «전수»로 올렸다. 파일 이름에 기대는 인용은 라벨 재사용에 지워진다.
 #   ⇒ G8은 "컴파일 실패를 못 봤다"와 "컴파일이 성공했다"를 구분하지 못한 채 통과시키고 있었다.
 #     이번엔 G3(결과 파일 부재)가 대신 물어서 사고가 안 났지만, G3는 다른 것을 재는 가드다.
 #     둘 중 하나라도 순서가 바뀌면 그대로 거짓 통과다.
 #
 #   지금 마커 3종은 **실측으로 교정**했다:
 #     · 실패 로그 qa-r7_edit.log      → "Scripts have compiler errors"=1, "## Script Compilation Error for"=1
+#       ★★ 2026-09-27 qa-regression — **이 계측은 지금 거짓이다.** 줄은 지우지 않고 남긴다(글자 삭제 0).
+#          실측: 그 파일의 두 마커는 **모두 0**이고, 짝 xml은 total 1813 / failed 5인 **정상 완주 실행**
+#          이며 로그에 `error CS` 0 · COMMAND LINE ARGUMENTS 1 · 세이브게이트 회계 1이다.
+#          ⇒ 교정 근거가 못 된다. 원인은 이 이름이 `<라벨>_<모드>.log`라 **러너 쓰기 경로 안**이라는 것이다
+#            — **라벨 재사용은 증거를 지운다.** (「덮였다」로 단정하지는 않는다: 디스크만으로는 덮임과
+#             처음부터 틀린 인용을 가를 수 없고, 어느 쪽이든 인용이 못 쓰게 된 사실은 같다.)
+#       ⇒ **썩지 않는 교정 근거 셋으로 갈아탄다**(전부 실측):
+#          ① **이 스크립트 안의 합성 픽스처** — 아래 selfcheck 음성 대조 12가 매 실행 이것으로 G8을
+#             교정한다. 파일이 아니라 스크립트 본문이라 **어떤 실행도 덮을 수 없다.**
+#             앵커(줄 번호가 아니라 고정 문자열): `cat > "$tmp/fail.log"`
+#          ② **계수** — 디스크 로그 1318개 중 두 마커를 **함께** 든 것이 35개이고, 그중 **33개가
+#             러너 쓰기 경로 밖**(`Logs/`의 임의 이름)이라 라벨 재사용에 지워지지 않는다.
+#          ③ **쓰기 경로 밖 실례 하나** — `Logs/arch_compile3.log`(두 마커 각 1).
+#       ★ 아래 «정상 로그 5종»은 **이번에 다시 확인했고 전부 실재·깨끗(0/0)하다** — 음성 대조 쪽은
+#         썩지 않았으므로 건드리지 않는다. 썩은 것은 양성(실패) 쪽 인용 하나였다.
 #     · 정상 로그 5종(te-r2_edit/play, qa-r6_edit, coder-grabline_edit, qa-r5_play) → 3종 전부 0
 #   (옛 마커는 남겨 둔다 — Unity 버전에 따라 로그로 갈 수 있다. 늘리는 것은 안전하다.)
 COMPILE_FAIL_MARKERS=(
@@ -664,6 +736,10 @@ PY
 
 # ---- 자기검사: 가드가 실제로 무는가 -----------------------------------------
 selfcheck() {
+  # ★ 2026-09-27 — 규칙 29(출력에 **판 sha16**을 함께 찍어라). 한 실행이 편집을 가로지르면
+  #   「무엇을 검사한 결과인지」가 출력에서 사라진다. 이 줄이 그 판을 고정한다 —
+  #   상향 전 ✗와 상향 후 ✓를 나란히 놓을 때 **서로 다른 판이었다**는 반론을 이 줄이 막는다.
+  echo "── 판 sha16: $(shasum -a 256 "${BASH_SOURCE[0]}" | cut -c1-16)  ($(basename "${BASH_SOURCE[0]}"))"
   local tmp; tmp=$(mktemp -d)
   local rc=0
   # ★ 2026-09-14 — 아래 합성 xml에 result="Passed"를 넣고, 거부 판정을 «rc≠0»에서 «rc=1(G가드)»로 좁혔다.
@@ -793,6 +869,29 @@ X
     *"노후 아님"*) echo "  ✓ 조용하다 — $g4a" ;;
     *) echo "  ✗ 지금 하한($MIN_EDIT_CASES)도 노후로 신고한다 — 하한을 올려라: [$g4a]"; rc=1 ;;
   esac
+
+  # ★★ 2026-09-27 qa-regression 신설 — 위 두 대조는 **합성 숫자**(1390/1800)로 «G4a가 무는가»만
+  #   본다. 출하된 하한이 **실제로** 낡았는지는 한 번도 묻지 않았고, 그래서 play 하한 705가
+  #   실측 827 앞에서 122건을, edit 하한 2592가 실측 3206 앞에서 614건을 조용히 통과시키는
+  #   상태로 넘어왔다. 이 대조는 **실행이 아니라 selfcheck에서만** 문다 — 테스트를 정당하게
+  #   지운 라운드를 막지 않고, 대신 조용한 채로 남지 못하게 한다.
+  echo "── 양성 대조 E: ★ 출하된 하한이 디스크 최신 실행 대비 낡지 않았는가(양 모드)"
+  local sm spb spbn spbwho sfloor
+  for sm in edit play; do
+    spb=$(prev_best "$sm" ""); spbn=${spb%% *}; spbwho=${spb#* }
+    case "$sm" in edit) sfloor=$MIN_EDIT_CASES ;; play) sfloor=$MIN_PLAY_CASES ;; esac
+    if [ "${spbn:-0}" -le 0 ]; then
+      echo "  · $sm: docs/verify/runs/ 에 실행이 없다 — 판정 불가(미확인). 실행 이력이 없는 트리에서는 정적 하한이 유일한 방어선이다."
+    else
+      g4a=$(stale_floor_report "$sfloor" "$spbn" "$spbwho" "$sm")
+      case "$g4a" in
+        *"G4a: 정적 하한이 낡았다"*)
+          echo "  ✗ $sm 하한 $sfloor / 실측 최대 $spbn($spbwho) — $(( spbn - sfloor ))건이 조용히 사라져도 G4가 초록이다. MIN_$(echo "$sm" | tr 'a-z' 'A-Z')_CASES를 올려라."
+          rc=1 ;;
+        *) echo "  ✓ $sm 하한 $sfloor / 실측 최대 $spbn($spbwho) — 노후 아님" ;;
+      esac
+    fi
+  done
 
   echo "── 음성 대조 12: ★ G8이 실제 컴파일 실패 로그를 잡는가(2026-09-03: 옛 마커는 죽어 있었다)"
   cat > "$tmp/fail.log" <<'X'
@@ -1097,12 +1196,44 @@ X
   echo "── 배너 정상(음성) 대조: platform을 모르는 xml에 소스 하한을 들이대지 않는가(0이라고 하지 않는다)"
   b_expect "platform 없음" "$tmp/r1_ok.xml" 0 "소스 리프 미확인" "★★ 부분 실행|⚠⚠"
   echo "── 배너 실측 교정: 실제 전량 xml에는 배너가 없고, 실제 필터 xml에는 있는가"
-  if [ -f "$rx_play" ]; then b_expect "실측 play-full.xml(전량 783)" "$rx_play" 3 "범위: 전량|PlayMode 폴더 파일" "★★ 부분 실행|⚠⚠|파일 0개"
+  # ★★ 2026-09-27 qa-regression 정정 — **이 줄의 기대가 달력에 썩었다(내 변경이 아니다).**
+  #   원래 기대는 «실측 전량 xml에는 ⚠⚠ 배너가 없다»였다. 그런데 이 xml은 09-14에 박제된 783건이고
+  #   그 뒤 PlayMode가 827건까지 자랐다 — 오늘 소스 리프는 ≥821이라 **배너가 뜨는 것이 옳다.**
+  #   (하한 MIN_PLAY_CASES와는 무관하다: b_expect는 report에 minc=0을 **리터럴로** 넘긴다.)
+  #   ⇒ 기대를 뒤집어 **«낡은 전량 xml이면 배너가 뜨고, 그 사유가 «테스트가 늘었다»여야 한다»**로 만든다.
+  #     이 줄은 이제 «신선도 배너가 실제로 무는가»의 양성 대조다. «늘 켜짐»이 아닌지는 바로 아래
+  #     새 대조(오늘 트리의 최신 전량 실행)가 본다 — 박제된 입력과 자가 갱신 입력을 갈라 둔다.
+  #   ★ 만약 누가 테스트를 783건 이하로 줄이면 이 줄이 ✗가 된다. 그건 조용한 실패가 아니라
+  #     시끄러운 실패이고, 그때 다시 볼 값어치가 있는 사건이다.
+  if [ -f "$rx_play" ]; then b_expect "실측 play-full.xml(09-14 박제 783 — 그 뒤 트리가 자랐다)" "$rx_play" 3 "범위: 전량|PlayMode 폴더 파일|⚠⚠ 로그는 전량인데|실행 뒤 테스트가 늘었거나" "★★ 부분 실행|파일 0개"
   else echo "  · play-full.xml 없음 — 미확인."; fi
   if [ -f "$rx_edit" ]; then b_expect "실측 edit-full.xml(전량 3141)" "$rx_edit" 0 "범위: 전량|EditMode 폴더 파일" "★★ 부분 실행|⚠⚠|파일 0개"
   else echo "  · edit-full.xml 없음 — 미확인."; fi
   if [ -f "$rx_m5p" ]; then b_expect "실측 mut-M5p.xml(필터 3건)" "$rx_m5p" 3 "★★ 부분 실행 3/|-testFilter" ""
   else echo "  · mut-M5p.xml 없음 — 미확인."; fi
+
+  # ★★ 2026-09-27 qa-regression 신설 — 위 실측 교정 셋은 **박제된 xml**을 쓴다. 트리는 계속 자라서
+  #   어제의 «전량»이 오늘은 «소스 리프보다 적은 실행»이 된다(실제로 play-full.xml이 그렇게 됐다).
+  #   그래서 «배너가 늘 켜져 있지는 않은가»는 **오늘 트리에서 나온 최신 전량 실행**으로 따로 잰다.
+  #   입력이 매 라운드 갱신되므로 이 대조는 달력에 썩지 않는다. 판정 기준을 배너와 같은 코드에서
+  #   다시 계산하지 않는다는 점도 중요하다 — 입력만 신선하게 갈고, 판정은 report 출력 그대로 읽는다.
+  echo "── 배너 신선도 대조: ★ 오늘 트리의 최신 전량 play 실행에는 배너가 없는가(«늘 켜짐» 방지)"
+  local nplay nout
+  nplay=$(ls -t "$OUTDIR"/*_play.xml 2>/dev/null | head -1)
+  if [ -n "${nplay:-}" ] && [ -f "${nplay:-}" ]; then
+    nout=$( report "$nplay" 0 0 2>&1 ) || true
+    if ! printf '%s\n' "$nout" | grep -qF '범위: 전량'; then
+      echo "  · 최신 play 실행($(basename "$nplay"))이 «전량»으로 읽히지 않는다 — 이 대조는 판정 불가(미확인)."
+    elif printf '%s\n' "$nout" | grep -qF '⚠⚠'; then
+      echo "  ✗ 오늘 트리의 최신 전량 실행($(basename "$nplay"))에도 배너가 떴다 — 배너가 «늘 켜짐»이거나 소스 리프 계수가 과대하다."
+      printf '%s\n' "$nout" | grep -E '범위|⚠⚠' | sed 's/^/      /'
+      rc=1
+    else
+      echo "  ✓ $(basename "$nplay") — 배너 없음(오늘 트리의 전량으로 읽힌다)"
+    fi
+  else
+    echo "  · docs/verify/runs/ 에 play 실행 xml이 없다 — 이 대조는 판정 불가(미확인)."
+  fi
 
   # ★ 교차 대조 — report·compare·baseline.py가 nunit_verdict 하나를 공유하므로 **같이 틀릴 수 있다.**
   #   그 모듈을 import하지 않는 원시 정규식 판정기로 같은 파일을 다시 잰다(다른 방법으로 다시 잰다).
@@ -1190,8 +1321,39 @@ run() {   # $1=edit|play  $2=라벨
   [ -f "$xml" ] && die "G3: 이전 결과 파일을 지우지 못했다 — $xml"
 
   local head dirty target started
-  head=$(git -C "$REPO" rev-parse --short HEAD)
-  dirty=$(git -C "$REPO" status --porcelain | wc -l | tr -d ' ')
+  # ★★ 2026-09-27 qa-regression — 이 두 줄이 **리더 커밋을 깨뜨릴 수 있었다**(리더 채택 1).
+  #   git 옵션 교체이고 **글자 삭제는 없다** — 원문을 여기 남긴다.
+  #     원문: head=$(git -C "$REPO" rev-parse --short HEAD)
+  #           dirty=$(git -C "$REPO" status --porcelain | wc -l | tr -d ' ')
+  #     신문: 둘 다 **git 전역 옵션 자리**(하위 명령 **앞**)에 --no-optional-locks 를 넣었다.
+  #
+  #   왜: plain `git status`는 작업 트리 파일의 stat이 바뀌어 있으면 `.git/index`를 고쳐 쓴다
+  #   (docs/TEAM.md 4절 「에이전트의 git 호출은 전부 git --no-optional-locks」). 그동안 index.lock이
+  #   잡히고, 같은 순간 커밋 쪽 `git add`는 **rc 128**로 죽는다 — **피해는 읽는 쪽이 아니라
+  #   커밋하는 쪽에 난다.** 이 줄은 전량 실행 **직전**에 돌고 리더는 실행이 끝나면 **곧바로**
+  #   커밋하므로 겹침 구간은 가정이 아니라 실재한다.
+  #
+  #   실측(qa-regression, git 2.54.0 Apple Git-157 / macOS 26.6.2, **명령마다 새 임시 저장소** ·
+  #   touch -t 로 stat만 바꾼 뒤 .git/index 해시 대조):
+  #     · 양성 대조 plain status --porcelain               -> 인덱스 **바뀜**
+  #     · 신문 --no-optional-locks ... status --porcelain  -> 인덱스 **불변**
+  #     · 신문 --no-optional-locks ... rev-parse --short   -> 인덱스 **불변**
+  #     · 음성 대조 「명령 없음」(touch 만)                 -> 인덱스 **불변**
+  #   ★ 첫 시도는 **양성 대조가 불변으로 나와 폐기했다**: 저장소 생성과 touch가 같은 초에 들어가면
+  #     git이 그 항목을 racily clean으로 보고 갱신된 stat을 **일부러 쓰지 않는다**. 교정이 깨진
+  #     측정은 「고쳤다」와 「프로브가 죽었다」를 구분하지 못한다 — 그래서 touch -t 로 다시 쟀다.
+  #
+  #   ★★ 옵션 위치를 틀리면 **조용한 거짓**이 된다(실측): status --porcelain --no-optional-locks 는
+  #     rc 129(unknown option)로 죽고 출력이 비어 wc -l 이 **0**을 낸다 ⇒ dirty=0 ⇒ 러너가
+  #     「작업 트리가 깨끗하다」고 말한다. **전역 옵션 자리를 반드시 지켜라.**
+  #     같은 실측의 양성 대조: 신문 형태는 수정 1 + 미추적 1을 plain과 **똑같이 2**로 센다.
+  #
+  #   ★ rev-parse 는 옵션 없이도 인덱스 불변으로 측정되지만(TEAM.md 허용 목록) 규칙이 「전부」라
+  #     함께 붙였다. 같은 폴더 다른 도구의 git 호출 6곳(baseline.py 2 · promised_tests_scan.py 4)은
+  #     이미 이 형태였다 ⇒ 이 줄 둘이 **유일한 누락**이었다(「0건 누락」이 아니라 2건 누락이고,
+  #     그 6곳이 이 전수 조사가 죽은 프로브가 아니라는 양성 대조다).
+  head=$(git --no-optional-locks -C "$REPO" rev-parse --short HEAD)
+  dirty=$(git --no-optional-locks -C "$REPO" status --porcelain | wc -l | tr -d ' ')
   target=$(active_target)
   started=$(date +%s)
 
@@ -1253,6 +1415,24 @@ run() {   # $1=edit|play  $2=라벨
     echo "started=$started"
     echo "finished=$(date +%s)"
     echo "unity_rc=$unity_rc"
+    # ★ 2026-09-27 qa-regression — G4a(하한 노후) 판정을 **보존한다.**
+    #   그전까지 이 경고는 러너 stdout으로만 나갔다 = 라운드가 끝나면 사라졌고, 하한이 낡은 채
+    #   넘어간 것을 사후에 확인할 방법이 없었다(실측: 옛 .meta 11키에 하한 관련 0건이고
+    #   `runs/*.log`는 Unity `-logFile`이라 러너 출력이 안 들어간다 — 「경고했는데 무시됐다」와
+    #   「경고가 없었다」가 디스크상 똑같이 생긴 상태였다).
+    #   ★ 키 추가는 안전하다: nunit_verdict.run_scope는 REGRESS_META_KEYS를 **부분집합**으로 본다
+    #     (`REGRESS_META_KEYS <= set(meta)`) — 키가 늘어도 「미확인」이 되지 않는다(호출 2곳 확인).
+    # ★ 2026-09-27 — 규칙 29의 사이드카판: **어느 판의 러너가 이 실행을 판정했는가.**
+    #   로그·xml에는 러너 자신의 신원이 없어서, 나중에 「그때 하한이 얼마였나 · 그 판에 이 가드가
+    #   있었나」를 되짚을 방법이 없었다. floor= 와 함께 판 자체를 못박는다.
+    echo "runner_sha16=$(shasum -a 256 "${BASH_SOURCE[0]}" | cut -c1-16)"
+    echo "floor=$minc"
+    echo "floor_prev_best=$prevn"
+    if [ "${prevn:-0}" -gt 0 ]; then
+      echo "floor_stale=$([ "$minc" -lt $(( prevn * STALE_FLOOR_RATIO_PCT / 100 )) ] && echo 1 || echo 0)"
+    else
+      echo "floor_stale=unknown"
+    fi
     # ★ 2026-09-14 — 실제로 넘긴 인자를 적는다. docs/verify/nunit_verdict.run_scope가 로그가 사라진 실행의
     #   전량/부분을 이 줄로 가른다(필터 인자가 있으면 부분). 인자는 한 줄에 공백으로 잇는다(경로에 공백 없음).
     echo "args=${args[*]}"

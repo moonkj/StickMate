@@ -14,6 +14,9 @@
 #   - 추론값 = 로그의 Bee dag 해시로 되살린 값. 앞에 `~`를 붙인다.
 #   - 물려받은 값 = 그 실행이 재컴파일을 안 해 직전 실행에서 상속. `↑`를 붙인다.
 #   - 모르는 값 = **비우지 않고 `미상`이라고 쓴다.** 빈 칸은 "WIN"으로 읽히더라.
+#
+# ★ 2026-09-27 — 그 표시들은 **코드 스팬 안에** 찍는다(`mk()` 한 곳). 범례와 본문의 형태를
+#   맞추는 것이고, 규율은 그대로다: **잰 값에는 아무 표시도 없다.** 이유는 `mk()` 주석에 있다.
 # =============================================================================
 import os, sys, glob, re, subprocess, datetime
 import xml.etree.ElementTree as ET
@@ -60,8 +63,12 @@ def dag_target_map():
 def reflog_commits():
     """[(epoch, shorthash)] 최신순. HEAD 되살리기용."""
     try:
+        # ★ 2026-09-27 — `--no-optional-locks`는 **스크립트에서 부르는 git에도** 걸린다
+        #   (docs/TEAM.md 「에이전트의 git 호출은 전부」 절). reflog·rev-parse는 실측상 인덱스를
+        #   건드리지 않았지만(새 임시 저장소 2/2 불변, 양성 대조 plain `status`는 2/2 바뀜),
+        #   규칙은 «인덱스를 안 바꾸는 명령만 골라 예외로 둔다»가 아니라 «전부 붙인다»다.
         out = subprocess.run(
-            ["git", "-C", REPO, "reflog", "--date=unix",
+            ["git", "--no-optional-locks", "-C", REPO, "reflog", "--date=unix",
              "--format=%h %gd"], capture_output=True, text=True, timeout=20).stdout
     except Exception:
         return []
@@ -299,6 +306,23 @@ def short(t):
     return {"UNITY_STANDALONE_OSX": "OSX", "UNITY_STANDALONE_WIN": "WIN"}.get(t, t)
 
 
+def mk(marker):
+    """표시(`~`·`↑`·`?`·`⇄`)를 **코드 스팬으로 감싸** 찍는다. 잰 값은 빈 문자열이라 아무것도 안 붙는다.
+
+    ★ 2026-09-27 — 왜 감싸는가: **GFM은 단일 물결표 취소선을 지원한다.** 한 줄에 코드 스팬 밖
+      `~`가 둘 있으면(HEAD 칸 `~<해시>` + 타깃 칸 `**~OSX**`) 그 사이가 취소선으로 렌더될
+      **의심**이 생긴다. 이 저장소가 공개 저장소이고 GitHub가 GFM으로 렌더한다.
+      ★ 「실제로 몇 줄이 취소선이 되는가」는 **재지 않았다 — 판정 불가다.** 이 머신에 cmark-gfm
+      계열이 없고(모듈·바이너리 0), 플랭킹 규칙을 손으로 구현하는 길에서 이 저장소는 이미
+      여러 번 죽은 프로브를 만들었다. 그래서 **개수를 재는 대신 형태를 바꿔 의심 자체를 없앤다.**
+      (코드 스팬 안의 `~`는 인라인 파서가 강조 후보로 보지 않는다 — 그것이 이 우회의 전부다.)
+    ★ 규율은 깨지지 않는다: **잰 값 = 표시 없음**(`mk("")` → `""`), 추론·상속·미상만 표시가 붙고
+      이제 그 표시가 코드 스팬이라 **글꼴까지 달라진다** — 구분이 약해지는 게 아니라 세진다.
+    ★ 범례(`render()`의 「읽는 법」 표)와 **같은 형태**다. 한쪽만 바꾸면 안 된다.
+    """
+    return f"`{marker}`" if marker else ""
+
+
 def render(rows, dmap):
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     L = []
@@ -315,6 +339,8 @@ def render(rows, dmap):
     L.append("| `~` | 사후 추론 — 타깃은 로그의 Bee dag 해시, HEAD는 reflog 시각 대조 |")
     L.append("| `↑` | **직전 실행에서 물려받음** — 그 실행은 재컴파일을 안 해 자기 타깃을 남기지 않았다 |")
     L.append("| `?` | **미상.** 빈 칸으로 두지 않는다 — 빈 칸은 읽는 사람이 마음대로 채운다 |")
+    L.append("| `⇄` | **실행 전후로 활성 타깃이 달라졌다**(`.meta`의 `target_shifted`) — 그 실행 중에 "
+             "재컴파일이 있었다. 이 줄의 타깃을 «실행 전 값»으로 재해석하지 마라 |")
     L.append("")
     L.append("**더러움** = 그 실행 시각의 미커밋 파일 수(`.meta`의 `dirty`). "
              "0이 아니면 그 줄은 **HEAD가 아니라 «그때 움직이던 트리»의 결과다.** "
@@ -369,7 +395,7 @@ def render(rows, dmap):
     L.append("|---|---|---|---|---|---:|---|---:|---:|---:|---:|---:|---|---|")
     for r in rows:
         # 시각 = xml에 기록된 실행 시작(로컬). `~` = 기록이 없어 파일 mtime을 썼다.
-        ts = r["tsrc_time"] + datetime.datetime.fromtimestamp(r["t"]).strftime("%m-%d %H:%M")
+        ts = mk(r["tsrc_time"]) + datetime.datetime.fromtimestamp(r["t"]).strftime("%m-%d %H:%M")
         fl = "—" if not r["fails"] else "<br>".join(r["fails"])
         r1 = "초록" if r["green"] else "**빨강**"
         inc = f"**{len(r['inconclusive'])}**" if r["inconclusive"] else "0"
@@ -384,12 +410,15 @@ def render(rows, dmap):
         #   실측 2026-09-03: dirty=40 상태에서 잰 EditMode의 실패 5건 중 3건이
         #   **측정 중에 편집되고 있던 파일**이었다. 이 칸이 없으면 그 사실이 표에서 사라진다.
         d = r["meta"].get("dirty", "")
-        dcell = f"{d}" if d else "?"
+        # ★ 2026-09-27 — 여기 `?`도 **범례의 그 `?`**(미상)다. 실측으로 잡았다: 마커를 코드 스팬으로
+        #   바꾼 뒤 대장에 코드 스팬 `?`는 **범례 1개뿐**이고 본문의 `?` 445개는 전부 이 칸이었다
+        #   = 범례와 본문의 형태가 갈라져 있었다. 잰 값(실제 더러움 수)은 그대로 표시가 없다.
+        dcell = f"{d}" if d else mk("?")
         if d and d.isdigit() and int(d) > 0:
             dcell = f"**{d}**"
-        L.append(f"| {ts} | `{r['label']}` | {r['mode']} | {scope_cell} | {r['hsrc']}{r['head']} "
+        L.append(f"| {ts} | `{r['label']}` | {r['mode']} | {scope_cell} | {mk(r['hsrc'])}{r['head']} "
                  f"| {dcell} "
-                 f"| **{r['tsrc']}{short(r['target'])}** | {r['total']}{tcc} | {r['passed']} "
+                 f"| **{mk(r['tsrc'])}{short(r['target'])}** | {r['total']}{tcc} | {r['passed']} "
                  f"| {r['failed']} | {r['skipped']} | {inc} | {r1} | {fl} |")
     L.append("")
 
@@ -418,8 +447,8 @@ def render(rows, dmap):
         after = [r for r in mr if r["t"] > cur["t"]]
         mr = [r for r in mr if r["t"] <= cur["t"]]          # 「언제부터」도 현재 시점까지만 센다
         L.append(f"### {mode} — 현재 `{cur['label']}` "
-                 f"({cur['tsrc_time']}{datetime.datetime.fromtimestamp(cur['t']).strftime('%m-%d %H:%M')}, "
-                 f"전량 {cur['total']}건, 타깃 {cur['tsrc']}{short(cur['target'])})")
+                 f"({mk(cur['tsrc_time'])}{datetime.datetime.fromtimestamp(cur['t']).strftime('%m-%d %H:%M')}, "
+                 f"전량 {cur['total']}건, 타깃 {mk(cur['tsrc'])}{short(cur['target'])})")
         L.append("")
         L.append(f"범위 근거: {cur['scope_why']}"
                  + (f" · 그 뒤 부분/미확인 실행 **{len(after)}건**(최근 `{after[-1]['label']}`)은 「현재」로 치지 않았다"
@@ -464,7 +493,7 @@ def render(rows, dmap):
                     return "**한 번도 없다**"
                 scope = "" if r["scope"] == "전량" else f" ({r['scope']})"
                 return (f"`{r['label']}`{scope} "
-                        f"{r['tsrc_time']}{datetime.datetime.fromtimestamp(r['t']).strftime('%m-%d %H:%M')}")
+                        f"{mk(r['tsrc_time'])}{datetime.datetime.fromtimestamp(r['t']).strftime('%m-%d %H:%M')}")
             skipcell = "—" if not skips else f"{skips}건 (최근 {tag(lastskip)})"
             L.append(f"| {name} | {tag(lastgreen)} | {skipcell} | {tag(firstred)} | {redstreak} |")
         L.append("")
@@ -499,7 +528,7 @@ def check():
     c = reflog_commits()
     if c:
         h = head_at(int(datetime.datetime.now().timestamp()), c)
-        real = subprocess.run(["git", "-C", REPO, "rev-parse", "--short", "HEAD"],
+        real = subprocess.run(["git", "--no-optional-locks", "-C", REPO, "rev-parse", "--short", "HEAD"],
                               capture_output=True, text=True).stdout.strip()
         if h == real:
             print(f"  ✓ 지금 시각으로 물으면 실제 HEAD({real})가 나온다")

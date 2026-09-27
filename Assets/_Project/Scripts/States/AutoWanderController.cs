@@ -379,11 +379,40 @@ namespace StickMate.States
         /// 비우면 그때 한 줄이 더 나간다.</summary>
         private bool _awayWanderNoticeLogged;
 
-        /// <summary>커서 좌표를 <b>실제로</b> 읽을 수 있는가 — G3(화면 쪽 돌아보기)의 추첨 자격이다.
+        /// <summary>G3 추첨 자격 조회의 실패를 <b>세션당 한 줄만</b> 남기는 엣지 로그.
+        /// <c>readonly</c> 필드에 담아도 상한이 닫히는 것은 이것이 <b>class</b>이기 때문이다
+        /// (<c>States/CursorReadOutcome.cs</c>의 그 문단 참고).</summary>
+        private readonly CursorReadFailureEdgeLog _screenGlanceCursorLog = new CursorReadFailureEdgeLog();
+
+        /// <summary>
+        /// 커서 좌표를 <b>실제로</b> 읽을 수 있는가 — G3(화면 쪽 돌아보기)의 추첨 자격이다.
         /// 읽기 전용 조회이며(<see cref="CursorProvider"/>는 StickmanAgent.TryGetCursorPosition),
         /// 실패하면 G3를 추첨에서 빼고 그 가중치를 G1에 합친다. 없는 대상을 향해 돌아보는 그림은
-        /// 절대 불변 원칙 1 위반이다.</summary>
-        private bool CanSeeCursor => CursorProvider != null && CursorProvider(out _);
+        /// 절대 불변 원칙 1 위반이다.
+        ///
+        /// <para>★ <b>2026-09-27 — 원인 코드로 바꿨다.</b> 예전에는 <c>bool</c>이어서 실패하면 G3가
+        /// 추첨에서 <b>조용히</b> 빠졌다. 빠진 사실도, 빠진 비율도 로그에 0줄이었다. 이 자리에서
+        /// 중요한 것은 좌표가 아니라 <b>자격</b>이라, 원인을 알아야 「배선이 빠졌다」와 「OS가 지금
+        /// 못 준다」를 가릴 수 있다.</para>
+        ///
+        /// <para>★ 이 자리의 조회는 <c>StickmanBlackboard.ReadCursorWorldPosition</c>보다 <b>좁다</b> —
+        /// 여기는 델리게이트만 보므로 카메라·몸통 원인이 <b>나올 수 없다</b>. 같은 원인 표를 쓰면서
+        /// 자리마다 도달 가능한 값이 다르다는 사실을 적어 둔다(없는 원인을 찾으려 하지 않게).</para>
+        /// </summary>
+        private CursorReadOutcome ReadCursorAvailability()
+        {
+            if (CursorProvider == null) return CursorReadOutcome.NoProvider;
+            return CursorProvider(out _) ? CursorReadOutcome.Ok : CursorReadOutcome.ProviderDeclined;
+        }
+
+        /// <summary>
+        /// 커서를 봤는가 — <b>이미 읽은 결과</b>를 받는다.
+        ///
+        /// <para>★ 이 이름은 무인자 속성이었고 2026-09-27에 <b>형태만</b> 바뀌었다(뜻은 그대로다).
+        /// 무인자로 두면 로그와 추첨이 <b>각자 한 번씩</b> 제공자를 불러 두 판정이 갈라질 수 있다 —
+        /// 「한 번 읽고 그 결과를 나눠 쓴다」가 계약이다.</para>
+        /// </summary>
+        private static bool CanSeeCursor(CursorReadOutcome cursor) => cursor == CursorReadOutcome.Ok;
 
         /// <summary>
         /// ★ G3(화면 쪽 돌아보기)를 <b>지금 추첨에 넣어도 되는가</b> — 2026-09-08.
@@ -403,7 +432,18 @@ namespace StickMate.States
         /// 여기서는 <b>추첨에서 뺀다</b>. 빠진 가중치는 <c>FocusAmbientGestures.Draw</c>가 G1에 합치므로
         /// 가중치 합이 언제나 1이고 <b>분포가 조용히 찌그러지지 않는다</b> — 새 분기도, 새 어휘도 없다.</para>
         /// </summary>
-        public bool ScreenGlanceAllowed => CanSeeCursor && !IsCostumeImmersionHolding;
+        public bool ScreenGlanceAllowed => ScreenGlanceAllowedWith(ReadCursorAvailability());
+
+        /// <summary>
+        /// 위 판정을 <b>이미 읽은 커서 결과</b>로 수행한다 — 조건 둘의 합성은 <b>여기 한 곳</b>뿐이고
+        /// (<c>States/FocusAmbientGestures</c>의 <c>cursorAvailable</c> 문단이 이 자리를 가리킨다)
+        /// 무인자 프로퍼티는 이 메서드에 위임할 뿐이다.
+        ///
+        /// <para>★ 인자를 받는 이유: 추첨과 엣지 로그가 <b>같은 한 번의 읽기</b>를 나눠 쓰게 하려는
+        /// 것이다. 각자 읽으면 「로그는 실패라는데 추첨은 성공으로 돌았다」가 성립한다.</para>
+        /// </summary>
+        private bool ScreenGlanceAllowedWith(CursorReadOutcome cursor)
+            => CanSeeCursor(cursor) && !IsCostumeImmersionHolding;
 
         private void TickResting(float deltaTime)
         {
@@ -426,9 +466,29 @@ namespace StickMate.States
                         ? Cfg(c => c.focusAmbientGestureCooldownSeconds, 28f)
                         : Cfg(c => c.wanderLookAroundCooldownSeconds, 30f));
                     LookAroundRaisedCount++;
-                    WanderAmbientMotion motion = focus
-                        ? FocusAmbientGestures.Draw(_rng.NextDouble(), ScreenGlanceAllowed)
-                        : WanderAmbientMotion.LookAround;
+                    WanderAmbientMotion motion;
+                    if (focus)
+                    {
+                        // ★ 커서는 여기서 **한 번만** 읽는다 — 자격 판정과 아래 로그가 같은 표본을 쓴다.
+                        //   각자 읽으면 「로그는 실패라는데 추첨은 성공으로 돌았다」가 성립한다.
+                        CursorReadOutcome cursor = ReadCursorAvailability();
+                        if (_screenGlanceCursorLog.ShouldEmit(cursor))
+                        {
+                            // 문자열 조립은 이 if 안에서만 일어난다(세션당 한 번) — 추첨마다 보간하면
+                            // 24시간 상주 앱에서 그것이 곧 쓰레기다.
+                            Debug.Log(
+                                $"[배회] 집중 세션 제스처 추첨에서 G3(화면 쪽 돌아보기)를 뺐습니다 — 커서 조회 실패({cursor}).\n" +
+                                "      빠진 가중치는 G1에 합쳐져 가중치 합은 그대로 1이고, 나머지 세 어휘는 정상입니다. " +
+                                "없는 대상을 향해 돌아보지 않으려는 것이라 이 자체는 설계대로입니다(원칙 1).\n" +
+                                $"      이 자리는 세션당 {CursorReadFailureEdgeLog.MaxLinesPerSite}줄이 상한이라 " +
+                                "이 줄이 마지막입니다(자격 축). 방향을 못 정한 쪽은 [집중자세]가 따로 찍습니다.");
+                        }
+                        motion = FocusAmbientGestures.Draw(_rng.NextDouble(), ScreenGlanceAllowedWith(cursor));
+                    }
+                    else
+                    {
+                        motion = WanderAmbientMotion.LookAround;
+                    }
                     StickmanEventBus.RaiseWanderAmbientMotionRequested(motion);
                 }
             }

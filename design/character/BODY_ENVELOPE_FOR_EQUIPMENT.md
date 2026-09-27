@@ -192,6 +192,18 @@ CapeCollar :  윤곽선 −1 · 채움 −2      (SortBack)
 NECK 6종   :  윤곽선  7 · 채움  6      (SortNeck)
 ```
 
+> 정정 (2026-09-27, design-character) — 위 블록의 `CapeCollar`는 **지금 코드에 없다**.
+> ① 사라진 것: 망토 옷깃 띠 도형 `CapeCollar`. ② 커밋 `0229f52`(2026-09-06) — 직전 판 `.cs` 3건에서
+> 0건으로, `Assets/` 전체로도 0건. ③ 지금 실재하는 것: `CapeYoke`
+> (`Interaction/AccessoryShapeBuilder.cs:2567` · `:2586` · `:2685`). 같은 파일 `:226`이
+> 「옷깃 띠를 어깨 요크로 대체했다」고 적었다.
+> ★ 옷깃 **좌표**는 살아 있다 — `CapeCollarLocalY`(`:945`) · `CapeCollarRiseRatio`(`:221`) ·
+> `CapeCollarFrontRatio`(`:222`) · `CapeCollarBackRatio`(`:223`)가 전부 실재한다.
+> **사라진 것은 도형 이름 하나뿐이다**.
+> ④ 판단: **§4-1의 결론은 바뀌지 않는다** — 레이어가 8칸 벌어져 있어 z-order 버그가 아니라는 판정은
+> 그대로다. `SortBack`(78건)·`SortNeck`(14건)이 둘 다 실재하고 요크도 같은 `SortBack`을 쓴다.
+> 바뀌는 것은 **이름으로 코드를 찾는 경로**뿐이다.
+
 넥타이가 옷깃보다 **8칸 앞**이다. `CharacterAccessoryRenderer`(몸)와 `CharacterPortraitStage`(정보창
 초상화) **둘 다 같은 `shape.SortingOrder` / `shape.FillSortingOrder`를 그대로 쓴다**
 (`CharacterAccessoryRenderer.cs:951, 980` / `CharacterPortraitStage.cs:1161, 1485`).
@@ -299,6 +311,19 @@ CapeCollarLocalY = ShoulderY + 0.10 R = −1.21818 R     (CapeCollarRiseRatio)
 | 왕관 | `CrownBody` / `CrownRim`(보조) | 채움 | 2.348 / 1.507 | 27.0% / **0.1%** |
 | 방울목걸이 | `Collar` / `Bell`(보조) | 낱선/채움 | 0.681 / 0.504 | **63.7%** / **0.2%** |
 
+> 정정 (2026-09-27, design-character) — 이 표의 목도리 3조각과 방울목걸이 2조각은 **지금 코드에 없다**.
+> ① `ScarfTailBack` · `ScarfTailFront`(표기 `TailFront`) · `ScarfWrap`(표기 `Wrap`) / `Collar` · `Bell`.
+> ② 커밋 `7ed996d`(2026-09-02) — `AppendNeck`의 아이템 case 6개가 통째로
+> `Resources/Items/*.asset`으로 이관됐다.
+> ③ 지금 실재하는 것: 목도리 = `equip_neck_scarf.asset`의 `Piece_B0` `Piece_B1` `Piece_S2` `Piece_S3`
+> `Piece_S4` `Piece_H5`, 방울목걸이 = `equip_neck_bell.asset`의 `Piece_S0` `Piece_CF1` `Piece_CF2`
+> `Piece_CF3` `Piece_B4` `Piece_RB5` `Piece_CB6` `Piece_H7`.
+> ④ 판단: **개명이지 폐기가 아니다** — 두 아이템 다 화면에 있다. 다만 **몸 밖 비율은 v1 좌표의 값**이라
+> 현행 조각에 그대로 쓰면 안 된다. 재측정은 이 라운드에서 하지 않았다. **미확인**.
+> ★ 같은 표의 `SunglassLensBack` · `RoundLensBack` · `GoggleStrap` · `GoggleLens` · `CrownBody` ·
+> `CrownRim`은 **전부 실재한다** — 지우지 마라. `Front` · `Bridge` · `Wrap` · `TailFront`는
+> 앞 이름의 산문 약어이지 별도 이름이 아니다(332행의 `TailBack`·`TailFront`도 같다).
+
 ### 체크리스트 — 재작업안이 통과해야 하는 6항목
 
 > 이건 **합격/불합격 판정이 아니라 자(尺)**다. 넘지 못한다고 아이템이 틀린 것은 아니다 —
@@ -369,6 +394,17 @@ CapeCollarLocalY = ShoulderY + 0.10 R = −1.21818 R     (CapeCollarRiseRatio)
 |---|---:|---:|---|
 | `BowTieKnot` | −0.97818 R | −1.000 R | **+0.13 pt 위** |
 | `BowTieLeftWing` / `RightWing` | −0.93818 R | −1.000 R | **+0.36 pt 위** |
+
+> 정정 (2026-09-27, design-character) — 위 두 행의 `BowTieKnot` · `BowTieLeftWing` · `RightWing`은
+> **지금 코드에 없다**. ② 커밋 `7ed996d`(2026-09-02), 직전 판 `.cs` 3건에서 0건.
+> ③ 지금 실재하는 것: `equip_neck_bowtie.asset`의 `Piece_B0` `Piece_B1` `Piece_RB2` `Piece_H3`.
+> 남은 언급 2건은 **주석뿐이다** — `Interaction/AccessoryShapeBuilder.cs:2475`(이관 기록) ·
+> `Tests/EditMode/AccessoryRuleOneCoverageTests.cs:84`(옛 규칙 기록).
+> ★ 주석에만 남은 이름을 `grep` 계수로 「생존」이라 읽으면 오판이다.
+> ④ 판단: **§6의 결론은 바뀌지 않는다** — 「산술로 보장한다」는 주석이 틀렸다는 판정은 그대로다.
+> 그 산술이 빠뜨린 `NeckCollarRiseRatio`는 **지금도 실재하고**(`.cs` 6건) 주석 원문도
+> `Interaction/AccessoryShapeBuilder.cs:200`에 그대로 있다. 다만 **표의 위 끝 좌표는 v1 값**이라
+> 현행 조각으로 다시 재야 한다 — 이 라운드에서는 **재지 않았다**.
 
 **잉크로 재면 더 크다** — 머리 링 반폭 0.17193 R과 채움 경계선 반폭 0.10909 R이 더 붙는다.
 그리고 NECK(7)은 머리 링(4)보다 앞이므로 **넥타이가 실제로 턱을 덮는다**:

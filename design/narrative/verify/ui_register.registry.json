@@ -1,0 +1,3901 @@
+{
+ "entries": [
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "AccessoryDefSO.cs",
+   "text": "기저 번호 {basis}를 모릅니다."
+  },
+  {
+   "class": "중립",
+   "count": 12,
+   "file": "ActionCommandPopover.cs",
+   "text": "돌아와!"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "ActionCommandPopover.cs",
+   "text": "실제 창은 옮기지도 닫지도 않아요. 전부 그림 위 연출."
+  },
+  {
+   "class": "해요체",
+   "count": 1,
+   "file": "ActionCommandPopover.cs",
+   "text": "여기 있는 건 시켜야만 해요. 이 창을 닫아도 하던 건 계속해요."
+  },
+  {
+   "class": "해요체",
+   "count": 1,
+   "file": "ActionCommandPopover.cs",
+   "text": "지금 가출 중이에요"
+  },
+  {
+   "class": "해요체",
+   "count": 1,
+   "file": "ActionCommandPopover.cs",
+   "text": "지금 시킬 수 있어요"
+  },
+  {
+   "class": "해요체",
+   "count": 1,
+   "file": "ActionCommandPopover.cs",
+   "text": "지금은 다른 일 하는 중이에요"
+  },
+  {
+   "class": "해요체",
+   "count": 1,
+   "file": "ActionCommandPopover.cs",
+   "text": "지금은 시작할 수 없어요"
+  },
+  {
+   "class": "해요체",
+   "count": 1,
+   "file": "ActionCommandPopover.cs",
+   "text": "지금은 시킬 수 있는 게 없어요"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "AppControlDirector.cs",
+   "text": "★ 개발 전용 단축키(게이트 열림 — "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "AppControlDirector.cs",
+   "text": "개발 전용 단축키는 잠겨 있습니다({StickMateDevTools.SourceLabel}) — "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "AppControlDirector.cs",
+   "text": "끔(60초 심장박동만)"
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "AppControlDirector.cs",
+   "text": "반응 대사는 아직 없습니다(design-narrative 대기) — 붙잡기는 펼침 예산과 같습니다."
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "AppControlDirector.cs",
+   "text": "전역 키 조회=미지원 — 단축키 전체가 동작하지 않습니다. 이 환경에서 앱을 끄는 유일한 "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "AppControlDirector.cs",
+   "text": "전역 키 조회=사용 가능."
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "AppControlDirector.cs",
+   "text": "캐릭터를 다시 보이게 했습니다."
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "AppControlDirector.cs",
+   "text": "캐릭터와 거기 붙은 것(말풍선·이펙트·장비·펫)만 가렸습니다 — 톱니·열린 창·부채꼴은 "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "AppControlDirector.cs",
+   "text": "켬(촘촘)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "AppSwitcherPresencePolicy.cs",
+   "text": "스타일 실측 실패(모름 — 아무것도 쓰지 않는다)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "AppSwitcherPresencePolicy.cs",
+   "text": "이미 전환기 밖(쓰기 안 함)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "AppSwitcherPresencePolicy.cs",
+   "text": "전환기에 노출 중 — 비트를 켠다"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "ArcheryDirector.cs",
+   "text": " (화면비례 요청 {requestedScreenFloor:F2}유닛은 밴드 붕괴 클램프 "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "ArcheryDirector.cs",
+   "text": ". 화면 폭 대비 = 사거리 {placed.Distance / screenWidth:P1} / 밴드 "
+  },
+  {
+   "class": "해요체",
+   "count": 1,
+   "file": "ArcheryDirector.cs",
+   "text": "과녁 놓을 자리가 없어요"
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "ArcheryDirector.cs",
+   "text": "다음 **자율** 발동까지 {_cooldownRemaining:F0}초 쿨다운을 겁니다"
+  },
+  {
+   "class": "중립",
+   "count": 2,
+   "file": "ArcheryDirector.cs",
+   "text": "바탕화면"
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "ArcheryDirector.cs",
+   "text": "비정상 이탈이라 쿨다운을 걸지 않습니다"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "ArcheryDirector.cs",
+   "text": "창/Dock 발판"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "AudioReactiveDanceDirector.cs",
+   "text": " ★ 이 신호를 읽는 컴포넌트가 씬에 하나도 없습니다 — 게이트는 열렸지만 화면에서는 "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "AudioReactiveDanceDirector.cs",
+   "text": " 이제 에피소드 감독이 시작을 시도합니다(그쪽 로그 태그는 "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "AudioReactiveDanceDirector.cs",
+   "text": "★ 게이트는 열렸는데 그 신호를 읽는 컴포넌트가 씬에 하나도 없습니다 — "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "AudioReactiveDanceDirector.cs",
+   "text": "★ 이 빌드에는 시스템 오디오 감지 배선이 없습니다 — 설계된 동작입니다(에디터·모바일)."
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "AudioReactiveDanceDirector.cs",
+   "text": "★ 조회가 한 번도 성공하지 못했습니다 — «음악이 없다»가 아니라 «프로브가 못 읽고 있다»입니다."
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "AudioReactiveDanceDirector.cs",
+   "text": "★ 창 내내 억제 중이었습니다 — 집중 세션 / 캐릭터 숨김 / 전체화면 앱 / "
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "AudioReactiveDanceDirector.cs",
+   "text": "게이트가 한 번도 열리지 않았습니다 — 이 구간에는 소리가 없었다는 뜻입니다."
+  },
+  {
+   "class": "중립",
+   "count": 2,
+   "file": "AudioReactiveDanceDirector.cs",
+   "text": "있음"
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "AudioReactiveDanceDirector.cs",
+   "text": "정상입니다."
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "AudioReactiveDanceGate.cs",
+   "text": " 진행 중이던 춤은 다음 프레임에 정상 퇴장합니다."
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "AudioReactiveDanceGate.cs",
+   "text": "껐습니다"
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "AudioReactiveDanceGate.cs",
+   "text": "다시 켰습니다"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "AudioReactiveDancePolicy.cs",
+   "text": "T₄ 고착 잠금 중이다 — 연속 OFF가 T₃만큼 쌓여야 풀린다"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "AudioReactiveDancePolicy.cs",
+   "text": "계속 춘다 — 종료 조건(T₂ 연속 OFF + T₃ 최소 유지)이 아직 다 차지 않았다"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "AudioReactiveDancePolicy.cs",
+   "text": "고착 잠금이 풀렸다 — 다시 T₁부터 센다"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "AudioReactiveDancePolicy.cs",
+   "text": "아직 T₁ 미달이다 — 원 신호 연속 ON이 더 필요하다"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "AudioReactiveDancePolicy.cs",
+   "text": "억제 입력이 참이다(숨김/집중 모드 등) — 춤은 가장 낮은 우선순위다"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "AudioReactiveDancePolicy.cs",
+   "text": "억제 입력이 춤 도중에 참이 됐다 — T₃(최소 유지)보다 억제가 이긴다"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "AudioReactiveDancePolicy.cs",
+   "text": "원 신호가 T₁만큼 연속 ON이다 — 알림음 1회로는 여기 못 온다"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "AudioReactiveDancePolicy.cs",
+   "text": "원 신호가 T₂만큼 연속 OFF이고 T₃(최소 유지)도 찼다 — 음악이 끝났다"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "AudioReactiveDancePolicy.cs",
+   "text": "원 신호가 T₄만큼 «한 번도 끊기지 않고» ON이다 — 고착 신호로 보고 멈춘다(M-B 탈출구)"
+  },
+  {
+   "class": "중립",
+   "count": 33,
+   "file": "AutoWanderController.cs",
+   "text": "밧줄"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "AutoWanderController.cs",
+   "text": "부채꼴 메뉴가 떠 있어 그 자리에서 대기합니다(메뉴가 닫히면 평소대로 이어집니다)"
+  },
+  {
+   "class": "중립",
+   "count": 10,
+   "file": "AutoWanderController.cs",
+   "text": "손 등반"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "AutoWanderController.cs",
+   "text": "턱 안쪽({(inward > 0 ? "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterInfoWindow.Cards.cs",
+   "text": "(같은 카테고리의 {replaced.DisplayName}{KoreanParticle.Topic(replaced.DisplayName)} 자동 해제)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterInfoWindow.Cards.cs",
+   "text": "{rarity}  ·  {entry.CategoryLabel}  ·  Lv.{entry.RequiredLevel}에 열림"
+  },
+  {
+   "class": "중립",
+   "count": 7,
+   "file": "CharacterInfoWindow.Cards.cs",
+   "text": "보유"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterInfoWindow.Cards.cs",
+   "text": "보유 중"
+  },
+  {
+   "class": "중립",
+   "count": 2,
+   "file": "CharacterInfoWindow.Cards.cs",
+   "text": "비어 있음"
+  },
+  {
+   "class": "중립",
+   "count": 11,
+   "file": "CharacterInfoWindow.Cards.cs",
+   "text": "잠김"
+  },
+  {
+   "class": "중립",
+   "count": 47,
+   "file": "CharacterInfoWindow.Cards.cs",
+   "text": "착용"
+  },
+  {
+   "class": "중립",
+   "count": 8,
+   "file": "CharacterInfoWindow.Cards.cs",
+   "text": "착용 중"
+  },
+  {
+   "class": "중립",
+   "count": 13,
+   "file": "CharacterInfoWindow.Cards.cs",
+   "text": "해제"
+  },
+  {
+   "class": "중립",
+   "count": 36,
+   "file": "CharacterInfoWindow.Dlc.cs",
+   "text": "팩 "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterInfoWindow.Dlc.cs",
+   "text": "팩 단위로만 판매돼요(개별 구매 없음) · 팩 가격 {price}."
+  },
+  {
+   "class": "해요체",
+   "count": 1,
+   "file": "CharacterInfoWindow.Dlc.cs",
+   "text": "팩 단위로만 판매돼요(개별 구매 없음) · 팩 가격은 아직 정해지지 않았어요."
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterInfoWindow.Inventory.cs",
+   "text": "걸치는 것  ({ItemCatalog.ListedUnlockedEquipmentCount(_config)} / "
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "CharacterInfoWindow.Inventory.cs",
+   "text": "레벨 {entry.RequiredLevel}이 되면 열립니다. 지금은 실루엣만 보입니다."
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterInfoWindow.Inventory.cs",
+   "text": "할 줄 아는 것  ({ItemCatalog.ActionCount})"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterInfoWindow.Shop.cs",
+   "text": "[상점] {entry.DisplayName} 구매 불가 — 가격 {price:N0}, 잔액 {CurrencyModel.CoinBalance:N0}"
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "CharacterInfoWindow.Shop.cs",
+   "text": "[상점] {entry.DisplayName}{KoreanParticle.Topic(entry.DisplayName)} 이미 보유 중입니다 — 다시 팔지 않습니다."
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterInfoWindow.Shop.cs",
+   "text": "{entry.DisplayName}{KoreanParticle.Objective(entry.DisplayName)} 얻었어요. "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterInfoWindow.Shop.cs",
+   "text": "동전 {price:N0}개로 지금 열거나, {ShopWaitClause(entry)}"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterInfoWindow.Shop.cs",
+   "text": "동전이 {(price - CurrencyModel.CoinBalance):N0}개 모자라요. {ShopWaitClause(entry)}"
+  },
+  {
+   "class": "해요체",
+   "count": 1,
+   "file": "CharacterInfoWindow.Shop.cs",
+   "text": "레벨 {level}{KoreanParticle.Subject(level)} 되면 그냥 열려요."
+  },
+  {
+   "class": "해요체",
+   "count": 1,
+   "file": "CharacterInfoWindow.Shop.cs",
+   "text": "지금 열 수 있어요."
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterInfoWindow.Stats.cs",
+   "text": "{EquipmentModel.SlotName(EquipmentStatRules.StatSlotAt(index))} 주스탯"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterInfoWindow.Stats.cs",
+   "text": "{hours}시간 {minutes}분"
+  },
+  {
+   "class": "중립",
+   "count": 2,
+   "file": "CharacterInfoWindow.Stats.cs",
+   "text": "{minutes}분"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterInfoWindow.cs",
+   "text": "가만히 있는 중"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterInfoWindow.cs",
+   "text": "가출 중"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterInfoWindow.cs",
+   "text": "갓 들어온 동료"
+  },
+  {
+   "class": "중립",
+   "count": 3,
+   "file": "CharacterInfoWindow.cs",
+   "text": "걷는 중"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterInfoWindow.cs",
+   "text": "공격하는 중"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterInfoWindow.cs",
+   "text": "기록 없음"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterInfoWindow.cs",
+   "text": "낙서하는 중"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterInfoWindow.cs",
+   "text": "날아가는 중"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterInfoWindow.cs",
+   "text": "넘어져 있는 중"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterInfoWindow.cs",
+   "text": "딴 일 하는 중"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterInfoWindow.cs",
+   "text": "딴짓 감시 중"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterInfoWindow.cs",
+   "text": "떨어지는 중"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterInfoWindow.cs",
+   "text": "매달려 내려가는 중"
+  },
+  {
+   "class": "해요체",
+   "count": 1,
+   "file": "CharacterInfoWindow.cs",
+   "text": "미리보기를 그릴 수 없어요"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterInfoWindow.cs",
+   "text": "믿음직한 동료"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterInfoWindow.cs",
+   "text": "바탕화면 정리 중"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterInfoWindow.cs",
+   "text": "벽 타는 중"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterInfoWindow.cs",
+   "text": "부루퉁해 있는 중"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterInfoWindow.cs",
+   "text": "붙잡혀 있는 중"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterInfoWindow.cs",
+   "text": "블랙홀 소환 중"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterInfoWindow.cs",
+   "text": "사실상 이 화면 주인"
+  },
+  {
+   "class": "중립",
+   "count": 19,
+   "file": "CharacterInfoWindow.cs",
+   "text": "설정"
+  },
+  {
+   "class": "중립",
+   "count": 3,
+   "file": "CharacterInfoWindow.cs",
+   "text": "아직 없음"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterInfoWindow.cs",
+   "text": "없으면 허전한 동료"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterInfoWindow.cs",
+   "text": "이 화면의 터줏대감"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterInfoWindow.cs",
+   "text": "일어나는 중"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterInfoWindow.cs",
+   "text": "적응 중인 동료"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterInfoWindow.cs",
+   "text": "점프 중"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterInfoWindow.cs",
+   "text": "집중 모드 들어가는 중"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterInfoWindow.cs",
+   "text": "집중 모드 마무리 중"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterInfoWindow.cs",
+   "text": "집중 모드 접는 중"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterInfoWindow.cs",
+   "text": "착지하는 중"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterInfoWindow.cs",
+   "text": "창 도둑 놀이 중"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterInfoWindow.cs",
+   "text": "창 부수는 중"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterInfoWindow.cs",
+   "text": "커서 타는 중"
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "CharacterInfoWindow.cs",
+   "text": "테마가 있는 장비를 아직 하나도 걸치지 않았습니다."
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterInfoWindow.cs",
+   "text": "할일 알려주는 중"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterInfoWindow.cs",
+   "text": "허둥대는 중"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterInfoWindow.cs",
+   "text": "활 쏘는 중"
+  },
+  {
+   "class": "중립",
+   "count": 2,
+   "file": "CharacterPortraitStage.cs",
+   "text": " 원인: {error}"
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "CharacterPortraitStage.cs",
+   "text": "3점조차 담을 수 없어 이 마디를 그리지 못했습니다."
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterPortraitStage.cs",
+   "text": "관절을 각지게 편 직선 3점으로 대체합니다(뻣뻣하지만 사라지지는 않습니다)."
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterProgressionDirector.cs",
+   "text": " 외 {count - 1}종"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterProgressionDirector.cs",
+   "text": "불러옴"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterProgressionDirector.cs",
+   "text": "상금 쿨다운 중입니다 — 고장이 아니라 의도된 간격이고(§20-3-b), "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterProgressionDirector.cs",
+   "text": "새 장비 해제: [{firstName}]{more} — 정보창({ShortcutLabel.Chord("
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "CharacterProgressionDirector.cs",
+   "text": "새로 열린 장비는 없습니다."
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterProgressionDirector.cs",
+   "text": "없음 — 새 캐릭터로 시작"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterProgressionDirector.cs",
+   "text": "오늘 활쏘기 상금이 상한({CurrencyModel.ArcheryCoinsToday}동전)에 도달했습니다 — "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterSaveStore.cs",
+   "text": ", 연속 {n}회째"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterSaveStore.cs",
+   "text": "대피시킬 온전한 직전 내용이 없어(첫 저장이거나 본체가 이미 손상) 직전 세대를 "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterSaveStore.cs",
+   "text": "덮어쓰기 전에 직전 저장을 {previous} 로 대피시켰습니다 — 이번 쓰기 도중 강제 "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterSaveStore.cs",
+   "text": "사본 만들기는 실패했지만({failure}) 원본은 손대지 않았습니다. "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterSaveStore.cs",
+   "text": "원본은 그대로 두었고 사본도 남겼습니다: {backupPath}. "
+  },
+  {
+   "class": "중립",
+   "count": 2,
+   "file": "CharacterScaleController.cs",
+   "text": "대기 해제"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterScaleController.cs",
+   "text": "대기 후 강제 적용"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CharacterStatReadout.cs",
+   "text": "{EquipmentStatRules.TierName(EquipmentStatRules.TierOf(clamped) + 1)}까지 "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "ClickHitboxNearMissPolicy.cs",
+   "text": "(활성 콜라이더 없음)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "ClickHitboxNearMissPolicy.cs",
+   "text": "{LogTag} 근접 클릭이 히트박스를 벗어남({source}) — 커서 월드={cursorWorld.ToString("
+  },
+  {
+   "class": "해요체",
+   "count": 1,
+   "file": "CommandAvailability.cs",
+   "text": "이 빌드에는 없는 기능이에요"
+  },
+  {
+   "class": "해요체",
+   "count": 1,
+   "file": "CommandAvailability.cs",
+   "text": "지금은 못 해요"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CostumeCatalog.cs",
+   "text": "이름 없는 코스튬 매니페스트('{m.name}')"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "CostumeCatalog.cs",
+   "text": "특히 '{ItemCatalog.ThemeMil}'은 1일차 무상 4종(스탯 4슬롯의 첫 아이템)이 전부 이 테마라 "
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "DanceEpisodeDirector.cs",
+   "text": "박자를 끝내고 나갑니다"
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "DanceEpisodeDirector.cs",
+   "text": "휴지 중이라 화면에는 아무 변화가 없습니다"
+  },
+  {
+   "class": "중립",
+   "count": 24,
+   "file": "DialogueBubbleRenderer.cs",
+   "text": "그림자"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "DialogueBubbleRenderer.cs",
+   "text": "미지정(모든 대사 수신)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "DialogueBubbleRenderer.cs",
+   "text": "미지정(바인딩 전까지 아무것도 그리지 않음)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "DialogueBubbleRenderer.cs",
+   "text": "미확인(폴백 폰트)"
+  },
+  {
+   "class": "중립",
+   "count": 9,
+   "file": "DialogueBubbleRenderer.cs",
+   "text": "반응"
+  },
+  {
+   "class": "중립",
+   "count": 9,
+   "file": "DialogueBubbleRenderer.cs",
+   "text": "서술"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "DialogueBubbleRenderer.cs",
+   "text": "실측 확인"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "DialogueBubbleRenderer.cs",
+   "text": "오른쪽위"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "DialogueBubbleRenderer.cs",
+   "text": "왼쪽위"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "DialogueBubbleRenderer.cs",
+   "text": "지금 떠 있는 것과 같은 글자다(같은 상태·같은 종류). 교체하면 노출 시계와 "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "DialogueBubbleRenderer.cs",
+   "text": "지정됨"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "DialogueBubbleRenderer.cs",
+   "text": "페이드아웃중"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "DialogueBubbleRenderer.cs",
+   "text": "화면 변경 유예 진입 — 페이드아웃 중이던 말풍선은 붙잡지 않고 즉시 제거(보존 동결)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "DialogueBubbleRenderer.cs",
+   "text": "화면 변경 유예 진입 — 한 번도 그려지지 않은 말풍선은 붙잡지 않고 즉시 제거(보존 동결)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "DisplayChangeHoldDriver.cs",
+   "text": "완료"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "DisplayTopologyWatcher.cs",
+   "text": "topology(관측실패)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "DisplayTopologyWatcher.cs",
+   "text": "topology(모니터{MonitorCount}개, 대상=({MonitorX},{MonitorY},{MonitorWidth}x{MonitorHeight}), "
+  },
+  {
+   "class": "중립",
+   "count": 2,
+   "file": "DisplayTopologyWatcher.cs",
+   "text": "미보고"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "DragThrowController.cs",
+   "text": "미지원(소유권 부기 생략)"
+  },
+  {
+   "class": "중립",
+   "count": 2,
+   "file": "DragThrowController.cs",
+   "text": "지원"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "EquipmentDebugUnlock.cs",
+   "text": "개발 구성(UNITY_EDITOR/DEVELOPMENT_BUILD)"
+  },
+  {
+   "class": "중립",
+   "count": 2,
+   "file": "EquipmentModel.cs",
+   "text": "넥타이"
+  },
+  {
+   "class": "중립",
+   "count": 3,
+   "file": "EquipmentModel.cs",
+   "text": "망토"
+  },
+  {
+   "class": "중립",
+   "count": 11,
+   "file": "EquipmentModel.cs",
+   "text": "머리"
+  },
+  {
+   "class": "중립",
+   "count": 8,
+   "file": "EquipmentModel.cs",
+   "text": "모자"
+  },
+  {
+   "class": "중립",
+   "count": 6,
+   "file": "EquipmentModel.cs",
+   "text": "안경"
+  },
+  {
+   "class": "중립",
+   "count": 13,
+   "file": "EquipmentModel.cs",
+   "text": "이펙트"
+  },
+  {
+   "class": "중립",
+   "count": 2,
+   "file": "EquipmentStatRules.cs",
+   "text": "고급"
+  },
+  {
+   "class": "중립",
+   "count": 8,
+   "file": "EquipmentStatRules.cs",
+   "text": "관찰력"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "EquipmentStatRules.cs",
+   "text": "궤적 잔상 이펙트"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "EquipmentStatRules.cs",
+   "text": "던지기 최소 회전 보장"
+  },
+  {
+   "class": "중립",
+   "count": 7,
+   "file": "EquipmentStatRules.cs",
+   "text": "매력"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "EquipmentStatRules.cs",
+   "text": "명상 유휴 연출 해금"
+  },
+  {
+   "class": "중립",
+   "count": 7,
+   "file": "EquipmentStatRules.cs",
+   "text": "민첩"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "EquipmentStatRules.cs",
+   "text": "성과물 배율 +10%"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "EquipmentStatRules.cs",
+   "text": "성과물 배율 +25% · 졸음 연출"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "EquipmentStatRules.cs",
+   "text": "오라 강도 최대 · 팩 색 연동"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "EquipmentStatRules.cs",
+   "text": "오라 범위 확대"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "EquipmentStatRules.cs",
+   "text": "오라 이펙트 발현"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "EquipmentStatRules.cs",
+   "text": "이동속도 +18% · 트레일 이펙트"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "EquipmentStatRules.cs",
+   "text": "이동속도 +8%"
+  },
+  {
+   "class": "중립",
+   "count": 4,
+   "file": "EquipmentStatRules.cs",
+   "text": "임계 미달"
+  },
+  {
+   "class": "중립",
+   "count": 2,
+   "file": "EquipmentStatRules.cs",
+   "text": "중급"
+  },
+  {
+   "class": "중립",
+   "count": 10,
+   "file": "EquipmentStatRules.cs",
+   "text": "집중력"
+  },
+  {
+   "class": "중립",
+   "count": 2,
+   "file": "EquipmentStatRules.cs",
+   "text": "초급"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "EquipmentStatRules.cs",
+   "text": "쿨다운 −25% · 잔상 강화"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "EquipmentStatRules.cs",
+   "text": "활쏘기 쿨다운 −10%"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FallState.cs",
+   "text": "(실제 창)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FallState.cs",
+   "text": "(화면 최하단 안전망-Dock오른쪽바깥)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FallState.cs",
+   "text": "(화면 최하단 안전망-Dock왼쪽바깥)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FallbackPlatformWindowService.cs",
+   "text": "Dock이 화면 하단이 아님(좌/우 세로 Dock)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FallbackPlatformWindowService.cs",
+   "text": "셀 수 없어 +{extra}개 보정"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FallbackPlatformWindowService.cs",
+   "text": "자동 숨김이 켜져 있음"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FallbackPlatformWindowService.cs",
+   "text": "정확히 셈"
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "FocusSessionPopover.cs",
+   "text": "[집중팝오버] 눈금판을 다시 켭니다 — 세션이 60분 다이얼 한 바퀴 안에 들어옵니다."
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FocusSessionPopover.cs",
+   "text": "[집중팝오버] 세션 {duration / SecondsPerMinute:F0}분이 다이얼 한 바퀴"
+  },
+  {
+   "class": "중립",
+   "count": 3,
+   "file": "FocusSessionPopover.cs",
+   "text": "그만두기"
+  },
+  {
+   "class": "중립",
+   "count": 2,
+   "file": "FocusSessionPopover.cs",
+   "text": "남음"
+  },
+  {
+   "class": "중립",
+   "count": 17,
+   "file": "FocusSessionPopover.cs",
+   "text": "시간"
+  },
+  {
+   "class": "중립",
+   "count": 20,
+   "file": "FocusSessionPopover.cs",
+   "text": "시작"
+  },
+  {
+   "class": "해요체",
+   "count": 1,
+   "file": "FocusSessionPopover.cs",
+   "text": "일시정지 · 잠시 숨겨 뒀어요"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FocusSessionPopover.cs",
+   "text": "일시정지 · 전체화면 앱 사용 중"
+  },
+  {
+   "class": "해요체",
+   "count": 1,
+   "file": "FocusSessionPopover.cs",
+   "text": "전체화면 앱을 닫으면 시작할 수 있어요."
+  },
+  {
+   "class": "해요체",
+   "count": 1,
+   "file": "FocusSessionPopover.cs",
+   "text": "정한 시간 동안 옆에 있을게요."
+  },
+  {
+   "class": "중립",
+   "count": 4,
+   "file": "FocusSessionPopover.cs",
+   "text": "직접 입력"
+  },
+  {
+   "class": "중립",
+   "count": 6,
+   "file": "FocusSessionPopover.cs",
+   "text": "집중 모드"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FocusSessionPopover.cs",
+   "text": "집중 모드 · 진행 중"
+  },
+  {
+   "class": "중립",
+   "count": 2,
+   "file": "FocusSessionPopover.cs",
+   "text": "집중 시간을 재는 중"
+  },
+  {
+   "class": "중립",
+   "count": 10,
+   "file": "FocusSessionPopover.cs",
+   "text": "프리셋"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FocusWatchDirector.cs",
+   "text": "★ 1분을 채우지 못해 0동전입니다 — 고장이 아니라 의도된 계단입니다(§22-12). "
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "FocusWatchDirector.cs",
+   "text": "★ 시작 포즈는 아직 확정되지 않았습니다(관문이 막혔습니다) — 열리면 그때 냅니다."
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FocusWatchDirector.cs",
+   "text": "관문은 지금 열려 있습니다(직전 프레임에 막혔던 것으로 보입니다)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FocusWatchDirector.cs",
+   "text": "다른 연출이 상태 슬롯을 쥐고 있습니다({SpectacleEventLock.ActiveKind})"
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "FocusWatchDirector.cs",
+   "text": "안경+팔짱 포즈(FocusStart)로 **전이 확정** — 대사가 그 상태에서 파생됩니다."
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FocusWatchDirector.cs",
+   "text": "취소는 「분을 먼저 내림」이라 채운 분까지만 지급됩니다(§22-12)."
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "FocusWatchDirector.cs",
+   "text": "캐릭터 배선이 없습니다"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FocusWatchDirector.cs",
+   "text": "캐릭터가 Idle/Walk가 아닙니다(지금 {current})"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FootholdPoller.cs",
+   "text": " (이 줄이 마지막입니다 — 전이 로그 상한 도달)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FramePacing.cs",
+   "text": " (계기 3종 일치: 건너뛰지 않고 있다 = 절감 0)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FramePacing.cs",
+   "text": " (계기 3종 일치: 실제로 건너뛰고 있다)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FramePacing.cs",
+   "text": " (이후 전이는 개별로 남기지 않고 5분마다 요약합니다 — 아래 주석 참고.)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FramePacing.cs",
+   "text": " (적응형 절감 중)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FramePacing.cs",
+   "text": " — ※ 걸리지 않았다: 렌더가 루프와 같은 속도다"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FramePacing.cs",
+   "text": " ※ 실측 렌더 콜백이 한 번도 오지 않았다 — Camera.onPostRender는 빌트인 렌더"
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "FramePacing.cs",
+   "text": " ★경고: 요청 {vSync}인데 되읽은 값이 {vSyncNow}입니다 — 이 회차의 vsync 측정은 무효입니다."
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FramePacing.cs",
+   "text": " ★계기 불일치: renderedFrameCount만 줄었고 실제 렌더는 루프와 같다"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FramePacing.cs",
+   "text": " ★계기 불일치: 실제로는 건너뛰는데 Time.renderedFrameCount가 루프와 같다"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FramePacing.cs",
+   "text": "(관측 짧음)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FramePacing.cs",
+   "text": "(환경변수 강제)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FramePacing.cs",
+   "text": "(환경변수 요청 {_vSyncRequestedByEnv})"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FramePacing.cs",
+   "text": ")}fps(주사율 {hz:F1}Hz / {vSyncNow}). "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FramePacing.cs",
+   "text": "GPU 프레임시간 평균 {_gpuSumMs / _gpuCount:F2}ms / 최악 {_gpuWorstMs:F2}ms (표본 {_gpuCount})"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FramePacing.cs",
+   "text": "GPU 프레임시간: 드라이버가 타이머 질의를 돌려주지 않음(표본 0)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FramePacing.cs",
+   "text": "GPU 프레임시간: 측정 불가(enableFrameTimingStats 꺼짐 — 이 빌드로는 MSAA 비용을 잴 수 없다)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FramePacing.cs",
+   "text": "GPU: 드라이버가 타이머 질의를 돌려주지 않음(표본 0)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FramePacing.cs",
+   "text": "GPU: 측정 불가(enableFrameTimingStats 꺼짐)"
+  },
+  {
+   "class": "중립",
+   "count": 2,
+   "file": "FramePacing.cs",
+   "text": "renderedFrameCount — 실측 콜백 측정 불가"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FramePacing.cs",
+   "text": "targetFrameRate 기구 — 상한 {targetNow}fps(sleep 기반). "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FramePacing.cs",
+   "text": "vsync 기구 — 기대 {(hz > 0.0 ? (hz / vSyncNow).ToString("
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FramePacing.cs",
+   "text": "{w}x{h}(변화 없음)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FramePacing.cs",
+   "text": "{w}x{h}(첫 관측)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FramePacing.cs",
+   "text": "★ STICKMATE_FORCE_TIER={_forcedTier.Value} 강제 지정됨(계측용). "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FramePacing.cs",
+   "text": "★ {ActiveDivisorEnvironmentVariableName}={_activeDivisor} — 활성 등급 제출이 "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FramePacing.cs",
+   "text": "★GPU 점유 추정 {_gpuSumMs / _gpuCount * submittedFps / 10.0:F1}% "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FramePacing.cs",
+   "text": "★{_spikeLastWidth}x{_spikeLastHeight} -> {w}x{h} — 백버퍼가 바뀌었다(스왑체인 재생성 유력)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FramePacing.cs",
+   "text": "★신뢰불가(시작 후 변경됨)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FramePacing.cs",
+   "text": "가동 {h}시간{m}분, MSAA 요청 {RenderQualityTuner.RequestedSamples}x"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FramePacing.cs",
+   "text": "걸림"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FramePacing.cs",
+   "text": "메인 카메라 없음"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FramePacing.cs",
+   "text": "보행 한 주기가 22.2프레임에서 44.4프레임(매 프레임 제출)으로 되돌아가 "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FramePacing.cs",
+   "text": "보행 한 주기가 44.4프레임에서 22.2프레임으로 줄어듭니다(추가 절감, 계측용). "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FramePacing.cs",
+   "text": "사용 가능"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FramePacing.cs",
+   "text": "사용 불가(enableFrameTimingStats 꺼짐 또는 드라이버 미지원)"
+  },
+  {
+   "class": "중립",
+   "count": 5,
+   "file": "FramePacing.cs",
+   "text": "실측 렌더 콜백"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FramePacing.cs",
+   "text": "최근 {recent.SampleCount}프레임 p95 {recent.P95Ms:F2}ms / p99 {recent.P99Ms:F2}ms"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FramePacing.cs",
+   "text": "최근 분위수: 표본 부족"
+  },
+  {
+   "class": "중립",
+   "count": 9,
+   "file": "FramePacing.cs",
+   "text": "측정 불가"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FreezeForensicsLog.cs",
+   "text": " / 같은 세션의 앞 파일 "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FreezeForensicsPolicy.cs",
+   "text": "FixedUpdate 뒤~Update 전"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FreezeForensicsPolicy.cs",
+   "text": "FixedUpdate(물리)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FreezeForensicsPolicy.cs",
+   "text": "Update 뒤~LateUpdate 전"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FreezeForensicsPolicy.cs",
+   "text": "로직 밖(렌더·프레젠트·프레임 상한 대기)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FreezeWatchdog.cs",
+   "text": "깊이초과"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FreezeWatchdog.cs",
+   "text": "끝 {r.CopiedBytes}바이트"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FreezeWatchdog.cs",
+   "text": "알수없음("
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FreezeWatchdog.cs",
+   "text": "전체 {r.CopiedBytes}바이트"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FullscreenSuspendPolicy.cs",
+   "text": "등급 0 — 남의 전체화면 앱 없음"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "FullscreenSuspendPolicy.cs",
+   "text": "등급 1(패널 회수) — 전체화면 앱이지만 게임이 아니라 창·패널·클릭 차단막만 "
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "FullscreenSuspendPolicy.cs",
+   "text": "등급 2(전면 숨김) — 전체화면 **게임**이라 캐릭터까지 숨깁니다"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "GearRadialMenuWidget.cs",
+   "text": "(축소 폴백)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "GearRadialMenuWidget.cs",
+   "text": "미상({(int)source})"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "GearRadialMenuWidget.cs",
+   "text": "아니오"
+  },
+  {
+   "class": "중립",
+   "count": 2,
+   "file": "GearRadialMenuWidget.cs",
+   "text": "캐릭터 우클릭"
+  },
+  {
+   "class": "해요체",
+   "count": 1,
+   "file": "GearRadialMenuWidget.cs",
+   "text": "커서를 올리면 각 버튼 이름이 보여요"
+  },
+  {
+   "class": "중립",
+   "count": 43,
+   "file": "GearRadialMenuWidget.cs",
+   "text": "톱니"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "GlyphPixelSnapPolicy.cs",
+   "text": "글자 원점=({screenX:F2}, {screenY:F2})px — 위상 잔차 "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "GlyphPixelSnapPolicy.cs",
+   "text": "글자 원점=({screenX:F2}, {screenY:F2})px — 정수 픽셀 격자 위(위상 잔차 "
+  },
+  {
+   "class": "해요체",
+   "count": 2,
+   "file": "GraffitiDirector.cs",
+   "text": "낙서할 빈 자리가 없어요"
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "GroundLossHangState.cs",
+   "text": "걸어서 발판 모서리를 넘어갔습니다"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "GroundLossHangState.cs",
+   "text": "붙잡고 있던 발판이 없습니다(핸들 0)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "GroundSensor.cs",
+   "text": "고착된 발판이 애초에 없었습니다(핸들 0). 발판 목록 {total}개 중 발 위치에서 "
+  },
+  {
+   "class": "중립",
+   "count": 2,
+   "file": "GroundSensor.cs",
+   "text": "발이 상단선보다 아래"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "GroundSensor.cs",
+   "text": "발이 상단선보다 위"
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "GroundSensor.cs",
+   "text": "사유 (a) 발판이 목록에서 사라졌습니다 — 핸들 {handle}의 조각이 0개입니다"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "GroundSensor.cs",
+   "text": "사유 (b) 캐릭터 X가 발판의 가로 범위를 {bestDx:F1}pt 벗어났습니다 — "
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "GroundSensor.cs",
+   "text": "사유 (c/d) 발판은 그대로 있고 X도 범위 안인데 세로만 {bestDy:F1}pt 어긋났습니다"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "GroundSensor.cs",
+   "text": "카메라가 없어 접지 판정 자체가 불가능했습니다(사유 판정 불가)."
+  },
+  {
+   "class": "중립",
+   "count": 2,
+   "file": "HardwareReactionRenderer.cs",
+   "text": "CPU 과부하"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "HardwareReactionRenderer.cs",
+   "text": "네트워크 끊김"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "HardwareReactionRenderer.cs",
+   "text": "배터리 부족"
+  },
+  {
+   "class": "중립",
+   "count": 3,
+   "file": "HardwareReactionRenderer.cs",
+   "text": "오른"
+  },
+  {
+   "class": "중립",
+   "count": 2,
+   "file": "HardwareReactionRenderer.cs",
+   "text": "충전 중"
+  },
+  {
+   "class": "해요체",
+   "count": 1,
+   "file": "HiddenCharacterCommandGate.cs",
+   "text": "지금은 숨어 있어요"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "HybridGpuPreferencePolicy.cs",
+   "text": "(값 없음)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "IdleAmbientMotionRenderer.cs",
+   "text": "기지개"
+  },
+  {
+   "class": "중립",
+   "count": 3,
+   "file": "IdleAmbientMotionRenderer.cs",
+   "text": "주위 살피기"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "IdleAmbientMotionRenderer.cs",
+   "text": "집중-관망 자세 바꾸기"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "IdleAmbientMotionRenderer.cs",
+   "text": "집중-끄덕임"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "IdleAmbientMotionRenderer.cs",
+   "text": "집중-자세 고쳐잡기"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "IdleAmbientMotionRenderer.cs",
+   "text": "집중-화면 쪽 돌아보기"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "InfoGearIconWidget.cs",
+   "text": "[톱니] 상시 톱니를 걷습니다 — 평소 진입점은 <b>캐릭터 우클릭</b>입니다(2026-09-05 사용자 지시). "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "InfoGearIconWidget.cs",
+   "text": "[톱니] 캐릭터가 화면에 없어 대기 톱니를 띄웁니다 — 캐릭터를 우클릭할 몸이 없는 동안의 "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "InfoGearIconWidget.cs",
+   "text": "가출(캐릭터가 스스로 숨었다)"
+  },
+  {
+   "class": "중립",
+   "count": 4,
+   "file": "InfoGearIconWidget.cs",
+   "text": "기본 위치(우상단)로"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "InfoGearIconWidget.cs",
+   "text": "미지원 — 콜라이더 경로만"
+  },
+  {
+   "class": "중립",
+   "count": 6,
+   "file": "InfoGearIconWidget.cs",
+   "text": "사용자 명시 숨김"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "InfoGearIconWidget.cs",
+   "text": "사용자 명시 숨김 + 가출"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "InfoGearIconWidget.cs",
+   "text": "사용자가 옮겨 둔 자리로"
+  },
+  {
+   "class": "중립",
+   "count": 2,
+   "file": "InfoGearIconWidget.cs",
+   "text": "실패(메모리 값 유지, 다음 주기에 재시도)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "InfoGearIconWidget.cs",
+   "text": "테스트 우회("
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "InfoGearIconWidget.cs",
+   "text": "해당 없음 — 캐릭터가 화면에 있으므로 우클릭이 평소 진입점이다"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "ItemCatalog.cs",
+   "text": "Lv.{ResolveUnlockLevel(config)}에 열림"
+  },
+  {
+   "class": "중립",
+   "count": 2,
+   "file": "ItemCatalog.cs",
+   "text": "네온 낙서"
+  },
+  {
+   "class": "중립",
+   "count": 2,
+   "file": "ItemCatalog.cs",
+   "text": "밀리터리"
+  },
+  {
+   "class": "중립",
+   "count": 2,
+   "file": "ItemCatalog.cs",
+   "text": "사이버 아포칼립스"
+  },
+  {
+   "class": "중립",
+   "count": 2,
+   "file": "ItemCatalog.cs",
+   "text": "스포츠 이펙트"
+  },
+  {
+   "class": "중립",
+   "count": 16,
+   "file": "ItemCatalog.cs",
+   "text": "영웅"
+  },
+  {
+   "class": "중립",
+   "count": 2,
+   "file": "ItemCatalog.cs",
+   "text": "오피스 워커"
+  },
+  {
+   "class": "중립",
+   "count": 29,
+   "file": "ItemCatalog.cs",
+   "text": "일반"
+  },
+  {
+   "class": "중립",
+   "count": 26,
+   "file": "ItemCatalog.cs",
+   "text": "전설"
+  },
+  {
+   "class": "중립",
+   "count": 2,
+   "file": "ItemCatalog.cs",
+   "text": "컬러 잉크"
+  },
+  {
+   "class": "중립",
+   "count": 27,
+   "file": "ItemCatalog.cs",
+   "text": "행동"
+  },
+  {
+   "class": "중립",
+   "count": 26,
+   "file": "ItemCatalog.cs",
+   "text": "희귀"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "ItemCatalogDigest.cs",
+   "text": "골든에만 있는 다음 줄: {a[n]}"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "ItemCatalogDigest.cs",
+   "text": "줄 수가 다릅니다(골든 {a.Length}줄 / 현재 {b.Length}줄). "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "ItemCatalogDigest.cs",
+   "text": "현재에만 있는 다음 줄: {b[n]}"
+  },
+  {
+   "class": "중립",
+   "count": 12,
+   "file": "KoreanParticle.cs",
+   "text": "으로"
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "LayeredHybridTimeline.cs",
+   "text": "{LogPrefix} 타임라인 상한 {MaxLogLines}줄 도달 — 이후 사건은 세기만 하고 남기지 않습니다"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "LayeredHybridTimeline.cs",
+   "text": "직전 사건 +{delta:F3}초"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "LayeredHybridTimeline.cs",
+   "text": "첫 사건"
+  },
+  {
+   "class": "중립",
+   "count": 3,
+   "file": "LayeredHybridTimeline.cs",
+   "text": "초기 관측"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "LedgeHangState.cs",
+   "text": ", 예상 착지 Y={_descendTargetTopWorldY:F3}(핸들 {_descendTargetHandle})"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "LedgeHangState.cs",
+   "text": "없음"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "LedgeHangState.cs",
+   "text": "핸들 {_descendTargetHandle}(Y={_descendTargetTopWorldY:F3})"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "MacOverlayStateEnforcer.cs",
+   "text": "(카메라 없음)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "MacOverlayStateEnforcer.cs",
+   "text": "미검출(문제!)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "MacOverlayStateEnforcer.cs",
+   "text": "성공(오차 {BoundsEpsilonPoints:F0}pt 이내)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "MacOverlayStateEnforcer.cs",
+   "text": "아니오(문제!)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "MacOverlayStateEnforcer.cs",
+   "text": "안전망오른쪽"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "MacOverlayStateEnforcer.cs",
+   "text": "안전망왼쪽"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "MacOverlayStateEnforcer.cs",
+   "text": "없음(정상 관통)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "MacOverlayStateEnforcer.cs",
+   "text": "창#"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "MacWindowService.cs",
+   "text": "(미선언)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "MacWindowService.cs",
+   "text": "UniWindowController=없음"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "MacWindowService.cs",
+   "text": "라이브러리 clientSize"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "MacWindowService.cs",
+   "text": "백버퍼 유도"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "MacWindowService.cs",
+   "text": "아니오(보더리스)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "MacWindowService.cs",
+   "text": "예(위 {strippedTopPoints:F0}pt — 타이틀바)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "MonitorTopologyReport.cs",
+   "text": "(y잔차 {residual:F1})"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "MonitorTopologyReport.cs",
+   "text": "(y잔차 해당없음)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "MonitorTopologyReport.cs",
+   "text": "(★폴백 — 어느 모니터에도 안 들어감)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "MonitorTopologyReport.cs",
+   "text": "(미확보) "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "MonitorTopologyReport.cs",
+   "text": "(창중심 포함)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "MonitorTopologyReport.cs",
+   "text": "Cocoa 좌하단 그대로(뒤집기 없음, 사각형은 visibleFrame)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "MonitorTopologyReport.cs",
+   "text": "★아니오"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "MonitorTopologyReport.cs",
+   "text": "★주"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "MonitorTopologyReport.cs",
+   "text": "조회실패"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "MonitorTopologyReport.cs",
+   "text": "주모니터하단기준 상향(Win32 하향 y를 뒤집음)"
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "OverlayCompositionSnapshot.cs",
+   "text": " 하이브리드 해소기가 {s.HybridStripCount}회 떼어낸 결과입니다."
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "OverlayCompositionSnapshot.cs",
+   "text": "(dwFlags 미관측 — 구 빌드)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "OverlayCompositionSnapshot.cs",
+   "text": "(다만 이 배율 조합에서는 근처에 잔차 0인 pt가 우연히 존재합니다 — "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "OverlayCompositionSnapshot.cs",
+   "text": "(배율도 정수)."
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "OverlayCompositionSnapshot.cs",
+   "text": "(배율은 정수가 아니지만 이 크기에서는 잔차가 0이다)."
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "OverlayCompositionSnapshot.cs",
+   "text": "(실제로 이 배율 조합에서는 1~64pt 어디에도 잔차 0인 크기가 <없습니다>)."
+  },
+  {
+   "class": "중립",
+   "count": 2,
+   "file": "OverlayCompositionSnapshot.cs",
+   "text": "dwFlags 미관측"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "OverlayCompositionSnapshot.cs",
+   "text": "★ 이 건은 <pt를 옮겨서 고칠 수 없습니다> — 원인이 폰트 크기가 아니라 "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "OverlayCompositionSnapshot.cs",
+   "text": "★ 처방은 <캔버스 배율을 정수로 바꾸는 것이 아닙니다> — 그러면 UI의 물리적 크기가 "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "OverlayCompositionSnapshot.cs",
+   "text": "조상 transform 배율=<미관측>(이 프로브는 살아 있는 오브젝트를 재지 않았습니다 — "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "OverlayCompositionSnapshot.cs",
+   "text": "조상 transform 배율={transformScale:F4}"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "OverlayMonitorChoicePolicy.cs",
+   "text": "★ 사용자가 고른 자리({preferredKey})를 <b>지금 배치에서 정할 수 없습니다</b> — "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "OverlayMonitorChoicePolicy.cs",
+   "text": "★ 표시 모니터를 정하지 못했습니다(모니터 목록이 비었거나 전부 퇴화 사각형). "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "OverlayMonitorChoicePolicy.cs",
+   "text": "기본값 — 축의 시작 자리 {choice.Index}번(가로면 가장 왼쪽, 세로면 가장 위. "
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "OverlayMonitorChoicePolicy.cs",
+   "text": "모니터 목록이 비어 있습니다 — 현재 동작을 유지합니다."
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "OverlayMonitorChoicePolicy.cs",
+   "text": "사용자가 고른 자리({preferredKey})를 확정했습니다 -> {choice.Index}번"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "PackRegistry.cs",
+   "text": "이름 없는 매니페스트('{m.name}')"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "ParkourClimbState.cs",
+   "text": "없음(수평 이동 생략)"
+  },
+  {
+   "class": "중립",
+   "count": 19,
+   "file": "RagdollImpactResolver.cs",
+   "text": "루트"
+  },
+  {
+   "class": "중립",
+   "count": 6,
+   "file": "RagdollImpactResolver.cs",
+   "text": "불명"
+  },
+  {
+   "class": "중립",
+   "count": 4,
+   "file": "RagdollImpactResolver.cs",
+   "text": "비루트"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "RagdollImpactResolver.cs",
+   "text": "외력으로 판정, 임계값 초과 -> RAGDOLL 전이"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "RagdollImpactResolver.cs",
+   "text": "외력으로 판정했으나 임계값 미만 -> 전이 없음"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "RagdollImpactResolver.cs",
+   "text": "착지로 판정해 무시"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "RagdollRig.cs",
+   "text": "+1(로컬각과 동일)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "RagdollRig.cs",
+   "text": "-1(로컬각과 반대)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "RagdollRig.cs",
+   "text": "오른쪽(반전 없음)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "RagdollRig.cs",
+   "text": "왼쪽(해부학 제한 좌우반전 적용)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "RenderQualityTuner.cs",
+   "text": "★신뢰 불가: 시작 이후 런타임에 변경됨 — 백버퍼에는 반영되지 않았다. 이 실행의 MSAA 비교는 폐기할 것"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "RenderQualityTuner.cs",
+   "text": "강제 {MsaaEnvironmentVariableName}"
+  },
+  {
+   "class": "중립",
+   "count": 4,
+   "file": "RenderQualityTuner.cs",
+   "text": "기본값"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "RenderQualityTuner.cs",
+   "text": "신뢰 가능: BeforeSceneLoad에서 확정(백버퍼가 만들어지기 전)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "RenderQualityTuner.cs",
+   "text": "요청={RequestedSamples}x ({source}, {trust})"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "ReservedBarRestoreLedger.cs",
+   "text": "다음 실행이 같은 흔적을 한 번 더 갚게 됩니다(같은 값을 다시 쓰는 것이라 무해합니다)."
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "ReservedBarRestoreLedger.cs",
+   "text": "원복을 보증할 수 없으므로 이번 실행에서는 자동 숨김을 해제하지 않습니다."
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "ReservedBarRevealDirector.cs",
+   "text": " (경로: OS 세션 종료 WM_ENDSESSION — 이 직후 프로세스가 끝납니다)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "ReservedBarRevealDirector.cs",
+   "text": "(지난 실행이 기록한 원래 값: {ReservedBarRevealPolicy.DescribeAutoHide(leftoverOriginal)})"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "ReservedBarRevealDirector.cs",
+   "text": "}, 기록 버전={trace?.version ?? 0}, "
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "ReservedBarRevealDirector.cs",
+   "text": "★ 열림 — 지난 실행이 원복하지 못했습니다"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "ReservedBarRevealDirector.cs",
+   "text": "다른 OS가 남긴 흔적"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "ReservedBarRevealDirector.cs",
+   "text": "닫힘(갚을 것 없음)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "ReservedBarRevealDirector.cs",
+   "text": "없음(정상)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "ReservedBarRevealDirector.cs",
+   "text": "이 빌드보다 새로운 스키마"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "ReservedBarRevealDirector.cs",
+   "text": "읽을 수 없음"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "ReservedBarRevealDirector.cs",
+   "text": "조회 실패"
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "ReservedBarRevealPolicy.cs",
+   "text": "알 수 없는 사유입니다."
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "ReservedBarRevealPolicy.cs",
+   "text": "이 플랫폼에는 자동 숨김 제어가 없거나 상태 조회에 실패했습니다 — 남의 설정을 추측으로 건드리지 않습니다."
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "ReservedBarRevealPolicy.cs",
+   "text": "이번 실행에서 시스템 설정을 바꾸지 않았습니다 — 되돌릴 것이 없습니다."
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "ReservedBarRevealPolicy.cs",
+   "text": "자동 숨김 꺼짐(막대가 항상 보임)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "ReservedBarRevealPolicy.cs",
+   "text": "자동 숨김 켜짐(막대가 숨어 있음)"
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "ReservedBarRevealPolicy.cs",
+   "text": "자동 숨김이 원래 꺼져 있습니다 — 아무 것도 바꾸지 않았고 흔적 파일도 남기지 않았습니다."
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "ReservedBarRevealPolicy.cs",
+   "text": "자동 숨김이 켜져 있어 이번 실행 동안만 해제했습니다. 종료할 때 원래대로 되돌립니다."
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "ReservedBarRevealPolicy.cs",
+   "text": "종료합니다 — 시스템이 이미 원래 설정이라 되돌릴 것이 없어 흔적만 닫았습니다."
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "ReservedBarRevealPolicy.cs",
+   "text": "종료합니다 — 이번 실행에서 해제했던 자동 숨김을 원래대로 되돌렸습니다."
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "ReservedBarRevealPolicy.cs",
+   "text": "지난 실행의 흔적이 남아 있었지만 시스템은 이미 원래 설정이었습니다 — 아무 것도 쓰지 않고 흔적만 닫았습니다."
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "ReservedBarRevealPolicy.cs",
+   "text": "지난 실행이 원복하지 못하고 종료된 흔적을 발견했습니다 — 사용자의 원래 설정으로 먼저 되돌렸습니다."
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "RodeoCursorWatcher.cs",
+   "text": "OFF(기본값)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "RopeClimbQaOverride.cs",
+   "text": "닫힘({ChanceEnvironmentVariableName} 미설정 또는 0..1 범위를 벗어난 값)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "RopeClimbQaOverride.cs",
+   "text": "닫힘({TestWallEnvironmentVariableName} 미설정)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "RopeClimbQaOverride.cs",
+   "text": "테스트 강제 {_chanceTestOverride.Value:F2}"
+  },
+  {
+   "class": "해요체",
+   "count": 1,
+   "file": "RunawayDirector.cs",
+   "text": "지금은 집에 있어요"
+  },
+  {
+   "class": "중립",
+   "count": 2,
+   "file": "SessionExitMarker.cs",
+   "text": "전체"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "SessionVisibilityPolicy.cs",
+   "text": "관측실패"
+  },
+  {
+   "class": "중립",
+   "count": 2,
+   "file": "SessionVisibilityPolicy.cs",
+   "text": "세션잠금"
+  },
+  {
+   "class": "중립",
+   "count": 2,
+   "file": "SessionVisibilityPolicy.cs",
+   "text": "화면꺼짐"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "SessionVisibilityPolicy.cs",
+   "text": "화면꺼짐+세션잠금"
+  },
+  {
+   "class": "해요체",
+   "count": 1,
+   "file": "SettingsWindow.cs",
+   "text": "100%가 기본값입니다. 0%로 두면 혼잣말을 하지 않아요."
+  },
+  {
+   "class": "중립",
+   "count": 2,
+   "file": "SettingsWindow.cs",
+   "text": "StickMate 설정"
+  },
+  {
+   "class": "해요체",
+   "count": 1,
+   "file": "SettingsWindow.cs",
+   "text": "[✕]를 누르면 닫혀요."
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "SettingsWindow.cs",
+   "text": "다시 보이게 했습니다."
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "SettingsWindow.cs",
+   "text": "다시 보이기"
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "SettingsWindow.cs",
+   "text": "다시 조절할 수 있습니다"
+  },
+  {
+   "class": "해요체",
+   "count": 1,
+   "file": "SettingsWindow.cs",
+   "text": "대사가 떠 있는 시간은 글자 수에 맞춰 정해집니다. 천천히 읽는 편이면 늘려 두세요."
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "SettingsWindow.cs",
+   "text": "변경은 즉시 저장됩니다."
+  },
+  {
+   "class": "중립",
+   "count": 19,
+   "file": "SettingsWindow.cs",
+   "text": "숨김"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "SettingsWindow.cs",
+   "text": "이 창을 여는 방법: 캐릭터 정보창 [설정] · {ShortcutLabel.Chord("
+  },
+  {
+   "class": "중립",
+   "count": 5,
+   "file": "SettingsWindow.cs",
+   "text": "정말 종료?"
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "SettingsWindow.cs",
+   "text": "지금 만져도 화면이 바뀌지 않으므로 함께 비활성이 됩니다"
+  },
+  {
+   "class": "해요체",
+   "count": 1,
+   "file": "SettingsWindow.cs",
+   "text": "춤도 멈추고, 게임이면 캐릭터까지 숨어요. 끄면 창이 막는 클릭까지 그대로 남아요."
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "SettingsWindow.cs",
+   "text": "캐릭터를 숨긴 동안 뜨는 톱니를 화면 오른쪽 위로 되돌립니다."
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "SettingsWindow.cs",
+   "text": "캐릭터와 거기 붙은 것(말풍선·이펙트·장비·펫)만 가렸습니다. <b>이 창은 열린 채로 "
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "SettingsWindow.cs",
+   "text": "회의나 발표 중에는 꺼 두세요. 저장하지 않으니 앱을 다시 켜면 저절로 켜집니다."
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "StallAttribution.cs",
+   "text": "(계측 구간 0 — 이 프레임의 로직은 전부 미계측 경로다)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "StallAttribution.cs",
+   "text": "(계측 구간 0)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "StallAttribution.cs",
+   "text": "(구간 계측 0)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "StallAttribution.cs",
+   "text": "(태그 없는 줄 {_untaggedCount}개)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "StallAttribution.cs",
+   "text": "기타로직(우리 Update 안)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "StallAttribution.cs",
+   "text": "로그쓰기(파일 IO)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "StallAttribution.cs",
+   "text": "로직밖(렌더/프레젠트/OS 합성)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "StallAttribution.cs",
+   "text": "알수없음"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "StallAttribution.cs",
+   "text": "이번 창 스파이크 없음"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "StallAttribution.cs",
+   "text": "창열거경로(OS창목록+발판합성+전체화면판정)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "StallAttribution.cs",
+   "text": "판정불가"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "StallAttribution.cs",
+   "text": "혼합(지배적 원인 없음)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "StickMateDevTools.cs",
+   "text": "닫힘(릴리스 빌드, {EnvironmentVariableName} 미설정)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "StickMateDevTools.cs",
+   "text": "테스트 강제 OFF"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "StickMateDevTools.cs",
+   "text": "테스트 강제 ON"
+  },
+  {
+   "class": "해요체",
+   "count": 1,
+   "file": "StickMateDisplayNames.cs",
+   "text": "금이 사라지면 할 수 있어요"
+  },
+  {
+   "class": "중립",
+   "count": 3,
+   "file": "StickMateDisplayNames.cs",
+   "text": "다른 일"
+  },
+  {
+   "class": "중립",
+   "count": 3,
+   "file": "StickMateDisplayNames.cs",
+   "text": "딴 일"
+  },
+  {
+   "class": "해요체",
+   "count": 1,
+   "file": "StickMateDisplayNames.cs",
+   "text": "지금 다른 일 중이에요"
+  },
+  {
+   "class": "해요체",
+   "count": 1,
+   "file": "StickMateDisplayNames.cs",
+   "text": "지금 딴 일 중이라 못 해요"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "StickmanAgent.cs",
+   "text": "[표면회수] 등급 1 — 전체화면 앱이 떴지만 <b>게임이 아니라</b> 창·패널·팝오버·부채꼴과 "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "StickmanAgent.cs",
+   "text": "[표면회수] 등급 1 해제 — 표면을 다시 열 수 있는 상태입니다. 단, 걷힌 창/팝오버를 "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "StickmanAgent.cs",
+   "text": "★ 사용자 명시 숨김 단독이라 <b>표면은 걷지 않습니다</b> — 톱니·열려 있던 창·부채꼴은 "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "StickmanAgent.cs",
+   "text": "다른 가상 데스크톱(공개 API로 소속만 확인 — 돌아오면 스스로 복귀합니다)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "StickmanAgent.cs",
+   "text": "단, 지금은 가출(Runaway) 은신 중이라 캐릭터는 일부러 계속 숨겨둡니다(클릭해 찾으면 나타납니다)."
+  },
+  {
+   "class": "중립",
+   "count": 2,
+   "file": "StickmanAgent.cs",
+   "text": "두 축 모두 해제"
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "StickmanAgent.cs",
+   "text": "물리를 재개했습니다"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "StickmanAgent.cs",
+   "text": "미기록 — 외부 주입"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "StickmanAgent.cs",
+   "text": "발판 즉시 재폴({footholds}개) → 절대 기한 재기점 → 물리 재개, 이 프레임은 Tick하지 않습니다. "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "StickmanAgent.cs",
+   "text": "보임"
+  },
+  {
+   "class": "중립",
+   "count": 2,
+   "file": "StickmanAgent.cs",
+   "text": "사용자 직접 숨김("
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "StickmanAgent.cs",
+   "text": "열린 창과 그 클릭 차단막은 각 표면이 ArePanelsSuppressed를 폴링해 같은 프레임에 스스로 걷고, "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "StickmanAgent.cs",
+   "text": "전체화면 감지 + 사용자 직접 숨김(둘 다 켜져 있어 한쪽만 풀려도 계속 숨습니다)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "StickmanAgent.cs",
+   "text": "전체화면 숨김 중이라 발판 재폴·물리 재개는 숨김이 풀릴 때 합니다. "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "StickmanAgent.cs",
+   "text": "전체화면 앱 감지(자동 숨김, 원칙 2)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "StickmanAgent.cs",
+   "text": "지금 전체화면 숨김 중이라 물리·기한은 그쪽이 이미 얼려 두었습니다. "
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "StickmanAgent.cs",
+   "text": "화면 변경 유예의 보존 동결 중이라 물리·발판 재폴은 동결 해제 때 합니다"
+  },
+  {
+   "class": "중립",
+   "count": 15,
+   "file": "StickmanBlackboard.cs",
+   "text": " 설정"
+  },
+  {
+   "class": "중립",
+   "count": 29,
+   "file": "StickmanBlackboard.cs",
+   "text": " 유도"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "StickmanBlackboard.cs",
+   "text": "(조회 실패)"
+  },
+  {
+   "class": "중립",
+   "count": 20,
+   "file": "StickmanBlackboard.cs",
+   "text": "아래로"
+  },
+  {
+   "class": "중립",
+   "count": 20,
+   "file": "StickmanBlackboard.cs",
+   "text": "위로"
+  },
+  {
+   "class": "중립",
+   "count": 2,
+   "file": "StickmanClickHitbox.cs",
+   "text": "미지원"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "StickmanClickHitbox.cs",
+   "text": "미지원(Unity OnMouseDown만)"
+  },
+  {
+   "class": "중립",
+   "count": 7,
+   "file": "StickmanClickHitbox.cs",
+   "text": "활성"
+  },
+  {
+   "class": "중립",
+   "count": 7,
+   "file": "StressGaugeRenderer.cs",
+   "text": "경고"
+  },
+  {
+   "class": "중립",
+   "count": 2,
+   "file": "StressGaugeRenderer.cs",
+   "text": "안정"
+  },
+  {
+   "class": "중립",
+   "count": 8,
+   "file": "StressGaugeRenderer.cs",
+   "text": "주의"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "StrokeWidthDiagnostics.cs",
+   "text": " · 막 {r.MembranePixels:F2}물리픽셀 × {r.MembraneLineCount}개(그려진 최소 낱선 "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "StrokeWidthDiagnostics.cs",
+   "text": "LineRenderer 0개(아직 캐릭터가 그려지기 전 — 획 두께 미측정)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "StrokeWidthDiagnostics.cs",
+   "text": "LineRenderer {r.LineCount}개 획 두께 실측 {r.MinPixels:F2}~{r.MaxPixels:F2} 물리픽셀 "
+  },
+  {
+   "class": "중립",
+   "count": 3,
+   "file": "StrokeWidthDiagnostics.cs",
+   "text": "★ 하한 미달 — 결함"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "StrokeWidthDiagnostics.cs",
+   "text": "하한 지켜짐"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "SuspendedOverlayGate.cs",
+   "text": "{logTag} 캐릭터가 돌아와 {what}도 다시 보입니다(멈춰 있던 자리에서 이어집니다)."
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "SuspendedOverlayGate.cs",
+   "text": "{logTag} 캐릭터가 숨겨져 {what}도 함께 감춥니다(원칙 2) — "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "SystemTrayPresencePolicy.cs",
+   "text": "StickMate 종료"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "SystemTrayPresencePolicy.cs",
+   "text": "설정 열기"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "SystemTrayPresencePolicy.cs",
+   "text": "캐릭터 다시 보이기"
+  },
+  {
+   "class": "중립",
+   "count": 3,
+   "file": "SystemTrayPresencePolicy.cs",
+   "text": "캐릭터 숨기기"
+  },
+  {
+   "class": "중립",
+   "count": 5,
+   "file": "ThrowTumbleState.cs",
+   "text": "반시계"
+  },
+  {
+   "class": "중립",
+   "count": 10,
+   "file": "ThrowTumbleState.cs",
+   "text": "시계"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "TodoBoardPopover.cs",
+   "text": "(날짜 미상)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "TodoBoardPopover.cs",
+   "text": ", 소프트캡 {softCap}건 초과"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "TodoBoardPopover.cs",
+   "text": "{anchor.Month}월 · 완료 {monthCompleted}건 · 남은 {monthRemaining}건"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "TodoBoardPopover.cs",
+   "text": "{d.Month}월 {d.Day}일 ({WeekdayNames[(int)d.DayOfWeek]}) ▾"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "TodoBoardPopover.cs",
+   "text": "{d.Month}월 {d.Day}일 · 완료 {tally.Completed}건 · 남은 {tally.Remaining}건"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "TodoBoardPopover.cs",
+   "text": "{d.Year}년 {d.Month}월"
+  },
+  {
+   "class": "해요체",
+   "count": 1,
+   "file": "TodoBoardPopover.cs",
+   "text": "내일 할 일을 미리 적어둘 수 있어요"
+  },
+  {
+   "class": "해요체",
+   "count": 1,
+   "file": "TodoBoardPopover.cs",
+   "text": "내일 할일을 적어보세요"
+  },
+  {
+   "class": "중립",
+   "count": 12,
+   "file": "TodoBoardPopover.cs",
+   "text": "삭제"
+  },
+  {
+   "class": "해요체",
+   "count": 1,
+   "file": "TodoBoardPopover.cs",
+   "text": "삭제할까요?"
+  },
+  {
+   "class": "해요체",
+   "count": 3,
+   "file": "TodoBoardPopover.cs",
+   "text": "아직 비어 있어요"
+  },
+  {
+   "class": "중립",
+   "count": 30,
+   "file": "TodoBoardPopover.cs",
+   "text": "오늘"
+  },
+  {
+   "class": "해요체",
+   "count": 1,
+   "file": "TodoBoardPopover.cs",
+   "text": "오늘 할일을 적어보세요"
+  },
+  {
+   "class": "해요체",
+   "count": 2,
+   "file": "TodoBoardPopover.cs",
+   "text": "오늘은 아직 비어 있어요"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "TodoBoardPopover.cs",
+   "text": "완료 {_slots[_scroll + dividerSlot].CompletedCount}건"
+  },
+  {
+   "class": "해요체",
+   "count": 1,
+   "file": "TodoBoardPopover.cs",
+   "text": "완료한 일은 여기서 적을 수 없어요"
+  },
+  {
+   "class": "해요체",
+   "count": 1,
+   "file": "TodoBoardPopover.cs",
+   "text": "완료한 일은 지우지 않고 모아둬요."
+  },
+  {
+   "class": "해요체",
+   "count": 1,
+   "file": "TodoBoardPopover.cs",
+   "text": "완료한 일이 아직 없어요"
+  },
+  {
+   "class": "해요체",
+   "count": 1,
+   "file": "TodoBoardPopover.cs",
+   "text": "완료함 {TodoListModel.CompletedArchive.Count}건 · 앱을 껐다 켜도 남아요"
+  },
+  {
+   "class": "해요체",
+   "count": 2,
+   "file": "TodoBoardPopover.cs",
+   "text": "위에 적어두면 제가 가끔 챙겨줄게요."
+  },
+  {
+   "class": "해요체",
+   "count": 1,
+   "file": "TodoBoardPopover.cs",
+   "text": "이 날은 적어둔 게 없어요"
+  },
+  {
+   "class": "해요체",
+   "count": 1,
+   "file": "TodoBoardPopover.cs",
+   "text": "이 날짜엔 새로 적을 수 없어요"
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "TodoBoardPopover.cs",
+   "text": "체크한 일이 여기 모입니다."
+  },
+  {
+   "class": "중립",
+   "count": 9,
+   "file": "TodoBoardPopover.cs",
+   "text": "추가"
+  },
+  {
+   "class": "중립",
+   "count": 10,
+   "file": "TodoBoardPopover.cs",
+   "text": "취소"
+  },
+  {
+   "class": "해요체",
+   "count": 4,
+   "file": "TodoBoardPopover.cs",
+   "text": "할일을 적어보세요"
+  },
+  {
+   "class": "해요체",
+   "count": 1,
+   "file": "TodoBoardPopover.cs",
+   "text": "할일이 많아요. 먼저 정리해볼까요?"
+  },
+  {
+   "class": "중립",
+   "count": 4,
+   "file": "TodoPostItWidget.cs",
+   "text": "★없음"
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "TodoPostItWidget.cs",
+   "text": "★없음 — 같은 GameObject에 톱니가 없어 카드가 톱니를 덮을 수 있습니다"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "TodoPostItWidget.cs",
+   "text": "★없음(Button.onClick이 영원히 발동하지 않는다)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "TodoPostItWidget.cs",
+   "text": "★없음(uGUI 클릭 불가)"
+  },
+  {
+   "class": "중립",
+   "count": 2,
+   "file": "TodoPostItWidget.cs",
+   "text": "무반응 자동"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "TodoPostItWidget.cs",
+   "text": "미지원 — uGUI 경로만"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "TodoPostItWidget.cs",
+   "text": "배선됨(지금 가로 인셋 {ResolveRightInsetPoints():F2}pt)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "TodoPostItWidget.cs",
+   "text": "사용자 동작"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "TodoPostItWidget.cs",
+   "text": "준비됨"
+  },
+  {
+   "class": "해요체",
+   "count": 1,
+   "file": "TodoReminderDirector.cs",
+   "text": "아직 적어둔 할일이 없어요"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "TopmostBandOcclusion.cs",
+   "text": "(직전 이벤트 없음)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "TopmostBandOcclusion.cs",
+   "text": "TOPMOST비트복구"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "TopmostBandOcclusion.cs",
+   "text": "TOPMOST비트잃음"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "TopmostBandOcclusion.cs",
+   "text": "밴드스캔:가림없음"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "TopmostBandOcclusion.cs",
+   "text": "우리가재적용"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "TopmostBandOcclusion.cs",
+   "text": "전경창바뀜"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "TopmostBandOcclusion.cs",
+   "text": "전체화면숨김OFF"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "TopmostBandOcclusion.cs",
+   "text": "전체화면숨김ON"
+  },
+  {
+   "class": "해요체",
+   "count": 1,
+   "file": "UnsummonedSurfaceCommandReason.cs",
+   "text": "전체화면이 끝나면 StickMate 창과 버튼을 다 닫고, 3초쯤 뒤 다시 열면 돼요"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "ViewerPresence.cs",
+   "text": "(조회실패)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "ViewerPresence.cs",
+   "text": "화면꺼짐={DisplayAsleep}, 세션잠금={SessionLocked}, 무입력={SecondsSinceUserInput:F0}초, "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "VirtualDesktopSuspendPolicy.cs",
+   "text": "다른 데스크톱"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "VirtualDesktopSuspendPolicy.cs",
+   "text": "모름(조회실패 — 숨지 않습니다)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "VirtualDesktopSuspendPolicy.cs",
+   "text": "현재 데스크톱"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WalkState.cs",
+   "text": "꺼짐"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WalkState.cs",
+   "text": "오른쪽"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WalkState.cs",
+   "text": "왼쪽"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WalkState.cs",
+   "text": "켜짐"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "Win32WindowService.cs",
+   "text": " (게임이 아니므로 **캐릭터는 남기고** 창·패널·클릭 차단막만 걷습니다 — 등급 1)."
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "Win32WindowService.cs",
+   "text": " (아직 창 부착 전 — Enforcer가 재적용 예정)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "Win32WindowService.cs",
+   "text": "GetWindowTextW(문서화된 폴백)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "Win32WindowService.cs",
+   "text": "InternalGetWindowText(커널 구조체 직접 읽기)"
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "Win32WindowService.cs",
+   "text": "[Win32WindowService] 오버레이 창 최소화 해제 — 원점/배율 보고를 재개합니다."
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "Win32WindowService.cs",
+   "text": "[Win32WindowService] 오버레이 창이 최소화됨(Win+D/최소화 추정) — 원점/배율 "
+  },
+  {
+   "class": "중립",
+   "count": 8,
+   "file": "Win32WindowService.cs",
+   "text": "갱신"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "Win32WindowService.cs",
+   "text": "미결정"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "Win32WindowService.cs",
+   "text": "보고 **거부됨**(위생 검사) — 좌표계는 직전 값 유지"
+  },
+  {
+   "class": "해요체",
+   "count": 1,
+   "file": "WindowCrashDirector.cs",
+   "text": "아직 금이 안 사라졌어요"
+  },
+  {
+   "class": "해요체",
+   "count": 1,
+   "file": "WindowCrashDirector.cs",
+   "text": "지금 앞에 있는 창이 없어요"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowTheftDirector.cs",
+   "text": "(너무 넓음)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowTheftDirector.cs",
+   "text": "(통과)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowTheftDirector.cs",
+   "text": "{sourceLabel}이 비어 있습니다(아직 첫 폴링 전이거나 열거된 창이 하나도 없음)."
+  },
+  {
+   "class": "해요체",
+   "count": 1,
+   "file": "WindowTheftDirector.cs",
+   "text": "다른 창 목록을 읽을 수 없어요"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowTheftDirector.cs",
+   "text": "발판 목록(가려짐 필터 통과분 — 원본 채널 미지원 플랫폼 폴백)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowTheftDirector.cs",
+   "text": "소스={sourceLabel}, 실제 창 후보 {realCount}개가 전부 폭 조건을 넘었습니다 [{widths}]. {limit} "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowTheftDirector.cs",
+   "text": "소스={sourceLabel}인데 실제 창이 0개입니다(합성 발판 {syntheticCount}개는 Dock/안전망이라 제외). "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowTheftDirector.cs",
+   "text": "아니오(발판 목록에도 보임)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowTheftDirector.cs",
+   "text": "예(다른 창 뒤 — 발판 목록에는 없음)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowTheftDirector.cs",
+   "text": "원본 창 목록(가려짐 무관)"
+  },
+  {
+   "class": "해요체",
+   "count": 1,
+   "file": "WindowTheftDirector.cs",
+   "text": "지금 붙잡을 만한 작은 창이 없어요"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowTheftDirector.cs",
+   "text": "캐릭터 신장을 OS 픽셀로 환산하지 못했습니다(콜라이더/카메라 배선 확인 필요)."
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsCompositionProbe.cs",
+   "text": "Alpha(DWM확장프레임)"
+  },
+  {
+   "class": "중립",
+   "count": 3,
+   "file": "WindowsCompositionProbe.cs",
+   "text": "미관측"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsFootholdFilter.cs",
+   "text": "가상 화면 밖"
+  },
+  {
+   "class": "중립",
+   "count": 2,
+   "file": "WindowsFootholdFilter.cs",
+   "text": "너무 작음"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsFootholdFilter.cs",
+   "text": "다른 창에 완전히 가려짐"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsFootholdFilter.cs",
+   "text": "사각형 폭/높이 0 이하"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsFootholdFilter.cs",
+   "text": "알 수 없음"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsFootholdFilter.cs",
+   "text": "알파≈0(투명·클릭관통 오버레이)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsFootholdFilter.cs",
+   "text": "우리 자신의 창"
+  },
+  {
+   "class": "중립",
+   "count": 2,
+   "file": "WindowsFootholdFilter.cs",
+   "text": "제목 없음"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsFootholdFilter.cs",
+   "text": "채택"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsFootholdFilter.cs",
+   "text": "최소화"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsGameProcessProbe.cs",
+   "text": "(실행 파일 경로 조회 실패)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsGameProcessProbe.cs",
+   "text": "게임바 등록 {_registeredGameExePaths.Count}건"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsGameProcessProbe.cs",
+   "text": "게임바 목록 조회 실패({_registryFailureNote})"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsGameProcessProbe.cs",
+   "text": "전경 실행 파일=(조회 보류 — 경로 연속 실패 {_pathRetry.ConsecutiveFailures}회), "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsGameProcessProbe.cs",
+   "text": "전경 실행 파일={exe}, {where} -> 게임={isGame}"
+  },
+  {
+   "class": "중립",
+   "count": 2,
+   "file": "WindowsOverlayStateEnforcer.cs",
+   "text": " ★상한 도달"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsOverlayStateEnforcer.cs",
+   "text": " ★상한 도달 — 더는 부르지 않는다"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsOverlayStateEnforcer.cs",
+   "text": ".NET폴백"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsOverlayStateEnforcer.cs",
+   "text": "MSAA 꺼짐(계단 현상 그대로 노출)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsOverlayStateEnforcer.cs",
+   "text": "isTopmost(캐시)={_controller.isTopmost}, "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsOverlayStateEnforcer.cs",
+   "text": "★ 요청({requested})과 실측({actual})이 다름 — 하드웨어/렌더경로가 낮춘 것"
+  },
+  {
+   "class": "중립",
+   "count": 24,
+   "file": "WindowsOverlayStateEnforcer.cs",
+   "text": "네이티브"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsOverlayStateEnforcer.cs",
+   "text": "미달 — 다음 시도에서 재적용"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsOverlayStateEnforcer.cs",
+   "text": "생략(이미 목표값)"
+  },
+  {
+   "class": "중립",
+   "count": 6,
+   "file": "WindowsOverlayStateEnforcer.cs",
+   "text": "성공"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsOverlayStateEnforcer.cs",
+   "text": "성공(오차 1px 이내)"
+  },
+  {
+   "class": "중립",
+   "count": 16,
+   "file": "WindowsOverlayStateEnforcer.cs",
+   "text": "실패"
+  },
+  {
+   "class": "중립",
+   "count": 21,
+   "file": "WindowsOverlayStateEnforcer.cs",
+   "text": "실행"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsOverlayStateEnforcer.cs",
+   "text": "없음(백버퍼 직접)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsOverlayStateEnforcer.cs",
+   "text": "요청대로 적용됨 — 가장자리 알파 단계 {actual + 1}개(0 포함)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsOverlayStateEnforcer.cs",
+   "text": "있음(RT 우회 — MSAA 경로 이탈 의심)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsOverlayStateEnforcer.cs",
+   "text": "컨트롤러 없음"
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "WindowsToolWindowStyleControl.cs",
+   "text": "★ 이 비트로는 안 빠집니다"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsToolWindowStyleControl.cs",
+   "text": "변화 없음"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsToolWindowStyleControl.cs",
+   "text": "부여"
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "WindowsToolWindowStyleControl.cs",
+   "text": "이 비트로 제외됩니다"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsToolWindowStyleControl.cs",
+   "text": "이미 서 있음"
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "WindowsToolWindowStyleControl.cs",
+   "text": "지금부터 제외됩니다"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsTopmostWatchdog.cs",
+   "text": " / 라이브러리 보고: {describeOverlay()}"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsTopmostWatchdog.cs",
+   "text": " [{age:F1}초 전 관측]"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsTopmostWatchdog.cs",
+   "text": "(없음)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsTopmostWatchdog.cs",
+   "text": "0x{hWnd.ToInt64():X} {process} (사각형 조회 실패)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsTopmostWatchdog.cs",
+   "text": "0x{hWnd.ToInt64():X}(이미 파괴된 핸들)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsTopmostWatchdog.cs",
+   "text": "★ 막대 아닌 창이 위에 있음 0x{_lastOccluderHwnd.ToInt64():X} {_lastOccluderRect} "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsTopmostWatchdog.cs",
+   "text": "★ 밀림 감지 — 되돌리기에 실패했습니다(재적용 후에도 WS_EX_TOPMOST가 없음)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsTopmostWatchdog.cs",
+   "text": "★ 밴드 내 가림 — 하단 예약 막대가 **아닌** topmost 창이 우리를 덮고 있습니다. "
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "WindowsTopmostWatchdog.cs",
+   "text": "★ 우리가 아래(우리 #{overlayRank} > 전경 #{foregroundRank}) — 캐릭터가 가려집니다"
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "WindowsTopmostWatchdog.cs",
+   "text": "★ 우리가 아래(우리는 일반 밴드 / 전경 창이 topmost 밴드) — 캐릭터가 가려집니다"
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "WindowsTopmostWatchdog.cs",
+   "text": "★ 우리를 덮는 창이 작업표시줄에서 **다른 창**으로 바뀌었습니다"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsTopmostWatchdog.cs",
+   "text": "같은 밴드지만 {MaxZOrderWalk}개 안에서 순위를 못 찾았습니다(판정 보류)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsTopmostWatchdog.cs",
+   "text": "미관측(항상위 비트가 살아 있을 때만 스캔한다 — 아직 한 번도 못 돌았다)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsTopmostWatchdog.cs",
+   "text": "밀림 감지 — 전체화면 게임 숨김 중이라 일부러 되돌리지 않습니다(원칙 2)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsTopmostWatchdog.cs",
+   "text": "밴드 내 순위가 뒤집혔습니다 — 우리 위의 창은 **하단 예약 막대(작업표시줄)**입니다. "
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsTopmostWatchdog.cs",
+   "text": "실행(누적 {_reassertCount}회)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsTopmostWatchdog.cs",
+   "text": "안 함"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsTopmostWatchdog.cs",
+   "text": "우리 위에 아무 창도 없음{stamp}"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsTopmostWatchdog.cs",
+   "text": "우리가 위(topmost 밴드 / 전경 창은 일반 밴드 — 순회 0개)"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsTopmostWatchdog.cs",
+   "text": "우리가 위(우리 #{overlayRank} < 전경 #{foregroundRank})"
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "WindowsTopmostWatchdog.cs",
+   "text": "우리를 덮는 창이 다시 하단 예약 막대뿐이 되었습니다"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsTopmostWatchdog.cs",
+   "text": "전경 창 없음(GetForegroundWindow=0) — 순위 비교 생략"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsTopmostWatchdog.cs",
+   "text": "전경 창이 우리 자신"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsTopmostWatchdog.cs",
+   "text": "판정 보류(순회 상한 {MaxZOrderWalk} 초과 또는 조회 실패){stamp}"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "WindowsTopmostWatchdog.cs",
+   "text": "하단 예약 막대만 위에 있음 0x{_lastOccluderHwnd.ToInt64():X} {_lastOccluderRect} "
+  }
+ ],
+ "note": "기계가 읽는 기준. out.txt의 목록은 표시용이라 되읽지 마라(패딩·잘림).",
+ "retired": [
+  {
+   "count": 0,
+   "file": "CharacterInfoWindow.Tabs.cs",
+   "note": "2026-09-27 재생성 시점에 원천에서 사라짐 — 기대 0으로 보존(부활하면 rc=2)",
+   "text_sha": "44ce4f7c241ecb5c"
+  },
+  {
+   "count": 0,
+   "file": "FocusSessionPopover.cs",
+   "note": "2026-09-27 재생성 시점에 원천에서 사라짐 — 기대 0으로 보존(부활하면 rc=2)",
+   "text_sha": "22646a5d94111210"
+  }
+ ]
+}

@@ -770,7 +770,7 @@ public void StartSpinForTests() => _spinTimer = 0f;
                 $"{VisualRadiusPoints + HitPaddingPoints:F2}pt, 기어 팁 반지름 {TipRadiusPoints:F1}pt / " +
                 $"잇수 {ToothCount} / 획 {StrokeWidthPoints:F1}pt + 역상 헤일로 {HaloWidth:F1}pt, " +
                 $"시각 지름 {VisualRadiusPoints * 2f:F1}pt). 클릭하면 기어가 돌고 그 뒤 **아이콘 전용** 부채꼴 버튼 " +
-                $"{GearRadialMenuWidget.ButtonCount}개([집중 모드]/[캐릭터]/[오늘 할일]/[행동], " +
+                $"{GearRadialMenuWidget.ButtonCount}개([집중 모드]/[캐릭터]/[오늘 할일]/[행동]/[{GearRadialMenuWidget.NameOf((int)GearMenuButton.Quit)}], " +
                 $"Ø{GearRadialMenuWidget.ButtonDiameterPoints:F0}pt / 궤도 " +
                 $"{GearRadialMenuWidget.OrbitRadiusPoints:F0}pt / 간격 " +
                 $"{GearRadialMenuWidget.ButtonAngleStepDegrees:F0}도)가 **회전과 동시에** 촤르륵 펼쳐집니다. " +

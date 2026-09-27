@@ -1,13 +1,13 @@
 [
  {
   "file": "Core/StickmanAgent.cs",
-  "line": 447,
+  "line": 487,
   "callee": "ExpireUserSummonGrant",
   "text": "등급 1 진입 — 이미 떠 있던 표면은 예외 없이 걷는다"
  },
  {
   "file": "Core/StickmanAgent.cs",
-  "line": 1827,
+  "line": 1930,
   "callee": "ExpireUserSummonGrant",
   "text": "등급 2 진입("
  },
@@ -55,25 +55,25 @@
  },
  {
   "file": "Interaction/ActionCommandPopover.cs",
-  "line": 593,
+  "line": 646,
   "callee": "Execute",
   "text": "행동 명령창 [{CommandNames[i]}]"
  },
  {
   "file": "Interaction/ActionCommandPopover.cs",
-  "line": 622,
+  "line": 675,
   "callee": "TryRecallNow",
   "text": "행동 명령창 [돌아와!]"
  },
  {
   "file": "Interaction/ActionCommandPopover.cs",
-  "line": 674,
+  "line": 727,
   "callee": "Close",
   "text": "[돌아와!] 소환"
  },
  {
   "file": "Interaction/ActionCommandPopover.cs",
-  "line": 675,
+  "line": 728,
   "callee": "CloseAllExcept",
   "text": "[돌아와!] 소환 — 일회성 응답이라 창에 남을 것이 없다"
  },
@@ -85,31 +85,31 @@
  },
  {
   "file": "Interaction/CharacterInfoWindow.cs",
-  "line": 945,
+  "line": 965,
   "callee": "TryGrantUserSummon",
   "text": "정보창 열기({source})"
  },
  {
   "file": "Interaction/CharacterInfoWindow.cs",
-  "line": 948,
+  "line": 968,
   "callee": "CloseOverlappingSurfaces",
   "text": "캐릭터 창 열림({source})"
  },
  {
   "file": "Interaction/CharacterInfoWindow.cs",
-  "line": 1036,
+  "line": 1056,
   "callee": "Close",
   "text": "전체화면 감지 — 자동 숨김(비침해 원칙 2)"
  },
  {
   "file": "Interaction/CharacterInfoWindow.cs",
-  "line": 1529,
+  "line": 1553,
   "callee": "Close",
   "text": "[✕] 클릭"
  },
  {
   "file": "Interaction/CharacterInfoWindow.cs",
-  "line": 1569,
+  "line": 1593,
   "callee": "OpenSettings",
   "text": "정보창 헤더 [설정]"
  },
@@ -211,103 +211,103 @@
  },
  {
   "file": "Interaction/PopoverPanel.cs",
-  "line": 511,
+  "line": 522,
   "callee": "Close",
   "text": "무입력 {IdleAutoCloseSeconds:F0}초 — 자리를 비운 것으로 보고 차단막까지 거둡니다(원칙"
  },
  {
   "file": "Interaction/PopoverPanel.cs",
-  "line": 893,
+  "line": 904,
   "callee": "Close",
   "text": "[✕] 클릭"
  },
  {
   "file": "Interaction/PopoverPanel.cs",
-  "line": 1082,
+  "line": 1093,
   "callee": "Close",
   "text": "[✕] 클릭"
  },
  {
   "file": "Interaction/SettingsWindow.cs",
-  "line": 181,
+  "line": 190,
   "callee": "Open",
   "text": "전체화면이 {away:F0}초 만에 지나가 자동으로 닫혔던 창을 돌려놓습니다 "
  },
  {
   "file": "Interaction/SettingsWindow.cs",
-  "line": 182,
+  "line": 191,
   "callee": "Open",
   "text": "(우리가 닫은 게 아니라 빼앗은 것이므로 되돌립니다)"
  },
  {
   "file": "Interaction/SettingsWindow.cs",
-  "line": 648,
+  "line": 657,
   "callee": "TryGrantUserSummon",
   "text": "설정창 열기({source})"
  },
  {
   "file": "Interaction/SettingsWindow.cs",
-  "line": 659,
+  "line": 668,
   "callee": "CloseOverlappingSurfaces",
   "text": "설정창 열림({source})"
  },
  {
   "file": "Interaction/SettingsWindow.cs",
-  "line": 721,
+  "line": 730,
   "callee": "ReopenFromSheet",
   "text": "설정창 닫힘({source}) — 열기 전에 보던 창으로 복귀"
  },
  {
   "file": "Interaction/SettingsWindow.cs",
-  "line": 772,
+  "line": 781,
   "callee": "Close",
   "text": "전체화면 감지 — 자동 숨김(비침해 원칙 2)"
  },
  {
   "file": "Interaction/SettingsWindow.cs",
-  "line": 1043,
+  "line": 1052,
   "callee": "Close",
   "text": "[✕] 클릭"
  },
  {
   "file": "Interaction/SettingsWindow.cs",
-  "line": 1050,
+  "line": 1059,
   "callee": "SetTab",
   "text": "탭 클릭"
  },
  {
   "file": "Interaction/SettingsWindow.cs",
-  "line": 1247,
+  "line": 1256,
   "callee": "Close",
   "text": "[✕] 클릭"
  },
  {
   "file": "Interaction/SettingsWindow.cs",
-  "line": 1329,
+  "line": 1338,
   "callee": "SetTab",
   "text": "탭 클릭"
  },
  {
   "file": "Interaction/SettingsWindow.cs",
-  "line": 1451,
+  "line": 1460,
   "callee": "SetMutedForThisSession",
   "text": "설정창 [일반] 표시"
  },
  {
   "file": "Interaction/SettingsWindow.cs",
-  "line": 1588,
+  "line": 1597,
   "callee": "SetUserHidden",
   "text": "설정창 [일반] 지금 즉시"
  },
  {
   "file": "Interaction/SettingsWindow.cs",
-  "line": 1617,
+  "line": 1626,
   "callee": "ReturnToDefaultPosition",
   "text": "설정창 [일반] 톱니 위치 [처음 자리로]"
  },
  {
   "file": "Interaction/SettingsWindow.cs",
-  "line": 1726,
+  "line": 1735,
   "callee": "Request",
   "text": "설정창 슬라이더"
  },
@@ -325,19 +325,19 @@
  },
  {
   "file": "Interaction/TodoPostItWidget.cs",
-  "line": 861,
+  "line": 869,
   "callee": "CollapseExpansion",
   "text": "카드 위에서 {IdleAutoCollapseSeconds:F0}초 동안 아무 일도 없었습니다 — "
  },
  {
   "file": "Interaction/TodoPostItWidget.cs",
-  "line": 862,
+  "line": 870,
   "callee": "CollapseExpansion",
   "text": "펼쳐 둔 만큼의 클릭관통 해제 면적을 무기한 남기지 않습니다(원칙 2)"
  },
  {
   "file": "Interaction/TodoPostItWidget.cs",
-  "line": 973,
+  "line": 981,
   "callee": "CollapseExpansion",
   "text": "[+N개 더보기] 재클릭"
  },
