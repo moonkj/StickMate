@@ -61,12 +61,21 @@ subStat             = 없음(NoStat). SubStatOfItem 도 cohortId != 0 이면 표
 | 채움 윤곽 펜(색면 조건) | **0.21818 R** (배율 0.509 이상 상수) | `FillOutlineBudgetInHeadRadii` |
 | 쌍별 실루엣 래칫 | **0.51580 R** = 1.20 W@0.60 | `sectors.SILHOUETTE_RATCHET_R` |
 | 머리 잉크 원반 | **1.184213 R** | `r24_hats.HEAD_R_COVER` |
-| 카드 | **58pt**, 획 **1.99375pt**, 슬롯 고정 배율 + 넘침 축소(절대 확대 없음) | `CharacterInfoWindow.cs:313` · `AccessoryCardIcon.Frame` |
-| 슬롯행 아이콘 | **24pt**, 획 **0.825pt** | `CharacterInfoWindow.cs:195` |
+| 카드 | **58pt**, 획 **1.99375pt**, 슬롯 고정 배율 + 넘침 축소(절대 확대 없음) | ~~`CharacterInfoWindow.cs:313`~~(줄 번호는 **죽은 키**) `CharacterInfoWindow.IconSize` · `AccessoryCardIcon.Frame` |
+| 슬롯행 아이콘 | **24pt**, 획 **0.825pt** | ~~`CharacterInfoWindow.cs:195`~~(줄 번호는 **죽은 키**) `CharacterInfoWindow.SlotIconSize` |
+| 카드(비트맵) | **72pt**, 획 개념 없음 | `BitmapIconSize = ThumbHeight 78 − BitmapIconInset 6` |
+| 상세 썸네일 | 벡터 **38pt** 획 **1.30625pt** / 비트맵 **46pt** | `DetailThumbArtSize` · `BitmapDetailArtSize = DetailThumbSize 52 − 6` |
+| 머리 지름(전 구간) | **5.43pt @0.35** · 9.31pt @0.60 · 11.63pt @0.75 · 15.51pt @1.00 | `StickConfig.Min/MaxCharacterScale` + 위 상수 |
 | 팔 길이 | **3.40909 R** (= 0.32972 H, 상완 0.38 + 전완 0.37) | `MOTION_SPEC 23-2` |
 | 잉크 문턱 | θ_ink = **0.3476** (면색 대비 3.0:1), 1× 최악 위상 알파 = `t_pt − 0.5` | `DESIGN_FAN_MENU_ICONS` R26-1 |
 
-> ★ **32pt는 이 앱에 없다**(브리핑이 경고한 그대로). **그리고 44px도 이제 없다** — 58pt와 24pt 둘이다(J-4).
+> ★ **32pt는 이 앱에 없다**(브리핑이 경고한 그대로). **그리고 44px도 이제 없다** — ~~58pt와 24pt 둘이다~~(J-4).
+> ★★ **정정 (2026-09-27 · design-equipment) — 「둘」이 아니라 다섯이다.** 벡터 셋(카드 58 · 상세 38 · 슬롯행 24)과
+> 비트맵 둘(카드 72 · 상세 46)이고, 비트맵은 `cardIconOverride`를 선언한 자리에서 **벡터를 이긴다**
+> (내 실측: 선언 **13개** = 팩 12 + 왕관 1 · 몸 override는 왕관 **1개**).
+> 이 문서의 신규 12종 중 팩 계통이 그 13개에 들어가므로, **카드·슬롯행·상세 세 칸은 비트맵이 그린다**.
+> 그리고 **J-5(슬롯행 0.825pt 잉크 문턱 미달)는 벡터 칸에만 걸린다** — 비트맵이 이긴 자리에는 획이 없다.
+> ★ 슬롯행 자체가 **4행 · [장비] 탭 전용**이라 FX·PET·HAIR는 그 표면에 아예 없다(`SectionCount = 4`).
 
 ---
 

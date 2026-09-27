@@ -1,0 +1,155 @@
+╔══ 출하 다섯 표면 재측정 (design-equipment, 2026-09-27) ══╗
+  교정 23건 전건 통과(양성·음성·오탐 포함)
+  입력 sha16: CardShapeGolden=ee193aa4da017933 · FxPetCardGolden=e3bca6e6e30bfe48
+  판독 대조(파일 자신의 TOTAL 행): pieces 137/137 · body 99/99 · card 96/96 → 일치
+  FX/PET 판독: PIECE 50 · 아이템 12 (파일 TOTAL (50, 12))
+
+╔══ ① 출하 표면은 **다섯**이다 (32pt·44px 는 이 앱에 없다) ══╗
+  표면                       한 변       획(pt)      1×알파        판정  출처
+  카드(벡터)                   58pt     1.99375     1.000        통과  CharacterInfoWindow.IconSize
+  카드(비트맵)                  72pt         비트맵         —         —  BitmapIconSize = ThumbHeight 78 − BitmapIconInset 6
+  상세 썸네일(벡터)               38pt     1.30625     0.806        통과  CharacterInfoWindow.DetailThumbArtSize
+  상세 썸네일(비트맵)              46pt         비트맵         —         —  BitmapDetailArtSize = DetailThumbSize 52 − 6
+  슬롯행                      24pt     0.82500     0.325       ★미달  CharacterInfoWindow.SlotIconSize
+  (1× 알파 = t_pt − 0.5, 문턱 θ_ink = 0.3476 — 출처 DESIGN_FAN_MENU_ICONS R26-1. 2× 에서는 1.000)
+
+  착용(몸) 표면 — 머리 지름과 두 획 계통
+        배율        머리 지름      v1 획 W(R)       계약v2 실폭(R)
+      0.35        5.43pt        0.73685          0.36843
+      0.60        9.31pt        0.42983          0.21492
+      0.75       11.63pt        0.34386          0.17193
+      1.00       15.51pt        0.25790          0.12895
+  참고 — 은퇴한 44px: 옛 자 1.87pt / 현행 자로 재면 1.5125pt(옛의 81%)
+  ★ 획 배수(획 단위)는 세 벡터 표면에서 **같다** — size 가 분자·분모에서 약분된다.
+     세 표면이 실제로 갈라지는 축은 **절대 pt** 와 그에 걸린 잉크 문턱이다(위 표).
+
+╔══ ② 인계본 16종 — 벡터 표면 3곳 (획 배수는 공통, pt 는 표면마다) ══╗
+  아이템            슬롯         최단변       잉크 | 58pt / 38pt / 24pt 최단변 실측(pt)
+  EyesSunglasses EYES         —     1.86 | — / — / —  축소 1.000
+  EyesRound      EYES         —     2.36 | — / — / —  축소 1.000
+  EyesGoggles    EYES         —     1.30 | — / — / —  축소 1.000
+  EyesMonocle    EYES         —     2.91 | — / — / —  축소 1.000
+  HeadCap        HEAD     2.51획     4.55 |  5.00 /  3.27 /  2.07  축소 1.000
+  HeadBeanie     HEAD    10.45획     3.64 | 20.84 / 13.66 /  8.62  축소 1.000
+  HeadFedora     HEAD     2.46획     3.94 |  4.90 /  3.21 /  2.03  축소 1.000
+  HeadCrown      HEAD     2.99획     1.73 |  5.96 /  3.90 /  2.47  축소 1.000
+  NeckBowTie     NECK         —     3.64 | — / — / —  축소 1.000
+  NeckStriped    NECK     1.78획     3.03 |  3.55 /  2.33 /  1.47  축소 1.000
+  NeckScarf      NECK     3.86획     2.00 |  7.70 /  5.05 /  3.19  축소 1.000
+  NeckBell       NECK     8.18획     1.55 | 16.31 / 10.69 /  6.75  축소 1.000
+  BackCape       BACK     2.37획    10.91 |  4.73 /  3.10 /  1.96  축소 1.000
+  BackLongCape   BACK     2.59획     2.36 |  5.17 /  3.38 /  2.14  축소 1.000
+  BackWings      BACK         —     6.06 | — / — / —  축소 1.000
+  BackBackpack   BACK         —     3.64 | — / — / —  축소 1.000
+
+  카테고리별 최악(하한: 변 1.0획 · 잉크 1.5획):
+   HEAD  변 2.46획   잉크 3.94획  (HeadFedora)
+   EYES  변 —       잉크 1.30획  (EyesGoggles)
+   NECK  변 1.78획   잉크 3.03획  (NeckStriped)
+   BACK  변 2.37획   잉크 10.91획  (BackCape)
+  ★ 여기 없는 8종(HEAD 4·5 · EYES 4·5 · NECK 4·5 · BACK 4·5 = v1 잔여)은 골든에 행이 없다 —
+     이 자로는 **미확인**이다. 그 8종을 재려면 프로덕션 좌표 덤프가 필요하다(Tools/ShapeDump).
+
+╔══ ③ FX/PET 12종 — 벡터 표면 3곳 (★ 슬롯행에는 애초에 뜨지 않는다 → ⑥) ══╗
+  아이템              슬롯        최단변       잉크 | 58 / 38 / 24pt 최단변(pt)
+  없음               FX          —     9.55 | — / — / —
+  발자국              FX          —     3.18 | — / — / —
+  반짝임              FX      3.26획     1.89 |  6.50 /  4.26 /  2.69
+  먼지               FX     21.82획     3.18 | 43.50 / 28.50 / 18.00
+  물방울              FX          —     3.64 | — / — / —
+  나뭇잎              FX          —     2.65 | — / — / —
+  작은공              PET         —     6.67 | — / — / —
+  종이비행기            PET     4.90획     9.70 |  9.76 /  6.39 /  4.04
+  리틀스틱메이트          PET         —     5.84 | — / — / —
+  커서친구             PET     3.31획     2.27 |  6.60 /  4.32 /  2.73
+  풍선               PET     3.41획     4.09 |  6.80 /  4.45 /  2.81
+  달팽이              PET         —     3.72 | — / — / —
+
+╔══ ④ 인계본 16종 — 착용(몸) 표면, 배율 네 곳 ══╗
+  ★ 자가 **둘**이다. 섞으면 같은 조각이 통과·미달로 갈린다:
+    (가) **문서 게이트** — `EQUIPMENT_HANDOFF_PORT_SPEC.md` §14-6 #14 · §14-9:
+         「규칙은 R15와 같고 w 만 **그 배율의 1pt 실폭**으로 바꿨다」 ⇒ w 가 조각과 무관하게 균일하다.
+    (나) **조각별 실제 폭** — `CharacterAccessoryRenderer.AddLine(handoffWidth)`:
+         `max(strokeInR × 배수 × R, 1pt)` ⇒ 배수가 큰 조각(예 외알안경 테 ×1.5)에서만 (가)와 갈린다.
+
+  (가) 문서 게이트 — w = 그 배율의 1pt 실폭
+  아이템            | 최단 꺾임변(w 배수) @0.35 @0.60 @0.75 @1.00   | @0.75 을 낸 조각
+  EyesSunglasses |    0.53     0.90     1.13     1.51     | Piece_S3
+  EyesRound      |    0.48     0.82     1.03     1.37     | Piece_S2
+  EyesGoggles    |    0.37     0.63     0.79     1.05     | Piece_S3
+  EyesMonocle    |    0.66     1.13     1.41     1.88     | Piece_H1
+  HeadCap        |    1.09     1.87     2.34     3.12     | Piece_F1
+  HeadBeanie     |    1.47     2.51     3.14     4.19     | Piece_H2
+  HeadFedora     |    1.11     1.90     2.37     3.16     | Piece_F1
+  HeadCrown      |    0.94     1.62     2.02     2.70     | Piece_H8
+  NeckBowTie     |    0.62     1.06     1.33     1.77     | Piece_H3
+  NeckStriped    |    0.41     0.70     0.87     1.16     | Piece_F2
+  NeckScarf      |    0.46     0.78     0.98     1.31     | Piece_S4
+  NeckBell       |    0.51     0.87     1.09     1.46     | Piece_H7
+  BackCape       |    0.80     1.37     1.71     2.28     | Piece_STC
+  BackLongCape   |    0.80     1.37     1.71     2.28     | Piece_STC
+  BackWings      |    1.97     3.37     4.22     5.62     | Piece_S2
+  BackBackpack   |    1.59     2.73     3.41     4.54     | Piece_STRAP_L
+  카테고리별 최악(하한 1.0) — 값(아이템 · 조각):
+   HEAD  @0.35 0.94(HeadCrown · Piece_H8) · @0.60 1.62(HeadCrown · Piece_H8) · @0.75 2.02(HeadCrown · Piece_H8) · @1.00 2.70(HeadCrown · Piece_H8)
+   EYES  @0.35 0.37(EyesGoggles · Piece_S3) · @0.60 0.63(EyesGoggles · Piece_S3) · @0.75 0.79(EyesGoggles · Piece_S3) · @1.00 1.05(EyesGoggles · Piece_S3)
+   NECK  @0.35 0.41(NeckStriped · Piece_F2) · @0.60 0.70(NeckStriped · Piece_F2) · @0.75 0.87(NeckStriped · Piece_F2) · @1.00 1.16(NeckStriped · Piece_F2)
+   BACK  @0.35 0.80(BackCape · Piece_STC) · @0.60 1.37(BackCape · Piece_STC) · @0.75 1.71(BackCape · Piece_STC) · @1.00 2.28(BackCape · Piece_STC)
+
+  (나) 조각별 실제 폭 — max(명목 × 배수, 1pt)
+  아이템            | 최단 꺾임변(w 배수) @0.35 @0.60 @0.75 @1.00   | @0.75 을 낸 조각
+  EyesSunglasses |    0.53     0.90     1.13     1.51     | Piece_S3
+  EyesRound      |    0.48     0.82     1.03     1.37     | Piece_S2
+  EyesGoggles    |    0.37     0.60     0.60     0.60     | Piece_S3
+  EyesMonocle    |    0.66     1.13     1.41     1.88     | Piece_H1
+  HeadCap        |    1.09     1.87     2.34     2.91     | Piece_F1
+  HeadBeanie     |    1.47     2.51     3.14     4.19     | Piece_H2
+  HeadFedora     |    1.11     1.90     2.37     2.94     | Piece_F1
+  HeadCrown      |    0.94     1.62     2.02     2.70     | Piece_H8
+  NeckBowTie     |    0.62     1.06     1.33     1.77     | Piece_H3
+  NeckStriped    |    0.41     0.70     0.87     1.15     | Piece_F2
+  NeckScarf      |    0.46     0.78     0.98     1.30     | Piece_S4
+  NeckBell       |    0.51     0.87     1.09     1.46     | Piece_H7
+  BackCape       |    0.80     1.37     1.71     2.28     | Piece_STC
+  BackLongCape   |    0.80     1.37     1.71     2.28     | Piece_STC
+  BackWings      |    1.97     3.37     4.22     5.62     | Piece_S2
+  BackBackpack   |    0.75     0.75     0.75     0.75     | Piece_STRAP_L
+  카테고리별 최악(하한 1.0) — 값(아이템 · 조각):
+   HEAD  @0.35 0.94(HeadCrown · Piece_H8) · @0.60 1.62(HeadCrown · Piece_H8) · @0.75 2.02(HeadCrown · Piece_H8) · @1.00 2.70(HeadCrown · Piece_H8)
+   EYES  @0.35 0.37(EyesGoggles · Piece_S3) · @0.60 0.60(EyesGoggles · Piece_S3) · @0.75 0.60(EyesGoggles · Piece_S3) · @1.00 0.60(EyesGoggles · Piece_S3)
+   NECK  @0.35 0.41(NeckStriped · Piece_F2) · @0.60 0.70(NeckStriped · Piece_F2) · @0.75 0.87(NeckStriped · Piece_F2) · @1.00 1.15(NeckStriped · Piece_F2)
+   BACK  @0.35 0.75(BackBackpack · Piece_STRAP_L) · @0.60 0.75(BackBackpack · Piece_STRAP_L) · @0.75 0.75(BackBackpack · Piece_STRAP_L) · @1.00 0.75(BackBackpack · Piece_STRAP_L)
+
+  두 자가 갈리는 조각(배수 때문에 실폭 > 1pt 인 것):
+   BackBackpack Piece_S0 @1.00: 실폭 0.15043 R > 게이트 w 0.12895 R (1.17배)
+   BackBackpack Piece_STRAP_L @0.35: 실폭 0.77700 R > 게이트 w 0.36843 R (2.11배)
+   BackBackpack Piece_STRAP_L @0.60: 실폭 0.77700 R > 게이트 w 0.21492 R (3.62배)
+   BackBackpack Piece_STRAP_L @0.75: 실폭 0.77700 R > 게이트 w 0.17193 R (4.52배)
+   BackBackpack Piece_STRAP_L @1.00: 실폭 0.77700 R > 게이트 w 0.12895 R (6.03배)
+   BackBackpack Piece_STRAP_R @0.35: 실폭 0.77700 R > 게이트 w 0.36843 R (2.11배)
+   BackBackpack Piece_STRAP_R @0.60: 실폭 0.77700 R > 게이트 w 0.21492 R (3.62배)
+   BackBackpack Piece_STRAP_R @0.75: 실폭 0.77700 R > 게이트 w 0.17193 R (4.52배)
+   BackBackpack Piece_STRAP_R @1.00: 실폭 0.77700 R > 게이트 w 0.12895 R (6.03배)
+   EyesGoggles Piece_S3 @0.60: 실폭 0.22595 R > 게이트 w 0.21492 R (1.05배)
+   EyesGoggles Piece_S3 @0.75: 실폭 0.22595 R > 게이트 w 0.17193 R (1.31배)
+   EyesGoggles Piece_S3 @1.00: 실폭 0.22595 R > 게이트 w 0.12895 R (1.75배)
+   (총 61건)
+
+╔══ ⑤ 외알안경 — 「눈–가리개 ≥ 1.5획」 여유와 드러난 눈 크기 ══╗
+  골든(몸 표면) 드러난 눈 반경 0.17193 R = 0.5000 W · 중심 (-0.5600, 0.1070)
+  골든(몸 표면) 알(가리개) 반경 0.42382 R · 중심 (0.5600, 0.1849)
+  경계 간 최소 거리 0.52993 R = **1.5411획(W@0.75)** — 하한 1.5획, 여유 +2.74%
+  중심거리 검산: 1.12271 − 0.42382 − 0.17193 = 0.52696 R = 1.5325획
+  눈 반경이 W/2(0.17193 R)와 같은가: 예
+  v1 코드 계통(DrawnEyeRadiusRatio 0.33 · MonocleRadiusRatio 0.36 · offset 0.62): 간격 0.5500 R = 1.5995획
+  ⇒ 드러난 눈 반경이 **사양 0.33 R** 과 **골든 0.17193 R** 로 갈린다(1.92배).
+     어느 쪽이 정본인지는 이 라운드에서 판정하지 않는다(design-face 공동 판정 대상).
+  ★ 좌표 한 자리(0.00001 R)를 좁히면 여유가 1.5411획이 된다 — 하한까지의 폭이 좁다.
+
+╔══ ⑥ 표면 소유권 (코드에서 읽은 사실) ══╗
+  슬롯행 = **4행 · [장비] 탭 전용**(SectionCount = 4 · SyncSlotRows 가 Tab.Equipment 고정)
+   → HEAD·EYES·NECK·SHOULDERS 만 뜬다. FX·PET·HAIR 는 슬롯행에 **없다**.
+  HAIR = IsRetiredSlot 하나가 카드(SectionSlot·SectionCountForTab)·슬롯행·몸(TryWear·RestoreFromSave)을
+   동시에 닫는다 ⇒ 고를 수 있는 자리 0. 데이터는 그대로 둔다(42종이 등급 파생 분모).
+  비트맵 우선순위: 카드(BuildCardArt) · 슬롯행(BuildSlotIcon) · 상세(RefreshDetailThumbArt)
+   세 호출부가 ItemCatalog.CardSprite 를 **먼저** 묻는다 → 선언된 자리는 벡터를 그리지 않는다.

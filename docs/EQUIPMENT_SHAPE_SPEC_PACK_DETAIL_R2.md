@@ -55,9 +55,21 @@
 | 쌍별 실루엣 래칫 | 0.51580 R (72구간 L-inf) | `sectors.SILHOUETTE_RATCHET_R` |
 | H-2 / H-2b | 착용선 [+0.28, +0.45] · 앞층 채움 밑단 [+0.28, +0.35] (|x| ≤ 1.1842) · 꼬리 ≤ 0.170 | `AccessoryHatWearLineBandTests` · `r24_hats.h2_wear` |
 | 카드 | **58pt** 획 1.99375pt · **슬롯행 24pt** 획 0.825pt · 슬롯 고정 배율 + 넘침 축소 | `CharacterInfoWindow.IconSize/SlotIconSize` · `AccessoryCardIcon.Frame` |
+| 카드(비트맵) | **72pt** — 획 개념 없음 | `BitmapIconSize = ThumbHeight 78 − BitmapIconInset 6` |
+| 상세 썸네일 | 벡터 **38pt** 획 1.30625pt / 비트맵 **46pt** | `DetailThumbArtSize` · `BitmapDetailArtSize = DetailThumbSize 52 − 6` |
 | 착용 머리 지름 | 11.63pt @0.75 · 15.51pt @1.00 (= 5.82 W) | `ReferencePointsPerWorldUnitApprox` |
+| 착용 머리 지름(전 구간) | **5.43pt @0.35** · 9.31pt @0.60 · 11.63pt @0.75 · 15.51pt @1.00 | 같은 상수 + `StickConfig.Min/MaxCharacterScale` |
 
-★ **32pt·44px는 이 앱에 없다.** 카드 58pt · 슬롯행 24pt · 착용 11.6/15.5pt 셋이다.
+★ **32pt·44px는 이 앱에 없다.** ~~카드 58pt · 슬롯행 24pt · 착용 11.6/15.5pt 셋이다.~~
+★★ **정정 (2026-09-27 · design-equipment) — 「셋」이 아니라 다섯이다.** 카드 **58**(벡터) / **72**(비트맵) ·
+상세 썸네일 **38**(벡터) / **46**(비트맵) · 슬롯행 **24**, 그리고 착용 머리 지름 **5.43~15.51pt**(배율 0.35~1.00).
+- ★★★ **이 라운드의 팩 12종에서는 카드·슬롯행·상세 세 표면 모두 비트맵이 이긴다.**
+  세 호출부(`BuildCardArt` · `BuildSlotIcon` · `RefreshDetailThumbArt`)가 `ItemCatalog.CardSprite`를 **먼저** 묻고,
+  선언이 있으면 벡터 조각을 **한 점도 그리지 않는다**. ⇒ 이 문서의 팩 12종 **카드·슬롯 칸 벡터 수치는 화면과 무관하다**(조형 근거로만 읽어라).
+  계수(내 실측 · 범위 `Assets/_Project/Resources/Items/` · 고정 문자열 · `{fileID: 0}` 제외):
+  `cardIconOverride` **13개**(팩 12 + 왕관 1) · `wornSpriteOverride` **1개**(왕관).
+  ⇒ **몸(착용) 칸만 살아 있다** — 팩 12종의 몸은 여전히 벡터 `wornShapes`이고, 비트맵이 몸까지 이기는 것은 왕관 하나뿐이다.
+- 재현: `design/equipment/verify/shipsize_r5.py`(교정 전건 통과 없이는 숫자를 찍지 않는다).
 
 ---
 

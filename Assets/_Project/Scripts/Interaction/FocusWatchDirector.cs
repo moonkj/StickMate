@@ -89,8 +89,56 @@ namespace StickMate.Interaction
         /// <para>무한히 기다리지 않는 이유: 25분 세션의 10분째에 시작 대사가 튀어나오면 그것이야말로
         /// 원칙 1 위반이다(시작이 아닌 시점에 시작 대사가 나온다). 창이 지나면 이 세션은 시작 연출 없이
         /// 조용히 계속된다 — 팝오버가 남은 시간을 계속 보여주므로 사용자가 정보를 잃지는 않는다.</para>
+        ///
+        /// <para>★ <b>완주 포즈도 이 상수를 공유한다</b>(2026-09-27). 창·주기(매 프레임)·종료 조건이
+        /// 같아야 하는 이유는 막는 관문이 <b>같은 관문</b>이고 풀리는 사유도 같기 때문이다. 창을 따로
+        /// 두면 한쪽만 조용히 늙는다. 이름에 「Start」가 남은 것은 <b>의도</b>다 — 두 문서가 이 이름을
+        /// 인용하고 있어 바꾸면 그 인용이 그 자리에서 거짓이 된다.</para>
+        ///
+        /// <para>★ <c>public</c>인 이유: <c>Tests/PlayMode/FocusEndPoseSignalTests</c>가 재시도 예산을 이
+        /// 값에서 <b>유도</b>한다. 숫자 10을 테스트에 베끼면 창이 바뀌는 날 테스트만 조용히 낡는다.
+        /// PlayMode 테스트 어셈블리는 <c>InternalsVisibleTo</c> 대상이 아니라 <c>internal</c>로는 닿지 않는다.</para>
         /// </summary>
-        private const float StartPoseRetryWindowSeconds = 10f;
+        public const float StartPoseRetryWindowSeconds = 10f;
+
+        /// <summary>
+        /// 이번 세션의 <b>완주</b> 포즈(FocusComplete)가 실제로 확정됐는가. <see cref="IsStartPoseConfirmed"/>의
+        /// 완주판이고 뜻도 똑같다 — <c>ChangeState</c>를 불렀다가 아니라 <b>상태머신이 그 상태를 들고
+        /// 있더라</b>다.
+        ///
+        /// <para>★ 왜 생겼나(2026-09-27, <c>docs/GAME_ARCHITECTURE_REVIEW.md</c> §21-1 판정 1): 시작
+        /// 포즈에는 재시도 창과 실패 로그가 둘 다 있는데 <b>완주는 <see cref="TryTriggerPoseState"/>의
+        /// 반환값을 버리고 로그도 남기지 않았다</b>. 관문이 닫혀 있으면 50분을 채운 축하가 <b>조용히
+        /// 사라지고 사후에 그런 일이 있었는지조차 알 수 없었다</b>. 없던 것은 신호가 아니라 <b>신호의
+        /// 보장</b>이었다.</para>
+        /// </summary>
+        public bool IsCompletePoseConfirmed { get; private set; }
+
+        /// <summary>완주 포즈가 관문에 막혔을 때 <b>다시 시도할</b> 남은 시간(초). 0이면 더 시도하지 않는다.
+        ///
+        /// <para>★ 이 값이 0이 아닌 동안은 <b>세션이 이미 끝난 뒤</b>다(세우는 자리가
+        /// <see cref="CompleteSession"/> 한 곳이고 그 앞줄이 <c>IsSessionActive = false</c>다). 그래서
+        /// 이 필드를 끄는 것은 살아 있는 세션에 절대 영향을 주지 않는다 — 아래 긴급정지가 소유권
+        /// 관문보다 앞에서 이것을 끌 수 있는 근거다.</para>
+        ///
+        /// <para>끄는 자리는 넷뿐이다: 확정됐을 때 · 새 세션 시작 · 긴급정지 · <see cref="OnDisable"/>.</para></summary>
+        private float _completePoseRetryRemaining;
+
+        /// <summary>이 디렉터의 로그 태그. ★ <c>public</c>인 이유는 <b>테스트가 문자열을 베끼지 않게</b>
+        /// 하려는 것이다 — 「포기 로그가 <b>없다</b>」를 단언하는 쪽이 이 태그로 <b>계기가 살아 있는지</b>를
+        /// 같은 실행에서 대조한다(부재 단언은 계기가 죽어도 조용히 초록이 된다).</summary>
+        public const string LogTag = "[포모도로]";
+
+        /// <summary>완주 포즈를 재시도 창 <b>끝까지</b> 못 낸 것을 말하는 로그의 고정 조각.
+        /// <para>★ 재시도를 <b>시작</b>할 때 찍는 줄에는 「지금」이 끼어들어 이 조각이 걸리지 않는다 —
+        /// 그래서 이 니들은 «끝내 실패»만 센다(시작 포즈 쪽 두 줄이 이미 그 형태다). 그 구분이 곧
+        /// 「재시도가 아직 돌고 있다」와 「포기했다」를 가르는 계기다.</para></summary>
+        public const string CompletePoseGiveUpLogNeedle = "완주 포즈를 잡지 못했습니다";
+
+        /// <summary>취소 포즈가 관문에 막혀 생략된 것을 말하는 로그의 고정 조각.
+        /// <para>★ 취소에는 <b>재시도가 없다</b>(<see cref="StopFocusSession"/> 문서) — 그래서 이 조각
+        /// 하나가 «그 취소의 포즈는 나오지 않았다»의 전부다.</para></summary>
+        public const string CancelPoseSkipLogNeedle = "취소 포즈를 내지 못했습니다";
 
         /// <summary>이번 세션의 총 길이(초). <c>Interaction/FocusSessionPopover</c>가 다이얼의 남은 시간
         /// 비율을 계산할 때 <see cref="RemainingSeconds"/>와 짝으로 읽는다 — 소비자가 분 단위를 다시
@@ -138,6 +186,9 @@ namespace StickMate.Interaction
         {
             StickmanEventBus.StateTransitioned -= OnStateTransitioned;
             StickmanEventBus.GlobalEmergencyStopRequested -= OnEmergencyStop;
+            // 앱 종료·캐릭터 파괴로 이 컴포넌트가 꺼지면 대기 중인 축하 포즈는 <b>버린다</b>. Update가
+            // 더 돌지 않으므로 필드만 남으면 재활성 시 남은 창이 되살아난다(그때는 이미 다른 세션이다).
+            _completePoseRetryRemaining = 0f;
             ReleaseOwnedLock(forceIdle: true);
         }
 
@@ -209,6 +260,12 @@ namespace StickMate.Interaction
             //   시작에는 이벤트를 쏘지 않고 값만 맞춰 둔다 — 그래야 한 세션의 발행이 정확히 2회다.
             _publishedPhase = FocusSessionPhase.Adapt;
 
+            // ★ 새 세션은 지난 세션의 <b>완주 축하를 무효로 만든다</b>. 안 끄면 관문이 늦게 열리는
+            //   순간 「수고했어!」가 <b>새 세션 도중에</b> 튀어나온다 — 일어나지 않은 행동의 대사라
+            //   원칙 1 위반이고, 사용자에게는 「방금 시작했는데 끝났다고 한다」로 읽힌다.
+            IsCompletePoseConfirmed = false;
+            _completePoseRetryRemaining = 0f;
+
             // ★ 못 잡으면 아래 재시도 창이 열리고, 그동안 타이머는 그대로 흐른다(UX_WIDGETS 369행 계약).
             IsStartPoseConfirmed = false;
             _startPoseRetryRemaining = StartPoseRetryWindowSeconds;
@@ -225,22 +282,62 @@ namespace StickMate.Interaction
             }
         }
 
-        /// <summary>팝오버 [그만두기] 또는 단축키 토글(18절 중도 취소, 패널티 없는 톤).</summary>
+        /// <summary>팝오버 [그만두기] 또는 단축키 토글(18절 중도 취소, 패널티 없는 톤).
+        ///
+        /// <para>★ <b>취소에는 재시도를 붙이지 않는다</b>(2026-09-27). 관문이 닫혀 있으면 반환값을
+        /// 확인해 <b>로그만</b> 남기고 끝낸다. 이유가 둘이다 — ⑴ 취소는 사용자가 <b>방금</b> 누른
+        /// 것이라 몇 초 뒤에 도착한 「그래 쉬자」는 이미 지난 행동의 대사다. ⑵ 취소 직후 새 세션을
+        /// 켜는 사용자가 많고, 그때 늦게 도착한 취소 포즈는 <b>새 세션 위에</b> 얹힌다. 둘 다 원칙 1
+        /// 위반이다.</para>
+        ///
+        /// <para>★ 그리고 <b>축하 포즈를 취소에 붙이지 않는다</b> — 완주하지 않은 것을 축하하는 것이
+        /// 행동-텍스트 싱크가 깨지는 바로 그 형태다. 취소의 그림은 여전히 「팔짱을 푸는」
+        /// FocusCancelled 하나이고 이 보강은 그것을 <b>한 글자도 바꾸지 않는다</b>.</para></summary>
         public void StopFocusSession()
         {
             if (!IsSessionActive) return;
             PayCancelCoins("중도 취소");
             PayCancelXp();
             IsSessionActive = false;
-            TryTriggerPoseState(StickmanStateId.FocusCancelled);
+            if (!TryTriggerPoseState(StickmanStateId.FocusCancelled))
+            {
+                Debug.Log($"{LogTag} {CancelPoseSkipLogNeedle} — {DescribePoseGate()}. 이번 취소는 포즈 없이 " +
+                    "끝냅니다(재시도하지 않습니다 — 몇 초 뒤의 「그래 쉬자」는 이미 지난 행동의 대사입니다). " +
+                    "지급과 타이머는 이 값과 무관하게 이미 끝났습니다.");
+            }
         }
 
+        /// <summary>
+        /// 세션을 정상 완주로 닫는다.
+        ///
+        /// <para>★ <b>축하 신호가 보장되는 자리다</b>(2026-09-27, <c>docs/GAME_ARCHITECTURE_REVIEW.md</c>
+        /// §21-1 판정 1). 관문(Idle/Walk일 것 + 스펙터클 락이 비어 있을 것)이 닫혀 있으면
+        /// <see cref="StartPoseRetryWindowSeconds"/> 동안 다시 시도하고, 끝내 못 내면 <b>로그를 남긴다</b>.
+        /// 예전에는 반환값을 버렸기 때문에 캐릭터가 넘어져 있거나 다른 연출 중이면 50분을 채운 축하가
+        /// <b>통째로 없고 흔적도 없었다</b>.</para>
+        ///
+        /// <para>★ 지급을 <b>먼저</b> 끝내는 순서는 그대로다(DS-5′ 인계 조건). 포즈는 지급·타이머와
+        /// 무관하게 실패할 수 있고, 실패해도 동전과 XP는 이미 나가 있다 — 그래서 아래 재시도는
+        /// <b>연출의 유무</b>만 가른다.</para>
+        /// </summary>
         private void CompleteSession()
         {
             PayCompletionCoins();
             PayCompletionXp();
             IsSessionActive = false;
-            TryTriggerPoseState(StickmanStateId.FocusComplete);
+
+            IsCompletePoseConfirmed = false;
+            if (TryTriggerPoseState(StickmanStateId.FocusComplete))
+            {
+                IsCompletePoseConfirmed = true;
+                _completePoseRetryRemaining = 0f;
+                return;
+            }
+
+            _completePoseRetryRemaining = StartPoseRetryWindowSeconds;
+            Debug.Log($"{LogTag} 완주 포즈를 지금 잡지 못했습니다 — {DescribePoseGate()}. " +
+                $"{StartPoseRetryWindowSeconds:F0}초 동안 다시 시도합니다. 지급과 타이머는 이미 끝났으므로 " +
+                "이 값이 가리는 것은 축하 연출의 유무뿐입니다.");
         }
 
         // ====================================================================
@@ -359,9 +456,20 @@ namespace StickMate.Interaction
             // 18절 예외 상태: 전체화면 게임/영상 감지 중에는 타이머까지 멈춘다(팝오버 상태줄이
             // "일시정지 · 전체화면 앱 사용 중"으로 그 사실을 말한다 — 원칙 1).
             if (_player.IsSuspended) return;
-            if (!IsSessionActive) return;
 
             float dt = Time.deltaTime;
+
+            // ★ 완주 포즈 재시도는 <b>세션이 끝난 뒤</b>에 도는 유일한 일이라 아래 IsSessionActive
+            //   관문보다 <b>앞</b>에 있어야 한다. 뒤에 두면 완주한 그 프레임에 세션이 닫히므로 재시도가
+            //   한 프레임도 못 돈다 — 그 형태가 이 보강 이전의 상태였다(신호가 조용히 사라지는 자리).
+            //
+            // ★ IsSuspended <b>아래</b>에 두는 것은 의도다: 전체화면 앱이 떠 있는 동안에는 포즈를 내지
+            //   않는다(비침해). 그동안 창은 닫히지 않고 멈춰 있다가 복귀하면 이어서 시도한다 — 시작
+            //   포즈 재시도가 이미 그렇게 동작한다(둘의 거동을 갈라 두지 않는다).
+            TickCompletePoseRetry(dt);
+
+            if (!IsSessionActive) return;
+
             RemainingSeconds -= dt;
             if (RemainingSeconds <= 0f)
             {
@@ -431,6 +539,40 @@ namespace StickMate.Interaction
                 Debug.Log($"[포모도로] {StartPoseRetryWindowSeconds:F0}초 동안 시작 포즈를 잡지 못했습니다 — " +
                     $"{DescribePoseGate()}. 이번 세션은 시작 연출 없이 계속합니다(남은 시간은 집중 모드 " +
                     "팝오버가 그대로 보여줍니다). 일어나지 않은 행동의 대사를 억지로 띄우지 않는 것이 원칙 1입니다.");
+            }
+        }
+
+        /// <summary>
+        /// 완주 포즈가 관문에 막혔을 때, 관문이 열리는 순간 축하 포즈를 낸다. 구조는
+        /// <see cref="TickStartPoseRetry"/>의 <b>복제</b>다 — 창·주기(매 프레임)·종료 조건(창이 지나면
+        /// 로그 한 줄)이 모두 같다. 새 설계를 만들지 않은 것이 요점이다.
+        ///
+        /// <para>★ <b>세션이 끝난 뒤에도 도는 유일한 코드</b>라 첫 줄이 곧 상주 비용의 전부여야 한다 —
+        /// float 비교 하나이고 할당이 없다(24시간 상주 앱 규약).</para>
+        ///
+        /// <para>★ 창이 지나면 <b>포기한다</b>. 10초가 지난 뒤의 「수고했어!」는 완주에서 파생된 신호로
+        /// 읽히지 않는다(원칙 1). 다만 조용히 넘어가지 않고 <b>로그를 남겨</b> 「그런 일이 있었다」를
+        /// 사후에 알 수 있게 한다 — 그 한 줄이 이 보강의 본체다.</para>
+        /// </summary>
+        private void TickCompletePoseRetry(float dt)
+        {
+            if (_completePoseRetryRemaining <= 0f) return;
+
+            _completePoseRetryRemaining -= dt;
+            if (TryTriggerPoseState(StickmanStateId.FocusComplete))
+            {
+                IsCompletePoseConfirmed = true;
+                _completePoseRetryRemaining = 0f;
+                Debug.Log($"{LogTag} 완주 포즈를 이제 잡았습니다 — 축하 자세로 전이했습니다.");
+                return;
+            }
+
+            if (_completePoseRetryRemaining <= 0f)
+            {
+                _completePoseRetryRemaining = 0f;
+                Debug.Log($"{LogTag} {StartPoseRetryWindowSeconds:F0}초 동안 {CompletePoseGiveUpLogNeedle} — " +
+                    $"{DescribePoseGate()}. 이번 세션은 축하 연출 없이 끝납니다(지급과 타이머는 정상적으로 " +
+                    "끝났습니다). 일어나지 않은 행동의 대사를 억지로 띄우지 않는 것이 원칙 1입니다.");
             }
         }
 
@@ -528,6 +670,15 @@ namespace StickMate.Interaction
         /// 흔한 케이스 — 포모도로만 실행 중이고 다른 이벤트가 없을 때도 여전히 즉시 종료 가능).</summary>
         private void OnEmergencyStop()
         {
+            // ★ 대기 중인 완주 재시도는 <b>소유권 관문보다 앞에서</b> 끈다. 긴급정지는 「지금 즉시
+            //   유휴」라, 이 줄이 아래 return 뒤에 있으면 «다른 연출이 락을 쥔 채 긴급정지» → 그 연출이
+            //   걷히며 락이 풀림 → 우리 재시도가 <b>탈출구를 누른 몇 초 뒤에 축하 포즈를 띄운다</b>.
+            //   사용자가 끈 연출이 되살아나는 형태다.
+            // ★ 이 줄이 살아 있는 세션을 건드릴 수 없는 이유는 그 필드 문서에 있다(0이 아닌 동안은
+            //   세션이 이미 끝난 뒤다) — 그래서 위 return의 뜻(무관한 포모도로 세션을 죽이지 않는다)은
+            //   그대로 지켜진다.
+            _completePoseRetryRemaining = 0f;
+
             if (SpectacleEventLock.IsActive && SpectacleEventLock.CurrentOwner != (object)this) return;
 
             // ★ 긴급정지도 사용자 입장에서는 「중도 취소」다 — 18절이 이것을 포모도로의 탈출구로
