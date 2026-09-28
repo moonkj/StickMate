@@ -1,6 +1,6 @@
 # 회귀 베이스라인 대장 — 실행당 한 줄
 
-자동 생성: `python3 docs/verify/baseline.py` · 최종 2026-09-28 03:24:53
+자동 생성: `python3 docs/verify/baseline.py` · 최종 2026-09-28 10:12:52
 **손으로 고치지 마라.** 다음 실행이 통째로 덮는다.
 
 ## 읽는 법 — 표시가 붙은 값은 잰 값이 아니다
@@ -555,27 +555,29 @@ dag→타깃 매핑 4건: `1900b0aE.dag`=WIN, `1900b0aP.dag`=WIN, `200b0aE.dag`=
 | 09-28 01:19 | `bundle11-r1` | edit | 전량 | 00412ab | **44** | **OSX** | 3215 | 3122 | 0 | 93 | 0 | 초록 | — |
 | 09-28 01:23 | `bundle11-r1` | play | 전량 | 00412ab | **44** | **OSX** | 831 | 801 | 5 | 25 | 0 | **빨강** | ClosingSettingsReopensTheInfoWindowItReplaced<br>EyesAreAbsentUnderEveryGlassesItem<br>몰입기_도중_취소해도_프롭이_화면에_남지_않는다<br>왕관은_채워지되_얹는_물건으로_남는다<br>취소는_관문이_막히면_로그만_남기고_재시도하지_않는다 |
 | 09-28 02:39 | `bundle11-r2` | play | 전량 | 00412ab | **44** | **OSX** | 831 | 802 | 4 | 25 | 0 | **빨강** | ClosingSettingsReopensTheInfoWindowItReplaced<br>EyesAreAbsentUnderEveryGlassesItem<br>몰입기_도중_취소해도_프롭이_화면에_남지_않는다<br>왕관은_채워지되_얹는_물건으로_남는다 |
+| 09-28 09:29 | `bundle12-r1` | edit | 전량 | bc78277 | **43** | **OSX** | 3224 | 3131 | 0 | 93 | 0 | 초록 | — |
+| 09-28 09:32 | `bundle12-r1` | play | 전량 | bc78277 | **43** | **OSX** | 831 | 802 | 4 | 25 | 0 | **빨강** | ClosingSettingsReopensTheInfoWindowItReplaced<br>EyesAreAbsentUnderEveryGlassesItem<br>몰입기_도중_취소해도_프롭이_화면에_남지_않는다<br>왕관은_채워지되_얹는_물건으로_남는다 |
 
 ## 지금 빨간 것 — 그리고 **언제부터**인가
 
 「현재」 = 그 모드의 **가장 최근 `전량` 실행**. 그보다 새 `부분`·`미확인` 실행은 「현재」로 치지 않고 개수만 적는다.
 
-### edit — 현재 `bundle11-r1` (09-28 01:19, 전량 3215건, 타깃 OSX)
+### edit — 현재 `bundle12-r1` (09-28 09:29, 전량 3224건, 타깃 OSX)
 
 범위 근거: 로그 명령줄에 필터 인자 없음 + regress.sh 사이드카
 
 빨강 없음 (R1 초록).
 
-### play — 현재 `bundle11-r2` (09-28 02:39, 전량 831건, 타깃 OSX)
+### play — 현재 `bundle12-r1` (09-28 09:32, 전량 831건, 타깃 OSX)
 
 범위 근거: 로그 명령줄에 필터 인자 없음 + regress.sh 사이드카
 
 | 실패 | 마지막으로 **실제로 초록**(Passed)이던 실행 | 그 뒤 건너뜀·판정 불가(초록 아님) | 처음 빨개진 실행 | 연속 빨강 |
 |---|---|---|---|---:|
-| ClosingSettingsReopensTheInfoWindowItReplaced | `part2-final` 09-08 01:02 | — | `Logs/coder-onbstore/play-full` 09-14 18:10 | 23 |
-| EyesAreAbsentUnderEveryGlassesItem | `part2-final` 09-08 01:02 | — | `Logs/coder-onbstore/play-full` 09-14 18:10 | 23 |
-| 몰입기_도중_취소해도_프롭이_화면에_남지_않는다 | **한 번도 없다** | — | `part2-final` 09-08 01:02 | 24 |
-| 왕관은_채워지되_얹는_물건으로_남는다 | `qa-r10` 09-05 09:33 | 7건 (최근 `part2-final` 09-08 01:02) | `coder-fan-play` 09-06 15:39 | 24 |
+| ClosingSettingsReopensTheInfoWindowItReplaced | `part2-final` 09-08 01:02 | — | `Logs/coder-onbstore/play-full` 09-14 18:10 | 24 |
+| EyesAreAbsentUnderEveryGlassesItem | `part2-final` 09-08 01:02 | — | `Logs/coder-onbstore/play-full` 09-14 18:10 | 24 |
+| 몰입기_도중_취소해도_프롭이_화면에_남지_않는다 | **한 번도 없다** | — | `part2-final` 09-08 01:02 | 25 |
+| 왕관은_채워지되_얹는_물건으로_남는다 | `qa-r10` 09-05 09:33 | 7건 (최근 `part2-final` 09-08 01:02) | `coder-fan-play` 09-06 15:39 | 25 |
 
 
-<!-- rows=512 -->
+<!-- rows=514 -->

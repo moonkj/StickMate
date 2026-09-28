@@ -125,9 +125,9 @@ python3: dll_bytes.count("표면회수".encode("utf-16-le"))
 
 | 주장 | 문서 | 실측 근거 (파일:행) | 판정 |
 |---|---|---|---|
-| 아이템 **42종** | STORE 3-11 | `ls Assets/_Project/Resources/Items/*.asset \| wc -l` = **42** | ✅ |
+| 아이템 **42종** | STORE 3-11 | `ls Assets/_Project/Resources/Items/*.asset \| wc -l` = **42** 〔**R16 as-of 2026-09-28 · 죽은 검산 세 번째 사본** — ★ **이 명령은 지금 65를 낸다**(팩 12 + 매니페스트류 11이 같은 폴더로 들어왔다). **주장은 살아 있고 명령이 죽었다**: 접두를 좁힌 판이 42다 — `ls …/look_*.asset …/equip_*.asset \| wc -l` = **42**(독립 계기 `find` 18 + 24 = 42 · 음성 대조 0) → `CLAIM_AUDIT_R5.md` 앵커 `R16 명령 교체`〕 | ✅ |
 | 신규 해금 **7개** | TRUTH R3-3 | `grep -l "requiredLevel: 1$"` = **7개**(파일명 전수 확인) | ✅ |
-| 그중 1개가 「없음」 → **실질 6종** | 같은 곳 | `Items/look_fx_none.asset` `displayName: "없음"`(=없음) | ✅ |
+| 그중 1개가 「없음」 → **실질 6종** | 같은 곳 | `Items/look_fx_none.asset` `displayName: "없음"`(=없음) | ✅ 〔**R16 2026-09-28 — ★★ 이 6이 흔들린다**: 레벨 1 일곱 개 중 `삐친머리`는 **HAIR**이고 HAIR는 **은퇴 슬롯**이라 고를 수 있는 자리에서 빠진다(`Core/EquipmentModel.cs` 앵커 `public static bool IsRetiredSlot(EquipmentSlot slot) => slot == EquipmentSlot.Hair;` · 잠금 `Tests/EditMode/RetiredSlotSurfaceTests.cs`). ⇒ **「없음」 말고 한 칸이 더 빠질 수 있다.** ★ **새 숫자를 여기 쓰지 않는다 — 유도값이고 실행으로 확인하지 않았다(미확인)** → `TRUTH_INVENTORY.md` 앵커 `첫날 6종이 흔들린다`〕 |
 | 보관함 헤더 `걸치는 것 (7 / 42)` | 공통실측 | `Interaction/CharacterInfoWindow.Inventory.cs:43` | ✅ |
 | 행동 명령 타일 **5개** | STORE 3-8 | `Interaction/ActionCommandPopover.cs:170-177` enum 5항목 | ✅ |
 | 타일 수가 **enum에서 파생** | — | 같은 파일 `:185` `CommandCount = Enum.GetValues(...).Length` | ✅ |

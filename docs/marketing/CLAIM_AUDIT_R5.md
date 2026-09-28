@@ -235,7 +235,7 @@ python3: dll.count("놔줘 놔줘".encode("utf-16-le"))
 
 | 주장 | 명령 출력 |
 |---|---|
-| 아이템 42종 | `ls Assets/_Project/Resources/Items/*.asset \| wc -l` = **42** 〔**R15 as-of 2026-09-28** — ★ **주장은 살아 있고 검산이 죽었다.** 같은 명령이 지금 **65**를 낸다: 팩 아이템 **12**(`pack_arcane`·`pack_cyber`·`pack_mine` 각 4)와 매니페스트류 **11**이 같은 폴더에 들어왔다. 접두로 갈라 세면 기본(`look_`·`equip_`) **42**는 그대로다. ⇒ 이 검산을 그대로 다시 돌리면 「42종」이 **거짓처럼 보인다** — **분모를 접두로 좁혀 다시 써야 한다** → `TRUTH_INVENTORY.md` 앵커 `수량 전수 재측정`〕 |
+| 아이템 42종 | `ls Assets/_Project/Resources/Items/*.asset \| wc -l` = **42** 〔**R15 as-of 2026-09-28** — ★ **주장은 살아 있고 검산이 죽었다.** 같은 명령이 지금 **65**를 낸다: 팩 아이템 **12**(`pack_arcane`·`pack_cyber`·`pack_mine` 각 4)와 매니페스트류 **11**이 같은 폴더에 들어왔다. 접두로 갈라 세면 기본(`look_`·`equip_`) **42**는 그대로다. ⇒ 이 검산을 그대로 다시 돌리면 「42종」이 **거짓처럼 보인다** — **분모를 접두로 좁혀 다시 써야 한다** → `TRUTH_INVENTORY.md` 앵커 `수량 전수 재측정`〕 〔**R16 명령 교체 2026-09-28 — 이제 다시 돌려도 42가 나온다**: `ls Assets/_Project/Resources/Items/look_*.asset Assets/_Project/Resources/Items/equip_*.asset \| wc -l` = **42**. ★ 독립 계기 대조 `find Assets/_Project/Resources/Items -maxdepth 1 -type f -name 'look_*.asset'` **18** + 같은 명령 `-name 'equip_*.asset'` **24** = **42**(두 계기 일치). 음성 대조 `zzq_*.asset` **0**(`no matches found`). ⇒ **접두를 안 좁힌 위 명령은 다른 기계에서 65를 낸다 — 인용하지 마라.** 같은 명령의 사본이 **세 곳**에 있었다(이 칸 · `CLAIM_AUDIT_R4.md` 42종 행 · `personas/_시장축_공통실측.md` F-M1 표) → `TRUTH_INVENTORY.md` 앵커 `죽은 검산 세 사본`〕 |
 | 신규 해금 7개 | `grep -l "requiredLevel: 1$"` = **7** |
 | 행동 타일 5개 | `ActionCommandPopover`의 `enum Command` 항목 = **5** |
 | 장난 확률 전부 0 | `DefaultStickConfig.asset` — `windowTheft` `desktopTidy` `blackhole` `graffiti` `windowCrash` `todoReminder` `stressSulky` `archery` `wanderPostIdleJump` `wanderEdgeJump` = **10/10이 0** |

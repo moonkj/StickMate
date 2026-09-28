@@ -2661,6 +2661,30 @@
   {
    "class": "중립",
    "count": 1,
+   "file": "SpectacleEventLock.cs",
+   "text": "거절 사유가 없습니다(지금 획득할 수 있습니다)"
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "SpectacleEventLock.cs",
+   "text": "다른 연출이 이미 쥐고 있습니다"
+  },
+  {
+   "class": "중립",
+   "count": 1,
+   "file": "SpectacleEventLock.cs",
+   "text": "소유자 토큰이 null입니다(배선 사고 — 락 상태와 무관합니다)"
+  },
+  {
+   "class": "합쇼체",
+   "count": 1,
+   "file": "SpectacleEventLock.cs",
+   "text": "화면 변경 유예(보존 동결) 중이라 새 연출을 시작하지 않습니다"
+  },
+  {
+   "class": "중립",
+   "count": 1,
    "file": "StallAttribution.cs",
    "text": "(계측 구간 0 — 이 프레임의 로직은 전부 미계측 경로다)"
   },

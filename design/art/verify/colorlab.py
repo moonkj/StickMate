@@ -11,6 +11,8 @@
   · ItemCatalog.WornColor 포트               (S >= 0.42, V in [0.55, 0.80])
   · CIELAB(D65) + CIE76 dE*ab                (색이 "다르게 보이는가"의 자)
   · AccessoryShapeBuilder.FillOutlineColor 포트 (x0.62 그늘색)
+    ★ 2026-09-28: 이름도 계수도 옛 판이다. 출하 정본은 AccessoryTone.Shaded(= x0.28,
+      Core/AccessoryShapeContract.cs). 아래 SHADE_FACTOR / SHADE_FACTOR_LEGACY 참조.
 
 교정표 (전부 외부에서 검증 가능한 값)
   대비   흰/검 21.0000 · 동일색 1.0000 · #767676/흰 4.5422 · #000/#808080 5.3172
@@ -124,9 +126,19 @@ def is_worn_fixed(rgb):
     return worn(rgb) == tuple(rgb)
 
 
-def fill_outline(rgb):
-    """AccessoryShapeBuilder.FillOutlineColor 포트 — 채움의 윤곽선(그늘색) x0.62."""
-    return tuple(int(round(v * 0.62)) for v in rgb)
+SHADE_FACTOR = 0.28          # 출하 정본: Core/AccessoryShapeContract.cs 의 AccessoryTone.ShadeFactor
+SHADE_FACTOR_LEGACY = 0.62   # 옛 상수(리더 판정 2026-09-03 전). 역사 재현 전용 — 새 값으로 쓰지 마라.
+
+
+def fill_outline(rgb, k=SHADE_FACTOR):
+    """AccessoryTone.Shaded 포트 — 채움의 윤곽선(그늘색) = 채움 x k.
+
+    ★ 2026-09-28: 기본값이 x0.62 에서 **출하값 x0.28** 로 내려왔다(그때까지 이 포트는 한 세대
+      낡은 상수를 들고 있었고, 그 값으로 뽑힌 그늘색이 문서 여러 곳에 실려 있었다).
+      옛 판을 재현할 때는 k=SHADE_FACTOR_LEGACY 를 **명시**한다.
+      이 기본값을 바꾸면 그늘색을 뽑는 모든 스크립트가 함께 움직인다.
+    """
+    return tuple(int(round(v * k)) for v in rgb)
 
 
 # ============================================================================
@@ -196,6 +208,16 @@ def calibrate(verbose=True):
         0.0 if rgb2hex(worn(hex2rgb("#D8B27A"))) == "#CCA873" else 1.0, 0.0, 0.0)
     chk("WornColor #F0C25C -> #CCA54E",
         0.0 if rgb2hex(worn(hex2rgb("#F0C25C"))) == "#CCA54E" else 1.0, 0.0, 0.0)
+
+    # ★ 그늘 계수 — 두 세대를 **모두** 못박는다. 하나라도 어긋나면 그늘 숫자 전부 폐기.
+    #   출하값은 소스에서 온다(AccessoryTone.ShadeFactor = 0.28f). 옛 판(0.62)은 문서에
+    #   취소선으로 남아 있으므로 그 재현도 계기가 보증해야 한다.
+    chk("ShadeFactor 출하값 0.28", SHADE_FACTOR, 0.28, 0.0)
+    chk("그늘 x0.28  #456ECC -> #131F39",
+        0.0 if rgb2hex(fill_outline(hex2rgb("#456ECC"))) == "#131F39" else 1.0, 0.0, 0.0)
+    chk("그늘 x0.62(옛) #456ECC -> #2B447E",
+        0.0 if rgb2hex(fill_outline(hex2rgb("#456ECC"), SHADE_FACTOR_LEGACY)) == "#2B447E" else 1.0,
+        0.0, 0.0)
 
     # LAB
     chk("LAB 흰 L*", lab(W)[0], 100.0, 0.01)

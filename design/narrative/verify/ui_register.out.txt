@@ -1,5 +1,5 @@
 === 판 (이 실행이 무엇을 읽었는가) ===
-   스캔 파일 287개 · 수집 647건 · 말뭉치 digest sha16=7cfefb7cb1ce722b
+   스캔 파일 287개 · 수집 651건 · 말뭉치 digest sha16=9127128f0dc254c8
    스크립트 sha16=1860afbca7bf8f30
 
 === 대조 (니들을 원천에서 읽었다 — 스크립트에 문장을 베끼지 않는다) ===
@@ -7,12 +7,12 @@
    양성 합쇼체: 원천에서 읽은 니들 sha=24752486c18d5e8b · 수집 True(기대 True) · 분류 합쇼체(기대 합쇼체) -> OK
    음성 로그제외: 원천에서 읽은 니들 sha=19edf8cab0b03831 · 수집 False(기대 False) -> OK
 
-=== 화면 문구 종결형 전수 (수집 647건) ===
-   해요체 48건 / 합쇼체 59건 / 종결형 없음(라벨·명사구) 540건
-   문장으로 끝나는 것만 세면: 해요체 48 / 합쇼체 59  ->  해요체 45%
+=== 화면 문구 종결형 전수 (수집 651건) ===
+   해요체 48건 / 합쇼체 61건 / 종결형 없음(라벨·명사구) 542건
+   문장으로 끝나는 것만 세면: 해요체 48 / 합쇼체 61  ->  해요체 44%
 
 === ★ 낡음 가드 — 계수와 **키 집합**을 함께 본다(계수만 보면 1:1 교체가 통과한다) ===
-   명부 647항목 / 원천 647항목 · 사라짐 0 · 생김 0 · 불일치 0
+   명부 651항목 / 원천 651항목 · 사라짐 0 · 생김 0 · 불일치 0
    ⇒ 원천과 명부가 같다.
 
    [합쇼체 전량 — 소수파라 전부 나열한다]  ※ 목록은 표시용이다(되읽어 명부로 쓰지 마라)
@@ -36,6 +36,7 @@
      게이트가 한 번도 열리지 않았습니다 — 이 구간에는 소리가 없었다는 뜻입니다.	(AudioReactiveDanceDirector.cs)
      기저 번호 {basis}를 모릅니다.	(AccessoryDefSO.cs)
      껐습니다	(AudioReactiveDanceGate.cs)
+     다른 연출이 이미 쥐고 있습니다	(SpectacleEventLock.cs)
      다시 보이게 했습니다.	(SettingsWindow.cs)
      다시 조절할 수 있습니다	(SettingsWindow.cs)
      다시 켰습니다	(AudioReactiveDanceGate.cs)
@@ -72,6 +73,7 @@
      캐릭터를 다시 보이게 했습니다.	(AppControlDirector.cs)
      캐릭터를 숨긴 동안 뜨는 톱니를 화면 오른쪽 위로 되돌립니다.	(SettingsWindow.cs)
      테마가 있는 장비를 아직 하나도 걸치지 않았습니다.	(CharacterInfoWindow.cs)
+     화면 변경 유예(보존 동결) 중이라 새 연출을 시작하지 않습니다	(SpectacleEventLock.cs)
      화면 변경 유예의 보존 동결 중이라 물리·발판 재폴은 동결 해제 때 합니다	(StickmanAgent.cs)
      회의나 발표 중에는 꺼 두세요. 저장하지 않으니 앱을 다시 켜면 저절로 켜집니다.	(SettingsWindow.cs)
      휴지 중이라 화면에는 아무 변화가 없습니다	(DanceEpisodeDirector.cs)
@@ -127,7 +129,7 @@
      할일이 많아요. 먼저 정리해볼까요?	(TodoBoardPopover.cs)
 
 === 가설 검정 ===
-   H1 '합쇼체는 제품 로드맵 전용이다' : 합쇼체 59건 중 '다음 업데이트' 계열 0건 (0%)
+   H1 '합쇼체는 제품 로드맵 전용이다' : 합쇼체 61건 중 '다음 업데이트' 계열 0건 (0%)
       반례:  ★경고: 요청 {vSync}인데 되읽은 값이 {vSyncNow}입니다 — 이 회차의 vsync 측정은 무효입니다.  (FramePacing.cs)
       반례:  진행 중이던 춤은 다음 프레임에 정상 퇴장합니다.  (AudioReactiveDanceGate.cs)
       반례:  하이브리드 해소기가 {s.HybridStripCount}회 떼어낸 결과입니다.  (OverlayCompositionSnapshot.cs)
@@ -141,7 +143,7 @@
    표면                 | 해요체 | 합쇼체 | 해요체 비율
    ① 캐릭터 표면             |    44 |     7 | 86%
    ② 설정창                |     4 |     8 | 33%
-   ③ 진단·시스템 보고          |     0 |    44 | 0%
+   ③ 진단·시스템 보고          |     0 |    46 | 0%
 
    ★ ① 캐릭터 표면의 합쇼체 반례 전량 — 상점 문구가 바로 이 표면에 들어간다:
      [상점] {entry.DisplayName}{KoreanParticle.Topic(entry.DisplayName)} 이미 보유 중입니다 — 다시 팔지 않습니다.	(CharacterInfoWindow.Shop.cs)
@@ -152,4 +154,4 @@
      체크한 일이 여기 모입니다.	(TodoBoardPopover.cs)
      테마가 있는 장비를 아직 하나도 걸치지 않았습니다.	(CharacterInfoWindow.cs)
 
-   명부 sha16=7e552ba1db074ceb
+   명부 sha16=eb2bf110fde151ea

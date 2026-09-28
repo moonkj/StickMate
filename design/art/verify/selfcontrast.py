@@ -312,9 +312,12 @@ def section_B():
         hi = max(cr_lum(li, BAND_LO), cr_lum(li, BAND_HI))
         (ok if lo >= MIN_NONTEXT else bad)(
             f"{nm} 경계선 vs 대역색: {lo:.3f} ~ {hi:.3f} : 1  (하한 {MIN_NONTEXT} {'통과' if lo>=MIN_NONTEXT else '미달'})")
-    fo_lo = min(cr_lum(C.L(C.fill_outline(c)), C.L(c))
+    # ★ 2026-09-28: 이 줄은 **옛 계수 ×0.62 세대의 논거**다. colorlab.fill_outline 의 기본값이
+    #   출하값 0.28 로 내려갔으므로, 이 절의 역사적 주장을 보존하려면 옛 상수를 명시해야 한다.
+    fo_lo = min(cr_lum(C.L(C.fill_outline(c, C.SHADE_FACTOR_LEGACY)), C.L(c))
                 for c in [C.hsv_to_rgb(h / 12.0, 0.55, 0.62) for h in range(12)])
-    print(f"     참고) 현행 ×0.62 그늘 윤곽은 자기 채움과 {fo_lo:.2f} : 1 부근 — 3.0 미달\n")
+    print(f"     참고) 옛 ×0.62 그늘 윤곽은 자기 채움과 {fo_lo:.2f} : 1 부근 — 3.0 미달")
+    print(f"           (출하는 ×{C.SHADE_FACTOR} 로 내려갔고 그 자리는 3.0 을 넘긴다 — PALETTE_SPEC §23-3 정정 상자)\n")
 
 
 def section_B2():

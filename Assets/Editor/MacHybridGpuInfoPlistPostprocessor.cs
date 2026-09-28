@@ -589,6 +589,17 @@ namespace StickMate.EditorTools
         /// <summary>
         /// 영수증은 <b>번들 밖</b>(.app 옆)에 쓴다. 번들 <b>안</b>에 쓰면 그 파일 자체가 봉인 대상이 되어
         /// 서명이 다시 깨진다 — Windows 훅과 다르게 이 훅에서만 조심해야 하는 지점이다.
+        ///
+        /// <para>★ <b>텍스트는 검문소를 지난다</b>(security L6, 2026-09-28):
+        /// <see cref="BuildStandalone.ToProjectRelativeText"/>가 프로젝트 루트와 홈 경로를 걷어낸다.
+        /// 이 영수증에는 <b>외부 도구(<c>codesign</c>)의 출력</b>이 그대로 실리고 그것이 절대경로를
+        /// 뱉는다 — 실측으로 이 파일 안에 계정명이 <b>4번</b> 들어 있었다(대상 · plist · 서명 설명 ·
+        /// 재서명 출력). 문장마다 고치는 대신 <b>쓰는 자리 한 곳</b>에서 거른다.</para>
+        ///
+        /// <para>★ <b>위치는 옮기지 않는다.</b> Windows 훅은 배포 단위가 <b>폴더 전체</b>라 영수증이
+        /// 공개 zip에 동봉됐고 그래서 밖으로 옮겼지만, 이쪽 배포 단위는 <c>.app</c> 번들이고 이 파일은
+        /// <b>이미 그 밖</b>에 있다. 옮길 이유가 없고, <c>MacHybridGpuPlistTests</c>가 「산출물 옆(번들 밖)」을
+        /// 소스로 잠그고 있다.</para>
         /// </summary>
         private static void WriteReceipt(string appPath, StringBuilder log)
         {
@@ -596,7 +607,8 @@ namespace StickMate.EditorTools
             {
                 string dir = string.IsNullOrEmpty(appPath) ? null : Path.GetDirectoryName(appPath);
                 if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir)) return;
-                File.WriteAllText(Path.Combine(dir, ReceiptFileName), log.ToString(), Encoding.UTF8);
+                File.WriteAllText(Path.Combine(dir, ReceiptFileName),
+                    BuildStandalone.ToProjectRelativeText(log.ToString()), Encoding.UTF8);
             }
             catch (Exception e)
             {

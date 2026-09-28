@@ -365,7 +365,9 @@ def main():
 
     for p in (GOLDEN_CARD, GOLDEN_FXPET):
         if not os.path.exists(p):
-            print("  ✗ 골든 없음:", p)
+            # ★ 저장소 상대 경로로만 찍는다 — 이 분기가 절대 경로를 찍고 있었고(성공 경로는 0건),
+            #   그 출력이 공개 저장소에 커밋되면 거기에 사용자명이 실린다(security 점검 2026-09-28).
+            print("  ✗ 골든 없음:", os.path.relpath(p, REPO))
             return 3
     print("  입력 sha16: CardShapeGolden=%s · FxPetCardGolden=%s"
           % (sha16(GOLDEN_CARD), sha16(GOLDEN_FXPET)))

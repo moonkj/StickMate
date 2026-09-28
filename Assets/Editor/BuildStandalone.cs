@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using UnityEditor;
+using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -86,7 +87,21 @@ namespace StickMate.EditorTools
             };
 
             Debug.Log("[BuildStandalone] 빌드 시작 -> " + locationPath + " (scenes: " + string.Join(", ", scenes) + ")");
-            BuildReport report = BuildPipeline.BuildPlayer(options);
+
+            // ★ pathmap은 빌드 동안만 걸고 finally에서 반드시 원복한다 — 원복 누락은 곧 공개 저장소 유출이다.
+            NamedBuildTarget compilerArgumentTarget = NamedBuildTarget.Standalone;
+            string[] compilerArgumentsBeforeBuild =
+                PlayerSettings.GetAdditionalCompilerArguments(compilerArgumentTarget);
+            BuildReport report;
+            try
+            {
+                ApplyProjectPathMap(compilerArgumentTarget, compilerArgumentsBeforeBuild, projectRoot);
+                report = BuildPipeline.BuildPlayer(options);
+            }
+            finally
+            {
+                RestoreAdditionalCompilerArguments(compilerArgumentTarget, compilerArgumentsBeforeBuild);
+            }
             BuildSummary summary = report.summary;
 
             Debug.Log($"[BuildStandalone] 빌드 결과: {summary.result}, 총 에러 {summary.totalErrors}건, " +
@@ -517,7 +532,21 @@ namespace StickMate.EditorTools
 
             Debug.Log("[BuildStandalone] Windows 빌드 시작 -> " + locationPath +
                 " (scenes: " + string.Join(", ", scenes) + ")");
-            BuildReport report = BuildPipeline.BuildPlayer(options);
+
+            // ★ macOS 경로와 같은 헬퍼 한 쌍을 쓴다 — 한쪽만 걸면 다른 쪽 배포물에 경로가 남는다.
+            NamedBuildTarget compilerArgumentTarget = NamedBuildTarget.Standalone;
+            string[] compilerArgumentsBeforeBuild =
+                PlayerSettings.GetAdditionalCompilerArguments(compilerArgumentTarget);
+            BuildReport report;
+            try
+            {
+                ApplyProjectPathMap(compilerArgumentTarget, compilerArgumentsBeforeBuild, projectRoot);
+                report = BuildPipeline.BuildPlayer(options);
+            }
+            finally
+            {
+                RestoreAdditionalCompilerArguments(compilerArgumentTarget, compilerArgumentsBeforeBuild);
+            }
             BuildSummary summary = report.summary;
 
             Debug.Log($"[BuildStandalone] Windows 빌드 결과: {summary.result}, 총 에러 {summary.totalErrors}건, " +
@@ -572,6 +601,191 @@ namespace StickMate.EditorTools
             Debug.Log("[BuildStandalone] Windows 투명 창 전제 조건 적용 완료 — " +
                 "useFlipModelSwapchain=false, Graphics APIs(Windows/Windows64)=Direct3D11 고정. " +
                 "(둘 다 D3D 전용 설정이라 macOS 빌드에는 영향 없음.)");
+        }
+
+        // ============================================================================
+        // ★ 배포물에서 이 PC의 절대경로를 지운다 (security L5 · L6, 2026-09-28)
+        // ============================================================================
+
+        /// <summary>
+        /// ★ <b>배포 DLL 안에 개발 PC의 절대경로가 실려 나갔다</b> — 조사 정본은
+        /// <c>docs/security/BUILD_PDB_PATH_LEAK.md</c>이고 이 블록은 그 문서의 「제안 1안」이다.
+        ///
+        /// <para><b>무엇이 새는가</b>: 관리 DLL의 PE 디버그 디렉터리(CodeView RSDS)에는 컴파일러가
+        /// <b>PDB 파일의 경로</b>를 적어 넣는다. <c>.pdb</c>를 배포하지 않아도(우리 배포물의 <c>.pdb</c>는
+        /// 0개다) <b>경로 문자열은 DLL 안에 남는다</b>. 그래서 공개 zip의
+        /// <c>StickMate_Data/Managed/StickMate.Runtime.dll</c>에 이 기계의 홈 경로가 들어 있었다.</para>
+        ///
+        /// <para><b>왜 이 방법인가</b>: Unity는 <c>Packages/</c> 아래 어셈블리에는
+        /// <c>pathmap</c> 인자를 <b>이미 스스로 붙인다</b>(그래서 같은 zip 안 패키지 DLL은 상대경로다).
+        /// <c>Assets/</c> 어셈블리에는 붙이지 않는다. 우리는 <b>Unity가 패키지에 쓰는 것과 똑같은 모양</b>을
+        /// 우리 어셈블리에도 준다 — 새 발명이 아니라 같은 줄을 한 칸 더 긋는 것이다.
+        /// 결정적 컴파일 · PDB 미동봉 · 개발 빌드 끄기는 <b>이미 적용 중이고 이 누출을 막지 못한다</b>(문서 §3).</para>
+        ///
+        /// <para>★ <b>이 인자는 빌드 동안만 걸고 반드시 원복한다.</b>
+        /// <c>ProjectSettings/ProjectSettings.asset</c>은 <b>추적 파일</b>이고 이 값이 그 안에 있다 —
+        /// 원복을 빠뜨리면 누출이 배포물에서 <b>공개 저장소로 옮겨 간다</b>. 그래서
+        /// <see cref="RestoreAdditionalCompilerArguments"/>가 되읽어 확인하고, EditMode 감사가
+        /// 매 러너마다 그 파일을 다시 잰다.</para>
+        ///
+        /// <para>★ <b>인자 원문을 로그에 찍지 않는다.</b> 키가 이 기계의 절대경로라서, 찍는 순간
+        /// 빌드 로그가 새 유출 경로가 된다. 남기는 것은 「몇 건 적용 / 원복 완료」뿐이다.</para>
+        /// </summary>
+        public const string PathMapArgumentPrefix = "-pathmap:";
+
+        /// <summary>
+        /// 빌드 영수증을 두는 자리 — <b>배포 폴더 밖</b>이다(<c>Builds/</c>가 아니다).
+        ///
+        /// <para><b>왜 옮겼는가</b>(security L6): Windows 배포 단위는 <b>폴더 전체</b>라
+        /// <c>Builds/Windows/</c>에 쓴 영수증이 <b>공개 zip에 그대로 동봉</b>됐고, 그 안에 산출물의
+        /// 절대경로가 한 줄 있었다. 영수증 자체는 <b>없애지 않는다</b> — dGPU 패치가 실제로 적용됐는지
+        /// 사람이 확인하는 흔적이기 때문이다. 그래서 <b>지우는 대신 배포 단위 밖으로 옮긴다.</b></para>
+        ///
+        /// <para>이 폴더는 <c>.gitignore</c>의 <c>[Ll]ogs/</c>에 걸려 저장소로도 새지 않는다.</para>
+        /// </summary>
+        public const string BuildReceiptSubFolder = "Logs/BuildReceipts";
+
+        /// <summary>이 프로젝트의 루트. 두 진입점과 영수증 경로 계산이 같은 값을 쓰게 한 곳에 둔다.</summary>
+        public static string ProjectRootPath => Directory.GetParent(Application.dataPath).FullName;
+
+        /// <summary>인자 하나가 pathmap 인자인가. <b>대시형과 슬래시형을 둘 다</b> 본다
+        /// (Unity는 슬래시형을 쓰고 우리는 대시형을 준다 — 한쪽만 보면 중복이 쌓인다).</summary>
+        public static bool IsPathMapArgument(string argument)
+        {
+            if (string.IsNullOrEmpty(argument)) return false;
+            if (argument.StartsWith(PathMapArgumentPrefix, StringComparison.Ordinal)) return true;
+            string slashForm = "/" + PathMapArgumentPrefix.Substring(1);
+            return argument.StartsWith(slashForm, StringComparison.Ordinal);
+        }
+
+        /// <summary>Unity가 패키지 어셈블리에 쓰는 것과 같은 모양을 만든다.
+        /// 쉼표와 등호는 pathmap 키 이스케이프 규칙에 따라 두 번 적는다.</summary>
+        public static string BuildPathMapArgument(string projectRoot)
+        {
+            string key = (projectRoot ?? string.Empty).Replace(",", ",,").Replace("=", "==");
+            return PathMapArgumentPrefix + "\"" + key + "\"=.";
+        }
+
+        /// <summary>기존 인자 목록에서 pathmap만 걷어내고 우리 것 하나를 더한다(멱등).</summary>
+        public static string[] WithProjectPathMap(string[] current, string projectRoot)
+        {
+            var list = new List<string>();
+            if (current != null)
+            {
+                for (int i = 0; i < current.Length; i++)
+                {
+                    if (current[i] == null || IsPathMapArgument(current[i])) continue;
+                    list.Add(current[i]);
+                }
+            }
+            list.Add(BuildPathMapArgument(projectRoot));
+            return list.ToArray();
+        }
+
+        /// <summary>빌드 직전에 걸고, 무엇을 걸었는지는 <b>건수만</b> 남긴다.</summary>
+        public static void ApplyProjectPathMap(NamedBuildTarget target, string[] previous, string projectRoot)
+        {
+            PlayerSettings.SetAdditionalCompilerArguments(target, WithProjectPathMap(previous, projectRoot));
+            Debug.Log("[BuildStandalone] 컴파일 인자에 pathmap 1건 적용 — 배포 DLL의 PDB 경로에서 이 PC의 " +
+                "절대경로를 지웁니다. 인자 원문은 로그에 남기지 않습니다(그 자체가 유출입니다). " +
+                "원복은 같은 진입점의 finally가 합니다.");
+        }
+
+        /// <summary>
+        /// ★ <b>원복은 실패하면 소리를 내야 한다.</b> 조용히 남으면 다음 커밋이 이 PC의 경로를
+        /// 공개 저장소에 싣는다. 그래서 되읽어 <b>0건</b>임을 확인하고, 아니면 에러를 던진다(로그로).
+        /// </summary>
+        public static void RestoreAdditionalCompilerArguments(NamedBuildTarget target, string[] previous)
+        {
+            try
+            {
+                PlayerSettings.SetAdditionalCompilerArguments(target, previous ?? new string[0]);
+
+                string[] readBack = PlayerSettings.GetAdditionalCompilerArguments(target);
+                int leftover = 0;
+                if (readBack != null)
+                {
+                    for (int i = 0; i < readBack.Length; i++)
+                    {
+                        if (IsPathMapArgument(readBack[i])) leftover++;
+                    }
+                }
+
+                if (leftover > 0)
+                {
+                    Debug.LogError("[BuildStandalone] 컴파일 인자 원복 실패 — pathmap이 " + leftover +
+                        "건 남아 있습니다. ProjectSettings.asset은 추적 파일이므로 이 상태로 커밋되면 " +
+                        "이 PC의 경로가 공개 저장소로 나갑니다. Player Settings의 Additional Compiler " +
+                        "Arguments에서 그 항목을 지우고, EditMode 원복 감사를 다시 돌리십시오.");
+                    return;
+                }
+
+                AssetDatabase.SaveAssets();
+                Debug.Log("[BuildStandalone] 컴파일 인자 원복 완료 — pathmap 0건.");
+            }
+            catch (Exception e)
+            {
+                Debug.LogError("[BuildStandalone] 컴파일 인자 원복 중 예외 — " + e.GetType().Name + ": " +
+                    e.Message + " ProjectSettings.asset의 추가 컴파일 인자를 직접 확인하십시오" +
+                    "(pathmap이 남아 있으면 지웁니다).");
+            }
+        }
+
+        /// <summary>영수증 폴더. <b>순수 계산이다</b> — 디스크를 건드리지 않으므로 감사가 부작용 없이 잰다.</summary>
+        public static string BuildReceiptDirectory()
+        {
+            return Path.Combine(ProjectRootPath,
+                BuildReceiptSubFolder.Replace('/', Path.DirectorySeparatorChar));
+        }
+
+        /// <summary>영수증 전체 경로. 폴더가 없으면 만든다(여기가 쓰기 직전 단계다).</summary>
+        public static string ResolveBuildReceiptPath(string receiptFileName)
+        {
+            string dir = BuildReceiptDirectory();
+            Directory.CreateDirectory(dir);
+            return Path.Combine(dir, receiptFileName);
+        }
+
+        /// <summary>경로 하나를 프로젝트 상대로 바꾼다. 프로젝트 밖이면 <b>파일명만</b> 남긴다 —
+        /// 어떤 경우에도 절대경로를 내보내지 않는 것이 이 함수의 계약이다.</summary>
+        public static string ToProjectRelativePath(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return string.Empty;
+
+            string root = ProjectRootPath;
+            if (path.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+            {
+                return path.Substring(root.Length + 1);
+            }
+            if (string.Equals(path, root, StringComparison.Ordinal)) return ".";
+            return Path.GetFileName(path);
+        }
+
+        /// <summary>
+        /// ★ <b>영수증 텍스트의 단일 검문소.</b> 임의의 텍스트에서 프로젝트 루트와 홈 경로를 걷어낸다.
+        ///
+        /// <para>왜 문장 단위가 아니라 여기 한 곳인가: 영수증은 <b>실패 분기마다 다른 문장</b>을 담고
+        /// (그중 여럿이 경로를 끼워 넣는다) <c>codesign</c> 같은 <b>외부 도구의 출력</b>도 그대로 싣는다.
+        /// 문장마다 고치면 분기 하나를 빠뜨리는 순간 조용히 다시 샌다 — 그래서 <b>쓰는 자리</b>에서 한 번
+        /// 거른다.</para>
+        /// </summary>
+        public static string ToProjectRelativeText(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return text;
+
+            string root = ProjectRootPath;
+            string scrubbed = text
+                .Replace(root + Path.DirectorySeparatorChar, string.Empty)
+                .Replace(root, ".");
+
+            string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            if (!string.IsNullOrEmpty(home))
+            {
+                scrubbed = scrubbed
+                    .Replace(home + Path.DirectorySeparatorChar, "~" + Path.DirectorySeparatorChar)
+                    .Replace(home, "~");
+            }
+            return scrubbed;
         }
 
         private static string[] GetEnabledScenePaths()

@@ -118,6 +118,22 @@ namespace StickMate.EditorTools
             }
         }
 
+        /// <summary>
+        /// ★ <b>영수증은 배포 폴더 밖에 쓴다</b>(security L6, 2026-09-28).
+        ///
+        /// <para><b>무엇이 문제였나</b>: Windows 배포 단위는 <c>.exe</c> 하나가 아니라
+        /// <b>폴더 전체</b>다. 그래서 산출물 <b>옆</b>에 쓴 이 영수증이 <b>공개 zip에 그대로 동봉</b>됐고,
+        /// 그 안 <c>대상:</c> 줄에 이 PC의 절대경로가 한 줄 들어 있었다(실측: 공개 zip 143파일 중
+        /// 계정명이 든 파일 2개가 이 영수증과 관리 DLL이었다).</para>
+        ///
+        /// <para><b>지우지 않는 이유</b>: 이 파일은 dGPU 패치가 실제로 적용됐는지 사람이 확인하는
+        /// 흔적이고, 「패치가 안 먹었는데 exe는 나온다」가 이 훅이 겨누는 사고다. 그래서
+        /// <b>없애는 대신 배포 단위 밖</b>(<see cref="BuildStandalone.BuildReceiptSubFolder"/>)으로 옮긴다.
+        /// macOS 훅은 배포 단위가 <c>.app</c> 번들이라 이미 그 밖에 쓰고 있어 옮기지 않는다 —
+        /// <b>비대칭의 이유는 배포 단위가 다르다는 사실 하나</b>다.</para>
+        /// </summary>
+        private static string ReceiptPath() => BuildStandalone.ResolveBuildReceiptPath(ReceiptFileName);
+
         // ====================================================================
         // 본체
         // ====================================================================
@@ -293,11 +309,11 @@ namespace StickMate.EditorTools
             }
 
             log.Append("RESULT=PASS\n");
-            WriteReceipt(exePath, log);
+            string receiptPath = WriteReceipt(log);
 
             Debug.Log($"{LogTag} RESULT=PASS — 되읽기 검증 통과: {string.Join(", ", verified)} " +
                       $"(쓰기 {written}건, 달라진 바이트 {changedBytes}개, 값 DWORD 밖 0개). " +
-                      $"영수증: {ReceiptFileName}. " +
+                      $"영수증: {BuildStandalone.ToProjectRelativePath(receiptPath)}. " +
                       "★ 실기 미확인: 값 0이 실제로 내장 GPU로 귀결되는지는 Windows 실기에서 확인해야 한다 — " +
                       "python3 Tools/BuildVerify/check_dgpu_exports.py <exe> --expect 0 --template");
         }
@@ -309,12 +325,12 @@ namespace StickMate.EditorTools
         private void Fail(string exePath, StringBuilder log, string reason)
         {
             log.Append("RESULT=FAIL\n사유: ").Append(reason).Append('\n');
-            WriteReceipt(exePath, log);
+            string receiptPath = WriteReceipt(log);
 
             string message =
                 $"{LogTag} RESULT=FAIL — {reason}\n" +
                 "이 실패는 의도된 것이다. 패치되지 않은 exe가 조용히 출하되는 것보다 빌드가 서는 편이 낫다.\n" +
-                "확인 순서: (1) 산출물 옆 " + ReceiptFileName + " 를 읽는다 " +
+                "확인 순서: (1) " + BuildStandalone.ToProjectRelativePath(receiptPath) + " 를 읽는다 " +
                 "(2) python3 Tools/BuildVerify/check_dgpu_exports.py <exe> --template 로 현재 값을 독립 확인한다 " +
                 "(3) 템플릿이 바뀐 것이라면 docs/verify/WINDOWS_DGPU_REPORT.md 를 갱신하고 " +
                 "Platform/HybridGpuPreferencePolicy.cs 의 기대값을 다시 판정한다.";
@@ -323,18 +339,25 @@ namespace StickMate.EditorTools
             throw new BuildFailedException(message);
         }
 
-        private static void WriteReceipt(string exePath, StringBuilder log)
+        /// <summary>
+        /// 영수증을 쓰고 그 경로를 돌려준다. <b>경로 계산은 <see cref="ReceiptPath"/> 한 곳</b>이고,
+        /// 텍스트는 <see cref="BuildStandalone.ToProjectRelativeText"/> <b>검문소 한 곳</b>을 지난다 —
+        /// 실패 분기마다 다른 문장이 경로를 끼워 넣으므로, 문장마다 고치면 하나를 빠뜨리는 순간
+        /// 조용히 다시 샌다.
+        /// </summary>
+        private static string WriteReceipt(StringBuilder log)
         {
             try
             {
-                string dir = string.IsNullOrEmpty(exePath) ? null : Path.GetDirectoryName(exePath);
-                if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir)) return;
-                File.WriteAllText(Path.Combine(dir, ReceiptFileName), log.ToString(), Encoding.UTF8);
+                string path = ReceiptPath();
+                File.WriteAllText(path, BuildStandalone.ToProjectRelativeText(log.ToString()), Encoding.UTF8);
+                return path;
             }
             catch (Exception e)
             {
                 Debug.LogWarning($"{LogTag} 영수증 파일을 쓰지 못했다 — {e.Message} " +
                                  "(판정 자체는 위 로그가 정본이다).");
+                return null;
             }
         }
     }

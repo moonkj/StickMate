@@ -34,6 +34,12 @@ from rig import Shape
 
 ICON, FIT = 44.0, 0.86
 ICON_STROKE = 1.7 * 44.0 / 40.0          # 1.870px (design-equipment 게이트 ②와 같은 값)
+# ★ 2026-09-28 (design-art): 위 세 값은 **옛 자**다. 출하 실측은 카드 아이콘 58pt
+#   (CharacterInfoWindow.IconSize = 58f)이고 획은 58 * 2.2/64 = 1.99375pt
+#   (AccessoryCardIcon.Frame.IconStroke / IconViewBox). FIT 0.86 은 v1 봉투 맞춤 값이고
+#   지금 프로덕션에는 그 이름의 상수가 없다(넘침 보정 fit.Shrink 가 그 자리이고, 획은 축소를
+#   따라가지 않는다). **값을 일부러 안 고쳤다** — 고치면 PALETTE_SPEC §17 의 회색조 수치가
+#   재생성 없이 거짓이 된다. 58pt 로 다시 굽는 것은 별건이고, 그때 §17 과 함께 움직여야 한다.
 SS = 6                                    # 슈퍼샘플
 CARD_BG = "#1B1E24"                       # 아래 §0에서 UiChrome 실측으로 덮어쓴다
 

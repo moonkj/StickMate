@@ -582,11 +582,21 @@ namespace StickMate.Interaction
         {
             if (_player == null || _player.Blackboard == null || _player.Blackboard.Machine == null)
                 return "캐릭터 배선이 없습니다";
+            // ★ 2026-09-28 — 아래 순서는 TryTriggerPoseState의 관문 순서와 <b>같아야 한다</b>. 갈라지면
+            //   「막은 것」과 「막았다고 말하는 것」이 서로 다른 사유를 가리킨다(이 파일이 이미 당한 형태다).
+            if (HiddenCharacterCommandGate.BlocksNow(_player))
+                return HiddenCharacterCommandGate.HiddenReason;
             StickmanStateId current = _player.Blackboard.Machine.CurrentStateId;
             if (current != StickmanStateId.Idle && current != StickmanStateId.Walk)
                 return $"캐릭터가 Idle/Walk가 아닙니다(지금 {current})";
-            if (SpectacleEventLock.IsActive && SpectacleEventLock.CurrentOwner != (object)this)
+            // ★★ 2026-09-28 — 예전에는 IsActive/CurrentOwner <b>둘만</b> 봤다. 그래서 보존 동결이 빈 락의
+            //   신규 획득을 막는 순간 이 함수가 <b>「관문은 지금 열려 있습니다」라고 거짓을 적었다</b>.
+            //   지금은 락 자신의 판정(EvaluateAcquire)을 그대로 읽는다 — 판정과 설명이 같은 자를 쓴다.
+            SpectacleLockDenialReason denial = SpectacleEventLock.EvaluateAcquire(this);
+            if (denial == SpectacleLockDenialReason.HeldByOther)
                 return $"다른 연출이 상태 슬롯을 쥐고 있습니다({SpectacleEventLock.ActiveKind})";
+            if (denial != SpectacleLockDenialReason.None)
+                return SpectacleEventLock.Describe(denial);
             return "관문은 지금 열려 있습니다(직전 프레임에 막혔던 것으로 보입니다)";
         }
 
@@ -603,6 +613,30 @@ namespace StickMate.Interaction
         private bool TryTriggerPoseState(StickmanStateId stateId)
         {
             if (_player == null || _player.Blackboard == null || _player.Blackboard.Machine == null) return false;
+
+            // ★★★ 2026-09-28 (리더 판정) — <b>숨어 있는 캐릭터에게 포즈를 잡히지 않는다.</b> 절대 불변 원칙 2
+            //   「부르지 않은 표면」의 가족이고, 원칙 1로도 같은 답이다(안 보이는 몸에서 파생된 대사는 주인이 없다).
+            //
+            // ★ <b>여기 한 줄이 다섯 호출부를 모두 덮는다</b>: StartFocusSession / StopFocusSession /
+            //   CompleteSession / TickStartPoseRetry / TickCompletePoseRetry. 시작과 완주를 <b>따로</b> 막으면
+            //   「왜 시작은 보고 완주는 안 보나」로 다음 사람이 오진한다 — 관문은 한 자리여야 한다.
+            //
+            // ★ <b>실제로 새고 있던 자리는 취소였다</b>(재시도 둘이 아니다): Update가 첫 줄에서
+            //   IsSuspended로 물러나므로 두 재시도와 CompleteSession은 숨김 중에 <b>애초에 돌지 않는다</b>.
+            //   반면 StopFocusSession은 팝오버 [그만두기]와 ⌃⌥⌘F가 직접 부르고, 사용자 명시 숨김 단독에서는
+            //   ArePanelsSuppressed가 거짓이라 <b>그 팝오버가 살아 있다</b>(「캐릭만 가리고」 확정 설계).
+            //   그래서 숨은 채로 취소하면 FocusCancelled 포즈가 안 보이는 몸에 실렸다.
+            //
+            // ★ <b>끄는 길을 막지 않는다</b>: 이 줄은 <b>포즈</b>만 거른다. 세션 종료·지급·타이머는 위에서
+            //   이미 끝나 있고(StopFocusSession 순서), ForceTriggerNow의 「숨은 동안에도 끌 수 있다」는
+            //   그대로다 — 사용자에게서 정지 수단을 빼앗지 않는다(HiddenCharacterCommandGate "무엇을 막지
+            //   않는가").
+            //
+            // ★ <b>재시도 창은 소모되지 않고 멈춘다</b>(전체화면과 같은 형태): 창을 깎는 두 Tick이 같은
+            //   IsSuspended 관문 아래에 있으므로, 숨김이 풀리면 남은 창으로 <b>이어서</b> 시도한다.
+            //   전체화면 자동 물러남과 사용자 숨김을 갈라 둘 이유가 없다 — 둘 다 <b>같은 값</b>
+            //   (IsSuspended)이고, 캐릭터가 다시 보이는 순간이 포즈가 성립하는 순간이다.
+            if (HiddenCharacterCommandGate.BlocksNow(_player)) return false;
 
             var current = _player.Blackboard.Machine.CurrentStateId;
             if (current != StickmanStateId.Idle && current != StickmanStateId.Walk) return false; // 조용히 스킵(포즈만 생략, 타이머 로직에는 영향 없음)
