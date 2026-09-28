@@ -404,12 +404,23 @@ namespace StickMate.Core
         /// </code>
         /// <para>누가 이걸 「대체」로 바꾸면 <b>업데이트만 했는데 갖고 있던 장비를 빼앗기고</b>,
         /// 그 사고는 저장 파일을 열어봐도 눈에 안 띈다(파일에는 아무 일도 안 일어난다).
-        /// 그래서 <c>Tests/EditMode/ItemOwnershipUnionTests</c>가 이 문장을 매 실행 잠근다.</para></summary>
+        /// 그래서 <c>Tests/EditMode/ItemOwnershipUnionTests</c>가 이 문장을 매 실행 잠근다.</para>
+        ///
+        /// <para>★★★ <b>2026-09-28 DLC 폐지 R1 — 구매 항을 뺐다</b>(사용자 확정: DLC·재화 폐지, 1회
+        /// 구매 전환). 위 문단이 지키던 것은 「구매가 레벨 파생을 <b>대체</b>하지 않는다」이고, 이번에
+        /// 사라진 것은 <b>구매 항 자체</b>다 — 그래서 위 문단의 결론(v9 파일에 구매 이력이 없어도 레벨
+        /// 파생으로 아무것도 안 잃는다)은 <b>더 강하게</b> 참이다. 남은 항은 셋이고 전부 구매와 무관하다:
+        /// 요구 레벨이 없는 항목(행동 12종) ∪ QA 해금 스위치 ∪ 레벨 파생.</para>
+        ///
+        /// <para>★★ <see cref="CurrencyModel.IsPurchasedItem"/>과 구매 이력 저장 필드는 <b>지우지 않았다</b>
+        /// (세이브 호환 판정이 끝난 뒤 다른 라운드 소관). 뗀 것은 <b>호출</b>이고, 같은 커밋에서
+        /// <see cref="EquipmentModel.IsItemOwned"/>의 같은 항도 함께 뗐다 — 두 자리의 항 구성이 어긋나면
+        /// 2026-09-07 P0과 같은 침묵이 방향만 바뀌어 재현된다(그 문단은
+        /// <see cref="EquipmentModel.IsItemOwned"/>에 있다).</para></summary>
         public bool IsOwned(StickConfig config)
             => !RequiredLevel.HasValue
                || EquipmentDebugUnlock.UnlockAll
-               || CharacterProgressionModel.Level >= RequiredLevel.Value
-               || CurrencyModel.IsPurchasedItem(Id);
+               || CharacterProgressionModel.Level >= RequiredLevel.Value;
 
         /// <summary>장비면서 <b>지금 이 아이템이</b> 착용 중인가(같은 카테고리의 다른 아이템이 착용
         /// 중이면 false — 카테고리당 하나만 걸칠 수 있다).</summary>

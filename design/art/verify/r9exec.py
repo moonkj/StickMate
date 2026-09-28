@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """R9 집행 세부 — 안 C 확정 이후 (design-art 2026-09-03)"""
 import sys, os, re, math, itertools, collections
-sys.path.insert(0,"/Users/kjmoon/App/StickMate/design/art/verify")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))   # ★ 2026-09-28: 절대 경로 리터럴(계정명 포함) 제거. 같은 디렉터리를 가리킨다.
 import colorlab as CL, band, cvd
 import rarityaxis as RA
 from rarityaxis import arc, in_band, worst_bd, DISCERN, IDENTIFY, TEXT, NONTEXT, BRASS_RAMP, HANDOFF_CARD, HANDOFF_WORN, BRASS

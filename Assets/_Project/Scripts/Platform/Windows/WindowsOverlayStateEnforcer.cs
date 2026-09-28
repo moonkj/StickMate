@@ -53,7 +53,11 @@ namespace StickMate.Platform.Windows
         /// (CLAUDE.md 금지 사항). macOS판 Enforcer도 같은 상수를 참조한다.</para></summary>
         private const int ReapplyAttempts = OverlayStateReapplyPolicy.ReapplyAttempts;
         private const float ReapplyIntervalSeconds = OverlayStateReapplyPolicy.ReapplyIntervalSeconds;
-        private const float AttachTimeoutSeconds = 15f;
+        /// <summary>부착 제한 시간(초). ★ 2026-09-28 — 값이 <b>플랫폼 중립 정본</b>으로 옮겨졌다.
+        /// 그전까지 양 Enforcer가 각자 <c>15f</c>를 들고 있었고, 둘 다 <c>#if UNITY_STANDALONE_*</c> 안이라
+        /// 테스트가 참조할 수 없어 어긋나도 아무도 몰랐다(<see cref="ReapplyAttempts"/>와 같은 이유).
+        /// 기동 표시 보류가 <b>같은 예산</b>을 쓴다 — 새 상수를 만들지 않는다.</summary>
+        private const float AttachTimeoutSeconds = OverlayStateReapplyPolicy.AttachTimeoutSeconds;
 
         /// <summary>전체화면 확장 재시도 상한 — 해상도 변경이 프레임 끝에 반영되고 창 스타일 확정에도
         /// 한두 프레임 걸려서 한 번에 성공하지 않을 수 있다.</summary>
@@ -263,6 +267,14 @@ namespace StickMate.Platform.Windows
 
             _elapsed += Time.unscaledDeltaTime;
 
+            // ★ 2026-09-28 기동 표시 보류 — 부착 전 근백색(0.94) 노출을 스플래시 배경과 같은 어두운 값으로
+            //   덮고, 상한(부착 제한 시간)에 닿으면 반드시 근백색으로 되돌린다.
+            //   이 자리가 부착 판정보다 앞인 것이 핵심이다: 보류가 필요한 구간이 정확히 "부착 전"이고,
+            //   첫 프레임부터 걸려야 첫 present를 덮는다(Enforcer는 StickmanAgent.Start에서 만들어지므로
+            //   이 Update는 첫 렌더보다 앞선다). 판정·전이·상한은 플랫폼 중립 StartupPresentationHold 한 곳.
+            BeginStartupPresentationHoldIfNeeded();
+            TickStartupPresentationHold();
+
             // 부착 판정: 부착 전에는 네이티브가 크기를 (0,0)으로 보고한다(macOS와 동일한 계약).
             Vector2 windowSize = _controller.windowSize;
             bool attached = windowSize.x > 0f && windowSize.y > 0f;
@@ -275,6 +287,13 @@ namespace StickMate.Platform.Windows
                     Debug.LogWarning($"[WindowsOverlayStateEnforcer] {AttachTimeoutSeconds}초가 지나도 " +
                         "UniWindowController가 자기 HWND를 붙잡지 못했습니다(windowSize=(0,0)). " +
                         "투명/항상위/클릭관통이 전부 적용되지 않은 상태입니다 — 정직한 실패 보고용 로그.");
+                    // ★ 2026-09-28 — 여기가 「탈출구」다(아래 메서드 문서). 경고만 남기고 끝내면
+                    //   조기 해제를 뺀 이 플랫폼에서는 전체화면 불투명 창이 영원히 남는다.
+                    ReleaseFullscreenAfterAttachFailureIfPolicyRequires();
+                    // ★ 2026-09-28 — 제목표시줄 복귀와 배경 복귀는 <b>한 사건</b>이다
+                    //   (둘 다 "투명을 포기했다"는 같은 사실의 결과다). 멱등이라 상한 복원이 이미
+                    //   일어났으면 아무 일도 하지 않는다.
+                    RestoreStartupPresentationHoldOnAttachFailure();
                 }
                 return;
             }
@@ -283,6 +302,10 @@ namespace StickMate.Platform.Windows
             {
                 _attachDetected = true;
                 ApplyTransparentSafeCameraBackground();
+                // ★ 2026-09-28 — 위 교정이 <b>실제로 걸렸을 때만</b> 기동 표시 보류를 넘긴다.
+                //   걸리지 않았으면(투명 실패/카메라 없음) 보류를 유지해 상한에서 근백색으로 되돌린다 —
+                //   검정-on-검정(잉크색이 검정인 사용자에게 아무것도 안 보임)을 막는 유일한 경로다.
+                NoteStartupPresentationHandoverIfCorrected();
                 // 창이 실제로 존재하는 이 시점에 앱 전환 표면에서 뺀다.
                 // macOS판(MacOverlayStateEnforcer)이 <b>같은 자리</b>에서
                 // MacSpaceBehaviorNative.ApplyAccessoryActivationPolicyOnce()를 부른다 —
@@ -1208,6 +1231,140 @@ namespace StickMate.Platform.Windows
         /// 프리멀티플라이드로 다루므로 배경 RGB가 밝으면 캐릭터 가장자리에 밝은 프린지가 남는다.
         /// 투명화가 실패한 상황에서는 손대지 않아 "밝은 배경 안의 캐릭터"(최소한 보이는 상태)가 된다.
         /// </summary>
+        /// <summary>
+        /// ★ 2026-09-28 — <b>부착이 끝내 실패했을 때의 탈출구</b>. 판정은 플랫폼 중립
+        /// <see cref="StartupWindowModePolicy.ShouldReleaseFullscreenAfterAttachFailure"/> 한 곳에 있고,
+        /// 이 메서드는 <b>사실 조회와 적용</b>만 한다(CLAUDE.md "정책은 중립 위치, 플랫폼은 사실 조회").
+        ///
+        /// <para><b>왜 필요한가</b>: 이 플랫폼은 기동 시 전체화면 <b>조기</b> 해제를 끈다(제목표시줄 노출
+        /// 구간을 없애기 위해 — <see cref="StartupWindowModePolicy"/> 문서). 정상 경로에서는 부착 프레임의
+        /// <c>TickFullScreenBounds()</c>가 창모드로 내리므로 아무 손실이 없다. 그런데 <b>부착이 영영
+        /// 실패하면</b> 그 전환도 영영 오지 않아, 사용자에게는 <b>테두리 없는 전체화면 불투명 창</b>이 남는다
+        /// (제목표시줄도 닫기 버튼도 없다). 트레이 아이콘은 이 상황에서도 살아 있지만
+        /// <c>SystemTrayPresencePolicy.OptOutEnvironmentVariable</c>로 <b>끌 수 있으므로</b> 유일한 탈출구로
+        /// 삼지 않는다. 그래서 제한 시간이 지나면 <b>그때</b> 창모드로 내려 제목표시줄을 되돌린다 —
+        /// 조기 해제를 없앤 것이 아니라 <b>필요한 순간으로 미룬 것</b>이다.</para>
+        ///
+        /// <para><c>Screen.fullScreen = false</c>를 쓰는 이유: 패키지의 <c>forceWindowed</c>가 걸던
+        /// <b>그 한 줄</b>과 같아 새 동작을 발명하지 않고, <c>Screen.SetResolution</c>의 <b>수명 상한</b>
+        /// (<see cref="MaxSetResolutionCalls"/>)을 소모하지 않는다. 호출은 <c>_gaveUpLogged</c> 가드 안이라
+        /// <b>프로세스당 1회</b>다(재적용 루프가 되지 않는다).</para>
+        ///
+        /// <para><b>정직한 한계</b>: 이 머신에 Windows 실기가 없어 <b>실행으로 확인하지 못했다</b>.
+        /// 부착 실패 자체가 드문 경로라 실기에서도 자연 발생을 기다릴 수 없다 — 그래서 판정은 EditMode가
+        /// 순수 함수로, 배선은 소스 감사가 잠근다.</para>
+        /// </summary>
+        private void ReleaseFullscreenAfterAttachFailureIfPolicyRequires()
+        {
+            if (!StartupWindowModePolicy.ShouldReleaseFullscreenAfterAttachFailure(OverlayHostPlatform.Windows)) return;
+
+            if (Screen.fullScreenMode == FullScreenMode.Windowed)
+            {
+                Debug.LogWarning("[WindowsOverlayStateEnforcer] 부착 실패 탈출구 — 이미 창모드(Windowed)라 " +
+                    "창 모드를 건드리지 않았습니다(제목표시줄은 이미 있습니다).");
+                return;
+            }
+
+            FullScreenMode before = Screen.fullScreenMode;
+            Screen.fullScreen = false;
+            Debug.LogWarning($"[WindowsOverlayStateEnforcer] 부착 실패 탈출구 — 창 모드를 {before} -> Windowed로 " +
+                "요청했습니다(프레임 끝에 적용). 제목표시줄이 돌아오므로 창을 옮기고 닫을 수 있습니다. " +
+                "이 호출은 프로세스당 1회이고 Screen.SetResolution 수명 상한을 소모하지 않습니다.");
+        }
+
+        // ============================================================================
+        // ★ 2026-09-28 기동 표시 보류 — 「시작할때 전체 흰화면이 계속 켜져있다가 꺼짐」
+        // ============================================================================
+        // 판정·전이·상한은 전부 플랫폼 중립 StartupPresentationHold에 있고 이 파일은 <b>사실 조회와
+        // 적용</b>만 한다(CLAUDE.md). macOS판(MacOverlayStateEnforcer)이 같은 자리에 같은 넷을 갖는다 —
+        // 한쪽만 고치면 그 플랫폼만 흰 화면이 남는다.
+        private StartupPresentationHold _startupHold;
+
+        private StartupPresentationHold StartupHold => _startupHold ??= new StartupPresentationHold(
+            StartupPresentationHoldPolicy.ReadDisabledFromEnvironment(),
+            AttachTimeoutSeconds,
+            ApplyStartupHoldBackgroundRgb);
+
+        /// <summary>보류가 색을 쓸 카메라. 투명 교정(<see cref="ApplyTransparentSafeCameraBackground"/>)과
+        /// <b>같은 규칙</b>으로 고른다 — 두 경로가 다른 카메라를 잡으면 한쪽이 다른 쪽을 덮는다.</summary>
+        private Camera ResolveHoldCamera()
+            => _controller != null && _controller.currentCamera != null ? _controller.currentCamera : Camera.main;
+
+        /// <summary>보류의 <b>유일한 쓰기 지점</b>. 알파는 절대 건드리지 않는다 —
+        /// 그 알파가 곧 창 투명도의 입력이고, 여기서 손대면 투명 합성 자체가 바뀐다.</summary>
+        private void ApplyStartupHoldBackgroundRgb(float r, float g, float b)
+        {
+            Camera cam = ResolveHoldCamera();
+            if (cam == null) return;
+            Color before = cam.backgroundColor;
+            cam.backgroundColor = new Color(r, g, b, before.a);
+        }
+
+        /// <summary>부착 전 첫 기회에 보류를 시작한다(한 번만 먹는다).</summary>
+        private void BeginStartupPresentationHoldIfNeeded()
+        {
+            StartupPresentationHold hold = StartupHold;
+            if (hold.IsDisabled || hold.Phase != StartupPresentationHoldPhase.Inactive) return;
+
+            Camera cam = ResolveHoldCamera();
+            if (cam == null) return;   // 카메라를 아직 못 찾았다 — 다음 프레임에 다시 시도한다.
+
+            float keptAlpha = cam.backgroundColor.a;
+            Color fallback = ResolveStartupFallbackBackground(cam);
+            if (!hold.Begin(Time.unscaledTimeAsDouble, fallback.r, fallback.g, fallback.b)) return;
+
+            Debug.Log("[WindowsOverlayStateEnforcer] 기동 표시 보류 시작 — 부착 전 카메라 배경 RGB를 " +
+                $"스플래시 배경과 같은 어두운 값({StartupPresentationHoldPolicy.HoldRed:F3}," +
+                $"{StartupPresentationHoldPolicy.HoldGreen:F3},{StartupPresentationHoldPolicy.HoldBlue:F3})으로 " +
+                $"덮었습니다(알파 {keptAlpha:F2} 보존). 상한 {hold.BudgetSeconds:F0}초에 닿으면 " +
+                $"근백색({hold.RestoreRed:F2},{hold.RestoreGreen:F2},{hold.RestoreBlue:F2})으로 반드시 " +
+                $"되돌립니다. 끄려면 {StartupPresentationHoldPolicy.DisableEnvironmentVariable}=1.");
+        }
+
+        /// <summary>상한에서 되돌릴 색의 출처. <b>RGB만</b> 쓴다(알파는 카메라의 현재 값을 보존한다).</summary>
+        private Color ResolveStartupFallbackBackground(Camera cam)
+        {
+            var config = ResolveConfig();
+            // 이 값은 캐릭터 튜닝이 아니라 <b>오버레이 배경 폴백</b>이다 — 투명이 실패했을 때
+            // "밝은 배경 안의 검정 캐릭터"(최소한 보이는 상태)를 만드는 색이고, 그것이 이 보류가
+            // 상한에서 반드시 되돌려야 하는 이유다.
+            if (config != null) return config.backgroundFallbackColor;
+            return cam.backgroundColor;   // 설정을 아직 못 찾았다 — 씬이 구운 같은 값이 이미 여기 있다.
+        }
+
+        /// <summary>매 프레임. 상한에 닿으면 보류가 근백색을 되돌리고, 그때 한 번 경고를 남긴다.</summary>
+        private void TickStartupPresentationHold()
+        {
+            StartupPresentationHold hold = StartupHold;
+            if (!hold.Tick(Time.unscaledTimeAsDouble)) return;
+
+            Debug.LogWarning($"[WindowsOverlayStateEnforcer] 기동 표시 보류 상한 도달({hold.BudgetSeconds:F0}초) — " +
+                $"카메라 배경 RGB를 근백색({hold.RestoreRed:F2},{hold.RestoreGreen:F2},{hold.RestoreBlue:F2})으로 " +
+                "되돌렸습니다(알파 보존). 이 시간 안에 부착/투명이 성립하지 않았다는 뜻이며, 어두운 배경을 " +
+                "그대로 두면 잉크색이 검정인 사용자에게 아무것도 보이지 않습니다(검정-on-검정).");
+        }
+
+        /// <summary>투명 교정이 <b>실제로 걸린 뒤</b>에만 보류를 넘긴다(조기 반환 경로에서는 유지한다).</summary>
+        private void NoteStartupPresentationHandoverIfCorrected()
+        {
+            if (!_cameraBackgroundPremultiplyFixed) return;
+            if (!StartupHold.NoteTransparentCorrectionApplied()) return;
+
+            Debug.Log("[WindowsOverlayStateEnforcer] 기동 표시 보류 종료 — 투명 교정이 걸려 카메라 배경이 " +
+                "검정(알파 보존)으로 넘어갔습니다. 이후 이 보류는 색을 다시 쓰지 않습니다.");
+        }
+
+        /// <summary>부착 실패 보고와 같은 순간의 강제 복원(멱등).</summary>
+        private void RestoreStartupPresentationHoldOnAttachFailure()
+        {
+            StartupPresentationHold hold = StartupHold;
+            if (!hold.RestoreNow(StartupPresentationHoldRelease.AttachFailureRestored)) return;
+
+            Debug.LogWarning("[WindowsOverlayStateEnforcer] 부착 실패 — 기동 표시 보류를 걷고 카메라 배경 RGB를 " +
+                $"근백색({hold.RestoreRed:F2},{hold.RestoreGreen:F2},{hold.RestoreBlue:F2})으로 되돌렸습니다. " +
+                "제목표시줄 복귀와 한 사건입니다(둘 다 '투명을 포기했다'는 같은 사실의 결과).");
+        }
+
         private void ApplyTransparentSafeCameraBackground()
         {
             // ★ 2026-09-01 — 진단 프로브를 <b>아래 조기 반환들보다 먼저</b> 세운다.

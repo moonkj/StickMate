@@ -12,7 +12,8 @@ import os
 import re
 import sys
 
-ROOT = "/Users/kjmoon/App/StickMate/Assets/_Project/Scripts"
+ROOT = os.path.join(os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..")),
+                    "Assets/_Project/Scripts")   # ★ 2026-09-28: 절대 경로 리터럴(계정명 포함) 제거
 UICHROME = os.path.join(ROOT, "Interaction/UiChrome.cs")
 
 TOKEN_RE = re.compile(

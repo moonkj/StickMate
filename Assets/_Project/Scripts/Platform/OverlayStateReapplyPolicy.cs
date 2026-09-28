@@ -99,6 +99,21 @@ namespace StickMate.Platform
         public const float ReapplyIntervalSeconds = 0.5f;
 
         /// <summary>
+        /// <b>창 부착 제한 시간(초)</b> — 이 시간이 지나도 라이브러리가 자기 창을 붙잡지 못하면 포기하고
+        /// 사람에게 알린다(정직한 실패 보고).
+        ///
+        /// <para>★ 2026-09-28 — 여기로 올렸다. 그전까지 <b>양 플랫폼 Enforcer가 각자 <c>15f</c>를 들고</b>
+        /// 있었고, 둘 다 <c>#if UNITY_STANDALONE_*</c> 안이라 <b>테스트가 참조할 수 없어</b> 두 값이
+        /// 어긋나도 아무도 모르는 상태였다(위 두 상수를 여기로 올린 것과 <b>같은 이유·같은 사고 형태</b>).</para>
+        ///
+        /// <para>★ <b>기동 표시 보류</b>(<see cref="StartupPresentationHold"/>)가 이 예산을 <b>그대로</b> 쓴다.
+        /// 새 상수를 만들지 않은 이유: 이 시각은 이미 「부착을 포기하고 사람에게 알리는 시점」으로 확정돼
+        /// 있고, 보류를 그보다 오래 끌 근거가 없다 — 끌면 투명이 영구 실패한 환경에서 어두운 창이 더 오래
+        /// 남는다(그 실패 모드를 막는 것이 보류의 상한이다).</para>
+        /// </summary>
+        public const float AttachTimeoutSeconds = 15f;
+
+        /// <summary>
         /// <c>LibUniWinC.SetBorderless(TRUE)</c> 한 번이 창 폭에서 잃는 픽셀 수(실기 관측값).
         /// 회귀 테스트가 래칫을 모형화할 때 쓰는 유일한 숫자이며, 테스트가 이 상수를 참조한다.
         /// </summary>

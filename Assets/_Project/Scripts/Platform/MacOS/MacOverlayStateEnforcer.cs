@@ -59,7 +59,11 @@ namespace StickMate.Platform.MacOS
         private bool _renderQualityDiagnosticsLogged;
 
         /// <summary>부착 대기 제한 시간(초). 이 안에 창을 못 붙잡으면 정직하게 실패 로그를 남긴다.</summary>
-        private const float AttachTimeoutSeconds = 15f;
+        /// <summary>부착 제한 시간(초). ★ 2026-09-28 — 값이 <b>플랫폼 중립 정본</b>으로 옮겨졌다.
+        /// 그전까지 양 Enforcer가 각자 <c>15f</c>를 들고 있었고, 둘 다 <c>#if UNITY_STANDALONE_*</c> 안이라
+        /// 테스트가 참조할 수 없어 어긋나도 아무도 몰랐다(<see cref="ReapplyAttempts"/>와 같은 이유).
+        /// 기동 표시 보류가 <b>같은 예산</b>을 쓴다 — 새 상수를 만들지 않는다.</summary>
+        private const float AttachTimeoutSeconds = OverlayStateReapplyPolicy.AttachTimeoutSeconds;
         private float _elapsed;
 
         // ============================================================================
@@ -254,6 +258,14 @@ namespace StickMate.Platform.MacOS
 
             _elapsed += Time.unscaledDeltaTime;
 
+            // ★ 2026-09-28 기동 표시 보류 — Windows판(WindowsOverlayStateEnforcer)과 <b>같은 자리</b>다.
+            //   부착 전 근백색(0.94) 노출을 스플래시 배경과 같은 어두운 값으로 덮고, 상한(부착 제한 시간)에
+            //   닿으면 반드시 근백색으로 되돌린다. 부착 판정보다 앞이어야 한다 — 보류가 필요한 구간이
+            //   정확히 "부착 전"이다. macOS 실기에서 이 구간이 관측된 적은 없고(Retina에서 더 짧을 것으로
+            //   추정, 실측 없음) 코드 구조는 동일하므로 같은 자리에 같이 넣는다(CLAUDE.md 플랫폼 동시 검토).
+            BeginStartupPresentationHoldIfNeeded();
+            TickStartupPresentationHold();
+
             // 부착 판정: 부착 전에는 네이티브가 크기를 (0,0)으로 보고한다.
             Vector2 windowSize = _controller.windowSize;
             bool attached = windowSize.x > 0f && windowSize.y > 0f;
@@ -266,6 +278,12 @@ namespace StickMate.Platform.MacOS
                     Debug.LogWarning($"[MacOverlayStateEnforcer] {AttachTimeoutSeconds}초가 지나도 " +
                         "UniWindowController가 자기 NSWindow를 붙잡지 못했습니다(windowSize=(0,0)). " +
                         "투명/항상위/클릭관통이 전부 적용되지 않은 상태입니다 — 정직한 실패 보고용 로그.");
+                    // ★ 2026-09-28 — Windows판과 **같은 자리**에서 같은 판정을 부른다(아래 메서드 문서).
+                    //   macOS는 조기 해제를 이미 했으므로 정책이 false이고 아무 일도 하지 않는다.
+                    ReleaseFullscreenAfterAttachFailureIfPolicyRequires();
+                    // ★ 2026-09-28 — Windows판과 같은 자리·같은 이유. 기동 표시 보류를 걷어 근백색으로
+                    //   되돌린다(멱등 — 상한 복원이 이미 일어났으면 아무 일도 하지 않는다).
+                    RestoreStartupPresentationHoldOnAttachFailure();
                 }
                 return;
             }
@@ -274,6 +292,10 @@ namespace StickMate.Platform.MacOS
             {
                 _attachDetected = true;
                 ApplyTransparentSafeCameraBackground();
+                // ★ 2026-09-28 — 위 교정이 <b>실제로 걸렸을 때만</b> 기동 표시 보류를 넘긴다.
+                //   걸리지 않았으면(투명 실패/카메라 없음) 보류를 유지해 상한에서 근백색으로 되돌린다 —
+                //   검정-on-검정(잉크색이 검정인 사용자에게 아무것도 안 보임)을 막는 유일한 경로다.
+                NoteStartupPresentationHandoverIfCorrected();
                 // 창이 실제로 존재하는 이 시점에 앱 등급을 accessory로 내린다(원인 A, R1의 (1)단계).
                 // 근거/트레이드오프는 MacSpaceBehaviorNative의 클래스 문서 참고.
                 MacSpaceBehaviorNative.ApplyAccessoryActivationPolicyOnce();
@@ -1237,6 +1259,125 @@ namespace StickMate.Platform.MacOS
         /// 경우에만 수행한다. 투명화가 실패한 상황에서는 배경이 밝은 회색으로 남아, 예전처럼
         /// "밝은 회색 창 안의 검정 캐릭터"(최소한 보이는 상태)가 된다.
         /// </summary>
+        /// <summary>
+        /// ★ 2026-09-28 — Windows판(<c>WindowsOverlayStateEnforcer</c>)과 <b>대칭</b>인 부착 실패 탈출구.
+        /// 판정은 플랫폼 중립 <see cref="StartupWindowModePolicy.ShouldReleaseFullscreenAfterAttachFailure"/>
+        /// 한 곳이고, <b>macOS의 답은 false</b>다 — 이 플랫폼은 기동 시 전체화면 <b>조기</b> 해제를
+        /// 켠 채로 두므로(<c>forceWindowed=true</c>) 부착이 실패해도 창은 이미 창모드다.
+        ///
+        /// <para><b>그러면 왜 비어 있는 호출을 두는가</b>: 두 판정은 <b>배타적</b>이라는 불변식 위에 서 있다
+        /// (정확히 하나만 참 — <see cref="StartupWindowModePolicy"/> 문서). 누가 macOS의 조기 해제를 끄는 날
+        /// 이 자리가 없으면 <b>탈출구 0</b>인 상태로 출하된다(전체화면 창이 메뉴바를 덮고, 이 플랫폼에는
+        /// 트레이 대응물이 아직 없다 — <c>SystemTrayPresencePolicy.MacOsGapReason</c>). 「한쪽만 고쳐서
+        /// 갭이 조용히 쌓였다」가 이 저장소에서 반복된 형태이고, 그 재발을 구조로 막는 것이 이 호출이다.</para>
+        ///
+        /// <para>지금은 로그도 남기지 않는다 — 24시간 상주 앱에서 아무 일도 하지 않는 경로가 줄을 남길
+        /// 이유가 없다(바로 위 실패 경고가 이미 남았다).</para>
+        /// </summary>
+        private void ReleaseFullscreenAfterAttachFailureIfPolicyRequires()
+        {
+            if (!StartupWindowModePolicy.ShouldReleaseFullscreenAfterAttachFailure(OverlayHostPlatform.MacOS)) return;
+
+            if (Screen.fullScreenMode == FullScreenMode.Windowed) return;
+
+            FullScreenMode before = Screen.fullScreenMode;
+            Screen.fullScreen = false;
+            Debug.LogWarning($"[MacOverlayStateEnforcer] 부착 실패 탈출구 — 창 모드를 {before} -> Windowed로 " +
+                "요청했습니다(프레임 끝에 적용). 이 경로는 macOS 정책이 조기 해제를 끈 경우에만 돕니다.");
+        }
+
+        // ============================================================================
+        // ★ 2026-09-28 기동 표시 보류 — Windows판과 <b>같은 넷</b>(대칭 유지)
+        // ============================================================================
+        // 판정·전이·상한은 전부 플랫폼 중립 StartupPresentationHold에 있고 이 파일은 사실 조회와
+        // 적용만 한다(CLAUDE.md). 한쪽만 고치면 그 플랫폼만 흰 화면이 남는다 —
+        // 이 저장소가 반복해 당한 형태라 두 파일을 같은 라운드에 같이 고친다.
+        private StartupPresentationHold _startupHold;
+
+        private StartupPresentationHold StartupHold => _startupHold ??= new StartupPresentationHold(
+            StartupPresentationHoldPolicy.ReadDisabledFromEnvironment(),
+            AttachTimeoutSeconds,
+            ApplyStartupHoldBackgroundRgb);
+
+        /// <summary>보류가 색을 쓸 카메라. 투명 교정(<see cref="ApplyTransparentSafeCameraBackground"/>)과
+        /// <b>같은 규칙</b>으로 고른다 — 두 경로가 다른 카메라를 잡으면 한쪽이 다른 쪽을 덮는다.</summary>
+        private Camera ResolveHoldCamera()
+            => _controller != null && _controller.currentCamera != null ? _controller.currentCamera : Camera.main;
+
+        /// <summary>보류의 <b>유일한 쓰기 지점</b>. 알파는 절대 건드리지 않는다 —
+        /// 그 알파가 곧 창 투명도의 입력이고, 여기서 손대면 투명 합성 자체가 바뀐다.</summary>
+        private void ApplyStartupHoldBackgroundRgb(float r, float g, float b)
+        {
+            Camera cam = ResolveHoldCamera();
+            if (cam == null) return;
+            Color before = cam.backgroundColor;
+            cam.backgroundColor = new Color(r, g, b, before.a);
+        }
+
+        /// <summary>부착 전 첫 기회에 보류를 시작한다(한 번만 먹는다).</summary>
+        private void BeginStartupPresentationHoldIfNeeded()
+        {
+            StartupPresentationHold hold = StartupHold;
+            if (hold.IsDisabled || hold.Phase != StartupPresentationHoldPhase.Inactive) return;
+
+            Camera cam = ResolveHoldCamera();
+            if (cam == null) return;   // 카메라를 아직 못 찾았다 — 다음 프레임에 다시 시도한다.
+
+            float keptAlpha = cam.backgroundColor.a;
+            Color fallback = ResolveStartupFallbackBackground(cam);
+            if (!hold.Begin(Time.unscaledTimeAsDouble, fallback.r, fallback.g, fallback.b)) return;
+
+            Debug.Log("[MacOverlayStateEnforcer] 기동 표시 보류 시작 — 부착 전 카메라 배경 RGB를 " +
+                $"스플래시 배경과 같은 어두운 값({StartupPresentationHoldPolicy.HoldRed:F3}," +
+                $"{StartupPresentationHoldPolicy.HoldGreen:F3},{StartupPresentationHoldPolicy.HoldBlue:F3})으로 " +
+                $"덮었습니다(알파 {keptAlpha:F2} 보존). 상한 {hold.BudgetSeconds:F0}초에 닿으면 " +
+                $"근백색({hold.RestoreRed:F2},{hold.RestoreGreen:F2},{hold.RestoreBlue:F2})으로 반드시 " +
+                $"되돌립니다. 끄려면 {StartupPresentationHoldPolicy.DisableEnvironmentVariable}=1.");
+        }
+
+        /// <summary>상한에서 되돌릴 색의 출처. <b>RGB만</b> 쓴다(알파는 카메라의 현재 값을 보존한다).</summary>
+        private Color ResolveStartupFallbackBackground(Camera cam)
+        {
+            var config = ResolveConfig();
+            // 이 값은 캐릭터 튜닝이 아니라 <b>오버레이 배경 폴백</b>이다 — 투명이 실패했을 때
+            // "밝은 배경 안의 검정 캐릭터"(최소한 보이는 상태)를 만드는 색이고, 그것이 이 보류가
+            // 상한에서 반드시 되돌려야 하는 이유다.
+            if (config != null) return config.backgroundFallbackColor;
+            return cam.backgroundColor;   // 설정을 아직 못 찾았다 — 씬이 구운 같은 값이 이미 여기 있다.
+        }
+
+        /// <summary>매 프레임. 상한에 닿으면 보류가 근백색을 되돌리고, 그때 한 번 경고를 남긴다.</summary>
+        private void TickStartupPresentationHold()
+        {
+            StartupPresentationHold hold = StartupHold;
+            if (!hold.Tick(Time.unscaledTimeAsDouble)) return;
+
+            Debug.LogWarning($"[MacOverlayStateEnforcer] 기동 표시 보류 상한 도달({hold.BudgetSeconds:F0}초) — " +
+                $"카메라 배경 RGB를 근백색({hold.RestoreRed:F2},{hold.RestoreGreen:F2},{hold.RestoreBlue:F2})으로 " +
+                "되돌렸습니다(알파 보존). 이 시간 안에 부착/투명이 성립하지 않았다는 뜻이며, 어두운 배경을 " +
+                "그대로 두면 잉크색이 검정인 사용자에게 아무것도 보이지 않습니다(검정-on-검정).");
+        }
+
+        /// <summary>투명 교정이 <b>실제로 걸린 뒤</b>에만 보류를 넘긴다(조기 반환 경로에서는 유지한다).</summary>
+        private void NoteStartupPresentationHandoverIfCorrected()
+        {
+            if (!_cameraBackgroundPremultiplyFixed) return;
+            if (!StartupHold.NoteTransparentCorrectionApplied()) return;
+
+            Debug.Log("[MacOverlayStateEnforcer] 기동 표시 보류 종료 — 투명 교정이 걸려 카메라 배경이 " +
+                "검정(알파 보존)으로 넘어갔습니다. 이후 이 보류는 색을 다시 쓰지 않습니다.");
+        }
+
+        /// <summary>부착 실패 보고와 같은 순간의 강제 복원(멱등).</summary>
+        private void RestoreStartupPresentationHoldOnAttachFailure()
+        {
+            StartupPresentationHold hold = StartupHold;
+            if (!hold.RestoreNow(StartupPresentationHoldRelease.AttachFailureRestored)) return;
+
+            Debug.LogWarning("[MacOverlayStateEnforcer] 부착 실패 — 기동 표시 보류를 걷고 카메라 배경 RGB를 " +
+                $"근백색({hold.RestoreRed:F2},{hold.RestoreGreen:F2},{hold.RestoreBlue:F2})으로 되돌렸습니다.");
+        }
+
         private void ApplyTransparentSafeCameraBackground()
         {
             if (_cameraBackgroundPremultiplyFixed) return;

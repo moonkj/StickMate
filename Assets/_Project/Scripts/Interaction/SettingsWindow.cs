@@ -95,9 +95,15 @@ namespace StickMate.Interaction
         /// <c>InternalsVisibleTo</c> 대상이 아니다.</summary>
         public const float ActionDedupSeconds = 0.35f;
 
-        /// <summary>[지금 종료]의 2단 확인 시간 — <see cref="ActionCommandPopover"/>와 같은 값, 같은 이유
-        /// (한 번의 오조준으로 앱이 꺼지면 안 된다).</summary>
-        private const float QuitConfirmSeconds = 3f;
+        // [지금 종료]의 2단 확인 시간은 이 파일에 상수를 두지 않는다 — 정본은
+        // ActionCommandPopover.QuitConfirmSeconds(3f) 한 자리다. 같은 값, 같은 이유
+        // (한 번의 오조준으로 앱이 꺼지면 안 된다)인데, 2026-09-28까지 같은 값이 여기에도
+        // private 상수로 한 벌 더 선언돼 있었다 — 선언 원문을 이 주석에 베끼지 않는다.
+        // 베끼면 중복을 세는 검색이 이 주석을 정의로 오인해 영원히 2건이 나온다.
+        // 정본 쪽 문서가 스스로를 "되돌릴 수 없는 행동의 확인 시간의 단일 출처"라고 적고
+        // "두 벌로 만들지는 마라"고 못박은 채로 실제로는 두 벌이었다.
+        // 다시 적지 말고 그 상수를 참조한다(CLAUDE.md — 프로덕션 상수 하드코딩 금지).
+        // 같은 관례를 GearRadialMenuWidget의 [앱 종료] 슬롯도 쓴다.
 
         /// <summary>
         /// ★★ 2026-09-02 — 전체화면이 <b>지나간</b> 뒤 이 창을 돌려놓는 유예(초).
@@ -813,7 +819,7 @@ namespace StickMate.Interaction
         private void TickQuitConfirm()
         {
             if (!_quitArmed) return;
-            if (Time.unscaledTime - _quitArmedAt < QuitConfirmSeconds) return;
+            if (Time.unscaledTime - _quitArmedAt < ActionCommandPopover.QuitConfirmSeconds) return;
             DisarmQuit();
         }
 
@@ -1659,7 +1665,7 @@ namespace StickMate.Interaction
                 _quitArmed = true;
                 _quitArmedAt = Time.unscaledTime;
                 ApplyQuitStyle();
-                Debug.Log($"[설정창] [지금 종료] 1차 클릭 — {QuitConfirmSeconds:F0}초 안에 다시 누르면 종료합니다.");
+                Debug.Log($"[설정창] [지금 종료] 1차 클릭 — {ActionCommandPopover.QuitConfirmSeconds:F0}초 안에 다시 누르면 종료합니다.");
                 return;
             }
 

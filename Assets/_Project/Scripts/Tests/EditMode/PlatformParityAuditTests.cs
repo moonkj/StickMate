@@ -4409,7 +4409,15 @@ namespace StickMate.Tests.EditMode
                 "닫힘(코드): 빌드 후처리가 NvOptimusEnablement / " +
                 "AmdPowerXpressRequestHighPerformance를 1 -> 0으로 바꾼다. 오프셋을 박지 않고 export " +
                 "테이블을 이름으로 파싱하며, 쓴 뒤 디스크에서 되읽어 재파싱하고, 달라진 바이트가 값 " +
-                "DWORD 밖에 하나라도 있으면 빌드를 세운다. 산출물 옆 dgpu-export-patch.txt 영수증.\n" +
+                "DWORD 밖에 하나라도 있으면 빌드를 세운다. ~~산출물 옆 dgpu-export-patch.txt 영수증.~~\n" +
+                "  ★ 정정 2026-09-28 (code-inspection) — 취소선 문장은 「영수증을 옮기기 전」에 참이었다(as-of). " +
+                "지금 이 영수증은 산출물 옆이 아니라 프로젝트 루트 아래 Logs/BuildReceipts/ 에 쓴다 " +
+                "(Editor/WindowsHybridGpuExportPostprocessor 의 ReceiptPath → " +
+                "BuildStandalone.ResolveBuildReceiptPath, 폴더 이름은 BuildStandalone.BuildReceiptSubFolder). " +
+                "옮긴 이유는 security L6 — Windows 배포 단위가 exe 하나가 아니라 폴더 전체라서, " +
+                "산출물 옆 영수증이 공개 zip에 그대로 동봉되며 절대경로 한 줄이 같이 나갔다. " +
+                "macOS 훅은 배포 단위가 .app 번들이고 영수증이 이미 그 밖이라 옮기지 않았다 — " +
+                "비대칭은 사고가 아니라 배포 단위가 다르다는 사실 하나에서 나온 의도다.\n" +
                 "\n" +
                 "★ 열림(실측) — 2026-09-07 사용자 재신고를 성급히 'G1 실패'로 읽지 마라.\n" +
                 "  이 라운드가 배포 zip을 직접 열어 잰 값(독립 검증기, 방법1 PE 파싱 + 방법2 템플릿 대조):\n" +
@@ -4449,8 +4457,13 @@ namespace StickMate.Tests.EditMode
                 "★ 2026-09-07 이 축은 **실기에서 답이 나왔다**(NVIDIA 0%). " +
                 "그리고 어느 어댑터인지는 프로세스 탭의 'GPU' 열이 아니라 **'GPU 엔진' 열**로만 갈린다 " +
                 "— 'GPU' 열은 모든 어댑터 중 최댓값이라 어느 쪽인지 말해 주지 않는다.\n" +
-                "  (3) 산출물 옆 dgpu-export-patch.txt / " +
+                "  (3) ~~산출물 옆 dgpu-export-patch.txt~~ / " +
                 "python3 Tools/BuildVerify/check_dgpu_exports.py <exe> --expect 0 --template.\n" +
+                "    ★ 정정 2026-09-28 (code-inspection) — 취소선은 영수증 이동 전 문장이다(as-of, 위 " +
+                "「닫힘(코드)」 문단의 정정과 같은 한 사실). 이 영수증은 이제 빌드 머신의 " +
+                "Logs/BuildReceipts/ 에만 남고 배포 zip에 동봉되지 않으므로 (3)의 앞쪽 절반은 " +
+                "**사용자 실기 확인 수단이 아니다** — 빌드한 쪽만 읽을 수 있다. 사용자가 손에 든 " +
+                "산출물로 확인하는 수단은 뒤쪽 절반(훅과 코드를 공유하지 않는 독립 검증기)뿐이다.\n" +
                 "\n" +
                 "게이트 현황: G1 **부분 통과**(수동 설정 하에서 내장 도달 확인 / 코드 패치 단독 축은 미분리). " +
                 "G2(투명·클릭관통·항상위 무회귀 + 입력지연 체감) · G3(V3 오탐) · " +

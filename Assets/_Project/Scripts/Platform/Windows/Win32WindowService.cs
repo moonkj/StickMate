@@ -1356,8 +1356,23 @@ namespace StickMate.Platform.Windows
 
             if (activateIfInactive && !controller.gameObject.activeSelf)
             {
+                // ★ 2026-09-28 — 「stickmate 흰화면이야 상단에 써있음」(사용자 실기 신고).
+                //   활성화 순간 Awake()가 동기로 돌고, 그 Awake가 forceWindowed를 읽어
+                //   Screen.fullScreen=false를 건다. 그러면 창을 아직 붙잡지도(AttachMyWindow)
+                //   테두리를 없애지도(SetBorderless) 못한 구간 내내 **제목표시줄에 제품명이 노출**된다.
+                //   Windows에서는 그 전환을 부착 프레임의 TickFullScreenBounds()가 이미 하므로 중복이고,
+                //   유일한 순효과가 그 캡션 구간이다. 그래서 **활성화 전에** 값을 덮는다 —
+                //   이 대입이 SetActive보다 뒤로 내려가면 Awake가 이미 돌아 아무 효과가 없다
+                //   (Tests/EditMode/StartupWindowModeSplitTests가 이 순서를 소스에서 잠근다).
+                //   판정은 플랫폼 중립 StartupWindowModePolicy 한 곳에 있고 여기서는 적용만 한다.
+                bool forceWindowed = StartupWindowModePolicy.ShouldForceWindowedAtStartup(
+                    OverlayHostPlatform.Windows);
+                controller.forceWindowed = forceWindowed;
                 Debug.Log("[Win32WindowService] 씬의 UniWindowController가 비활성 상태 — 실제 Player에서만 " +
-                    "활성화한다는 설계대로 지금 활성화합니다(SetActive(true) -> Awake() 동기 실행).");
+                    "활성화한다는 설계대로 지금 활성화합니다(SetActive(true) -> Awake() 동기 실행). " +
+                    $"기동 시 전체화면 조기 해제(forceWindowed)={forceWindowed} — Windows는 부착 프레임의 " +
+                    "창모드 전환과 중복이고 조기 전환이 제목표시줄 노출 구간을 만들기 때문에 끕니다. " +
+                    "부착이 끝내 실패하면 제한 시간 뒤 Enforcer가 창모드로 내려 제목표시줄을 되돌립니다(탈출구).");
                 controller.gameObject.SetActive(true);
             }
             return controller;

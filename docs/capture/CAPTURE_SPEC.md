@@ -56,7 +56,7 @@
 | 스톱워치 링 | `StopwatchRingDiameterPoints = 20f` | `Interaction/GearRadialMenuWidget.cs` 1건 | ① 링 지름 |
 | 종료 고리 | `PowerRingDiameterPoints = 22f` | 같은 파일 1건 | ⑤ 고리 지름 |
 | 버튼 지름(자) | `ButtonDiameterPoints = 44f` | 같은 파일 1건 | 픽셀→pt 환산의 자 |
-| 확인 시간 | `QuitConfirmSeconds = 3f` | ★ **2건(정본이 하나가 아니다)** — `Interaction/ActionCommandPopover.cs`(`public`)와 `Interaction/SettingsWindow.cs`(`private`)에 **같은 값이 둘** | ⑤ 고리의 수명. 중복 자체는 `code-inspection` 배정감이라 **표기만 하고 고치지 않았다** |
+| 확인 시간 | `QuitConfirmSeconds = 3f` | ~~★ **2건(정본이 하나가 아니다)** — `Interaction/ActionCommandPopover.cs`(`public`)와 `Interaction/SettingsWindow.cs`(`private`)에 **같은 값이 둘**~~ → ★ **1건으로 통합됐다 2026-09-28 (code-inspection)**. 취소선은 통합 전에 참이었다(as-of). 정본은 `Interaction/ActionCommandPopover.cs`의 `public const float QuitConfirmSeconds = 3f;` **한 자리**이고, `SettingsWindow`는 독립 정의를 버리고 그 상수를 참조한다(`GearRadialMenuWidget`이 이미 쓰던 관례와 같다). **값은 3f 그대로다 — 이 표의 수치는 바뀌지 않았다.** | ⑤ 고리의 수명. ~~중복 자체는 `code-inspection` 배정감이라 **표기만 하고 고치지 않았다**~~ → 배정이 집행됐다(2026-09-28). 캡처 절차에는 영향이 없다 |
 | 이름표 알약 여백 | `HoverLabelPaddingPoints = 14f` | `Interaction/GearRadialMenuWidget.cs` 1건 | 92pt 게이트의 대상은 **알약**이다 |
 | 92pt 배치 게이트 | 파일명 `GearMenuHoverLabelGeometryTests.cs` | `Tests/EditMode/` 1개 | 스윕 상한을 넘으면 미검증 구간 |
 | 대비 계기 | 파일명 `r1f_contrast_audit.py` · `r1f_contrast_audit.out.txt` | `design/art/verify/` 1개 · `design/art/` 1개 | 5자리 숫자의 출처(★ 이 라운드 기준 **미추적 파일**) |

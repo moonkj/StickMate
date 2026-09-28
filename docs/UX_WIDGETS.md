@@ -2513,7 +2513,7 @@ Platform/MacOS/MacWindowService.cs:311 주석
 
 ### R3-1-4. 물음 3 — 2단 확인이 답인가. **관문으로는 반대. 「마지막 문장」으로는 찬성**
 
-`[지금 종료]`의 `_quitArmed`(`SettingsWindow.cs:1272-1305`, `QuitConfirmSeconds = 3f`)는
+`[지금 종료]`의 `_quitArmed`(~~`SettingsWindow.cs:1272-1305`, `QuitConfirmSeconds = 3f`~~ → ★ **정정 2026-09-28 (code-inspection)**: 그 상수는 이제 `SettingsWindow.cs`에 없고 정본 `ActionCommandPopover.QuitConfirmSeconds`(**3f 그대로**)를 참조한다. 값이 안 바뀌었으므로 이 절의 판정은 그대로다. 줄 번호는 이 라운드에서 재측정하지 않았다 — 쓰려면 다시 재라)는
 **되돌릴 수 없는 조작**을 위한 장치다. 같은 파일이 `[톱니 위치]` 행에서 그 경계를 이미 못박았다
 (*"되돌릴 수 있는 조작에 확인을 붙이면 고치러 온 사람에게 관문을 하나 더 세우는 셈"*).
 

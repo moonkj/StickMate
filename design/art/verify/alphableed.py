@@ -103,7 +103,7 @@ def calibrate():
 # ----------------------------------------------------------------------------
 # 1. UiChrome 토큰 (프로덕션 소스에서 직접 파싱 — 값을 손으로 베끼지 않는다)
 # ----------------------------------------------------------------------------
-ROOT = "/Users/kjmoon/App/StickMate"
+ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", ".."))   # ★ 2026-09-28: 절대 경로 리터럴(계정명 포함) 제거
 UICHROME = os.path.join(ROOT, "Assets/_Project/Scripts/Interaction/UiChrome.cs")
 
 TOKEN_RE = re.compile(

@@ -265,11 +265,22 @@ namespace StickMate.Core
         /// 무관 — 이 아이템은 은퇴 판정을 타지 않는다(Pet 슬롯은 <see cref="IsRetiredSlot"/> 대상이 아니고,
         /// <see cref="IsRetiredItem"/>은 Hair 카테고리 전체와 FX의 "없음" 하나만 가린다).
         /// <see cref="Tests.EditMode.ItemOwnershipUnionTests"/>가 이 합집합을 <c>ItemCatalogEntry.IsOwned</c>
-        /// 한 곳에서만 잠그고 있었고 <see cref="TryWear"/> 경로는 대조하지 않아 놓쳤다.</para></summary>
+        /// 한 곳에서만 잠그고 있었고 <see cref="TryWear"/> 경로는 대조하지 않아 놓쳤다.</para>
+        ///
+        /// <para>★★★ <b>2026-09-28 DLC 폐지 R1 — 그 셋째 항(상점 구매)을 다시 뗐다</b>(사용자 확정:
+        /// DLC·재화 폐지, 1회 구매 전환). 해제 경로는 <b>레벨 하나</b>로 돌아갔고 합집합은 2항이다:
+        /// QA 해금 스위치 ∪ 레벨 파생. <see cref="CurrencyModel.IsPurchasedItem"/>과 구매 이력 저장 필드는
+        /// <b>지우지 않았다</b> — 세이브 호환 판정이 끝난 뒤 다른 라운드가 다룬다. 여기서 뗀 것은
+        /// <b>호출 하나</b>다.</para>
+        ///
+        /// <para>★★ <b>위 P0의 교훈은 그대로 유효하다 — 이 자리와 <see cref="ItemCatalogEntry.IsOwned"/>는
+        /// 항 구성이 어긋나면 안 된다.</b> 한쪽만 항을 잃으면 방향이 어느 쪽이든 같은 침묵이 난다:
+        /// 카드는 보유로 보이는데 <see cref="TryWear"/>가 조용히 false를 돌려주거나(P0 방향), 카드는
+        /// 잠겼는데 착용은 되거나(반대 방향). 그래서 두 자리는 <b>같은 커밋에서</b> 움직이고,
+        /// <see cref="Tests.EditMode.ItemOwnershipUnionTests"/>가 둘의 판정을 아이템마다 대조한다.</para></summary>
         public static bool IsItemOwned(EquipmentSlot slot, int itemIndex)
             => EquipmentDebugUnlock.UnlockAll
-               || CharacterProgressionModel.Level >= RequiredLevel(slot, itemIndex)
-               || CurrencyModel.IsPurchasedItem(ItemId(slot, itemIndex));
+               || CharacterProgressionModel.Level >= RequiredLevel(slot, itemIndex);
 
         /// <summary>이 카테고리에서 지금 보유한 아이템 수(정보창 카테고리 카드의 "n/4").</summary>
         public static int OwnedItemCount(EquipmentSlot slot)

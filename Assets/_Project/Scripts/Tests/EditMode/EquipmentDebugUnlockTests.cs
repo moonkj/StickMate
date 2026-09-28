@@ -55,6 +55,14 @@ namespace StickMate.Tests.EditMode
         /// <para>이 한 줄이 없으면 실패 메시지가 <i>"스위치를 껐는데도 Lv.20 아이템이 Lv.1에서 열려
         /// 있습니다"</i>로 뜬다 — 원인은 재화 쪽인데 <b>QA 해금 스위치를 지목하는 거짓 빨강</b>이고,
         /// 오늘 밤 실제로 그 형태로 시간을 썼다.</para>
+        ///
+        /// <para>★★ <b>2026-09-28 DLC 폐지 R1 정정</b> — 위 「<c>IsOwned</c>는 «레벨 파생 ∪ 상점
+        /// 구매분»」은 <b>그때부터 거짓</b>이다(사용자 확정: DLC·재화 폐지). 구매 항이
+        /// <c>ItemCatalogEntry.IsOwned</c>·<c>EquipmentModel.IsItemOwned</c> 양쪽에서 빠졌으므로
+        /// <b>남의 픽스처가 왕관을 사도 이 단언은 더 이상 뒤집히지 않는다</b>. 그래도 이 초기화는
+        /// 남긴다 — 「측정하는 쪽이 자기 전제를 남에게 맡기지 않는다」는 그대로 유효하고,
+        /// 구매 항이 되살아나면 이 자리가 먼저 말한다. 경계 잠금의 정본은
+        /// <c>ItemOwnershipUnionTests</c>다.</para>
         /// </summary>
         [SetUp]
         public void Reset()
@@ -193,6 +201,10 @@ namespace StickMate.Tests.EditMode
             //   아래 메시지가 나가면 <b>애먼 QA 해금 스위치를 지목</b>하게 되고, 실제로 오늘 밤
             //   그 형태로 시간을 썼다. 이 줄이 있으면 원인이 어느 모듈인지가 실패 문구에 바로 적힌다.
             //   (아이디를 문자열로 베끼지 않는다 — 카탈로그가 말하는 그 아이디를 그대로 쓴다.)
+            //   ★★ 2026-09-28 DLC 폐지 R1 — <b>구매 항이 사라졌으므로 이 줄은 더 이상 아래 단언을
+            //   구하지 않는다</b>(구매 이력이 있어도 IsOwned는 뒤집히지 않는다. 경계 잠금은
+            //   ItemOwnershipUnionTests). 그래도 <b>남긴다</b>: 앞선 픽스처의 이력 누출을 잡는
+            //   위생 단언으로는 그대로 유효하고, 구매 항이 되살아나면 이 줄이 먼저 말한다.
             Assert.IsFalse(CurrencyModel.IsPurchasedItem(crown.Id),
                 $"[{crown.Id}]가 상점 구매 이력에 남아 있습니다 — 이건 해금 스위치 문제가 아니라 " +
                 "앞선 픽스처가 구매 이력을 흘린 것입니다(SetUp의 CurrencyModel.ResetForTesting과 " +

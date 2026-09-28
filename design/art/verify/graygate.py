@@ -32,14 +32,22 @@ import rig, items, hair, appearance                      # design-equipment 소�
 import pack_nightshift as PN
 from rig import Shape
 
-ICON, FIT = 44.0, 0.86
-ICON_STROKE = 1.7 * 44.0 / 40.0          # 1.870px (design-equipment 게이트 ②와 같은 값)
-# ★ 2026-09-28 (design-art): 위 세 값은 **옛 자**다. 출하 실측은 카드 아이콘 58pt
-#   (CharacterInfoWindow.IconSize = 58f)이고 획은 58 * 2.2/64 = 1.99375pt
-#   (AccessoryCardIcon.Frame.IconStroke / IconViewBox). FIT 0.86 은 v1 봉투 맞춤 값이고
-#   지금 프로덕션에는 그 이름의 상수가 없다(넘침 보정 fit.Shrink 가 그 자리이고, 획은 축소를
-#   따라가지 않는다). **값을 일부러 안 고쳤다** — 고치면 PALETTE_SPEC §17 의 회색조 수치가
-#   재생성 없이 거짓이 된다. 58pt 로 다시 굽는 것은 별건이고, 그때 §17 과 함께 움직여야 한다.
+ICON, FIT = 58.0, 0.86                    # ★ 출하 카드(벡터) 한 변. CharacterInfoWindow.IconSize = 58f
+ICON_STROKE = 58.0 * 2.2 / 64.0           # 1.99375pt — AccessoryCardIcon.Frame.IconStroke 2.2 / IconViewBox 64 x 58
+# ★ 2026-09-28 (design-art) — 자를 옛 판에서 출하 판으로 옮겼다. 원래 값은 보존한다:
+#     옛 자  ICON, FIT = 44.0, 0.86  /  ICON_STROKE = 1.7 * 44.0 / 40.0  ( = 1.870px )
+#   옮긴 근거는 docs/EQUIPMENT_SHAPE_SPEC.md §0 「자(尺) 배너」 + §2-1 「출하 다섯 표면」이다
+#   (그 문서에 §17 은 없다 — 44px 자를 들고 있던 §17 은 design/art/PALETTE_SPEC.md 쪽이다).
+#   ★ 앞선 판의 보류 사유(「고치면 PALETTE_SPEC §17 이 재생성 없이 거짓이 된다」)는 이 라운드에
+#     해소했다 — 상수와 §17 과 이 파일의 로그(graygate.out.txt · graygate.control.out.txt)를
+#     **같은 라운드에서 함께** 옮겼다.
+#   ★ 실측: 44 -> 58 로 옮겨도 **판정이 뒤집히는 항목은 0건**이고 래스터 수치만 1~4% 움직였다
+#     (§2 최악 쌍 L1 15.43 -> 15.68 · IoU 0.489 -> 0.496, §3 카테고리 ✔ 전건 유지).
+#   ★ FIT 0.86 은 v1 봉투 맞춤 값이고 지금 프로덕션에는 그 이름의 상수가 없다(넘침 보정
+#     fit.Shrink 가 그 자리이고, 획은 축소를 따라가지 않는다) — **그래서 고치지 않았다.**
+#   ★ 이 계기가 재는 것은 다섯 출하 표면 중 **카드(벡터) 하나**다. 나머지 넷
+#     (카드 비트맵 72pt · 상세 38pt / 46pt · 슬롯행 24pt)은 여기서 재지 않는다 — 미확인.
+#     특히 슬롯행 24pt 는 1x 에서 잉크 문턱 미달이라(§2-1-1) 회색조를 거기서 재면 결론이 달라질 수 있다.
 SS = 6                                    # 슈퍼샘플
 CARD_BG = "#1B1E24"                       # 아래 §0에서 UiChrome 실측으로 덮어쓴다
 
@@ -277,13 +285,16 @@ def main(control=False):
           f"({100.0*len(lost)/len(base_rows):.0f}%)")
     packg = rows[-6:][0][2]
     below = sum(1 for x in base_rows if x[2] < packg)
-    print(f"  ★ 팩 6종의 회색조 ΔE = {packg:.2f}. 기본 38종 중 이보다 **작은 것 {below}종** —")
-    print(f"     즉 팩은 이 분포의 **바닥과 같은 값**이다(최소 {base_rows[0][2]:.2f} = 반짝임).")
+    print(f"  ★ 팩 6종의 회색조 ΔE = {packg:.2f}. 기본 {len(base_rows)}종 중 이보다 **작은 것 {below}종** —")
+    print(f"     즉 팩은 이 분포의 **바닥과 같은 값**이다(최소 {base_rows[0][2]:.2f} = {base_rows[0][0]['name']}).")
     print(f"     ★ 나는 이 결과를 '팩은 괜찮다'로 쓰지 않는다. 정직한 문장은 이것이다:")
-    print(f"     **주↔보조 구분은 여섯 팩 전부에서 회색조에 살아남지 못한다. 기본 42종도 95%가 그렇다.**")
+    print(f"     **주↔보조 구분은 여섯 팩 전부에서 회색조에 살아남지 못한다. "
+          f"기본 42종도 {100.0*len(lost)/len(base_rows):.0f}%가 그렇다.**")
     print(f"     원인은 팩이 아니라 **자립 대역이 ΔL* 8.7뿐**이라는 구조다 — 색상각·채도로만 가를 수 있고")
-    print(f"     명도로는 못 가른다. 그러니 회색조에서 구하는 것은 색이 아니라 **채움 외곽선(×0.62)**이고,")
-    print(f"     그 외곽선 대비는 {rows[-1][4]:.2f}:1로 비텍스트 하한 3.0 **미만**이다 -> §5.")
+    print(f"     명도로는 못 가른다. 그러니 회색조에서 구하는 것은 색이 아니라 "
+          f"**채움 외곽선(×{CL.SHADE_FACTOR:g})**이고,")
+    print(f"     그 외곽선 대비는 {rows[-1][4]:.2f}:1로 비텍스트 하한 3.0 "
+          f"**{'미만' if rows[-1][4] < 3.0 else '이상'}**이다 -> §5.")
 
     # ------------------------------------------------------------------ §2
     print("\n" + "=" * 100)
@@ -339,7 +350,7 @@ def main(control=False):
 
     # ------------------------------------------------------------------ §5
     print("\n" + "=" * 100)
-    print("§5. 회색조에서 경계를 지는 것은 **채움 외곽선(×0.62)** 하나뿐 — 그 대비를 잰다")
+    print(f"§5. 회색조에서 경계를 지는 것은 **채움 외곽선(×{CL.SHADE_FACTOR:g})** 하나뿐 — 그 대비를 잰다")
     print("=" * 100)
     ocs = []
     for r in cat:
@@ -351,10 +362,20 @@ def main(control=False):
           f"중앙 {ocs[len(ocs)//2][0]:.3f}:1 · 최대 {ocs[-1][0]:.3f}:1 ({ocs[-1][1]})")
     print(f"  팩 보조색 {PACK_ACCENT}: {pk_oc:.3f}:1  ·  팩 주색 {PACK_PRIMARY}: "
           f"{CL.CR(to_gray(CL.hex2rgb(PACK_PRIMARY)), to_gray(CL.fill_outline(CL.hex2rgb(PACK_PRIMARY)))):.3f}:1")
-    print(f"  ★ 전 카탈로그가 2.0~2.3 대에 몰려 있다 — 자립 대역이 좁아서 ×0.62의 결과도 좁다.")
-    print(f"     이 값들은 UI 비텍스트 하한 3.0 **아래**다. 다만 3.0은 「UI 요소 ↔ 배경」의 자이고")
+    under = [x for x in ocs if x[0] < 3.0]
+    print(f"  ★ 전 카탈로그가 {ocs[0][0]:.1f}~{ocs[-1][0]:.1f} 대에 있다 "
+          f"(폭 {ocs[-1][0]-ocs[0][0]:.1f} · 최대/최소 {ocs[-1][0]/ocs[0][0]:.2f}배) — "
+          f"자립 대역이 좁으므로 이 폭은 ×{CL.SHADE_FACTOR:g}가 만든 것이다.")
+    print(f"     이 값들 중 UI 비텍스트 하한 3.0 **아래인 것 {len(under)}/{len(ocs)}개**"
+          + (f" (최악 {under[0][0]:.3f}:1 {under[0][1]})." if under else "다 — 즉 **전건이 3.0을 넘는다.**"))
+    print(f"     다만 3.0은 「UI 요소 ↔ 배경」의 자이고")
     print(f"     여기 재는 것은 「아이템 내부 경계」다 — 같은 자를 그대로 대는 것은 **내 확장이지 기존 규칙이 아니다.**")
-    print(f"     그래서 이걸 '위반'으로 올리지 않는다. 올리는 것은 §6의 절제 실험 결과다.")
+    if under:
+        print(f"     그래서 이걸 '위반'으로 올리지 않는다. 올리는 것은 §6의 절제 실험 결과다.")
+    else:
+        print(f"     ★ 그래서 이 자로는 **올릴 위반이 없다** — 그늘 배수 ×{CL.SHADE_FACTOR:g}가 이 축을 닫았다.")
+        print(f"        (옛 ×{CL.SHADE_FACTOR_LEGACY:g} 세대에는 전 카탈로그가 3.0 아래였고 그것이 '위반 아님'으로 남겨진 이유였다.)")
+        print(f"        올리는 것은 여전히 §6의 절제 실험 결과다.")
 
     # ------------------------------------------------------------------ §6
     print("\n" + "=" * 100)

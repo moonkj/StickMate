@@ -537,8 +537,21 @@ namespace StickMate.Platform.MacOS
 
             if (activateIfInactive && !controller.gameObject.activeSelf)
             {
+                // ★ 2026-09-28 — Windows판(Win32WindowService.ResolveController)과 **같은 자리**에서 같은
+                //   판정을 부른다. macOS의 답은 true(= 지금까지의 동작, 씬 에셋에 구워진 값과 같다)이므로
+                //   이 대입은 동작을 바꾸지 않는다. 그런데도 명시적으로 쓰는 이유가 둘이다:
+                //   (1) 값의 출처가 **씬 에셋 하나**였다 — 그 값은 두 플랫폼이 공유하므로, 누가 씬을 다시
+                //       구우면 macOS 동작이 조용히 바뀐다. 이제는 런타임 판정이 정본이다.
+                //   (2) macOS에서 조기 해제를 빼면 **탈출구가 줄어든다**(전체화면 창이 메뉴바를 덮고,
+                //       대응 트레이(NSStatusItem)가 아직 없다 — SystemTrayPresencePolicy.MacOsGapReason).
+                //       그 비대칭을 판정 한 곳에 적어 두는 것이 이 호출이다.
+                bool forceWindowed = StartupWindowModePolicy.ShouldForceWindowedAtStartup(
+                    OverlayHostPlatform.MacOS);
+                controller.forceWindowed = forceWindowed;
                 Debug.Log("[MacWindowService] 씬의 UniWindowController가 비활성 상태 — 실제 Player에서만 " +
-                    "활성화한다는 설계대로 지금 활성화합니다(SetActive(true) -> Awake() 동기 실행).");
+                    "활성화한다는 설계대로 지금 활성화합니다(SetActive(true) -> Awake() 동기 실행). " +
+                    $"기동 시 전체화면 조기 해제(forceWindowed)={forceWindowed} — macOS는 켠 채로 둡니다" +
+                    "(전체화면 창이 메뉴바를 덮고 이 플랫폼에는 트레이 탈출구가 없습니다).");
                 controller.gameObject.SetActive(true);
             }
             return controller;

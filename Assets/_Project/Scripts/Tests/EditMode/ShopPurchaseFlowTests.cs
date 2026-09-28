@@ -285,26 +285,40 @@ namespace StickMate.Tests.EditMode
                 $"{LogPrefix} 요구 레벨에 닿았는데 아직 팔고 있습니다.");
         }
 
+        /// <summary>
+        /// ★ <b>2026-09-28 DLC 폐지 R1로 이름과 단언 둘이 바뀌었다</b>(옛 이름
+        /// <c>구매하면_잔액이_정확히_가격만큼_줄고_즉시_보유가_된다</c>). 사용자 확정(DLC·재화 폐지,
+        /// 1회 구매 전환)으로 <c>ItemCatalogEntry.IsOwned</c>·<c>EquipmentModel.IsItemOwned</c>에서
+        /// <b>구매 항이 사라졌다</b> — 그래서 「샀으면 보유다」·「샀으면 상점이 안 판다」 두 단언은
+        /// 이제 프로덕션과 어긋난다.
+        ///
+        /// <para>여기서 <b>그 반대 사실을 다시 단언하지 않는다</b>(규칙 35·53 — 이미 등재된 것을 두 벌로
+        /// 만들지 않는다). R1 경계의 정본 잠금은 <c>Tests/EditMode/ItemOwnershipUnionTests</c>
+        /// 한 곳이다. 이 자리에 남는 것은 <b>재화 산술</b>과 <b>이력·저장 표시</b>다.</para>
+        ///
+        /// <para>★ <b>미해결로 남은 것</b>: 상점 화면은 여전히 <c>ItemCatalogEntry.IsOwned</c>로
+        /// 「보유 중」을 판정하므로, R1 이후 <b>산 물건의 칩이 레벨 미달이면 계속 「구매」로 보인다</b>
+        /// (중복 구매는 <c>CurrencyModel.TryPurchaseItem</c>이 막아 돈은 나가지 않는다 —
+        /// 아래 <c>중복_구매는_차단되고_잔액이_그대로다</c>). 상점 자체를 제거하는 라운드 소관이라
+        /// 여기서 그 중간 상태를 <b>불변식으로 굳히지 않는다.</b></para>
+        /// </summary>
         [Test]
-        public void 구매하면_잔액이_정확히_가격만큼_줄고_즉시_보유가_된다()
+        public void 구매하면_잔액이_정확히_가격만큼_줄고_이력과_저장_표시가_남는다()
         {
             SetLevel(1);
             ItemCatalogEntry locked = FirstLockedItem();
             int price = CharacterInfoWindow.ShopPriceCoins(locked);
 
             SetBalance(price + 7);   // 거스름돈이 남는 값 — 「전액이 사라진다」류 결함을 함께 잡는다.
-            Assert.IsFalse(locked.IsOwned(_config), $"{LogPrefix} 사기 전인데 이미 보유입니다.");
+            Assert.IsFalse(CurrencyModel.IsPurchasedItem(locked.Id), $"{LogPrefix} 사기 전인데 이미 구매 이력에 있습니다.");
 
             Assert.IsTrue(CurrencyModel.TryPurchaseItem(locked.Id, price),
                 $"{LogPrefix} 잔액이 충분한데 구매가 거절됐습니다.");
 
             Assert.AreEqual(7, CurrencyModel.CoinBalance,
                 $"{LogPrefix} 잔액이 정확히 가격({price})만큼 줄지 않았습니다.");
-            Assert.IsTrue(locked.IsOwned(_config),
-                $"{LogPrefix} 샀는데 보유가 아닙니다 — IsOwned 합집합에 구매 항이 안 들어갔습니다.");
-            Assert.AreEqual(CharacterInfoWindow.ShopState.Owned,
-                CharacterInfoWindow.ResolveShopState(locked, _config, CurrencyModel.CoinBalance),
-                $"{LogPrefix} 샀는데 상점이 아직 팔고 있습니다.");
+            Assert.IsTrue(CurrencyModel.IsPurchasedItem(locked.Id),
+                $"{LogPrefix} 샀는데 구매 이력에 남지 않았습니다.");
             Assert.IsTrue(CurrencyModel.IsDirty,
                 $"{LogPrefix} 구매가 저장 대상으로 표시되지 않았습니다 — 껐다 켜면 산 것이 사라집니다.");
         }

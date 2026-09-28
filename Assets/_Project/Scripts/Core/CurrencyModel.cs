@@ -104,11 +104,18 @@ namespace StickMate.Core
 
         private static readonly List<string> s_purchasedItemIds = new List<string>();
 
-        /// <summary>★ <b>상점에서 산 것만</b> 적힌다. 42종의 레벨 파생 보유는 여기 없고,
-        /// <c>ItemCatalogEntry.IsOwned</c>가 <b>합집합</b>으로 둘을 본다(§20-2-a).
-        /// <para>그 합집합 규칙이 이 필드의 하위 호환을 성립시킨다 — v9 파일에 이 키가 없어도
-        /// 레벨 파생 항이 그대로 살아 있어 <b>아무것도 잃지 않는다</b>. 누가 이걸 「대체」로 바꾸면
-        /// 그 순간 이 문장이 거짓이 되고, <c>Tests/EditMode/ItemOwnershipUnionTests</c>가 빨개진다.</para>
+        /// <summary>★ <b>상점에서 산 것만</b> 적힌다. 42종의 레벨 파생 보유는 여기 없다.
+        /// <para>★★★ <b>2026-09-28 DLC 폐지 R1 — 이 목록은 더 이상 보유 판정에 들어가지 않는다</b>
+        /// (사용자 확정: DLC·재화 폐지, 1회 구매 전환). <c>ItemCatalogEntry.IsOwned</c>와
+        /// <c>EquipmentModel.IsItemOwned</c>에서 구매 항을 <b>같은 커밋에 뗐다</b> — 옛 문장
+        /// 「<c>ItemCatalogEntry.IsOwned</c>가 합집합으로 둘을 본다(§20-2-a)」는 그때부터 거짓이다.
+        /// 남은 해제 경로는 <b>레벨</b>과 QA 해금 스위치뿐이다.</para>
+        /// <para>★ <b>필드와 이력 자체는 남아 있다</b>(읽고 쓰고 저장한다) — 세이브 호환 판정이 끝난 뒤
+        /// 다른 라운드가 정리한다. 그래서 「산 적이 있다」는 <b>사실</b>은 보존되고, 그 사실이
+        /// <b>무엇도 열지 않는다</b>는 것만 바뀌었다.</para>
+        /// <para>옛 합집합 규칙이 이 필드의 하위 호환을 성립시켰다 — v9 파일에 이 키가 없어도
+        /// 레벨 파생 항이 그대로 살아 있어 <b>아무것도 잃지 않는다</b>. 그 항이 사라진 지금 결론은
+        /// 더 강하게 참이고, <c>Tests/EditMode/ItemOwnershipUnionTests</c>가 계속 잠근다.</para>
         /// <para>이름이 <c>ownedItemIds</c>가 아닌 이유: <c>own</c>은 세이브 스키마 금지 토큰이다
         /// (<c>EntitlementNotInSaveAuditTests</c>). 필드가 아직 없을 때 개명해 비용이 0이었다.</para></summary>
         public static IReadOnlyList<string> PurchasedItemIds => s_purchasedItemIds;
@@ -481,8 +488,17 @@ namespace StickMate.Core
             return true;
         }
 
-        /// <summary>이 아이템을 <b>상점에서</b> 산 적이 있는가. 레벨 파생 보유는 여기 안 본다 —
-        /// 합쳐서 보는 곳은 <c>ItemCatalogEntry.IsOwned</c> 하나다.</summary>
+        /// <summary>이 아이템을 <b>상점에서</b> 산 적이 있는가. 레벨 파생 보유는 여기 안 본다.
+        /// <para>★★★ <b>2026-09-28 DLC 폐지 R1 — 이 술어를 보유 판정에서 뗐다.</b> 옛 문장
+        /// 「합쳐서 보는 곳은 <c>ItemCatalogEntry.IsOwned</c> 하나다」는 그때부터 거짓이다 —
+        /// 지금 <b>이 파일 밖에서 이 술어를 부르는 프로덕션 호출부는 0개</b>다(2026-09-28 실측).
+        /// 남은 호출자는 같은 파일 안의 둘 — 중복 구매 차단(<see cref="TryPurchaseItem"/>)과
+        /// 불러오기 때의 중복 이력 접기 — 그리고 테스트 4개다. 상점 화면은 이 술어를 부르지 않고
+        /// <c>ItemCatalogEntry.IsOwned</c>를 본다(그래서 R1 이후 상점의 「보유 중」 칩은
+        /// <b>레벨만</b> 반영한다 — 상점 자체를 제거하는 라운드 소관).</para>
+        /// <para>★ <b>다시 물리지 마라</b> — 되살리면 사용자가 닫은 문(재화로 장비를 여는 경로)을
+        /// 다시 여는 것이 된다. 보유 판정의 정본 두 자리는 <c>ItemCatalogEntry.IsOwned</c>와
+        /// <see cref="EquipmentModel.IsItemOwned"/>이고 둘의 항 구성은 항상 같아야 한다.</para></summary>
         public static bool IsPurchasedItem(string itemId)
         {
             if (string.IsNullOrEmpty(itemId)) return false;

@@ -64,6 +64,10 @@ namespace StickMate.Tests.PlayMode
     ///
     /// <para>★ <b>Windows 실기는 이 머신에서 못 잰다</b> — 계약서 12절 U-D가 «1차 출시 플랫폼인
     /// Windows에서도 재야 한다»고 못박았고, 그건 별도 배정 항목이다.</para>
+    ///
+    /// ★ 왜 한 프레임 포획이 아니라 구간인가 — Still 도달은 폴링 위상에 2.00초로 고정되고 코스튬
+    /// 무쓰기 구간은 최장 3.20초다. 둘의 어긋남(τ0)만 흔들리므로 2.00초 구간의 쓰기 ≥1은 코드상
+    /// 성립하지 않는 기대값이었다(2026-09-28 실측 17회 중 2회 빨강, 근거 docs/verify/PLAYMODE_RED7_FIX_SPEC.md §11).
     /// </summary>
     public sealed class CostumeFocusStillTierTests
     {
@@ -290,6 +294,10 @@ namespace StickMate.Tests.PlayMode
             float stillAt = -1f;
             int poseWritesAtStart = bb.CostumePoseWriteCount;
             int poseWritesAtStill = -1;
+            int layerRanFrames = 0;
+            int layerRanAtStill = -1;
+            int stepAtStill = -99;
+            int subPhaseAtStill = -99;
             int frames = 0;
             float lastElapsed = 0f;
 
@@ -304,6 +312,7 @@ namespace StickMate.Tests.PlayMode
                 if (!idle) leftIdle = true;
                 if (director.CurrentPhase != FocusSessionPhase.Immersion) { leftImmersion = true; return false; }
                 if (!bb.IsCostumeImmersionActive) propLost = true;
+                if (bb.CostumeStepIndex >= 0) layerRanFrames++;   // 「돌았다」 — 「썼다」와 다르다(StickmanBlackboard 2670행)
 
                 FramePacingTier tier = CurrentTier();
                 tiersSeen.Add(tier);
@@ -312,6 +321,9 @@ namespace StickMate.Tests.PlayMode
                     stillSeen = true;
                     stillAt = t;
                     poseWritesAtStill = bb.CostumePoseWriteCount;
+                    layerRanAtStill = layerRanFrames;
+                    stepAtStill = bb.CostumeStepIndex;
+                    subPhaseAtStill = bb.CostumeSubPhase;
                 }
                 return true;
             });
@@ -324,7 +336,9 @@ namespace StickMate.Tests.PlayMode
                 $"(예산 {budget:F2}초, 몰입기 길이 {immersionWall:F2}초, Still 문턱 {dwell:F2}초). " +
                 $"본 등급 [{string.Join(", ", seen)}], Still 도달 {(stillSeen ? $"{stillAt:F2}초" : "없음")}, " +
                 $"Idle 이탈 {leftIdle}, 몰입기 이탈 {leftImmersion}, 프롭 소실 {propLost}, " +
-                $"코스튬 포즈 쓰기 {poseWritesAtStart} -> {bb.CostumePoseWriteCount}.");
+                $"코스튬 포즈 쓰기 {poseWritesAtStart} -> {bb.CostumePoseWriteCount}, " +
+                $"층이 돈 프레임 {layerRanFrames}/{frames}(Still까지 {layerRanAtStill}), " +
+                $"Still 순간 스텝 {stepAtStill} · 소구간 {subPhaseAtStill}.");
 
             // ---- 리그가 실제로 먹었는가(먹지 않았으면 아래 판정은 다른 것을 잰 것이다) ----
             Assert.Greater(frames, 30,
@@ -356,13 +370,21 @@ namespace StickMate.Tests.PlayMode
                 "고정돼 있으므로 걸으면 프롭만 덩그러니 남습니다.");
 
             // ---- ★ «충돌 없이»의 실물 — Still에 도달한 그 순간에도 LFVS는 돌고 있었다 ----
-            Assert.Greater(poseWritesAtStill, poseWritesAtStart,
-                $"{LogPrefix} Still에 도달한 시점까지 코스튬 포즈가 한 번도 쓰지 않았습니다 " +
-                $"({poseWritesAtStart} -> {poseWritesAtStill}). 그렇다면 이 Still은 «코스튬이 돌면서도 " +
-                "절감이 산다»의 증거가 아니라 «코스튬이 안 돌았다»의 증거입니다.");
+            Assert.Greater(layerRanAtStill, 0,
+                $"{LogPrefix} Still에 도달할 때까지의 {stillAt:F2}초 구간에서 코스튬 포즈 층이 한 프레임도 돌지 않았습니다" +
+                $"(Still 순간 스텝 {stepAtStill}). 제스처 최장 1.60초보다 이 구간이 길므로, 이것은 위상 우연이 아니라 층이 죽은 것입니다.");
+
+            Assert.Greater(layerRanFrames, frames / 2,
+                $"{LogPrefix} 관측 창 {frames}프레임 중 코스튬 포즈 층이 돈 프레임이 {layerRanFrames}개뿐입니다 — " +
+                "한 프레임만 돌고 죽은 상태가 구간 단언을 조용히 통과하는 것을 막는 자물쇠입니다.");
+
+            Assert.Greater(bb.CostumePoseWriteCount, poseWritesAtStart,
+                $"{LogPrefix} 관측 창 {lastElapsed:F2}초 동안 코스튬 포즈가 한 번도 쓰지 않았습니다 — " +
+                "설계상 최장 무쓰기 구간(3.20초)보다 이 창이 길므로 이 0은 절감이 아니라 LFVS 정지입니다.");
 
             Debug.Log($"{LogPrefix} ★ L-3 통과 — 몰입기 {stillAt:F2}초에 Still 도달(문턱 {dwell:F2}초), " +
-                $"그 시점까지 코스튬 포즈 쓰기 {poseWritesAtStill - poseWritesAtStart}회. " +
+                $"그 시점까지 층이 돈 프레임 {layerRanAtStill}개 · 쓰기 {poseWritesAtStill - poseWritesAtStart}회" +
+                $"(창 전체 {bb.CostumePoseWriteCount - poseWritesAtStart}회). " +
                 "즉 LFVS가 도는 동안에도 절감 등급이 살아 있습니다(사용자 성능 제약 4번).");
         }
 

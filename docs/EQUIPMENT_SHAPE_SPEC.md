@@ -586,6 +586,55 @@ sx = −1 (진행 반대쪽 = 가려지지 않은 눈)
 >   정본은 `design/equipment/verify/r16_model.py`(카드)·`r19_model.py`(몸)다. 고치려면 **모델을 고쳐 재생성하고 역대조**한다.
 > - 재현: `python3 design/equipment/verify/shipsize_r5.py` ⑤ 블록.
 
+> ★★★ **판정 (2026-09-28 · `design-face` · 리더 배정) — 정본은 골든 0.17193 R이고, 0.33 R은 「기각」이 아니라 「안대 전용」으로 범위가 좁혀진다.**
+> 바로 위 블록이 연 물음(「어느 쪽이 정본인지 가려야 하고, 그 판정은 공동이다」)은 **닫혔다.**
+> 위 표의 글자는 그대로 두고 여기에 답만 얹는다(as-of 처리). 원 판정은 묶음 ⑫ `design-face` 라운드이고,
+> 이 절은 그 판정을 **인용**하면서 좌표에서 독립으로 다시 잰 검산을 덧붙인다.
+>
+> | 아이템 | 지금 화면을 그리는 경로 | 드러난 눈 반경 | 판정 |
+> |---|---|---:|---|
+> | **외알안경**(EYES 3) | `AppendHandoff` → `AppendHandoffEyes` `case EyesMonocle` → `Piece_ExposedEye` | **0.17193 R** | **정본** |
+> | **안대**(EYES 5) | `AppendEyes` `case EyesPatch` → `PatchEye` = `DrawnEye(rig, −1)` | **0.33 R** | **정본 — 단 이 아이템 전용** |
+> | ~~외알안경 v1~~ | ~~`AppendEyes` `case EyesMonocle` → `MonocleEye`~~ | ~~0.33 R~~ | **도달 불가 — 화면과 무관** |
+>
+> - **① v1 분기는 도달하지 않는다 — 사실(코드).** `AccessoryShapeBuilder.cs:1470`의
+>   `if (!AppendHandoff(…) && !AppendWornAsset(…))`가 `switch`보다 **앞**이고,
+>   `AccessoryShapeBuilder.Handoff.cs:151` `AppendHandoffEyes`의 `case`는 **네 개**다 —
+>   `EyesSunglasses`·`EyesRound`·`EyesGoggles`·`EyesMonocle`(= 인덱스 0·1·2·3), 전부 `return true`.
+>   4(뿔테)·5(안대)는 그 `switch`에 **없다**. ⇒ `:2378`의 `MonocleEye`는 **죽은 코드**이고
+>   `:2435`의 `PatchEye`는 **살아 있다**. 위 §6-3 정정 ③의 「지금 실재하는 것은 `DrawnEyeRadiusRatio = 0.33f`」는
+>   **안대에 대해서만** 참이다 — 그 문장을 외알안경에 적용하지 마라.
+> - **② 0.33을 외알안경에 넣으면 규칙 4가 빨개진다 — 산술.** 규칙 4는 「열린 선과 드러난 눈은 붙거나(0)
+>   **1.5획 이상** 떨어지거나」이고 배율 0.75에서만 돈다(§2338 · §2426). 눈을 같은 중심에서
+>   0.17193 → 0.33 R로 키우면 알↔눈 간격이 그 차만큼 줄어든다.
+>   - **검산(이 절이 독립으로 다시 잼)**: 골든 좌표 `Handoff_monocle_CB0_worn`(24점)·`Handoff_monocle_EYE`(12점)에서
+>     **다각형 경계 대 경계 최단거리**를 재면 **0.529933 R = 1.5411획**(W@0.75 = 0.34386 R)이다.
+>     0.33 대입 시 `0.529933 − (0.33 − 0.17193)` = **0.371869 R = 1.0815획** ⇒ `0 < 1.0815 < 1.5` = **위반**.
+>     같은 계산이 눈 중심 (−0.56000, +0.10700)과 외접반경 **0.171930~0.171936 R**을 되돌려 골든 표기와 일치한다.
+>   - ★ **인용한 원 판정값은 1.5246획 → 1.0649획이다.** 방향과 판정은 같고, 차가 **전·후 양쪽 모두 정확히
+>     0.0165획**(= 0.00567 R)이라 **자의 원점이 한 자리 다르다**(어느 쪽이 맞는지는 **미확인**).
+>     1.5획 하한 기준으로 **두 자 모두 전=통과 · 후=위반**이므로 **결론은 자에 의존하지 않는다.**
+> - **③ 1.5획을 되찾는 좌표 이동은 눈을 머리 원 밖으로 내보낸다** ⇒ 「0.33으로 통일」은 좌표로 구제되지 않는다.
+> - **④ 그래서 0.33은 지우지 않는다.** 안대가 여전히 `DrawnEyeRadiusRatio`를 읽는다. 이 상수를 삭제하거나
+>   0.17193으로 바꾸는 것은 **안대를 1.92배 축소하는 별개 변경**이고 이 판정에 **포함되지 않는다.**
+> - ★ **이 판정이 만든 것이 아니라 드러낸 결함 1건 — 골든 눈이 규칙 1-C 미달이다.**
+>   12각 원반이라 `ρ_max = r·cos15° = 0.17193 × 0.965926 = 0.166078 R`이고, 1-C 게이트 0.21818 R에 대해
+>   **0.7612획**이다(하한 1.00획). 그런데 `Piece_ExposedEye`를 겨누는 단언이 저장소에 **0건**이다
+>   (양성 대조: `PatchEye`는 `Tests/EditMode/EyePatchFallbackStrapTests.cs:115`가 실제로 잡는다;
+>   음성 대조: 없는 이름은 0건) ⇒ **어떤 게이트도 이 미달을 보지 않는다.**
+>   사용자 실제 배율 0.60에서 눈 지름이 약 **1.6px**다. **처방은 이 라운드 밖**이다 — 조형은
+>   `design-equipment` 소관이고, 인계본 조각은 자동 생성물이라 `r19_model.py`를 고쳐 **재생성 + 역대조**해야 한다.
+> - ★ **「초상화에 눈이 없다」와 충돌하지 않는다** — 아래 6-4-1을 보라.
+> - ★ **DLC 폐지와 무관하다(실측 2026-09-28).** EYES 슬롯(`slot: 1`) 카탈로그는 **9종** =
+>   기본 6(`equip_eyes_*`) + 팩 3(`pack_cyber_eyes_slit_visor` `cohortId: 2` · `pack_mine_eyes_dust_goggles` 7 ·
+>   `pack_arcane_eyes_astro_lens` 8)이다. 이 판정의 두 당사자는 **둘 다 기본 코호트**다 —
+>   `equip_eyes_monocle`(`itemIndex: 3`, `requiredLevel: 15`) · `equip_eyes_patch`(`itemIndex: 5`, `requiredLevel: 23`),
+>   둘 다 `cohortId` 키가 **없어** 기본값 `ItemCatalog.BaseCohortId`(= 0)로 실린다.
+>   ⇒ **팩이 사라져도 이 판정의 대상은 남는다.**
+>   그리고 팩 3종에는 **드러난 눈이 없다** — 셋의 `wornShapes` 도형 이름(7·6·5개) 중 `Eye`를 포함한 것이 **0개**다
+>   (양성 대조: 같은 검색이 기본 두 종에서 `wornShapes` 자체 0을 되돌린다 — 이 둘은 코드가 그린다).
+>   그것이 곧 §6-1 규칙의 확인이다: 두 눈을 다 가리는 물건은 아무것도 보여 주지 않는다.
+
 ### 6-4. 기존 테스트와의 관계 — ★ 중요
 
 ~~`EyesVisorOpacityTests.채움이_눈_자리를_덮는다`~~(`2051739`에서 개명 → `EyesVisorOpacityTests.가리개_채움이_눈_자리를_덮는다`)는 외알/안대에 대해
@@ -608,6 +657,35 @@ sx = −1 (진행 반대쪽 = 가려지지 않은 눈)
 `규칙 2`(EYES 실루엣은 반드시 채움)는 **그대로 유효하다.** 6-2가 증명하듯 투명 렌즈는 그릴 수 없으므로
 "채움은 옵션이 아니다"라는 규칙의 근거가 오히려 강해졌다. 규칙 2에 한 줄만 덧붙일 것을 권고한다 —
 **"규칙 2-a: 눈은 가리개 **안**이 아니라 가리개 **옆**에만 그린다."**
+
+### 6-4-1. `PortraitEyeVisibilityTests.EyesAreAbsentUnderEveryGlassesItem`은 이 절을 판정하지 않는다
+
+★ **2026-09-28 · `design-face`.** 명부에 25~29회 등재된 지속 빨강 하나가 이 절과 **같은 낱말**을 써서
+「안경을 쓰면 눈이 없어야 하는가」라는 물음이 **갈려 있는 것처럼** 보였다. 갈려 있지 않다 — **주어가 다르다.**
+
+| | 그 테스트가 재는 것 | 이 절이 정하는 것 |
+|---|---|---|
+| 대상 도형 | **본체 눈** `EyeBack` / `EyeFront` | **장비 조각** `Piece_ExposedEye`(외알) / `PatchEye`(안대) |
+| 표면 | 초상화(`CharacterPortraitStage`) | 몸 · 카드 · 초상화 |
+| 단언 | 그 두 이름이 **없다** | 드러난 눈이 **있고 크기가 얼마인가** |
+
+- **사실(코드) — 그 테스트는 EYES 슬롯을 읽지 않는다.** `Interaction/CharacterPortraitStage.cs:129`
+  `private const bool DrawEyes = false;`이고 `:1135` `if (!DrawEyes) return;`이 눈 원 두 개
+  (`AddCircle("EyeBack", …)` · `AddCircle("EyeFront", …)`)보다 **앞**이다. 어떤 EYES 아이템을 써도
+  결과가 같으므로 그 초록은 **가림 여부와 독립**이다(근거 정본: `docs/verify/PLAYMODE_RED7_FIX_SPEC.md` §1-3 (가)).
+- **그 빨강의 원인은 눈 크기가 아니라 손목록이다.** 테스트 첫 줄이 `Assert.AreEqual(Glasses.Length, ItemCount(Eyes))`이고
+  `Glasses`는 6행 하드코딩인데 카탈로그는 **9종**이다(기본 6 + 팩 3). ⇒ **이 절의 어떤 값을 고쳐도 그 빨강은 안 바뀐다.**
+  수정 명세는 `PLAYMODE_RED7_FIX_SPEC.md` §1-4(테스트 쪽, 담당 `test-engineer`)에 완비돼 있다.
+- ★ **그래도 남는 실질 긴장 하나(등재 대상)**: `Piece_ExposedEye`의 `surfaces: 1` = `AccessorySurface.Body`이고
+  (`Core/AccessoryShapeContract.cs:34` `Body = 1`, `:28`이 「**초상화는 Body 표면을 그린다**」 · Portrait 비트는 예약),
+  `AccessoryShapeBuilder.Append`의 기본 인자가 `surface = AccessorySurface.Body`다
+  (`:1459`, 문서 `:1455` 원문 「기본은 몸이다 — 렌더러·**초상화**·기존 검사가 전부 몸을 본다」).
+  초상화는 그 기본값으로 부른다(`Interaction/CharacterPortraitStage.cs:1354`, 인자 6개 — `surface` 미지정).
+  ⇒ **외알안경·안대를 쓴 초상화에는 눈처럼 보이는 원반이 실제로 하나 있다.** 테스트가 초록인 이유는
+  그것을 **이름으로 재기 때문**(`EyeBack`/`EyeFront`가 아니다)이고, 「눈이 있는가」를 형태로 재면 **답이 반대**다.
+  이것은 결함이 아니라 **§6-1이 확정한 설계**다 — 다만 테스트 **이름**이 전칭(`UnderEveryGlassesItem`)이라
+  다음 사람이 이 절과 모순으로 읽는다. **이름은 기준선 이력 때문에 바꾸지 않는다**(`docs/verify/renames.tsv`) ⇒
+  해소는 **주석·문서 쪽**이고, 그 자리가 이 절이다.
 
 ### 6-5. 6종 치수표
 

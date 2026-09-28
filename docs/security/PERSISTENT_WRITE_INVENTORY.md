@@ -76,7 +76,10 @@
 
 ### 1-5. 범위 밖으로 판정한 것
 
-- **`Assets/Editor` 13개**: 파일 쓰기 적중 22건은 전부 개발 머신의 빌드·임포트 시점이다. 플레이어에 들어가지 않는다 — `Builds/Windows/StickMate_Data/Managed`와 macOS 앱 `Contents/Resources/Data/Managed`에서 이름에 `editor`가 든 dll은 둘 다 0이다(양성: `StickMate.Runtime.dll` 각 1). 빌드 영수증 파일(`dgpu-export-patch.txt`·`mac-gpu-switching-plist.txt`)은 **배포물 안에 들어 있는 파일**이다. 실행 중 사용자 PC에 새로 생기는 쓰기가 아니다.
+- **`Assets/Editor` 13개**: 파일 쓰기 적중 22건은 전부 개발 머신의 빌드·임포트 시점이다. 플레이어에 들어가지 않는다 — `Builds/Windows/StickMate_Data/Managed`와 macOS 앱 `Contents/Resources/Data/Managed`에서 이름에 `editor`가 든 dll은 둘 다 0이다(양성: `StickMate.Runtime.dll` 각 1). ~~빌드 영수증 파일(`dgpu-export-patch.txt`·`mac-gpu-switching-plist.txt`)은 **배포물 안에 들어 있는 파일**이다.~~ 실행 중 사용자 PC에 새로 생기는 쓰기가 아니다.
+  - ★ **정정 2026-09-28 (code-inspection) — 취소선 문장은 영수증을 옮기기 전에 참이었다**(as-of). **범위 밖 판정 자체는 바뀌지 않는다** — 뒤 문장(「실행 중 사용자 PC에 새로 생기는 쓰기가 아니다」)은 여전히 참이고, 오히려 Windows 쪽은 배포물에서 빠져 더 좁아졌다. 바뀐 것은 **어디에 쓰는가** 하나다.
+  - **Windows**: 이제 산출물 폴더가 아니라 프로젝트 루트 아래 `Logs/BuildReceipts/`에 쓴다(`Assets/Editor/WindowsHybridGpuExportPostprocessor.cs` 앵커 `private static string ReceiptPath() => BuildStandalone.ResolveBuildReceiptPath(ReceiptFileName);` → `Assets/Editor/BuildStandalone.cs` 앵커 `public const string BuildReceiptSubFolder = "Logs/BuildReceipts";`). 그 폴더는 `.gitignore`의 `[Ll]ogs/`에 걸려 저장소로도 새지 않는다. ⇒ **배포물 안이 아니다.**
+  - **macOS**: 옮기지 않았다. `.app` 번들 **옆**(번들의 부모 폴더)에 그대로 쓴다(`Assets/Editor/MacHybridGpuInfoPlistPostprocessor.cs`의 `WriteReceipt`, 앵커 `string dir = string.IsNullOrEmpty(appPath) ? null : Path.GetDirectoryName(appPath);`). 배포 단위가 `.app` 번들이고 영수증은 이미 그 밖이라 옮길 이유가 없었다 — 그 훅의 주석이 「위치는 옮기지 않는다」로 사유를 적고 있고 `MacHybridGpuPlistTests`가 그 위치를 소스로 잠근다. ⇒ **비대칭은 사고가 아니라 배포 단위 차이에서 나온 의도다.** 단 `Builds/macOS/` 폴더를 통째로 압축해 배포하면 이 파일은 그 zip 안에 든다 — 그쪽은 N-19(계정명) 축이고 이 절의 범위 밖 판정과 별건이다.
 - **테스트 전용 경로가 프로덕션 파일 안에 있는 것**: `CharacterSaveStore.RedirectToTemporaryDirectoryForTesting`·`ReservedBarRestoreLedger.RedirectToTemporaryDirectoryForTesting`(`temporaryCachePath` 아래 폴더 생성)과 `SimulateDeathDuringOverwriteForTesting`(잘린 쓰기)은 프로덕션 호출이 0이다. 정의 자신과 같은 파일 안 테스트 전용 함수에서만 부르고, 호출하는 테스트 파일은 7개다(양성).
 - **개발 머신에만 있는 파일**: macOS 세이브 폴더의 `stickmate_character.json.backup-<날짜>-<시각>` 2개는 앱 코드에 그 이름 패턴(`.backup-`)이 0건이다. 앱이 만든 것이 아니다(생성 주체는 이 라운드에서 특정하지 않았다).
 
