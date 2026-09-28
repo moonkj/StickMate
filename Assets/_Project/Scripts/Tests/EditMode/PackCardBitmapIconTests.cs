@@ -155,27 +155,9 @@ namespace StickMate.Tests.EditMode
         // ============================================================================
         // 1. 배선 — 팩 전량이 비트맵을 선언했는가
         // ============================================================================
-
-        [Test]
-        public void 팩_아이템_전량이_카드_비트맵을_선언한다()
-        {
-            List<ItemCatalogEntry> packs = PackItems();
-            Assert.Greater(packs.Count, 0,
-                $"{LogPrefix} 팩 아이템이 0종입니다 — 이 파일의 모든 단언이 공허해집니다(빈 목록 순회).");
-
-            var missing = new List<string>();
-            for (int i = 0; i < packs.Count; i++)
-            {
-                ItemCatalogEntry e = packs[i];
-                if (ItemCatalog.CardSprite(e.Slot.Value, e.ItemIndex) == null) missing.Add(e.Id);
-            }
-
-            Assert.IsEmpty(missing,
-                $"{LogPrefix} 팩 {packs.Count}종 중 {missing.Count}종이 cardIconOverride 를 비웠습니다: " +
-                $"{string.Join(", ", missing)}. 그 카드는 <b>조용히</b> 옛 벡터 아이콘으로 돌아가고, " +
-                "증상은 «이 아이템만 그림이 다르다»뿐이라 신고되지 않습니다. " +
-                "StickMate/팩 카드 아이콘/1 을 다시 돌리십시오.");
-        }
+        // ★ 2026-09-28: 「팩_아이템_전량이_카드_비트맵을_선언한다」는 DLC 폐지로 팩 모집단이
+        //   영구히 0이 되어 삭제했다(PackItems() 순회가 공허해진다 — 지금은 정상이다).
+        //   PackItems()·CardSprite 배선 자체는 살아 있고 다른 절이 계속 검증한다.
 
         /// <summary>
         /// ★★ <b>2026-09-09에 형태가 바뀐 부재 단언이다.</b>
@@ -661,28 +643,8 @@ namespace StickMate.Tests.EditMode
         // ============================================================================
         // 4. ★ 범위 잠금 — 몸에 붙는 그림은 한 점도 안 바뀐다
         // ============================================================================
-
-        [Test]
-        public void 팩의_착용_형상은_비트맵과_무관하게_그대로다()
-        {
-            List<ItemCatalogEntry> packs = PackItems();
-            Assert.Greater(packs.Count, 0, $"{LogPrefix} 팩 아이템이 0종 — 순회가 공허합니다.");
-
-            var faults = new List<string>();
-            for (int i = 0; i < packs.Count; i++)
-            {
-                ItemCatalogEntry e = packs[i];
-                AccessoryWornShapeData[] worn = ItemCatalog.WornShapes(e.Slot.Value, e.ItemIndex);
-                if (worn == null || worn.Length == 0)
-                {
-                    faults.Add($"{e.Id}: wornShapes 가 비었다 — 몸에 아무것도 안 붙는다.");
-                }
-            }
-
-            Assert.IsEmpty(faults,
-                $"{LogPrefix} 착용 형상 {faults.Count}건이 사라졌습니다\n  " + string.Join("\n  ", faults) +
-                "\n  ★ 카드 비트맵은 <b>카드 표면 전용</b>입니다. 몸은 여전히 벡터 wornShapes 하나이고, " +
-                "그 선은 2026-09-08 리더 판단입니다.");
-        }
+        // ★ 2026-09-28: 「팩의_착용_형상은_비트맵과_무관하게_그대로다」는 DLC 폐지로 팩 모집단이
+        //   영구히 0이 되어 삭제했다(PackItems() 순회가 공허해진다 — 지금은 정상이다). 카드 비트맵이
+        //   착용 벡터 wornShapes를 건드리지 않는다는 원칙(2026-09-08 리더 판단)은 무변경이다.
     }
 }

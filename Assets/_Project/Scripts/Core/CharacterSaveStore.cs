@@ -664,6 +664,7 @@ namespace StickMate.Core
             LoadedFromPreviousGeneration = false;
             NewerVersionFileDetected = false;
             NewerVersionBackupPath = null;
+            LoadBackupPath = null;
             SaveSuspended = false;
             RestoreAbortedMidway = false;
             s_restoreInFlight = false;
@@ -763,6 +764,11 @@ namespace StickMate.Core
         /// <summary>신버전 파일 백업의 파일명. 버전 번호를 넣어 여러 신버전을 만나도 서로 덮지 않는다.</summary>
         private static string BackupFileName(int version) => $"character_save.v{version}.backup.json";
 
+        /// <summary>기동 때 남긴 사본의 경로(없거나 실패하면 null). 진단/테스트용.
+        /// <para>★ 테스트가 파일명을 <b>글자로 베끼지 않도록</b> 이 속성을 공개한다 — 파일명 규칙은
+        /// <see cref="BackupFileName"/> 한 곳에만 있다(CLAUDE.md 「프로덕션 상수를 베끼지 않는다」).</para></summary>
+        public static string LoadBackupPath { get; private set; }
+
         /// <summary>
         /// 앱 시작 시 1회. 파일이 없거나 깨졌으면 <b>아무것도 하지 않는다</b> — 정적 모델의 초기값
         /// (Lv.1 / XP 0 / 기본 이름 / 전부 미착용)이 그대로 "새 캐릭터"가 된다.
@@ -773,6 +779,7 @@ namespace StickMate.Core
             LoadedFromPreviousGeneration = false;
             NewerVersionFileDetected = false;
             NewerVersionBackupPath = null;
+            LoadBackupPath = null;
             SaveSuspended = false;
             RestoreAbortedMidway = false;
             s_restoreInFlight = false;
@@ -811,6 +818,46 @@ namespace StickMate.Core
                 {
                     HandleNewerVersionFile(path, data.version);
                     return;
+                }
+
+                // ============================================================
+                // ★★ 기동 사본 — 「읽을 수 있다」를 확인한 직후, 아무 모델도 건드리기 전에 한 번
+                //    (2026-09-28 DLC 폐지 R3 동반 조치)
+                // ============================================================
+                // 왜 이 라운드에 필요한가: 애셋을 지우는 라운드는 <b>표에서 아이템을 없앤다</b>.
+                // 그것을 걸친 채였던 사용자는 복원에서 미착용으로 떨어지고(EquipmentModel의
+                // RestoreFromSave 문단), <b>60초 뒤 자동 저장이 그 빈 칸을 디스크에 굳힌다</b> —
+                // 그 지점부터 «무엇을 걸치고 있었는가»는 어디에도 남지 않는다. 앱에는 파일을 되살리는
+                // 능력이 없으므로(원칙 3: 삭제·이동 API 자체가 없다) 되돌릴 수 있는 유일한 방법은
+                // <b>굳기 전의 사본</b>이다.
+                //
+                // ★ 새 장치를 만들지 않았다 — 다운그레이드 방어의 TryBackupOnce를 그대로 쓴다
+                // (같은 사실을 두 곳에서 계산하지 않는다). 그 함수의 「딱 한 번」 규약이 여기에도 맞다:
+                // <b>가장 처음 사본이 가장 값지다</b>. 매 기동 덮어쓰면 R3 뒤 두 번째 기동이
+                // 이미 빈 칸이 된 파일로 사본을 갈아치워 <b>스스로 증거를 지운다</b>.
+                //
+                // ★ 파일명이 다운그레이드 사본과 충돌하지 않는가 — 두 호출자의 버전 범위가 겹치지 않아
+                // 구조적으로 안 겹친다: HandleNewerVersionFile과 AbandonWriteToNewerFile은 둘 다
+                // <c>version &gt; CurrentVersion</c>에서만 부르고(위 분기 · 저장 직전 재확인),
+                // 이 자리는 그 분기를 <b>통과한 뒤</b>이므로 항상 <c>version &lt;= CurrentVersion</c>이다.
+                //   · 겹치는 경우가 하나 남는다: 같은 버전 앱이 먼저 사본을 남긴 뒤 <b>구버전 앱</b>이
+                //     그 파일을 만나는 순서. 그때 다운그레이드 쪽은 이미 있는 사본을 그대로 보고한다.
+                //     피해는 없다 — 그 사본은 <b>구버전이 손대기 전</b>의 같은 버전 스냅숏이고,
+                //     그것이 TryBackupOnce 문서가 적은 「그 뒤의 내용은 구버전이 오염시켰을 수 있다」를
+                //     오히려 더 잘 만족한다. 게다가 그 경로는 저장을 보류하므로 원본도 그대로 남는다.
+                //
+                // 실패하면 경고 한 줄만 남기고 <b>로드는 그대로 진행한다</b>. 사본은 안전망이고,
+                // 안전망을 못 걸었다고 사용자의 성장/할일을 안 읽어 줄 이유가 없다.
+                if (TryBackupOnce(path, data.version, out string loadBackupPath, out string loadBackupFailure))
+                {
+                    LoadBackupPath = loadBackupPath;
+                }
+                else
+                {
+                    LoadBackupPath = null;
+                    Debug.LogWarning($"[성장] 기동 사본을 남기지 못했습니다({loadBackupFailure}). " +
+                        "로드는 그대로 진행합니다 — 다만 이번 실행에서 착용물이 표에서 사라져 " +
+                        "미착용으로 떨어지는 경우, 되돌릴 사본이 없습니다.");
                 }
 
                 // ★ 여기서부터 "여러 모델을 차례로 되살리는" 구간이다. 도중에 예외가 나면 앞쪽은

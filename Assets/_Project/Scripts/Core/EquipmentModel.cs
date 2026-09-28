@@ -450,7 +450,27 @@ namespace StickMate.Core
         /// 레벨이 낮게 복원되는 순간(파일 손상 등) 착용물이 조용히 사라진다. 대신 렌더러/UI가 그릴 때
         /// <see cref="IsUnlocked"/>로 함께 본다.
         /// 모르는 아이디(훗날 표에서 빠진 아이템, 손상)는 <b>미착용</b>으로 떨어뜨린다 — 없는 아이템을
-        /// 억지로 다른 것으로 바꿔치기하면 사용자가 고르지 않은 차림이 된다.</summary>
+        /// 억지로 다른 것으로 바꿔치기하면 사용자가 고르지 않은 차림이 된다.
+        ///
+        /// <para>★★ <b>2026-09-28 DLC 폐지 R3 — 그 「떨어뜨림」이 조용했다.</b> 애셋을 지우는 라운드는
+        /// 이 경로를 <b>정상 사용자에게</b> 처음으로 밟게 만든다: 팩 12종은 전부
+        /// <c>requiredLevel: 1</c>이라 이미 전원에게 열려 있었고, 그것을 걸친 채였던 사용자는
+        /// 다음 자동 저장(60초)에서 착용 슬롯이 <b>빈 채로 디스크에 굳는다</b>. 그때까지 로그는 0줄이라
+        /// 「내가 걸친 게 사라졌다」는 신고가 올라와도 <b>무엇이 사라졌는지 알 방법이 없었다</b> —
+        /// 2026-09-07 P0(«종이비행기 펫샀는데 착용이 안됨», <see cref="IsItemOwned"/> 문단)와 같은
+        /// 종류의 침묵이다. 그래서 <b>버려지는 아이디를 한 줄 남긴다.</b></para>
+        ///
+        /// <para>★ <b>무엇에만 찍는가</b> — 「사라진 아이디」하나다. 셋을 일부러 뺀다:
+        /// ① 빈 아이디(파일이 「아무것도 안 걸쳤다」를 적은 것) ② 은퇴한 <b>카테고리</b>
+        /// (<see cref="IsRetiredSlot"/> — 머리는 파일에 무엇이 적혀 있든 미착용이 <b>정책</b>이다)
+        /// ③ 은퇴한 <b>아이템</b>(<see cref="IsRetiredItem"/> — 아이디는 표에 살아 있다).
+        /// 셋 다 「정상 동작」이라 찍으면 <b>아무 문제 없는 사용자의 로그가 매 기동 시끄러워진다</b>
+        /// (CLAUDE.md가 경고하는 «정상 사용자에게 에러가 찍혔다»의 재발). 그리고 경고 등급이다 —
+        /// 이것은 <b>사용자가 잘못한 것이 없는 사실 보고</b>이고, <c>LogError</c>로 올리면
+        /// 테스트 러너가 무관한 스위트에서 빨개진다.</para>
+        ///
+        /// <para>★ 한 기동에 최대 슬롯 수(7)줄이다 — <see cref="CharacterSaveStore.Load"/>가
+        /// 슬롯마다 한 번씩 부르고 그 <c>Load</c>는 기동 시 1회다. Update 경로가 아니다.</para></summary>
         internal static void RestoreFromSave(EquipmentSlot slot, string itemId)
         {
             if (!InRange(slot)) return;
@@ -462,6 +482,19 @@ namespace StickMate.Core
             //   ★ 2026-09-06 후속 — 판정을 <b>아이템 단위</b>(<see cref="IsRetiredItem"/>)로 넓혔다.
             //   이펙트 「없음」을 걸친 채 저장했던 파일이 그대로 열리면 카드가 없는 차림이 된다.
             int restored = IsRetiredSlot(slot) ? NotWorn : ItemCatalog.IndexOfItemId(slot, itemId);
+
+            // ★ 「사라진 아이디」만 한 줄 남긴다(위 문단의 셋을 뺀 나머지). 조건 셋의 순서에 뜻이 있다:
+            //   앞의 둘이 «정책으로 미착용»을 먼저 걸러 내므로, 남는 restored == NotWorn은
+            //   «표가 이 아이디를 모른다» 하나뿐이다(ItemCatalog.IndexOfItemId는 빈 아이디에도 −1을
+            //   돌려주므로 IsNullOrEmpty를 함께 봐야 두 사실이 갈린다).
+            if (restored == NotWorn && !IsRetiredSlot(slot) && !string.IsNullOrEmpty(itemId))
+            {
+                Debug.LogWarning($"[장비] 세이브에서 사라진 아이디를 착용 중이었습니다 — " +
+                    $"슬롯 {SlotCode(slot)}({SlotName(slot)}), 아이디 \"{itemId}\". 미착용으로 되돌립니다. " +
+                    "파일은 읽기만 했고 이 줄 외에 아무것도 바꾸지 않습니다 — 다음 저장에서 그 칸이 " +
+                    "빈 채로 굳습니다(되돌리려면 CharacterSaveStore가 기동 때 남긴 사본을 쓰세요).");
+            }
+
             _worn[(int)slot] = IsRetiredItem(slot, restored) ? NotWorn : restored;
         }
 
