@@ -49,7 +49,22 @@
      `ReservedBarRevealDirector.cs`(실행) / `Platform/Windows/WindowsReservedBarAutoHideControl.cs`(사실 조회+쓰기).
      예외가 번지지 않도록 `Tests/EditMode/UserAssetImmutabilityAuditTests`가 앱바 쓰기 메시지 5종을
      금지하고, 승인된 1건만 **파일 1개 · 형태 2개**로 라인 단위 재검증한다.
-4. **플러그인 구조**: 신규 모션/이펙트(DLC)는 기본 로직 무수정으로 ScriptableObject 매니페스트를 통해 추가.
+4. ~~**플러그인 구조**: 신규 모션/이펙트(DLC)는 기본 로직 무수정으로 ScriptableObject 매니페스트를 통해 추가.~~
+   ★ **폐지(2026-09-29, 사용자 확정)** — 사용자 지시 원문 *"신규 모션/이펙트(DLC)는 ScriptableObject
+   매니페스트로 추가는 삭제 추후 유료콘텐츠 넣을일 없음"*. 이 원칙은 2026-09-28 DLC 폐지·1회 구매
+   전환 결정의 직접 귀결이다 — 원칙이 가리키던 주어(유료 콘텐츠 팩)가 없어졌고, 사용자가 앞으로도
+   다시 만들지 않겠다고 확정했다.
+   ★★ **여기서 폐지되는 것은 "미래에 유료 콘텐츠를 매니페스트로 넣는다"는 약속뿐이다.** 이미 짜여진
+   ScriptableObject 매니페스트 기반 확장 구조(`Plugins/EffectPluginSO.cs`·`MotionPluginSO.cs`,
+   `Core/AccessoryDefSO.cs`·`ItemCatalog.cs`·`CostumeManifestSO.cs` 등)와 그것을 지키는 테스트
+   (`CostumeManifestCorridorTests`·`PackManifestCorridorTests`·`AccessoryAssetShapeReachTests` 등)는
+   **이 삭제로 함께 지우지 않는다** — 그 구조는 지금 배포 중인 기본 42종·오피스 코스튬이 이미
+   그 통로로 얹혀 있고(`case` 하드코딩이 아니라 애셋으로), 원칙의 "왜"가 DLC가 아니어도 그 구조
+   자체는 계속 참이다. `.cs`·테스트 주석 30여 곳이 아직 "원칙 4"를 인용하고 있는데, 그중 일부는
+   이 플러그인 구조가 아니라 **다른 개념**("모든 방해성 이벤트에는 1초 내 탈출구")을 같은 이름으로
+   부르고 있어(`ActionCommandPopover.cs`·`AppControlDirector.cs`·`SettingsWindow.cs` 등) — 그 혼선부터
+   먼저 가른 뒤에 정리해야 한다. **다음 라운드 배정 필요(game-architect + code-inspection), 지금은
+   건드리지 않았다.**
 
 ## 캐릭터 무빙 방식 (결정됨, 변경 시 팀 합의 필요)
 Active Ragdoll(Rigidbody2D + Joint2D) + IK 하이브리드.
@@ -99,7 +114,7 @@ Active Ragdoll(Rigidbody2D + Joint2D) + IK 하이브리드.
 ### 💰 상품 전략
 | 담당 | 범위 |
 |---|---|
-| `product-strategy` | 유통 채널(스팀/MS스토어/맥앱스토어), DLC 구성·가격, 무료·유료 경계, 출시 순서 |
+| `product-strategy` | 유통 채널(스팀/MS스토어/맥앱스토어), ~~DLC 구성·가격, 무료·유료 경계~~ **1회 구매 정가**(2026-09-29 DLC 폐지), 출시 순서 |
 | `tft-competitive` | 경쟁 분석 TFT — 유사 데스크톱 컴패니언·오버레이 프로그램의 기법과 시장 위치(정의서 1개 · 3인 편성) |
 
 ### 📣 마케팅
@@ -112,7 +127,7 @@ Active Ragdoll(Rigidbody2D + Joint2D) + IK 하이브리드.
 | 담당 | 범위 |
 |---|---|
 | `ux-designer` | **UI 표면** — 창/패널/버튼/플로우/예외 상태 |
-| `design-art` | **시각 언어** — 팔레트, 등급 색 체계, DLC 6팩 테마 통일, 이펙트 색 |
+| `design-art` | **시각 언어** — 팔레트, 등급 색 체계, ~~DLC 6팩 테마 통일~~(2026-09-29 대상 소멸), 이펙트 색 |
 | `design-character` | **캐릭터 본체** — 비율, 획 두께, 관절 곡률, 실루엣 |
 | `design-equipment` | **장비·소품 조형** — 42종 + 머리카락 + 펫 |
 | `design-motion` | **모션·연출** — 자세, 박자, 전이, 무게감 |
