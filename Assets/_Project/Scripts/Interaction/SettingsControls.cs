@@ -659,7 +659,14 @@ namespace StickMate.Interaction
                 if (Labels[i] != null)
                 {
                     Labels[i].color = UiChrome.InkOnSurface(face, UiChrome.InkRole.Body, enabled: true);
-                    Labels[i].fontStyle = active ? FontStyle.Bold : FontStyle.Normal;
+                    // ★ 굵기는 <c>fontStyle</c> 단독이 아니라 <c>UiChrome.ApplyBold</c>로 건다
+                    //   (UI_SURFACE_SPEC P2-12. 여기서 fontStyle만 바꾸면 이 자리만 번진 채 남는다).
+                    // ★ keepRegularMetrics: 세그먼트 칩 폭은 <c>AddSegment</c>가 <b>생성 시점에
+                    //   MeasuredWidth로 재서</b> 정한다(그때 라벨은 굵지 않다 — 바로 아래 형제
+                    //   <c>AddButtons</c>는 반대로 <c>bold: true</c>로 만든 뒤 재므로 그쪽은 안전하다).
+                    //   진짜 Bold 페이스는 폭이 달라 갈아타면 잉크가 칩 여백을 먹는다. 판정 대기 —
+                    //   사유와 기각한 대안은 <c>UiChrome.ApplyBold</c> 문서에 있다.
+                    UiChrome.ApplyBold(Labels[i], active, keepRegularMetrics: true);
                 }
             }
         }

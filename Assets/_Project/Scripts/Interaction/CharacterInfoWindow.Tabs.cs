@@ -243,7 +243,13 @@ namespace StickMate.Interaction
                 }
                 if (_tabLabels[i] != null)
                 {
-                    _tabLabels[i].fontStyle = active ? FontStyle.Bold : FontStyle.Normal;
+                    // 굵기는 UiChrome.ApplyBold 한 창구로만 (UI_SURFACE_SPEC P2-12).
+                    // ★ keepRegularMetrics: 이 탭 상자는 <see cref="TabLabelWidth"/>가 <b>생성 시점에
+                    //   실측 폭 + 여백</b>으로 정한다(그때 라벨은 굵지 않다). 진짜 Bold 페이스로
+                    //   갈아타면 활성 탭만 여백이 14.0, 나머지는 12.0이 되어 「폭 규칙이 한 벌이 아니다」로
+                    //   빨개진다(UiTextWidthModelTests 실측). 그 결정은 ApplyBold 문서 참고 —
+                    //   이 자리의 번짐은 아직 안 고쳐진 채이고 판정 대기다.
+                    UiChrome.ApplyBold(_tabLabels[i], active, keepRegularMetrics: true);
                     // 면에서 잉크를 파생시킨다 — 브라스 위에서는 InkOnSurface가 어두운 잉크로 뒤집는다.
                     _tabLabels[i].color = active
                         ? UiChrome.InkOnSurface(UiChrome.Accent, UiChrome.InkRole.Title, enabled: true)

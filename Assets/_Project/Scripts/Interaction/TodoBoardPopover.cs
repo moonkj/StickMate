@@ -1225,7 +1225,8 @@ namespace StickMate.Interaction
                 bool on = (int)_tab == i;
                 _tabChips[i].color = on ? UiChrome.Flatten(UiChrome.AccentSurface, UiChrome.PanelSurface) : UiChrome.CardSurface;
                 _tabLabels[i].color = on ? UiChrome.TextOnAccent : UiChrome.TextSecondary;
-                _tabLabels[i].fontStyle = on ? FontStyle.Bold : FontStyle.Normal;
+                // 굵기는 UiChrome.ApplyBold 한 창구로만 (UI_SURFACE_SPEC P2-12 — 합성 볼드 회피).
+                UiChrome.ApplyBold(_tabLabels[i], on);
             }
 
             bool calendar = _tab == Tab.Active && _page == Page.Calendar;

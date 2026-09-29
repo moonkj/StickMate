@@ -2244,7 +2244,12 @@ namespace StickMate.Interaction
                     //   "죽은 탭에는 글자가 한 자도 없다"는 신고를 만들었다 — 글자는 있었다.
                     //   준비 중이라는 사실은 아래 밑줄과 탭 내용이 말한다.
                     _tabLabels[i].color = UiChrome.InkTab(active, ready);
-                    _tabLabels[i].fontStyle = active ? FontStyle.Bold : FontStyle.Normal;
+                    // 굵기는 UiChrome.ApplyBold 한 창구로만 (UI_SURFACE_SPEC P2-12).
+                    // ★ keepRegularMetrics: 이 탭의 라벨 상자는 BuildTabs가 <b>생성 시점에
+                    //   SettingsControls.MeasuredWidth로 재서</b> 정한다(그때 라벨은 굵지 않다).
+                    //   진짜 Bold 페이스는 폭이 달라서 갈아타면 상자 20.0 대 잉크 24.0으로 갈라진다
+                    //   (UiTextWidthModelTests가 실측으로 잡았다). 그 결정은 ApplyBold 문서 참고.
+                    UiChrome.ApplyBold(_tabLabels[i], active, keepRegularMetrics: true);
                 }
                 if (_tabUnderlines[i] != null)
                 {

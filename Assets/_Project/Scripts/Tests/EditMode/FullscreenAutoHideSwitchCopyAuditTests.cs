@@ -85,8 +85,13 @@ namespace StickMate.Tests.EditMode
     /// <list type="bullet">
     /// <item>이 감사는 <b>낱말의 존재와 순서</b>를 본다. 문법적으로 뜻이 뒤집힌 문장
     ///   (예: 「창부터 물러나지 <b>않기</b>」)은 잡지 못한다.</item>
-    /// <item><b>폭 판정은 이 머신의 폰트에 의존한다.</b> 번들 폰트(<c>LegacyRuntime.ttf</c>)에 한글
-    ///   글리프가 없어 <b>운영체제 폴백</b>에서 오므로, 여기서 나온 pt 값은 <b>이 플랫폼의 값</b>이다.
+    /// <item><b>폭 판정은 이 머신의 폰트에 의존한다.</b> ~~번들 폰트(<c>LegacyRuntime.ttf</c>)에 한글
+    ///   글리프가 없어 <b>운영체제 폴백</b>에서 오므로, 여기서 나온 pt 값은 <b>이 플랫폼의 값</b>이다.~~
+    ///   ★ <b>2026-09-29 정정 — 경로가 바뀌었고 결론은 그대로다.</b> 이제 창 UI 글꼴은
+    ///   <c>UiChrome.Font</c>가 <b>OS에서 직접 고른 페이스</b>다(UI_SURFACE_SPEC P2-12 1단계). 즉 값은
+    ///   여전히 <b>이 플랫폼의 값</b>이고, 오히려 <b>어느 페이스로 잰 것인지</b>가 실행마다 로그
+    ///   (<c>[UI폰트] 확정:</c>)에 남는다. macOS 실측으로 이 자리의 숫자가 실제로 움직였다:
+    ///   라벨 <b>192.0 → 162.0</b>pt / 캡션 <b>369.0 → 333.0</b>pt(상자는 420 / 480 그대로, 여유가 늘었다).
     ///   ⇒ <b>macOS 초록이 Windows 초록을 증명하지 않는다.</b> 그래서 단언은 <b>상자 이하</b>라는
     ///   부등식이고(치수 동등이 아니다), 폰트가 0을 내는 경우를 <b>양성 대조로 먼저</b> 걸러낸다.</item>
     /// <item><b>「글자 수 × 상수」 모형은 쓰지 않는다.</b> 이 저장소가 폐기한 계열이다 — 창 6곳이 그
@@ -760,8 +765,10 @@ namespace StickMate.Tests.EditMode
 
                 Debug.Log($"[자동숨김문안폭-TEST] 라벨 {labelInk:F1}pt / 상자 {labelBox:F0}pt " +
                           $"(여유 {labelBox - labelInk:F1}) · 캡션 {captionInk:F1}pt / 상자 {captionBox:F0}pt " +
-                          $"(여유 {captionBox - captionInk:F1}). 글꼴 {UiChrome.FontBody}/{UiChrome.FontCaption}pt. " +
-                          "한글 글리프는 OS 폴백에서 오므로 이 수는 이 플랫폼의 값이다.");
+                          $"(여유 {captionBox - captionInk:F1}). 글꼴 {UiChrome.FontBody}/{UiChrome.FontCaption}pt, " +
+                          $"페이스 '{UiChrome.ResolvedFontName}'. " +
+                          "페이스는 OS에서 고르므로 이 수는 이 플랫폼의 값이다 — 페이스 이름을 함께 찍어 " +
+                          "어느 글꼴로 잰 값인지 남긴다(글꼴이 바뀌면 이 숫자도 바뀐다).");
 
                 Assert.LessOrEqual(labelInk, labelBox,
                     $"라벨 「{copy.Label}」이 {labelInk:F1}pt로 상자 {labelBox:F0}pt를 넘는다 — 이 Text는 " +

@@ -722,6 +722,11 @@ namespace StickMate.Interaction
         //     근거는 "LegacyRuntime.ttf 폴백에 U+2715가 없으면 두부(□)"였는데, 리더가 실제 캡처에서
         //     <b>정상 글리프</b>임을 확인했다. <b>Windows(Segoe UI / Malgun Gothic)는 여전히 미확인</b>이다 —
         //     그쪽에서 두부가 뜨면 낱말 칩이 답이고, 칩은 이미 44×24라 낱말이 그대로 들어간다.
+        //     ★ 2026-09-29 보강 — 이 글리프는 이제 <b>계기가 매 실행 지킨다</b>. 글꼴 해석이
+        //       <see cref="SymbolProbe"/>(U+2715 포함)를 순위 기준으로 쓰고,
+        //       <c>Tests/EditMode/UiFontResolutionAuditTests</c>가 "새 글꼴이 내장 폰트보다 기호를 덜
+        //       그리지 않는가"를 단언한다. macOS 실측은 두 폰트 모두 <b>미지원 0종</b>이었다.
+        //       <b>Windows는 그대로 미확인</b>이고, 그쪽 실기 로그의 <c>[UI폰트] 확정:</c> 줄이 답을 준다.
         //
         //   ★ 설정창 푸터 문장("[✕]를 누르면 닫혀요.")은 <b>그대로 둔다</b> — 낱말 교체를 보류했으므로
         //     화면과 어긋나지 않는다. 낱말을 바꾸는 날 이 문장과 SettingsEscapeHatchTests의 단언을
@@ -730,16 +735,500 @@ namespace StickMate.Interaction
         // ★ "Esc는 안 됩니다"는 <b>적지 않는다</b>. 안 되는 키를 화면에 적으면 사용자는 그 키를
         //   시도한다 — 문장을 읽고 나서. 되는 것만 적는다(SettingsWindow.BuildFooter의 선례).
 
-        private static Font _font;
+        // ==================== 창 UI 글꼴 해석 ====================
+        //
+        // ★★ 2026-09-29 — 사용자 신고(Windows 150% 실기): <b>"두꺼운 폰트들이 깔끔하게 안 보이고 번져 보임"</b>.
+        //   처방의 정본은 <c>docs/UI_SURFACE_SPEC.md</c> <b>P2-12</b>이고, 이 블록이 그 1·2단계다.
+        //
+        //   BEFORE: 이 앱의 <b>모든 창 글자</b>가 <c>Resources.GetBuiltinResource&lt;Font&gt;("LegacyRuntime.ttf")</c>
+        //     하나에서 태어났다. 그 폰트(Liberation Sans)에는 <b>한글 글리프가 없다</b> — 화면에 한글이
+        //     나오는 것은 Unity 다이내믹 폰트의 OS 폴백 덕이고, <b>그 폴백 페이스가 무엇인지 아무도 몰랐다</b>
+        //     (로그가 한 줄도 없었다). 굵기는 전부 <see cref="FontStyle.Bold"/> = <b>합성 볼드</b>였다.
+        //
+        //   ★ <b>왜 합성 볼드가 범인인가 — 이 저장소가 이미 같은 결론에 도달해 있었다.</b>
+        //     <c>Dialogue/DialogueBubbleRenderer.cs</c>가 자기 주석에 못박았다: *"16pt 한글에서 합성 볼드는
+        //     획을 서로 붙여 뭉개는 가장 큰 원인이다."* 그래서 말풍선은 <b>진짜 Bold 페이스</b>를 잡고
+        //     합성 볼드를 끄는데, <b>창 UI는 그 교훈을 하나도 안 받고 있었다</b>(P2-12 §2.1-b의 두 벌 표).
+        //     물리 픽셀로 보면 Windows 150%에서 12pt Bold는 <b>18px</b>이고 100%에서는 <b>12px</b>이다 —
+        //     말풍선 코드가 "뭉갠다"고 적은 16px 구간의 <b>아래</b>다.
+        //
+        //   AFTER (1단계): 후보 목록을 순회해 <b>한글이 실제로 그려지는</b> 페이스를 잡는다.
+        //     말풍선과 같은 기법이지만 <b>순서를 뒤집어 Regular 계열을 먼저</b> 본다 — 말풍선은
+        //     "만화 레터링"이라 Heavy/ExtraBold가 1순위였지만 창 UI의 본문은 <b>굵지 않아야</b> 한다.
+        //   AFTER (2단계): 같은 가족의 <b>진짜 Bold 페이스</b>를 따로 잡아 두고, 굵은 글자는
+        //     <see cref="ApplyBold"/>가 <c>font = BoldFont; fontStyle = Normal</c>로 그린다(합성 볼드 끔).
+        //     못 잡은 환경에서만 예전처럼 합성 볼드로 떨어진다 — 말풍선과 <b>완전히 같은 구조</b>다.
+        //
+        //   ★★ <b>로그가 이 조치의 절반이다.</b> 이 머신에는 Windows가 없어 거기서 어느 페이스가 잡히는지
+        //     <b>확정할 수 없다</b>(P2-12가 그 사실을 미확인으로 적어 뒀다). 그래서 확정 결과를
+        //     <c>[UI폰트] 확정:</c> 한 줄로 <b>세션당 1회</b> 남긴다 — 로그가 없으면 다음에 또 조용히
+        //     깨져도 아무도 못 본다(말풍선의 <c>[말풍선] 한글 폰트 확정:</c>과 같은 역할).
+        //
+        //   ★ <b>폭이 바뀐다는 사실을 숨기지 않는다.</b> 글꼴을 바꾸면 <see cref="Text.preferredWidth"/>가
+        //     바뀐다. 정보창·설정창의 상자는 대부분 <b>런타임 실측 폭</b>(<c>SettingsControls.MeasuredWidth</c>,
+        //     <see cref="Ellipsize"/>)을 쓰므로 자동으로 따라오지만, <b>고정 폭 상자</b>(설정 행 라벨 420 /
+        //     캡션 480 등)는 따라오지 않는다. 그 예산을 지키는지는
+        //     <c>Tests/EditMode/FullscreenAutoHideSwitchCopyAuditTests</c>가 실측으로 잰다.
 
-        /// <summary>이 프로젝트에는 TextMeshPro가 없다 — 내장 폰트를 한 번만 찾아 캐시한다.</summary>
+        /// <summary>글꼴 해석 로그의 접두. 실기 로그에서 이 낱말로 한 줄을 찾을 수 있게 고정한다.</summary>
+        private const string FontLogPrefix = "[UI폰트]";
+
+        /// <summary>한글이 <b>실제로 그려지는가</b>를 재는 표본. 이름만 보고 믿지 않는다 —
+        /// 설치 여부와 이름 표기가 OS마다 다르다(말풍선 쪽이 같은 판단을 이미 적어 뒀다).</summary>
+        private const string KoreanProbe = "한글";
+
+        /// <summary>
+        /// 창 UI가 <b>실제로 화면에 올리는</b> 비한글 글리프 표본.
+        ///
+        /// <para>★ <b>말풍선에는 없는 요구사항이다.</b> 대사는 한글·라틴만 쓰지만 창 UI는 닫기 칩
+        /// <c>✕</c>(U+2715) · 말줄임 <see cref="Ellipsis"/> · 페이지 삼각형 · 포스트잇 체크상자 ·
+        /// macOS 수정키 글리프를 <b>글자로</b> 그린다. 글꼴을 바꾸면서 이걸 안 재면 두부(□)가 뜬다.</para>
+        ///
+        /// <para>★ <b>이 목록은 가르는 관문이 아니라 고르는 기준이다</b>(아래 <see cref="ResolveFonts"/> 참고).
+        /// 관문으로 쓰면 한 글리프가 빠진 환경에서 한글까지 함께 포기하게 된다 — 그쪽이 더 큰 손해다.
+        /// 그리고 이 목록은 <b>전수가 아니라 표본</b>이다(2026-09-29 소스 census에서 화면에 나가는 것만
+        /// 골랐다). 새 글리프를 창에 올리는 라운드는 여기에도 넣어라 — 최종 판정은 실기 캡처다.</para>
+        ///
+        /// <para><b>공개</b>인 이유: <c>Tests/EditMode/UiFontResolutionAuditTests</c>가 "새 글꼴이 내장
+        /// 폰트보다 기호를 덜 그리지 않는가"를 재는데, 그 표본을 테스트가 <b>베끼면</b> 두 벌이 갈린다
+        /// (CLAUDE.md 「테스트에 프로덕션 식별자를 문자열로 베끼지 않는다」).</para>
+        ///
+        /// <para>★★ <b>조합키 표기는 여기에 적지 않고 <see cref="StickMate.Core.ShortcutLabel"/>에서
+        /// 받아 온다</b> — 두 가지 이유가 겹친다. ⑴ macOS 글리프(<c>⌃⌥⌘</c>)를 리터럴로 적으면
+        /// <c>PlatformParityAuditTests.단축키_표기가_플랫폼별_단일_정의처를_거친다</c>가 <b>즉시 빨개진다</b>
+        /// (실제로 이 라운드에서 한 번 빨개졌다 — 초판이 그 글리프를 여기 적었다). ⑵ 그게 옳다:
+        /// Windows 빌드는 그 글리프를 <b>화면에 한 번도 올리지 않으므로</b>(그쪽 표기는 <c>Ctrl+Alt+Win+</c>)
+        /// 없다고 감점할 이유가 없다. 그래서 이 상수는 <c>const</c>가 아니라
+        /// <c>static readonly</c>이고, <b>플랫폼마다 길이가 다르다</b>.</para>
+        /// </summary>
+        public static readonly string SymbolProbe =
+            "✕…▲▼‹›▾☑☐○●×" + StickMate.Core.ShortcutLabel.Chord(string.Empty);
+
+        /// <summary>내장 폴백 폰트의 리소스 이름. 이 프로젝트의 <b>최후 폴백</b>이고 종전 동작이다.
+        /// <para>공개인 이유는 <see cref="SymbolProbe"/>와 같다 — 테스트가 기준선으로 이 폰트를 쓴다.</para></summary>
+        public const string BuiltinFontResource = "LegacyRuntime.ttf";
+
+        /// <summary>
+        /// 페이스 서명을 재는 pt. <b>일부러 크다.</b>
+        /// <para>Bold 후보가 <b>조용히 Regular로 폴백</b>했는지를 가르는 데 쓰는데, 10~14pt에서는 정수
+        /// 반올림 때문에 진짜 Bold와 Regular의 글리프 수치가 <b>같게 나올 수 있다</b>. 큰 pt에서 재면
+        /// 그 둘이 갈라진다(같은 pt에서 두 폰트를 재는 것이므로 화면 pt와 같을 필요가 없다).</para>
+        /// </summary>
+        private const int FaceSignaturePoints = 48;
+
+        /// <summary>Regular 후보를 OS 설치 목록에서 쓸어 담을 때 <b>제외</b>할 굵기 낱말.
+        /// 이 게터의 1순위는 Regular이므로 굵은 페이스가 본문으로 올라오면 안 된다.</summary>
+        private static readonly string[] WeightWordsToSkip =
+        {
+            "Bold", "Heavy", "Black", "Semibold", "SemiBold", "Medium", "Light", "Thin", "Italic", "Oblique",
+        };
+
+        /// <summary>
+        /// (Regular 이름, 같은 가족의 Bold 이름들) 짝. <b>가족을 짝으로 묶는 것이 핵심이다</b> —
+        /// Regular는 맑은 고딕인데 Bold만 나눔고딕Bold가 잡히면 두 글꼴이 한 창에 섞인다.
+        /// </summary>
+        private static readonly (string Regular, string[] Bold)[] FacePairs =
+        {
+            // macOS 기본 한글 폰트
+            ("Apple SD Gothic Neo", new[] { "AppleSDGothicNeo-Bold", "Apple SD Gothic Neo Bold" }),
+            ("AppleSDGothicNeo-Regular", new[] { "AppleSDGothicNeo-Bold", "Apple SD Gothic Neo Bold" }),
+            ("AppleGothic", new[] { "AppleGothic Bold" }),
+            // Windows 기본 한글 폰트 — 신고된 플랫폼이다
+            ("Malgun Gothic", new[] { "Malgun Gothic Bold", "MalgunGothicBold", "맑은 고딕 Bold" }),
+            ("맑은 고딕", new[] { "맑은 고딕 Bold", "Malgun Gothic Bold" }),
+            ("Gulim", new[] { "GulimChe", "Gulim Bold" }),
+            ("Dotum", new[] { "Dotum Bold" }),
+            ("Batang", new[] { "Batang Bold" }),
+            // 흔히 설치되는 무료 한글 폰트
+            ("NanumGothic", new[] { "NanumGothicBold", "NanumGothic Bold" }),
+            ("Nanum Gothic", new[] { "NanumGothicBold", "Nanum Gothic Bold" }),
+            ("NanumBarunGothic", new[] { "NanumBarunGothicBold" }),
+            // CJK 전반을 담는 범용 폰트
+            ("PingFang SC", new[] { "PingFangSC-Semibold", "PingFang SC Semibold" }),
+            ("Hiragino Sans", new[] { "HiraginoSans-W6" }),
+            ("Arial Unicode MS", System.Array.Empty<string>()),
+        };
+
+        private static Font _font;
+        private static Font _boldFont;
+        private static bool _fontsResolved;
+        private static string _fontFaceName = "(미해석)";
+        private static string _boldFaceName;
+
+        /// <summary>
+        /// 창 UI 본문 글꼴(<b>Regular</b>). 이 프로젝트에는 TextMeshPro가 없어 레거시 uGUI
+        /// <see cref="Text"/>를 쓰므로, 한글이 실제로 그려지는 OS 페이스를 <b>한 번만</b> 찾아 캐시한다.
+        /// 전부 실패하면 예전처럼 내장 <c>LegacyRuntime.ttf</c>로 떨어진다(앱은 죽지 않는다).
+        /// </summary>
         public static Font Font
         {
-            get
+            get { EnsureFonts(); return _font; }
+        }
+
+        /// <summary>
+        /// <b>진짜 Bold 페이스</b>. 잡지 못한 환경에서는 <c>null</c>이고, 그때만 합성 볼드로 떨어진다.
+        /// 직접 대입하지 말고 <see cref="ApplyBold"/>를 쓴다 — 굵기는 <c>font</c>와 <c>fontStyle</c>을
+        /// <b>한 쌍으로</b> 바꿔야 한다(하나만 바꾸면 굵기가 두 번 걸리거나 아예 안 걸린다).
+        /// </summary>
+        public static Font BoldFont
+        {
+            get { EnsureFonts(); return _boldFont; }
+        }
+
+        /// <summary>확정된 본문 페이스 이름. 로그·테스트가 읽는다(실기 회귀를 눈으로 보는 창구).</summary>
+        public static string ResolvedFontName
+        {
+            get { EnsureFonts(); return _fontFaceName; }
+        }
+
+        /// <summary>확정된 Bold 페이스 이름. 합성 볼드로 떨어졌으면 <c>null</c>이다.</summary>
+        public static string ResolvedBoldFontName
+        {
+            get { EnsureFonts(); return _boldFaceName; }
+        }
+
+        private static void EnsureFonts()
+        {
+            // 도메인 리로드로 캐시가 날아가도 (== null) 다시 해석한다.
+            if (_fontsResolved && _font != null) return;
+            _fontsResolved = true;
+            ResolveFonts();
+        }
+
+        /// <summary>
+        /// 본문(Regular)과 굵게(Bold) 페이스를 한 번에 정한다.
+        ///
+        /// <para><b>고르는 규칙</b>: 한글이 그려지는 것이 <b>관문</b>이고, <see cref="SymbolProbe"/> 적중은
+        /// <b>순위</b>다. 즉 한글을 그리는 후보 중 기호를 가장 많이 그리는 첫 후보를 쓴다. 기호를 관문으로
+        /// 두면 <c>☑</c> 하나 없는 환경에서 한글 페이스를 통째로 포기하게 되는데, 그건 신고된 결함
+        /// (번짐)을 고치지 않고 두는 것과 같다.</para>
+        ///
+        /// <para>★★ <b>왜 "설치 목록에 있는 이름만" 쓰는가 — 이 라운드가 실측으로 잡은 구멍이다.</b>
+        /// <c>Font.CreateDynamicFontFromOSFont</c>는 <b>없는 이름에도 null을 주지 않는다</b> — 조용히
+        /// OS 기본 페이스로 폴백한다. 그리고 그 폴백은 <b>한글도 UI 기호도 다 그린다</b>(실측: 한글
+        /// 글리프가 없는 내장 <c>LegacyRuntime.ttf</c>조차 이 프로젝트의 UI 기호 표본을 <b>0종 미지원</b>으로
+        /// 통과했다 — 그게 지금 화면에 한글이 나오는 이유다). 즉 <b>글리프 실측만으로는 "이 이름이
+        /// 실재하는가"를 가를 수 없다.</b>
+        /// <br/>그대로 두면 <b>Windows에서 첫 후보(macOS 폰트 이름)가 통과</b>해 버린다. 결과는
+        /// 두 겹으로 나쁘다: ⑴ 로그가 <b>거짓 이름</b>을 찍어 회귀를 못 보게 되고(로그가 이 조치의
+        /// 절반인데 그 절반이 거짓이 된다) ⑵ 가족이 틀렸으므로 같은 가족의 <b>Bold 후보도 전부
+        /// 빗나가</b> 신고된 결함이 그 플랫폼에서 <b>하나도 고쳐지지 않는다</b>.
+        /// ⇒ 그래서 후보 표의 Regular 이름은 <see cref="IsInstalled"/>로 <b>실재를 먼저 확인</b>한다.
+        /// 조회가 실패한 환경에서만 확인을 건너뛰고, 그 사실을 로그에 적는다.</para>
+        ///
+        /// <para><b>Bold의 음성 대조</b>: 같은 조용한 폴백이 Bold에서는 더 나쁘다 — 그 폴백을 "진짜
+        /// Bold"로 착각하면 합성 볼드를 끄는 바람에 굵은 글자가 <b>본문보다 얇게</b> 나온다(지금보다
+        /// 나쁘다). Bold 쪽은 설치 목록 확인을 <b>요구하지 않는다</b>(Bold 페이스 이름은 가족 이름과
+        /// 표기가 달라 목록에 없는 경우가 많다) — 대신 서명이 <b>Regular과 달라야만</b> 채택한다
+        /// (<see cref="FaceSignature"/>). 그 검사는 이름 표기에 의존하지 않는다.</para>
+        ///
+        /// <para>실패해도 앱은 죽지 않는다 — 내장 폰트 + 합성 볼드라는 <b>종전 동작</b>이 폴백이다.</para>
+        /// </summary>
+        private static void ResolveFonts()
+        {
+            _font = Resources.GetBuiltinResource<Font>(BuiltinFontResource);
+            _fontFaceName = BuiltinFontResource;
+            _boldFont = null;
+            _boldFaceName = null;
+
+            string[] installed = InstalledFontNames();
+            LogInstalledKoreanFaces(installed);
+
+            Font best = null;
+            string bestName = null;
+            string bestMissing = null;
+            int bestIndex = -1;
+
+            for (int i = 0; i < FacePairs.Length; i++)
             {
-                if (_font == null) _font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-                return _font;
+                // 실재 확인이 먼저다 — 위 문단의 "조용한 폴백"을 여기서 막는다.
+                if (installed != null && !IsInstalled(installed, FacePairs[i].Regular)) continue;
+
+                Font f = TryCreateFont(FacePairs[i].Regular);
+                if (f == null) continue;
+                if (!CanRender(f, KoreanProbe)) continue;
+
+                string missing = MissingGlyphs(f, SymbolProbe);
+                if (missing.Length == 0)
+                {
+                    best = f; bestName = FacePairs[i].Regular; bestMissing = missing; bestIndex = i;
+                    break;                                  // 관문 통과 + 기호 전부 — 더 볼 것이 없다.
+                }
+                if (bestMissing == null || missing.Length < bestMissing.Length)
+                {
+                    best = f; bestName = FacePairs[i].Regular; bestMissing = missing; bestIndex = i;
+                }
             }
+
+            // 후보 표가 전부 빗나가는 환경(이름 표기가 다른 배포판) 대비 — 설치 목록을 쓸어 담는다.
+            if (best == null && installed != null)
+            {
+                for (int i = 0; i < installed.Length; i++)
+                {
+                    string n = installed[i];
+                    if (!LooksKorean(n) || HasWeightWord(n)) continue;
+                    Font f = TryCreateFont(n);
+                    if (f == null || !CanRender(f, KoreanProbe)) continue;
+                    best = f; bestName = n; bestMissing = MissingGlyphs(f, SymbolProbe); bestIndex = -1;
+                    break;
+                }
+            }
+
+            if (best == null)
+            {
+                Debug.LogWarning($"{FontLogPrefix} 한글을 렌더링할 수 있는 OS 폰트를 찾지 못해 내장 " +
+                    $"'{BuiltinFontResource}'로 폴백합니다(종전 동작). 굵기는 합성 볼드로 떨어집니다 — " +
+                    "이 환경에서는 작은 한글의 획이 서로 붙어 보일 수 있습니다. " +
+                    $"OS 설치 폰트 조회: {(installed == null ? "실패" : installed.Length + "개")}.");
+                return;
+            }
+
+            _font = best;
+            _fontFaceName = bestName;
+
+            // ---- 2단계: 같은 가족의 진짜 Bold 페이스 ----
+            string regularSignature = FaceSignature(best);
+            if (bestIndex >= 0)
+            {
+                string[] boldNames = FacePairs[bestIndex].Bold;
+                for (int i = 0; i < boldNames.Length; i++)
+                {
+                    Font b = TryCreateFont(boldNames[i]);
+                    if (b == null || !CanRender(b, KoreanProbe)) continue;
+
+                    string boldSignature = FaceSignature(b);
+                    // 음성 대조: 서명을 못 재거나 Regular와 같으면 조용한 폴백이다 — 합성 볼드로 남긴다.
+                    if (boldSignature == null || regularSignature == null) continue;
+                    if (string.Equals(boldSignature, regularSignature, System.StringComparison.Ordinal)) continue;
+
+                    _boldFont = b;
+                    _boldFaceName = boldNames[i];
+                    break;
+                }
+            }
+
+            string symbolNote = bestMissing.Length == 0
+                ? $"UI 기호 {SymbolProbe.Length}종 전부 통과"
+                : $"UI 기호 {SymbolProbe.Length - bestMissing.Length}/{SymbolProbe.Length}종 통과 " +
+                  $"(미지원 «{bestMissing}» — 그 플랫폼에서 안 쓰는 글리프일 수 있습니다)";
+            string boldNote = _boldFont != null
+                ? $"굵게는 '{_boldFaceName}' 진짜 Bold 페이스(합성 볼드 끔)"
+                : "굵게는 진짜 Bold 페이스를 못 잡아 합성 볼드로 떨어집니다";
+
+            string installNote = installed == null
+                ? "OS 설치 목록 조회 실패 — 이름의 실재를 확인하지 못했습니다(조용한 폴백일 수 있습니다)"
+                : bestIndex >= 0
+                    ? $"OS 설치 목록 {installed.Length}개에서 이름 실재 확인됨"
+                    : $"OS 설치 목록 {installed.Length}개를 직접 쓸어 찾았습니다(후보 표는 전부 빗나갔습니다)";
+
+            Debug.Log($"{FontLogPrefix} 확정: '{_fontFaceName}' (한글 글리프 실측 통과, {symbolNote}) — {boldNote}. " +
+                $"{installNote}.");
+        }
+
+        /// <summary>
+        /// 설치된 <b>한글 계열</b> 페이스 이름을 세어 남긴다 — <b>Windows 진단의 1차 자료</b>다.
+        /// <para>★ 목록을 자를 때는 <b>총수를 함께</b> 찍는다(<c>docs/TEAM.md</c> 규칙 39: 「잘린 목록으로
+        /// 「전부」라고 쓰지 마라」). 상주 앱이라 세션당 1회만 찍는다.</para>
+        /// </summary>
+        private static void LogInstalledKoreanFaces(string[] installed)
+        {
+            if (installed == null) return;
+            var names = new List<string>();
+            for (int i = 0; i < installed.Length; i++)
+            {
+                if (LooksKorean(installed[i])) names.Add(installed[i]);
+            }
+            const int shown = 16;
+            int show = Mathf.Min(shown, names.Count);
+            Debug.Log($"{FontLogPrefix} OS 설치 폰트 {installed.Length}개 · 한글 계열 이름 {names.Count}개 " +
+                $"(그중 앞 {show}개): {string.Join(" / ", names.GetRange(0, show))}");
+        }
+
+        /// <summary>후보 이름이 OS 설치 목록에 <b>실재하는가</b>. 공백·하이픈·밑줄·대소문자를 무시해
+        /// 가족 이름(<c>Apple SD Gothic Neo</c>)과 포스트스크립트 이름(<c>AppleSDGothicNeo</c>)을
+        /// 같은 것으로 본다 — OS마다 목록이 어느 표기로 오는지 다르다.</summary>
+        private static bool IsInstalled(string[] installed, string candidate)
+        {
+            string want = NormalizeFaceName(candidate);
+            if (want.Length == 0) return false;
+            for (int i = 0; i < installed.Length; i++)
+            {
+                if (string.Equals(NormalizeFaceName(installed[i]), want, System.StringComparison.Ordinal)) return true;
+            }
+            return false;
+        }
+
+        private static string NormalizeFaceName(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return string.Empty;
+            var sb = new System.Text.StringBuilder(name.Length);
+            for (int i = 0; i < name.Length; i++)
+            {
+                char c = name[i];
+                if (c == ' ' || c == '-' || c == '_' || c == '.') continue;
+                sb.Append(char.ToLowerInvariant(c));
+            }
+            return sb.ToString();
+        }
+
+        /// <summary>OS 설치 폰트 이름. 조회가 실패하면 <c>null</c>을 돌려주고 경고만 남긴다
+        /// (이 목록이 없어도 후보 표만으로 해석은 진행된다).</summary>
+        private static string[] InstalledFontNames()
+        {
+            // ★ 전체 이름으로 부른다 — 이 클래스에는 <see cref="Font"/>라는 <b>프로퍼티</b>가 있어서
+            //   식(式) 자리의 `Font.`는 타입이 아니라 그 프로퍼티로 붙는다(정적 멤버 접근 오류).
+            try { return UnityEngine.Font.GetOSInstalledFontNames(); }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning($"{FontLogPrefix} OS 폰트 목록 조회 실패(후보 표만 사용): {e.Message}");
+                return null;
+            }
+        }
+
+        private static bool LooksKorean(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return false;
+            return name.IndexOf("Gothic", System.StringComparison.OrdinalIgnoreCase) >= 0
+                || name.IndexOf("Nanum", System.StringComparison.OrdinalIgnoreCase) >= 0
+                || name.IndexOf("Myungjo", System.StringComparison.OrdinalIgnoreCase) >= 0
+                || name.IndexOf("Malgun", System.StringComparison.OrdinalIgnoreCase) >= 0
+                || name.IndexOf("PingFang", System.StringComparison.OrdinalIgnoreCase) >= 0
+                || name.IndexOf("Hiragino", System.StringComparison.OrdinalIgnoreCase) >= 0
+                // ★ 한글 표기도 본다 — 한국어 Windows에서는 설치 목록이 「맑은 고딕」·「돋움」처럼
+                //   현지화된 이름으로 오고, 그러면 라틴 낱말만 보는 검사가 전부 빗나간다.
+                //   <b>이 판정은 마지막 수단 스윕과 진단 로그에만 쓰인다</b>(후보 표는 이름을 직접 적는다).
+                || name.IndexOf("고딕", System.StringComparison.Ordinal) >= 0
+                || name.IndexOf("돋움", System.StringComparison.Ordinal) >= 0
+                || name.IndexOf("굴림", System.StringComparison.Ordinal) >= 0
+                || name.IndexOf("나눔", System.StringComparison.Ordinal) >= 0
+                || name.IndexOf("명조", System.StringComparison.Ordinal) >= 0;
+        }
+
+        private static bool HasWeightWord(string name)
+        {
+            for (int i = 0; i < WeightWordsToSkip.Length; i++)
+            {
+                if (name.IndexOf(WeightWordsToSkip[i], System.StringComparison.OrdinalIgnoreCase) >= 0) return true;
+            }
+            return false;
+        }
+
+        /// <summary>OS 폰트 하나를 다이내믹 폰트로 만든다. <b>실패해도 던지지 않는다.</b>
+        /// <para>★ 떨어진 후보를 <c>Destroy</c>하지 않는다 — 말풍선 쪽 선례와 같다. 후보 수는
+        /// 표 길이로 상한이 있고 세션당 <b>1회</b>만 돌며, 편집기/플레이어에서 파괴 호출이 갈라져
+        /// 분기가 늘어나는 쪽이 더 나쁘다고 봤다.</para></summary>
+        private static Font TryCreateFont(string name)
+        {
+            try
+            {
+                // 전체 이름 — 위 <see cref="InstalledFontNames"/>와 같은 이유(프로퍼티 이름과 충돌).
+                Font f = UnityEngine.Font.CreateDynamicFontFromOSFont(name, FontBody);
+                if (f != null) f.hideFlags = HideFlags.HideAndDontSave;
+                return f;
+            }
+            catch { return null; }
+        }
+
+        /// <summary><paramref name="probe"/>의 <b>모든</b> 글자가 이 폰트에서 잡히는가.
+        /// 굵기는 <see cref="FontStyle.Normal"/>로 조회한다 — 합성 볼드를 끌 폰트를 Bold로 조회하면
+        /// 검증한 것과 다른 경로를 재는 셈이 된다(말풍선 쪽 주석과 같은 이유).</summary>
+        private static bool CanRender(Font font, string probe) => MissingGlyphs(font, probe).Length == 0;
+
+        /// <summary>이 폰트가 <b>못 그리는</b> 글자만 모아 돌려준다(전부 그리면 빈 문자열).</summary>
+        private static string MissingGlyphs(Font font, string probe)
+        {
+            if (font == null || string.IsNullOrEmpty(probe)) return probe ?? string.Empty;
+            var missing = new System.Text.StringBuilder();
+            try
+            {
+                font.RequestCharactersInTexture(probe, FontBody, FontStyle.Normal);
+                for (int i = 0; i < probe.Length; i++)
+                {
+                    if (font.GetCharacterInfo(probe[i], out CharacterInfo info, FontBody, FontStyle.Normal)
+                        && info.advance > 0) continue;
+                    missing.Append(probe[i]);
+                }
+            }
+            catch
+            {
+                return probe;                               // 조회 자체가 죽으면 "전부 못 그린다"로 본다.
+            }
+            return missing.ToString();
+        }
+
+        /// <summary>
+        /// 이 페이스의 글리프 수치 서명. 두 폰트가 <b>같은 페이스로 폴백했는지</b>를 가르는 데만 쓴다.
+        /// 못 재면 <c>null</c>이고, 그때 Bold 채택은 보류된다(안전한 방향 = 합성 볼드).
+        /// </summary>
+        private static string FaceSignature(Font font)
+        {
+            if (font == null) return null;
+            const string probe = KoreanProbe + "Wg0";
+            try
+            {
+                font.RequestCharactersInTexture(probe, FaceSignaturePoints, FontStyle.Normal);
+                var sb = new System.Text.StringBuilder(probe.Length * 12);
+                for (int i = 0; i < probe.Length; i++)
+                {
+                    if (!font.GetCharacterInfo(probe[i], out CharacterInfo info,
+                            FaceSignaturePoints, FontStyle.Normal)) return null;
+                    sb.Append(info.glyphWidth).Append('/').Append(info.glyphHeight).Append('/')
+                      .Append(info.advance).Append('/').Append(info.minX).Append('/').Append(info.maxY)
+                      .Append(';');
+                }
+                return sb.ToString();
+            }
+            catch { return null; }
+        }
+
+        /// <summary>
+        /// 굵기를 <b>한 쌍으로</b> 적용한다 — 진짜 Bold 페이스를 잡았으면 그 페이스로 바꾸고 합성 볼드를
+        /// <b>끄고</b>, 못 잡았으면 본문 페이스에 합성 볼드를 건다(종전 동작).
+        ///
+        /// <para>★ <b>왜 함수인가.</b> 굵기를 켜고 끄는 자리가 <see cref="AddText"/> 말고도
+        /// <b>다섯 곳</b> 더 있다(정보창 탭 · 설정창 탭 · 설정 세그먼트 · 집중 길이 칩 · 할일 탭).
+        /// 거기서 <c>fontStyle</c>만 바꾸면 <b>바로 그 다섯 곳만</b> 합성 볼드로 남는다 — 그리고 그
+        /// 다섯은 "지금 선택된 것"을 가리키는 자리라 화면에서 가장 눈에 띈다.
+        /// <c>Tests/EditMode/UiFontResolutionAuditTests</c>가 소스를 전수해 <b>이 창구를 우회하는 자리가
+        /// 없는지</b> 매번 확인한다(허용은 이 파일과 말풍선 렌더러 둘뿐이다).
+        /// <br/>그 다섯 중 <b>앞 셋</b>은 상자를 미리 재 두는 자리라 아래
+        /// <paramref name="keepRegularMetrics"/>로 들어오고, 뒤 둘(집중 길이 칩 · 할일 탭)은 상자가
+        /// <b>고정 폭</b>이라 진짜 Bold 페이스를 그대로 쓴다.</para>
+        ///
+        /// <para>★ <see cref="FontStyle.Italic"/>은 여기서 다루지 않는다 — 기울임을 쓰는 두 자리
+        /// (자리지킴 글자)는 굵지 않으므로 <c>AddText</c> 뒤에 그대로 대입한다.</para>
+        ///
+        /// <para>★★★ <b><paramref name="keepRegularMetrics"/>가 왜 있는가 — PlayMode 빨강 2건이
+        /// 만들었다(2026-09-29 실측).</b>
+        /// 진짜 Bold 페이스는 합성 볼드와 달리 <b>글자 폭(advance)이 다르다</b>(실측: 「한」 42 → 48,
+        /// 「W」 41 → 45 @48pt). 그런데 이 앱의 <b>탭·세그먼트 상자는 생성 시점에
+        /// <see cref="Text.preferredWidth"/>로 재서</b> 정해진다 — 그때 라벨은 <b>굵지 않다</b>(활성
+        /// 표시는 나중에 걸린다). 그래서 진짜 Bold로 갈아타면 <b>상자는 그대로인데 잉크만 넓어진다</b>:
+        /// <c>UiTextWidthModelTests</c>가 설정창 탭 «일반»에서 상자 20.0 대 잉크 24.0, 정보창 탭
+        /// «외형»에서 좌우 여백 14.0 대 다른 탭 12.0으로 <b>정확히 그 4pt를 잡아냈다</b>.
+        /// <br/>★ <b>왜 「상자를 굵은 폭으로 재라」로 안 고쳤나</b>: 그러면 <b>안 고른</b> 탭의 상자가
+        /// 자기 잉크보다 넓어져 같은 시험의 「상자 == 잉크」가 반대쪽에서 깨진다. 「고를 때마다 상자를
+        /// 다시 재라」는 <b>탭바가 클릭마다 흔들린다</b>. 남는 길은 「탭 라벨을 항상 굵게 두고 활성
+        /// 표시를 색·면·밑줄에만 맡긴다」인데 그건 <b>타이포 위계 설계 변경</b>이라
+        /// (UI_SURFACE_SPEC §2.2 T2/T3가 활성=Bold·비활성=Reg로 못박고 있다) 구현이 혼자 정할 것이
+        /// 아니다. ⇒ <b>리더·ux-designer 판정 대기</b>이고, 그동안 이 세 자리는 <b>폭을 바꾸지 않는
+        /// 합성 볼드</b>로 남긴다(= 종전 동작. 신고된 번짐이 이 세 자리에서는 아직 안 고쳐진다).</para>
+        /// </summary>
+        /// <param name="keepRegularMetrics">참이면 진짜 Bold 페이스를 <b>쓰지 않고</b> 합성 볼드로만
+        /// 굵게 한다. <b>상자 폭을 Regular 페이스로 미리 재 둔 자리</b>에서만 쓴다 — 그런 자리에서
+        /// 페이스를 갈아타면 상자와 잉크가 갈라진다(위 문단).</param>
+        public static void ApplyBold(Text text, bool bold, bool keepRegularMetrics = false)
+        {
+            if (text == null) return;
+            EnsureFonts();
+            if (bold && _boldFont != null && !keepRegularMetrics)
+            {
+                text.font = _boldFont;
+                text.fontStyle = FontStyle.Normal;          // 진짜 Bold 페이스 위에 합성 볼드를 또 걸지 않는다.
+                return;
+            }
+            text.font = _font;
+            text.fontStyle = bold ? FontStyle.Bold : FontStyle.Normal;
         }
 
         // ==================== 둥근 사각형 스프라이트 ====================
@@ -1876,12 +2365,11 @@ namespace StickMate.Interaction
             var go = new GameObject(name, typeof(RectTransform), typeof(CrispText));
             go.transform.SetParent(parent, false);
             var text = go.GetComponent<CrispText>();
-            text.font = Font;
             text.fontSize = fontSize;
             text.alignment = anchor;
             WarnIfNonTextInk(name, color);
             text.color = color;
-            text.fontStyle = bold ? FontStyle.Bold : FontStyle.Normal;
+            ApplyBold(text, bold);                          // font + fontStyle을 한 쌍으로 — 위 P2-12 블록 참고.
             text.horizontalOverflow = wrap ? HorizontalWrapMode.Wrap : HorizontalWrapMode.Overflow;
             text.verticalOverflow = VerticalWrapMode.Overflow;
             text.raycastTarget = false;

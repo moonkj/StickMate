@@ -1571,6 +1571,11 @@ namespace StickMate.Interaction
             //   맞춰 "정보창 헤더의 작은 톱니"를 주 경로로 승격시켰다. 여기가 그 자리다.
             //   글자를 쓰는 이유: 이 프로젝트의 UI 폰트는 LegacyRuntime.ttf라 톱니 글리프(U+2699)가
             //   있다는 보장이 없고, 없으면 두부(□)가 뜬다.
+            //   ★ 2026-09-29 정정 — <b>전제의 앞부분은 더 이상 참이 아니고, 결론은 그대로다.</b>
+            //     이제 UI 폰트는 <c>UiChrome.Font</c>가 OS에서 고른 페이스다(P2-12 1단계,
+            //     macOS 실측 'Apple SD Gothic Neo'). 그래도 <b>U+2699이 있다는 보장은 여전히 없다</b> —
+            //     후보 표의 순위 기준(<c>UiChrome.SymbolProbe</c>)에도 톱니는 들어 있지 않고,
+            //     <b>Windows에서 어느 페이스가 잡히는지는 미확인</b>이다. 낱말 [설정]을 유지한다.
             //   ★ 2026-09-02 — [설정]도 [닫기]와 <b>같은 면</b>을 쓴다(나란히 붙은 두 칩 중 하나만
             //     고치면 그 자리가 새로 어긋난다).
             Image settingsSurface = UiChrome.AddSurface(barGo.transform, "SettingsButton",

@@ -732,7 +732,8 @@ namespace StickMate.Interaction
                 _durationChips[i].color = face;
                 _durationOutlines[i].color = ChipEdge(on, face);
                 _durationLabels[i].color = on ? UiChrome.TextOnAccent : UiChrome.TextSecondary;
-                _durationLabels[i].fontStyle = on ? FontStyle.Bold : FontStyle.Normal;
+                // 굵기는 UiChrome.ApplyBold 한 창구로만 (UI_SURFACE_SPEC P2-12 — 합성 볼드 회피).
+                UiChrome.ApplyBold(_durationLabels[i], on);
             }
 
             if (custom) RefreshCustomRow();
