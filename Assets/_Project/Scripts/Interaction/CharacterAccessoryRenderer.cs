@@ -1878,6 +1878,31 @@ namespace StickMate.Interaction
         /// <summary>테스트 전용 — 지금 붙어 있는 착용 비트맵. 비어 있으면 이 아이템은 벡터로 그려졌다.</summary>
         public IReadOnlyList<SpriteRenderer> WornSpritesForTests => _sprites;
 
+        /// <summary>
+        /// 테스트 전용 — <see cref="WornSpritesForTests"/>와 <b>같은 순서</b>의 잉크 상자(부모 로컬,
+        /// 좌우 반전이 <b>이미 적용된</b> 값). 없는 자리면 거짓을 돌려준다.
+        ///
+        /// <para><b>왜 테스트가 직접 계산하지 않는가.</b> 이 상자의 원점은 <b>자리가 정하는 앵커</b>이고
+        /// (머리·눈·머리카락 = 머리 중심, 목·어깨 = 어깨선), 안 구운 상자의 되메움 규칙도
+        /// <see cref="BuildWornSpriteInk"/> 한 곳에만 있다. PlayMode 어셈블리는 <c>internal</c>을 못 보므로
+        /// 그 산수를 테스트가 다시 적으면, 앵커나 되메움이 바뀌는 날 <b>거울이 프로덕션과 갈라진 채
+        /// 서로 다른 판정</b>을 낸다(CLAUDE.md 거짓 통과 8번). 여기서는 <b>화면이 실제로 쓴 값</b>을
+        /// 그대로 돌려주므로 갈라질 자리가 없다.</para>
+        ///
+        /// <para>소비자: <c>Tests/PlayMode/AccessoryFillRenderingTests</c>의 왕관 검사 —
+        /// «얹는 물건이라 그림이 턱까지 안 내려온다»를 이 상자로 잰다. 바닥 클리어런스(위
+        /// <see cref="TryGetLowestInkWorldY"/>)가 같은 값을 쓰므로, 이 검사가 깨지면 캐릭터가
+        /// 공중에 뜨는 쪽도 같이 의심해야 한다(§19-8-3).</para>
+        /// </summary>
+        public bool TryGetWornSpriteInkForTests(int index, out Rect inkLocal)
+        {
+            inkLocal = default;
+            if (index < 0 || index >= _spriteInk.Count) return false;
+            WornSpriteInk ink = _spriteInk[index];
+            inkLocal = Rect.MinMaxRect(ink.Min.x, ink.Min.y, ink.Max.x, ink.Max.y);
+            return true;
+        }
+
         /// <summary>테스트 전용 — <see cref="SetLinesEnabled"/>를 그대로 부른다(숨김 배선 검증용).</summary>
         public void SetVisualsEnabledForTests(bool enabledState) => SetLinesEnabled(enabledState);
 

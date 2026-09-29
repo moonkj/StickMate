@@ -160,6 +160,17 @@ namespace StickMate.Tests.PlayMode
         /// ★ 몰입기 <b>도중 취소</b>에서 프롭이 화면에 남지 않는다(설계 6-3 ④ · 규약 6번).
         /// <para>이 경로가 위험한 이유는 구간 전이 이벤트가 <b>세션 종료에는 오지 않기</b> 때문이다 —
         /// 이벤트만 구독했다면 여기서 그림이 남는다. 남으면 «우리 앱이 그 창에 뭘 걸어뒀다»가 된다.</para>
+        ///
+        /// <para>★★ <b>이 픽스처는 「즉시」를 두 단계로 나눠 잰다 — 합치지 마라</b>(2026-09-29 수리).
+        /// 원래는 <c>StopFocusSession()</c> 다음 줄에서 <b>프레임을 하나도 흘리지 않고</b>
+        /// <see cref="CostumePropRenderer.PropPlaced"/>를 물었고, 그래서 <b>결정론적으로</b> 빨간불이었다.
+        /// 프롭 렌더러는 그 사실을 <c>LateUpdate</c>에서 <b>조회</b>하는데(구독하지 않는 근거가 그쪽 클래스
+        /// 문서에 있다) PlayMode 코루틴 본문은 <c>Update</c> 뒤 · <c>LateUpdate</c> <b>앞</b>에서 재개되므로,
+        /// 그 자리에서는 조회가 아직 한 번도 돌지 않았다 — 「아직 안 물어봤다」를 「안 꺼졌다」로 읽은 것이다.
+        /// 프로덕션은 세 종료 경로를 파생값 한 줄로 전부 덮고 있었다(<c>IsSessionActive = false</c> 세 자리 ·
+        /// <c>CurrentPhase</c> 파생 · <c>SyncToPhase</c>의 <c>from == Immersion</c> 한 줄).
+        /// 같은 사실을 재는 형제 픽스처(<c>CostumeFocusLfvsPoseTests</c>)는 처음부터 세션을 끊은 뒤
+        /// 벽시계 0.4초를 기다린 다음 물었다 — 이 파일만 그 경계를 빠뜨렸다.</para>
         /// </summary>
         [UnityTest]
         [Timeout(180000)]
@@ -181,14 +192,61 @@ namespace StickMate.Tests.PlayMode
             Assert.Greater(prop.ActiveVisualCount, 0,
                 $"{LogPrefix} 취소 전에 그려진 선이 0개입니다 — 아래 «사라졌다»가 공허해집니다.");
 
-            director.StopFocusSession();
-
-            // 프롭 층은 이 순간 즉시 «없는 것»이 된다(유령 제스처 방지). 그림은 퇴장 연출 뒤 사라진다.
-            Assert.IsFalse(prop.PropPlaced,
-                $"{LogPrefix} 취소 직후에도 PropPlaced가 참입니다 — 코스튬 포즈 층이 " +
-                "사라지는 물건을 계속 짚습니다(절대 불변 원칙 1).");
+            // ★ 양성 대조 — 맨 아래 «취소 뒤 IsCostumeImmersionActive가 거짓»이 «계기가 처음부터
+            //   거짓»과 구별되게 한다. 블랙보드는 프롭 렌더러를 <b>1회 탐색 + 캐싱</b>하므로(못 찾으면
+            //   다시 찾지 않는다) 탐색이 어긋난 회차에서는 그 값이 영원히 거짓이고, 부재 단언은
+            //   그대로 조용히 초록이 된다.
+            Assert.IsTrue(agent.Blackboard.IsCostumeImmersionActive,
+                $"{LogPrefix} 프롭은 섰는데 취소 전 IsCostumeImmersionActive가 거짓입니다 — 블랙보드가 " +
+                "프롭 렌더러를 못 찾은 채 캐싱했을 수 있습니다(그러면 아래 부재 단언은 아무것도 " +
+                "증명하지 않습니다).");
 
             float outro = agent.Config != null ? agent.Config.costumeFocusPropOutroSeconds : 0.22f;
+
+            director.StopFocusSession();
+
+            // ---- ① 즉시(동기): 세션 종료가 <b>구간</b>을 닫는다 = 프롭 해제의 단일 판정 입력 ----
+            // CurrentPhase는 IsSessionActive의 파생값이라 완주·중도취소·긴급정지 세 경로가 전부
+            // 「같은 한 줄」로 닫힌다(FocusWatchDirector.CurrentPhase 문서). 여기가 빨간불이면
+            // «종료 경로는 셋인데 처리는 하나»가 되돌아온 것이고, 그때는 프롭이 아무리 조회해도
+            // 영원히 안 꺼진다 — 그래서 이 단언이 아래 둘보다 먼저 있다.
+            Assert.AreEqual(FocusSessionPhase.None, director.CurrentPhase,
+                $"{LogPrefix} 취소 호출이 끝났는데 구간이 {director.CurrentPhase}입니다 — " +
+                "프롭 해제의 단일 판정 입력이 닫히지 않았습니다.");
+
+            // ---- ② 다음 프레임: 조회가 한 바퀴 돌면 포즈 층이 내려간다 ----
+            // ★ 여기서 한 프레임을 흘리는 것은 <b>느슨함이 아니라 계약</b>이다. 프롭 렌더러는 위 파생값을
+            //   구독하지 않고 LateUpdate에서 <b>조회</b>한다 — 구간 전이 이벤트가 세션 종료에는 오지
+            //   않아서 구독하면 바로 이 경로에서 그림이 남기 때문이다(CostumePropRenderer 클래스 문서).
+            //   PlayMode 코루틴 본문은 Update 뒤 · LateUpdate <b>앞</b>에서 재개되므로, 취소한 그
+            //   프레임에는 조회가 아직 한 번도 돌지 않았다. 그 자리에서 PropPlaced를 물으면
+            //   «조회 전»을 «안 꺼짐»으로 읽는다(리그의 빌드 쪽도 같은 이유로 PropPlaced를 기다린다 —
+            //   CostumeFocusRig.StartAndReachImmersion).
+            // ★ 그 한 프레임이 포즈 층에는 <b>보이지 않는다</b>: 층은 StickmanAgent.Update가 굴리므로
+            //   (TickPose → TickCostumeKeypose) 취소 프레임의 Update는 이미 지나갔고, 다음 Update는
+            //   아래 LateUpdate가 내려놓은 값을 본다. 유령 제스처 프레임은 0이다.
+            float cancelFrameDelta = Time.deltaTime;   // 이 프레임의 LateUpdate가 퇴장 타이머에 더할 값
+            // 프레임예산-OK: 시간 예산이 아니라 «LateUpdate 조회가 한 바퀴 돌았는가»라는 구조적 대기다.
+            yield return null;
+
+            Assert.IsFalse(prop.PropPlaced,
+                $"{LogPrefix} 취소 다음 프레임에도 PropPlaced가 참입니다 — 코스튬 포즈 층이 " +
+                "사라지는 물건을 계속 짚습니다(절대 불변 원칙 1). 이 자리가 빨간불이면 해제가 " +
+                "BeginOutro에서 빠져 Teardown까지 밀린 것입니다(퇴장 연출 내내 유령 제스처).");
+
+            // ★ 그리고 층은 <b>그림보다 먼저</b> 내려가야 한다 — 순서가 뒤집히면 위 단언은 초록인데
+            //   유령 제스처는 그대로 남는다. 그림이 이 시점에 벌써 없다면 정상 경로일 수 없다.
+            //   유일한 예외는 그 한 프레임의 scaled dt가 퇴장 길이를 통째로 넘긴 히치이고, 그 예외를
+            //   짐작으로 넘기지 않고 <b>같은 자리에서 수치로</b> 가른다(배치모드 실측 dt는 밀리초다).
+            bool drawingStillOnScreenAtLayerOff = prop.ActiveVisualCount > 0;
+            if (!drawingStillOnScreenAtLayerOff)
+            {
+                Assert.GreaterOrEqual(cancelFrameDelta, outro,
+                    $"{LogPrefix} 층이 내려간 그 프레임에 그림도 이미 사라졌습니다" +
+                    $"(그 프레임 dt={cancelFrameDelta:F4}초 < 퇴장 {outro:F2}초) — 퇴장 연출을 건너뛰고 " +
+                    "즉시 파괴한 것이므로 등장/퇴장 포락선 계약이 깨졌습니다.");
+            }
+
             // 퇴장 타이머는 scaled deltaTime이라 압축된다. 넉넉히 6배 + 하한 1초를 준다.
             float budget = Mathf.Max(1f, outro / TimeCompression * 6f);
             yield return TestClock.WaitUntil(() => prop.ActiveVisualCount == 0, budget,
@@ -196,13 +254,17 @@ namespace StickMate.Tests.PlayMode
 
             Assert.AreEqual(1, prop.TeardownCount - teardownsBefore,
                 $"{LogPrefix} 철거가 {prop.TeardownCount - teardownsBefore}회입니다 — 세션당 정확히 1회여야 합니다.");
+            // 위 ①이 「닫혔다」를 쟀으니 여기서는 「닫힌 채로 있다」를 잰다 — 퇴장 연출이 도는 동안
+            // 구간이 되살아나면 프롭이 다시 지어지고 그 순간 철거 계수도 어긋난다.
             Assert.AreEqual(FocusSessionPhase.None, director.CurrentPhase,
-                $"{LogPrefix} 취소 뒤 구간이 닫히지 않았습니다.");
+                $"{LogPrefix} 철거가 끝난 뒤 구간이 {director.CurrentPhase}로 되살아났습니다.");
             Assert.IsFalse(agent.Blackboard.IsCostumeImmersionActive,
                 $"{LogPrefix} 취소 뒤에도 IsCostumeImmersionActive가 참입니다 — 배회 사다리와 포즈 층이 " +
                 "«없는 프롭» 곁에 묶입니다.");
 
-            Debug.Log($"{LogPrefix} ② 통과 — 몰입기 도중 취소에서 프롭 철거 1회, 잔재 0개.");
+            Debug.Log($"{LogPrefix} ② 통과 — 구간은 취소 호출 안에서 즉시 닫히고, 포즈 층은 다음 " +
+                $"LateUpdate 조회에서 내려갔다(그 프레임 dt {cancelFrameDelta:F4}초 / 퇴장 {outro:F2}초, " +
+                $"층이 내려간 시점에 그림 잔존 {drawingStillOnScreenAtLayerOff}). 철거 1회 · 잔재 0개.");
         }
     }
 }

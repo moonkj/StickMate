@@ -34,6 +34,18 @@ namespace StickMate.Tests.PlayMode
         /// 함께 확인한다. 그것이 "이 번호가 아직 털모자다"의 유일한 증거다.</summary>
         private const int Beanie = 1;
 
+        /// <summary>왕관. ★ 2026-09-29 — 이 번호는 <b>착용 비트맵</b>(§19)으로 갈아탄 <b>첫 아이템</b>이다
+        /// (<c>equip_head_crown.asset</c>가 <c>wornShapes: []</c> + <c>wornSpriteOverride</c>/
+        /// <c>wornSpriteBackOverride</c>). 위 세 상수와 같은 사정으로 빌더 상수를 참조할 수 없어
+        /// 번호를 베끼므로, 아래 검사는 <b>아이템 아이디</b>로 «3번이 아직 왕관인가»를 먼저 못박는다.</summary>
+        private const int Crown = 3;
+
+        /// <summary>위 번호의 신선도 증인. ★ <b>존재 단언</b>이라 이 아이디가 바뀌면 시끄럽게 빨개진다
+        /// (CLAUDE.md 니들 규칙에서 «조용히 초록이 되는» 부재 단언의 반대쪽). 비트맵 형태에는
+        /// 도형 이름이 하나도 없어서, 아래 <see cref="BeanieCuffShapeName"/>처럼 그림 이름을
+        /// 증인으로 쓸 수가 없다 — 그래서 카탈로그 아이디가 유일한 증인이다.</summary>
+        private const string CrownItemId = "equip.head.crown";
+
         /// <summary>털모자의 <b>접힌 단</b> — 2026-09-02에 채움에서 낱선이 된 도형.
         /// 아래 양성 대조가 "낱선이 실재한다"를 증명하는 데 쓰는 증인이다.</summary>
         private const string BeanieCuffShapeName = "BeanieCuff";
@@ -181,6 +193,40 @@ namespace StickMate.Tests.PlayMode
         /// <para>바뀌지 않은 것: <b>CrownBody는 반드시 채워져 있어야 한다</b>. 그것이 이 파일이 처음
         /// 생긴 이유(누가 <c>filled: true</c>를 지워도 전 스위트가 초록이던 구멍)이고,
         /// 위 일대일 대응만으로는 <b>0개 ↔ 0개</b>도 통과하므로 반드시 함께 잠근다.</para>
+        ///
+        /// <para>★★★ <b>2026-09-29 — 세 번째 형태가 생겼고, 이 검사는 그것을 몰라서 빨간불이었다.</b>
+        /// 실패 원문: «'EquipmentAccessories' 아래에 v1 도형('CrownBody')도 인계본 조각('Piece_…')도
+        /// 없습니다. 실측: [HeadAttached, HeadWornSpriteBack, HeadWornSpriteFront]».
+        /// 게이트는 <b>설계대로 동작했다</b> — 둘 다 없으면 «조용히 건너뜀»이 아니라 빨강이어야 한다.
+        /// 낡은 것은 «형태는 v1 아니면 v2»라는 이 파일의 전제였다.</para>
+        ///
+        /// <para><b>실측으로 확인한 것</b>(2026-09-29, 소스·애셋·PNG 직접 확인):
+        /// <list type="number">
+        ///   <item><c>Assets/_Project/Resources/Items/equip_head_crown.asset</c>는 <c>wornShapes: []</c>이고
+        ///     <c>wornSpriteOverride</c>·<c>wornSpriteBackOverride</c>가 채워져 있다 ⇒ <b>몸 표면</b>의 왕관은
+        ///     v2 조각이 아니라 <b>착용 비트맵</b>(§19)이다.
+        ///     ★ <b>위 2026-09-06 주석이 틀린 것은 아니다 — 늙은 것이다.</b> 그때 적은 9조각은 지금도
+        ///     <c>AccessoryShapeBuilder.Handoff.cs</c>의 <c>HeadCrown</c> 갈래에 <b>실재한다</b>
+        ///     (Piece_B0 · Piece_B1 · Piece_CF2~CF4 · Piece_CB5~CB7 채움 9 + 낱선 Piece_H8 + Piece_BW).
+        ///     다만 몸 표면이 <b>거기까지 가지 않는다</b>: <c>CharacterAccessoryRenderer.Rebuild</c>의 슬롯
+        ///     순회가 <c>TryAppendWornSprites</c>에서 <c>continue</c>해 <c>AccessoryShapeBuilder.Append</c>를
+        ///     통째로 건너뛴다. 그래서 «Piece_ 조각이 없다»는 것은 조각이 사라져서가 아니라
+        ///     <b>이 표면이 그 경로를 안 타서</b>다.</item>
+        ///   <item>그림 자체(<c>Assets/_Project/Art/WornSprites/equip_head_crown.png</c>, 1024²)는 봉우리 다섯이
+        ///     <b>또렷하게 솟고</b> 끝에 구슬이 달린 래스터다 — «둥근 캡에 뭉개진 지그재그»가 아니다.
+        ///     ⇒ 37-6 규칙 6이 겨눈 결함은 이 형태에 <b>없다</b>(방향 A).</item>
+        ///   <item>그 텍스처는 <c>isReadable: 0</c>으로 임포트된다 ⇒ 런타임에서 픽셀을 훑어 «뾰족함»을
+        ///     재는 경로는 <b>없다</b>. 그림 자체의 판정은 PNG 눈 검수(design-equipment) 몫이고,
+        ///     여기서 잠그는 것은 <b>그 그림이 실제로 몸에 붙는가</b>와 <b>획 경로가 그 위에 겹쳐
+        ///     그려지지 않는가</b>다(아래 <see cref="AssertCrownWornBitmapContract"/>).</item>
+        /// </list></para>
+        ///
+        /// <para><b>갈래 판정의 근거는 프로덕션 스위치 그 자체</b>다 — <c>ItemCatalog.WornSprite</c>가
+        /// null 이 아니면 렌더러가 <b>벡터 경로를 통째로 건너뛴다</b>
+        /// (<c>CharacterAccessoryRenderer.TryAppendWornSprites</c>의 <c>continue</c>). 그림 이름을 킁킁거리지
+        /// 않으므로 판정자와 피판정자가 갈라질 수 없고, <b>칸을 비우면 그날로 벡터로 돌아간다</b>는
+        /// 롤백 계약(<c>Art/WornSprites/README.md</c>)을 이 검사가 그대로 따라간다 —
+        /// 그때는 아래 게이트가 다시 v1/v2를 가른다.</para>
         /// </summary>
         [UnityTest]
         public IEnumerator 왕관은_채워지되_얹는_물건으로_남는다()
@@ -189,27 +235,53 @@ namespace StickMate.Tests.PlayMode
             var agent = Object.FindFirstObjectByType<StickmanAgent>();
             RaiseLevelTo(24, agent.Config);
             ClearAll(agent.Config);
-            Wear(EquipmentSlot.Head, 3, agent.Config);
+            Wear(EquipmentSlot.Head, Crown, agent.Config);
             for (int i = 0; i < 8; i++) yield return null;
 
+            // ★ 번호 신선도 — Wear 는 번호가 재배치돼도 true 라 «다른 모자를 재고 있다»를 못 잡는다.
+            //   비트맵 형태에는 도형 이름이 없어(털모자의 BeanieCuff 같은 증인이 없다) 카탈로그
+            //   아이디가 유일한 증인이다.
+            Assert.AreEqual(CrownItemId, EquipmentModel.ItemId(EquipmentSlot.Head, Crown),
+                $"{LogPrefix} HEAD {Crown}번이 더 이상 왕관이 아닙니다 — 이 검사는 지금 <b>다른 아이템</b>을 " +
+                "재고 있습니다(번호가 재배치돼도 Wear 는 여전히 true 라 위 단언으로는 안 잡힙니다).");
+
             var renderer = Object.FindFirstObjectByType<CharacterAccessoryRenderer>();
+            Assert.IsNotNull(renderer, $"{LogPrefix} 씬에 CharacterAccessoryRenderer가 없습니다.");
             Transform container = FindChild(renderer.transform, "EquipmentAccessories");
+            Assert.IsNotNull(container, $"{LogPrefix} EquipmentAccessories 컨테이너가 없습니다 — 재구성이 안 돌았습니다.");
             var fills = container.GetComponentsInChildren<MeshRenderer>(true);
 
-            // ★ 2026-09-06 — 왕관도 인계본(계약 v2)이라 "CrownBody"가 없다(몸 채움 9조각: Piece_BW ·
-            //   Piece_B0 · Piece_B1 · Piece_CF2~CF4 · Piece_CB5~CB7). <b>되살리는 방법</b>: 이 검사의 두 축은
-            //   (가) 봉우리가 뾰족하려면 <b>채움</b>이 있어야 한다 → «채움이 하나 이상 있는가»로 바꾸면 이름이 필요 없고,
-            //   (나) «얹는 물건»이라 채움이 턱까지 안 내려온다 → 채움 <b>전체의 bounds 합집합</b>으로 재면 된다.
+            // ★★ 2026-09-29 — <b>착용 비트맵 갈래</b>. 판정 근거는 프로덕션 스위치(위 클래스 문단).
+            //   여기서 건너뛰지 <b>않는다</b> — 이 형태에서도 이 검사의 두 축(«채워진다» · «얹는
+            //   물건이다»)은 그대로 잴 수 있다. 자를 바꿨을 뿐이다.
+            if (ItemCatalog.WornSprite(EquipmentSlot.Head, Crown) != null)
+            {
+                AssertCrownWornBitmapContract(renderer, container);
+                yield return Capture("fill_crown_filled");
+                yield break;
+            }
+
+            // ==================== 여기부터는 «칸을 비워 벡터로 되돌린» 세계다 ====================
             //
-            //   ★★ 실측으로 드러난 <b>둘째</b> 이유(2026-09-06 PlayMode 실행): 이 검사가 먼저 부르는
-            //   <c>AssertFillsMatchOutlineMarks</c>의 v1 불변식 «채움 면 수 = 채움 윤곽선 <b>표식</b> 수»가
-            //   인계본에서 성립하지 않는다 — 실측 <b>왕관 채움 9개 / 표식 0개</b>. 이것은 결함이 아니라
-            //   <b>계약 v2의 설계</b>다: 인계본 조각의 선은 명목 획(strokeInR)을 쓰므로 렌더러가
-            //   <c>FillOutlineStroke</c> 대신 <c>AccessoryStrokeMark</c>를 붙인다
-            //   (<c>CharacterAccessoryRenderer.AddLine</c>의 <c>handoffWidth &gt; 0</c> 갈래).
-            //   ⇒ <b>되살릴 때 함께 할 일</b>: 인계본 쪽 짝 불변식(«채움이 있으면 그 선에 액세서리 표식이
-            //   붙는다»)을 새로 세워야 한다. 지금은 그 자리를 아무도 안 보고 있다 — 이 사실을
-            //   Tasklist 에 남긴다.
+            // ★★ 2026-09-29 정정 — 여기 있던 2026-09-06 주석은 <b>틀린 게 아니라 늙어 있었다</b>.
+            //   원문 «왕관도 인계본(계약 v2)이라 CrownBody가 없다(몸 채움 9조각: Piece_BW · Piece_B0 ·
+            //   Piece_B1 · Piece_CF2~CF4 · Piece_CB5~CB7)»는 그 9조각이 AccessoryShapeBuilder.Handoff.cs 에
+            //   <b>지금도 실재한다</b>는 점에서 참이다. 그 뒤 몸 표면만 착용 비트맵으로 갈아탔고
+            //   (§19 파일럿), 비트맵 갈래가 AccessoryShapeBuilder.Append 를 통째로 건너뛰면서
+            //   컨테이너에서 Piece_ 가 사라졌다. 게이트는 그것을 «둘 다 없다»로 읽고 빨개졌다 —
+            //   설계대로였고, 낡은 것은 «형태는 v1 아니면 v2»라던 이 파일의 전제다.
+            //
+            //   그러면 이 게이트는 지금 무엇을 하는가: 위 비트맵 갈래가 거짓이었다는 것은 <b>칸이 비었다</b>는
+            //   뜻이고(롤백 계약), 그때 왕관은 다시 v1 도형이거나 v2 조각이다. v1 이면 아래 검사가 그대로 돌고,
+            //   v2 조각이면 여기서 건너뛴다 — 그 자리의 손실은 아래 사유 문자열이 러너에 적는다.
+            //
+            //   ★ v2 로 돌아갈 때 함께 할 일(2026-09-06 실측은 여전히 유효하다): <c>AssertFillsMatchOutlineMarks</c>의
+            //   v1 불변식 «채움 면 수 = 채움 윤곽선 <b>표식</b> 수»가 인계본에서는 성립하지 않는다 —
+            //   당시 실측 <b>채움 9개 / 표식 0개</b>. 결함이 아니라 <b>계약 v2 설계</b>다: 인계본 조각의 선은
+            //   명목 획(strokeInR)을 쓰므로 렌더러가 <c>FillOutlineStroke</c> 대신 <c>AccessoryStrokeMark</c>를
+            //   붙인다(<c>CharacterAccessoryRenderer.AddLine</c>의 <c>handoffWidth &gt; 0</c> 갈래).
+            //   ⇒ 인계본 쪽 짝 불변식(«채움이 있으면 그 선에 액세서리 표식이 붙는다»)은 아직 <b>아무도
+            //   보고 있지 않다</b>(미수립, 리더 보고 대상).
             HandoffPlayModeGate.SkipIfHandoffRendered(container,
                 "왕관이 <b>채워져 있고</b>(둥근 캡에 봉우리가 뭉개지지 않는 유일한 조건, 37-6 규칙 6) " +
                 "동시에 <b>얹는 물건</b>으로 남는가(채움이 턱까지 안 내려온다) + v1 불변식 «채움 수 = 표식 수».",
@@ -240,6 +312,127 @@ namespace StickMate.Tests.PlayMode
                 "얹는 것입니다(HatCoverLocalY = +∞와 같은 사실의 그림 버전).");
 
             yield return Capture("fill_crown_filled");
+        }
+
+        /// <summary>
+        /// ★★ <b>착용 비트맵(§19) 형태의 왕관 계약</b> — 2026-09-29 신설.
+        ///
+        /// <para>위 검사의 두 축을 <b>같은 뜻, 다른 자</b>로 옮긴 것이다. 무엇을 묻는지는 안 바뀌었다.
+        /// <list type="number">
+        ///   <item><b>«채워진다»</b> — v1에서 이 말의 뜻은 «봉우리 끝이 뾰족해질 수 있는 것은 채운 도형의
+        ///     꼭짓점뿐»이었다(37-6 규칙 6). 그 규칙이 겨눈 <b>둥근 캡</b>은 <c>LineRenderer</c>의 성질이고,
+        ///     이 형태에는 <b>획이 한 획도 없다</b> — 뭉갤 기계가 아예 없다. 그래서 여기서는
+        ///     «그림이 실제로 붙었는가» + «획/채움 경로가 그 위에 <b>겹쳐</b> 돌지 않는가»를 잠근다.
+        ///     뒤엣것이 중요한 이유: 벡터 경로가 같이 돌면 그림 두 겹이 어긋난 채 겹쳐 그려진다.</item>
+        ///   <item><b>«얹는 물건»</b> — v1은 <c>PointInMesh(턱)</c>이 거짓임을 봤다. 여기서는 <b>알파 타이트
+        ///     박스</b>(<c>wornSpriteInkBoxInR</c>)의 아래끝이 같은 턱 표본보다 위인지를 본다.
+        ///     <b><c>SpriteRenderer.bounds</c>를 쓰면 안 된다</b> — 그 값은 투명 여백까지 포함한 캔버스
+        ///     전체(왕관은 5.69R 정사각)라 언제나 턱 아래까지 내려온다. 이 저장소가 §19-8-3에서 이미
+        ///     같은 함정을 적어 뒀다.</item>
+        /// </list></para>
+        ///
+        /// <para><b>양성/부재를 같은 검사 안에서 맞세운다</b>(CLAUDE.md 부재 단언 규칙): «선 0개 · 채움 면
+        /// 0개»는 <b>아무것도 안 그려져도</b> 참이다. 그래서 그 두 줄 앞에 «앞층 그림이 실재하고 켜져
+        /// 있고 투명하지 않다»를, 잉크 상자 쪽에는 «위로는 정수리보다 높다»를 짝으로 세웠다.</para>
+        ///
+        /// <para><b>잰 값은 프로덕션에서 받아 온다</b> — 잉크 상자의 앵커 선택과 되메움 규칙은
+        /// <c>CharacterAccessoryRenderer</c> 안에만 있고 PlayMode 어셈블리는 <c>internal</c>을 못 보므로,
+        /// 산수를 여기 다시 적으면 그날부터 <b>거울</b>이 된다(CLAUDE.md 거짓 통과 8번).
+        /// <c>TryGetWornSpriteInkForTests</c>가 화면이 실제로 쓴 값을 그대로 돌려준다.</para>
+        /// </summary>
+        private static void AssertCrownWornBitmapContract(CharacterAccessoryRenderer renderer, Transform container)
+        {
+            Sprite front = ItemCatalog.WornSprite(EquipmentSlot.Head, Crown);
+            Sprite back = ItemCatalog.WornSpriteBack(EquipmentSlot.Head, Crown);
+
+            var sprites = new List<SpriteRenderer>(container.GetComponentsInChildren<SpriteRenderer>(true));
+            LineRenderer[] lines = container.GetComponentsInChildren<LineRenderer>(true);
+            MeshRenderer[] fills = container.GetComponentsInChildren<MeshRenderer>(true);
+
+            Debug.Log($"{LogPrefix} 왕관(착용 비트맵) — 붙은 그림 {sprites.Count}장 [" +
+                string.Join(", ", sprites.ConvertAll(s => s == null ? "<null>" : $"{s.name}(order {s.sortingOrder})")) +
+                $"] / 선 {lines.Length}개 [{string.Join(", ", System.Array.ConvertAll(lines, l => l.name))}]" +
+                $" / 채움 면 {fills.Length}개 [{string.Join(", ", System.Array.ConvertAll(fills, f => f.name))}]. " +
+                $"카탈로그: 앞층 '{(front != null ? front.name : "없음")}' · 뒤층 '{(back != null ? back.name : "없음")}'.");
+
+            // ── (1) 데이터가 «비트맵»이라고 말하면 씬도 같은 말을 해야 한다(양성 대조).
+            SpriteRenderer frontSr = sprites.Find(s => s != null && s.sprite == front);
+            Assert.IsNotNull(frontSr,
+                $"{LogPrefix} 카탈로그는 왕관을 착용 비트맵('{(front != null ? front.name : "?")}')이라고 하는데 " +
+                "몸에 그 그림이 붙어 있지 않습니다 — 아이템은 그림으로 갈아탔는데 화면에는 아무것도 " +
+                "안 나오는 상태이고, 사용자에게는 «왕관을 썼는데 머리가 맨머리»로 보입니다.");
+            Assert.IsTrue(frontSr.enabled, $"{LogPrefix} 왕관 앞층({frontSr.name})이 꺼져 있습니다.");
+            Assert.IsTrue(frontSr.gameObject.activeInHierarchy,
+                $"{LogPrefix} 왕관 앞층({frontSr.name}) 오브젝트가 비활성입니다.");
+            Assert.Greater(frontSr.color.a, 0.5f,
+                $"{LogPrefix} 왕관 앞층의 알파가 {frontSr.color.a:F3}입니다 — 「모자가 투명해보임」(이 파일이 " +
+                "생긴 사용자 신고)의 비트맵판입니다. 문턱을 1.0이 아니라 0.5로 둔 것은 랙돌 페이드(0.18초)가 " +
+                "표본 순간에 걸쳐도 흔들리지 않게 하기 위해서고, 꺼진 상태(0)는 이 문턱으로 충분히 잡힙니다.");
+
+            // ── (2) 앞/뒤 분리 — 데이터에 뒤층이 있으면 씬에도 있어야 하고, 앞층보다 <b>뒤</b>여야 한다.
+            //   Art/WornSprites/README.md 원문: «안 나누면 왕관 뒷테가 머리 앞에 그려진다».
+            //   기대값을 상수로 적지 않고 <b>카탈로그에서 유도</b>한다 — 뒤층을 없애는 것은 미술 판단이고,
+            //   그날 이 검사가 거짓 빨강이 되면 안 된다.
+            if (back != null)
+            {
+                SpriteRenderer backSr = sprites.Find(s => s != null && s.sprite == back);
+                Assert.IsNotNull(backSr,
+                    $"{LogPrefix} 카탈로그에 왕관 뒤층('{back.name}')이 있는데 몸에는 안 붙었습니다 — " +
+                    "뒷테가 통째로 사라진 상태입니다.");
+                Assert.Less(backSr.sortingOrder, frontSr.sortingOrder,
+                    $"{LogPrefix} 왕관 뒤층 order {backSr.sortingOrder} ≥ 앞층 order {frontSr.sortingOrder} — " +
+                    "뒷테가 머리 앞으로 나옵니다(Art/WornSprites/README.md 「앞/뒤 분리」).");
+            }
+
+            // ── (3) 봉우리 — 뭉갤 기계(둥근 캡)가 <b>이 자리에 없다</b>는 것을 씬에서 증명한다.
+            //   여기가 0이 아니면 벡터 경로가 함께 돌았다는 뜻이고, 그림과 도형이 두 겹으로 어긋난다.
+            //   (위 (1)이 «그림은 실재한다»를 이미 못박았으므로 이 0/0은 자명한 0이 아니다.)
+            Assert.AreEqual(0, lines.Length,
+                $"{LogPrefix} 왕관이 착용 비트맵인데 획이 {lines.Length}개 그려집니다 " +
+                $"[{string.Join(", ", System.Array.ConvertAll(lines, l => l.name))}] — 벡터 경로가 함께 돌았다는 " +
+                "뜻이라 그림 위에 도형이 겹칩니다. 그리고 둥근 캡이 봉우리를 다시 뭉개는 경로(37-6 규칙 6)가 " +
+                "돌아온 것이기도 합니다.");
+            Assert.AreEqual(0, fills.Length,
+                $"{LogPrefix} 왕관이 착용 비트맵인데 채움 면이 {fills.Length}개 있습니다 " +
+                $"[{string.Join(", ", System.Array.ConvertAll(fills, f => f.name))}] — 위와 같은 이유로 두 겹입니다.");
+
+            // ── (4) «얹는 물건» — 잉크가 턱까지 안 내려온다(v1의 PointInMesh(턱)와 <b>같은 주장</b>).
+            Vector4 declaredInk = ItemCatalog.WornSpriteInkBoxInR(EquipmentSlot.Head, Crown);
+            Assert.IsTrue(WornSpritePlacement.IsInkBoxBaked(declaredInk),
+                $"{LogPrefix} 왕관의 알파 타이트 박스가 안 구워져 있습니다({declaredInk}) — 그러면 렌더러가 " +
+                "<b>배치 사각형 전체</b>(투명 여백 포함)를 잉크로 보고, 이 검사는 «그림이 어디까지 내려오는가»를 " +
+                "알 수 없게 됩니다(§19-8-3: 캐릭터가 여백만큼 공중에 뜨는 결함과 같은 뿌리). " +
+                "메뉴 «StickMate/착용 비트맵/1.»로 구우십시오.");
+
+            int inkIndex = -1;
+            IReadOnlyList<SpriteRenderer> placed = renderer.WornSpritesForTests;
+            for (int i = 0; i < placed.Count; i++)
+            {
+                if (placed[i] == frontSr) { inkIndex = i; break; }
+            }
+            Assert.GreaterOrEqual(inkIndex, 0,
+                $"{LogPrefix} 몸에 붙은 왕관 앞층이 렌더러의 비트맵 목록({placed.Count}장)에 없습니다 — " +
+                "그리기와 잉크 신고가 서로 다른 목록을 보고 있다는 뜻입니다.");
+            Assert.IsTrue(renderer.TryGetWornSpriteInkForTests(inkIndex, out Rect ink),
+                $"{LogPrefix} 렌더러가 {inkIndex}번 그림의 잉크 상자를 못 돌려줍니다 — " +
+                "스프라이트 목록과 잉크 목록의 길이가 어긋났습니다(둘은 언제나 같아야 합니다).");
+
+            var metrics = renderer.GetComponent<StickmanMetrics>();
+            Assert.IsNotNull(metrics, $"{LogPrefix} StickmanMetrics가 없습니다.");
+            float cy = metrics.HeadCenterLocalY, r = metrics.HeadRadius;
+            float chinY = cy - r * 0.9f;   // v1 갈래가 쓰는 턱 표본과 <b>같은 식</b>이다.
+            Debug.Log($"{LogPrefix} 왕관 잉크 상자(프로덕션이 쓴 값, 부모 로컬) = {ink} / " +
+                $"머리 중심 y={cy:F4} 반경={r:F4} / 턱 표본 y={chinY:F4}. " +
+                $"아래끝 − 턱 = {ink.yMin - chinY:F4}(양수라야 «얹는 물건») / " +
+                $"위끝 − 정수리 = {ink.yMax - (cy + r):F4}(양수라야 머리 위로 솟는다).");
+
+            Assert.Greater(ink.yMax, cy + r,
+                $"{LogPrefix} 왕관 그림의 잉크 위끝({ink.yMax:F4})이 정수리({cy + r:F4})를 넘지 않습니다 — " +
+                "머리 위로 솟지 않는 왕관이라, 아래 «턱까지 안 내려온다»도 (상자가 쪼그라든 탓에) " +
+                "아무것도 증명하지 못합니다. 배치 사각형이나 잉크 상자가 잘못 구워졌는지 보십시오.");
+            Assert.Greater(ink.yMin, chinY,
+                $"{LogPrefix} 왕관 그림이 턱 근처(y={chinY:F4})까지 내려왔습니다(잉크 아래끝 {ink.yMin:F4}) — " +
+                "왕관은 씌우는 것이 아니라 <b>얹는</b> 것입니다(HatCoverLocalY = +∞와 같은 사실의 그림 버전).");
         }
 
         /// <summary>
