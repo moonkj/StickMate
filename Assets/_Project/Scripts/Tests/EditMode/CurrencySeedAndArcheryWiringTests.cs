@@ -7,29 +7,37 @@ using StickMate.Core;
 namespace StickMate.Tests.EditMode
 {
     /// <summary>
-    /// ★ <b>첫 실행 시드와 활쏘기 상금이 실제로 배선됐는가</b> — 2026-09-06 배선 라운드 2차.
+    /// ★ 원래 제목: <b>첫 실행 시드와 활쏘기 상금이 실제로 배선됐는가</b> — 2026-09-06 배선 라운드 2차.
     ///
     /// ============================================================================
     /// 이 파일이 생긴 이유 — <b>모델은 옳은데 부르는 코드가 0건이었다</b>
     /// ============================================================================
-    /// <see cref="CurrencyModel.TryGrantSeedCoins"/>와 <see cref="CurrencyModel.TryAwardArcheryCoins"/>의
-    /// <b>계산</b>은 <c>CurrencyRulesTests</c>가 이미 검증하고 있었다. 그런데 프로덕션 호출부가
-    /// <b>둘 다 0건</b>이었다(<c>docs/GAME_ARCHITECTURE_REVIEW.md</c> §17-14 표).
+    /// 시드·활쏘기 지급의 <b>계산</b>은 <c>CurrencyRulesTests</c>가 이미 검증하고 있었다. 그런데
+    /// 프로덕션 호출부가 <b>둘 다 0건</b>이었다(<c>docs/GAME_ARCHITECTURE_REVIEW.md</c> §17-14 표).
     /// 사용자에게는 «시드를 못 받고 명중해도 동전이 안 나오는» 앱이었는데,
     /// <b>테스트는 전부 초록이었다</b> — 이 저장소가 반복해 당한 형태 그대로다.
+    ///
+    /// ============================================================================
+    /// ★★★ 2026-09-29 DLC·재화 폐지 R5 — <b>두 축 중 하나는 방향이 뒤집혔다</b>
+    /// ============================================================================
+    /// <list type="bullet">
+    ///   <item><b>시드</b> — 폐지. §1의 존재 단언이 <b>부재 단언</b>이 됐고(0건이 기대값),
+    ///     §2(로드 뒤 순서)와 §5의 시드 왕복 두 테스트는 대상이 사라져 뗐다.
+    ///     ★ <b>되살리면 기존 사용자 전원에게 한 번 더 나간다</b>(플래그가 전부 false).</item>
+    ///   <item><b>활쏘기</b> — <b>판정은 그대로 살아 있고 동전 지급만 빠졌다.</b> 그 판정이
+    ///     2026-09-07 보안 결함 수정 이후 <b>활쏘기 XP의 관문</b>이라, 이 파일의 활쏘기 절은
+    ///     폐지 대상이 아니라 <b>더 중요해졌다</b>(이름만 <c>TryClaimArcheryAward</c>로 따라갔다).</item>
+    /// </list>
     ///
     /// <para>그래서 이 파일은 <c>CurrencyRulesTests</c>·<c>CurrencyDayRolloverTests</c>와
     /// <b>겹치지 않는 것</b>만 잰다:</para>
     /// <list type="number">
-    ///   <item><b>배선이 실재하는가</b>(§1 소스 스캔). 이 라운드 <b>전에는 전부 빨갛다</b>.</item>
-    ///   <item><b>순서가 맞는가</b>(§2). 시드 지급이 <c>CharacterSaveStore.Load()</c> <b>앞</b>에 있으면
-    ///     복원이 그것을 덮어써 <b>지급이 통째로 사라진다</b> — 예외도 로그도 없다.
-    ///     롤오버가 같은 함정을 안고 있었고 그래서 그쪽 주석에 «반드시 Load 뒤»가 못박혀 있다.</item>
-    ///   <item><b>관문 안쪽인가</b>(§3). 활쏘기 동전이 «정중앙 · Release · 같은 발 방어» 세 관문
-    ///     <b>안</b>에서 나가야 «명중 1회 = 지급 1회»가 한 이음매로 유지된다.</item>
-    ///   <item><b>계약이 디스크를 왕복하는가</b>(§4). 시드 1회 보장의 실체는 코드가 아니라
-    ///     세이브 필드 <c>seedGranted</c>다. 그 필드가 저장·복원되지 않으면
-    ///     <b>앱을 켤 때마다 1,200동전이 나온다</b>.</item>
+    ///   <item><b>배선이 실재하는가 / 되살아나지 않았는가</b>(§1 소스 스캔).</item>
+    ///   <item><s>순서가 맞는가</s>(§2 폐지 — 그 함정 서술은 절 주석에 남겼다).</item>
+    ///   <item><b>관문 안쪽인가</b>(§3). 활쏘기 판정이 «정중앙 · Release · 같은 발 방어» 세 관문
+    ///     <b>안</b>에서 일어나야 «명중 1회 = 판정 1회»가 한 이음매로 유지된다.</item>
+    ///   <item><b>저장에 실리는가</b>(§5). 활쏘기 누계가 디스크에 안 남으면 재시작마다 일일 상한이
+    ///     초기화되고, 그 상한이 XP 도배 방어선이라 곧 익스플로잇이 된다.</item>
     /// </list>
     ///
     /// ============================================================================
@@ -55,31 +63,30 @@ namespace StickMate.Tests.EditMode
         // 니들 — 전부 nameof로 조립한다(오타가 컴파일 에러가 되도록)
         // ====================================================================
 
-        private static string SeedModelCall =>
-            nameof(CurrencyModel) + "." + nameof(CurrencyModel.TryGrantSeedCoins) + "(";
-
         private static string ArcheryModelCall =>
-            nameof(CurrencyModel) + "." + nameof(CurrencyModel.TryAwardArcheryCoins) + "(";
+            nameof(CurrencyModel) + "." + nameof(CurrencyModel.TryClaimArcheryAward) + "(";
 
-        /// <summary>이미 배선된 것으로 <b>독립 확인된</b> API — 양성 대조 앵커
-        /// (<c>Interaction/FocusWatchDirector.cs</c>, §17-14 실측).</summary>
+        /// <summary>양성 대조 앵커 — <b>배선이 실재하는 것으로 독립 확인된</b> API.
+        /// <para>★★ 2026-09-29 — 앵커를 <c>CurrencyModel.PayFocusCompletionCoins</c>에서
+        /// <see cref="CurrencyModel.TickDayRollover"/>로 <b>옮겼다</b>. 옛 앵커는 재화 폐지로
+        /// <b>프로덕션 호출부가 0</b>이 됐다 — 그대로 두면 「스캐너 생존 확인」이 영구히 빨개진다.
+        /// 새 앵커는 <c>Core/CurrencyDayRolloverTicker.cs</c>가 부르고, 그 배선은 [오늘 할일]
+        /// 날짜축이 의존하므로 재화와 함께 사라질 수 없다.
+        /// ⚠ <b>이 앵커로 검사 대상(활쏘기)을 쓰면 안 된다</b> — 대조가 순환이 된다.</para></summary>
         private static string KnownWiredCall =>
-            nameof(CurrencyModel) + "." + nameof(CurrencyModel.PayFocusCompletionCoins) + "(";
+            nameof(CurrencyModel) + "." + nameof(CurrencyModel.TickDayRollover) + "(";
 
-        /// <summary>세이브를 읽는 유일한 진입점. 시드 지급은 <b>반드시 이 뒤</b>다.</summary>
+        /// <summary>세이브를 읽는 유일한 진입점.</summary>
         private static string SaveLoadCall =>
             nameof(CharacterSaveStore) + "." + nameof(CharacterSaveStore.Load) + "(";
 
-        /// <summary>
-        /// 시드 배선이 <see cref="Start"/>에 나타나는 형태 두 가지. <b>둘 중 하나만</b> 있으면 된다.
-        /// <para>★ 래퍼 이름(<c>TryGrantSeedCoinsOnce</c>)은 <b>니들</b>이라 썩을 수 있다. 그래서
-        /// <see cref="시드_배선_니들이_실재를_가리킨다"/>가 «이 이름의 메서드가 실제로 있고, 그 안에서
-        /// 모델을 부른다»를 같은 실행에서 대조한다 — 이름만 바뀌면 그 테스트가 먼저 빨개진다.</para>
-        /// </summary>
-        private static readonly string[] SeedCallForms = { "TryGrantSeedCoinsOnce(", "CurrencyModel.TryGrantSeedCoins(" };
+        /// <summary>★★ 폐지된 시드 배선이 <c>Start</c>에 나타났던 형태 두 가지.
+        /// 지금은 <b>둘 다 0건이어야 한다</b>(래퍼 이름까지 함께 세는 것이 요점이다 — 모델 호출만
+        /// 세면 래퍼를 남겨 둔 상태를 못 본다).</summary>
+        private static readonly string[] RetiredSeedCallForms = { "TryGrantSeedCoinsOnce(", "CurrencyModel.TryGrantSeedCoins(" };
 
-        /// <summary>활쏘기 동전 배선이 <b>명중 훅 안</b>에 나타나는 형태 두 가지.</summary>
-        private static readonly string[] ArcheryCallForms = { "AwardArcheryCoins(", "CurrencyModel.TryAwardArcheryCoins(" };
+        /// <summary>활쏘기 보상 판정 배선이 <b>명중 훅 안</b>에 나타나는 형태 두 가지.</summary>
+        private static readonly string[] ArcheryCallForms = { "ClaimArcheryAward(", "CurrencyModel.TryClaimArcheryAward(" };
 
         /// <summary>배선이 사는 파일. <b>존재 단언</b>으로 쓴다 — 옮기면 시끄럽게 빨개진다.</summary>
         private const string DirectorFileSuffix = "/CharacterProgressionDirector.cs";
@@ -200,32 +207,54 @@ namespace StickMate.Tests.EditMode
         //   CurrencyModel.PayFocusCompletionCoins( → 1건 (Interaction/FocusWatchDirector.cs)
         // 즉 아래 두 테스트는 그 시점에 실패하고 양성 대조는 통과한다.
         // 「새 테스트가 지금 빨갛지 않으면 그 테스트는 아무것도 안 잡는다」(CLAUDE.md)를 만족한다.
+        //
+        // ★★★ 2026-09-29 DLC·재화 폐지 R5 — 실측이 다시 바뀌었다:
+        //   CurrencyModel.TryGrantSeedCoins(     → 0건 (<b>폐지. 0이 기대값이다</b>)
+        //   CurrencyModel.TryClaimArcheryAward(  → 1건 (Interaction/CharacterProgressionDirector.cs)
+        //   CurrencyModel.PayFocusCompletionCoins( → <b>0건</b>(죽은 잔재) ⇒ 양성 대조 앵커를
+        //     CurrencyModel.TickDayRollover( 로 옮겼다(그쪽은 CurrencyDayRolloverTicker가 부른다).
 
+        /// <summary>★★★ 2026-09-29 — <b>방향이 뒤집힌 테스트</b>. 옛 이름은
+        /// <c>프로덕션에_첫실행_시드_호출부가_실재한다</c>였고 「0건이면 실패」였다. 지금은
+        /// <b>0건이 기대값</b>이다(DLC·재화 폐지, 사용자 확정).
+        /// <para>★ 부재 단언이라 양성 대조를 같은 실행에서 함께 잡는다
+        /// (<see cref="KnownWiredCall"/>). 그것이 0이면 스캐너가 죽은 것이고 이 «0건»은 침묵이다.</para>
+        /// <para>★★ <b>되살리지 마라</b>: 기존 사용자 전원의 <c>seedGranted</c>가 아직 <c>false</c>라
+        /// 배선을 되살리는 순간 전원에게 동전이 한 번 더 나간다.</para></summary>
         [Test]
-        public void 프로덕션에_첫실행_시드_호출부가_실재한다()
+        public void 폐지된_첫실행_시드_호출부가_되살아나지_않았다()
         {
             List<Source> all = ProductionOrFail();
-            List<string> callers = FilesCalling(all, SeedModelCall);
 
-            Assert.IsNotEmpty(callers,
-                $"{LogPrefix} 「{SeedModelCall}」를 부르는 프로덕션 파일이 0건입니다. " +
-                $"시드({nameof(CurrencyRules)}.{nameof(CurrencyRules.SeedCoins)})는 «평생 1회»라 " +
-                "부르는 코드가 없으면 <b>아무도 영원히 못 받습니다</b>. 그리고 잔액 0은 " +
-                "«아직 못 벌었다»와 똑같이 생겨서 화면만 봐서는 고장인지 알 수 없습니다.");
+            // ── 양성 대조 먼저.
+            Assert.IsNotEmpty(FilesCalling(all, KnownWiredCall),
+                $"{LogPrefix} 양성 대조 실패 — 살아 있는 「{KnownWiredCall}」조차 못 찾았습니다. " +
+                "스캐너가 죽었으므로 아래 «0건»은 측정이 아닙니다.");
 
-            TestContext.WriteLine($"{LogPrefix} 시드 호출부 {callers.Count}건: {string.Join(", ", callers)}");
+            // ── 부재 단언. 모델 호출과 래퍼 이름을 <b>둘 다</b> 센다.
+            foreach (string form in RetiredSeedCallForms)
+            {
+                List<string> callers = FilesCalling(all, form);
+                Assert.IsEmpty(callers,
+                    $"{LogPrefix} 폐지된 시드 배선(「{form}」)이 되살아났습니다: " +
+                    string.Join(", ", callers) + ". 기존 사용자 전원의 seedGranted가 아직 false이므로 " +
+                    "이 배선이 도는 순간 <b>전원에게 한 번 더</b> 지급됩니다.");
+            }
+
+            TestContext.WriteLine($"{LogPrefix} 시드 폐지 확인 — 형태 {RetiredSeedCallForms.Length}종 전부 0건.");
         }
 
         [Test]
-        public void 프로덕션에_활쏘기_상금_호출부가_실재한다()
+        public void 프로덕션에_활쏘기_보상_판정_호출부가_실재한다()
         {
             List<Source> all = ProductionOrFail();
             List<string> callers = FilesCalling(all, ArcheryModelCall);
 
             Assert.IsNotEmpty(callers,
                 $"{LogPrefix} 「{ArcheryModelCall}」를 부르는 프로덕션 파일이 0건입니다. " +
-                "정중앙에 맞아도 동전이 한 푼도 안 나옵니다 — 연출은 그대로 도는데 지급만 없는 상태라 " +
-                "사용자에게는 «고장»으로 읽힙니다(§20-8).");
+                "정중앙에 맞아도 XP가 한 푼도 안 나옵니다 — 연출은 그대로 도는데 지급만 없는 상태라 " +
+                "사용자에게는 «고장»으로 읽힙니다(§20-8). " +
+                "★ 2026-09-29 이후 이 판정은 동전이 아니라 <b>활쏘기 XP의 관문</b>이다.");
 
             // ★ 지급 이음매는 <b>하나</b>여야 한다. 둘이 되면 같은 명중이 두 번 지급되거나,
             //   둘 중 하나만 쿨다운을 지나 «어떤 명중은 되고 어떤 명중은 안 되는» 형태가 된다.
@@ -237,102 +266,27 @@ namespace StickMate.Tests.EditMode
         }
 
         // ====================================================================
-        // §2. 순서 — 시드는 반드시 세이브 로드 <b>뒤</b>
+        // §2. 순서 — 「지급은 세이브 로드 뒤」 ★★★ 2026-09-29 <b>절 전체 폐지</b>
         // ====================================================================
-
-        /// <summary>
-        /// ★★ <b>이 순서가 이 라운드에서 가장 조용한 함정이다.</b>
-        /// 시드 지급이 <c>CharacterSaveStore.Load()</c> 앞에 있으면, 복원이
-        /// <c>coinBalance</c>와 <c>seedGranted</c>를 디스크 값으로 덮어써 <b>지급이 없던 일이 된다</b>.
-        /// 예외도 로그도 남지 않고, <b>다음 실행에서도 똑같이</b> 사라진다.
-        /// (롤오버가 정확히 같은 함정을 안고 있어 그쪽 주석에 «반드시 Load 뒤»가 못박혀 있다.)
-        /// </summary>
-        [Test]
-        public void 시드_지급은_세이브를_읽은_뒤에_일어난다()
-        {
-            Source director = DirectorSourceOrFail(ProductionOrFail());
-            string region = MemberRegionOrNull(director.Code, StartHeader);
-
-            Assert.IsNotNull(region,
-                $"{LogPrefix} 「{StartHeader}」 구역을 잘라 내지 못했습니다 — 시드 배선이 여기 없거나 " +
-                "구역 앵커가 낡았습니다. 어느 쪽이든 아래 순서 판정은 성립하지 않습니다.");
-
-            // ── 구역 추출기의 양성/음성 대조. 이게 없으면 아래 "앞뒤" 판정이
-            //    «파일 전체를 구역이라고 우기는 것»과 구별되지 않는다.
-            StringAssert.Contains("CharacterScaleController.Bind(", region,
-                $"{LogPrefix} Start 구역에 알려진 앵커(CharacterScaleController.Bind)가 없습니다 — " +
-                "구역을 엉뚱하게 잘랐거나 Start의 내용이 통째로 바뀌었습니다.");
-            Assert.Less(region.IndexOf("TickIfDue(", StringComparison.Ordinal), 0,
-                $"{LogPrefix} Start 구역에 Update의 내용(TickIfDue)이 섞여 들어왔습니다 — " +
-                "구역이 다음 멤버까지 삼켰습니다. 이 실행의 순서 판정은 무효입니다.");
-
-            int loadAt = region.IndexOf(SaveLoadCall, StringComparison.Ordinal);
-            Assert.GreaterOrEqual(loadAt, 0,
-                $"{LogPrefix} Start 구역에서 「{SaveLoadCall}」를 찾지 못했습니다. " +
-                "세이브를 읽는 자리가 옮겨 갔다면 시드 배선도 그 뒤로 함께 옮겨야 합니다.");
-
-            List<string> forms = FormsPresent(region, SeedCallForms);
-            Assert.IsNotEmpty(forms,
-                $"{LogPrefix} Start 구역에서 시드 배선을 찾지 못했습니다(찾은 형태: 없음, " +
-                $"기대 형태: {string.Join(" 또는 ", SeedCallForms)}). " +
-                "시드는 «로드 직후 1회»라 다른 자리가 없습니다 — Update에 넣으면 매 프레임 묻게 되고, " +
-                "Awake에 넣으면 로드 앞이라 지급이 덮여 사라집니다.");
-
-            foreach (string form in forms)
-            {
-                int seedAt = region.IndexOf(form, StringComparison.Ordinal);
-                Assert.Greater(seedAt, loadAt,
-                    $"{LogPrefix} 시드 지급(「{form}」)이 세이브 로드(「{SaveLoadCall}」)보다 <b>앞</b>에 있습니다. " +
-                    "복원이 seedGranted=false와 coinBalance를 그대로 덮어써 지급이 통째로 사라집니다 — " +
-                    "그 실패는 예외도 로그도 남기지 않고 다음 실행에서도 똑같이 반복됩니다.");
-            }
-
-            TestContext.WriteLine($"{LogPrefix} Start 구역 {region.Length}자, 로드 @{loadAt}, " +
-                $"시드 형태 {forms.Count}종({string.Join(", ", forms)}).");
-        }
-
-        /// <summary>
-        /// ★ 위 테스트가 쓰는 <b>래퍼 니들이 실재를 가리키는지</b> 같은 실행에서 대조한다.
-        /// 니들만 맞고 실물이 없으면 위 초록은 «있는 것을 확인했다»가 아니라 «문자열을 찾았다»일 뿐이다.
-        /// </summary>
-        [Test]
-        public void 시드_배선_니들이_실재를_가리킨다()
-        {
-            Source director = DirectorSourceOrFail(ProductionOrFail());
-            string startRegion = MemberRegionOrNull(director.Code, StartHeader);
-            Assert.IsNotNull(startRegion, $"{LogPrefix} Start 구역을 못 잘랐습니다.");
-
-            List<string> forms = FormsPresent(startRegion, SeedCallForms);
-            Assert.IsNotEmpty(forms, $"{LogPrefix} Start 구역에 시드 배선이 없습니다.");
-
-            foreach (string form in forms)
-            {
-                if (form.StartsWith(nameof(CurrencyModel), StringComparison.Ordinal))
-                {
-                    // 모델을 직접 부르는 형태 — 위 §1이 이미 실재를 확인했다.
-                    continue;
-                }
-
-                // 래퍼 형태 — 그 이름의 <b>선언</b>이 같은 파일에 있어야 하고,
-                // 그 선언 구역이 모델 호출을 실제로 담고 있어야 한다.
-                string wrapperName = form.Substring(0, form.Length - 1);   // 끝의 '(' 제거
-                string wrapperRegion = MemberRegionOrNull(director.Code, "void " + wrapperName + "(");
-
-                Assert.IsNotNull(wrapperRegion,
-                    $"{LogPrefix} Start가 부르는 「{wrapperName}」의 선언을 같은 파일에서 못 찾았습니다 — " +
-                    "니들이 실물과 갈라졌습니다(이름이 바뀌었거나 다른 파일로 옮겼습니다).");
-                StringAssert.Contains(SeedModelCall, wrapperRegion,
-                    $"{LogPrefix} 「{wrapperName}」 안에서 「{SeedModelCall}」를 못 찾았습니다 — " +
-                    "래퍼가 이름만 남고 실제 지급을 하지 않습니다.");
-            }
-        }
+        //
+        // 뗀 것: <c>시드_지급은_세이브를_읽은_뒤에_일어난다</c> · <c>시드_배선_니들이_실재를_가리킨다</c>.
+        //   시드 배선이 삭제됐다.
+        //
+        // ★★ <b>이 절이 지키던 함정은 사라지지 않았다</b> — 다음 지급 채널을 배선할 때 그대로 돌아온다:
+        //   지급이 <c>CharacterSaveStore.Load()</c> <b>앞</b>에 있으면 복원이 그 값을 디스크 값으로
+        //   덮어써 <b>지급이 없던 일이 된다</b>. 예외도 로그도 남지 않고 <b>다음 실행에서도 똑같이</b>
+        //   사라진다. 롤오버 배선(<c>CheckNow</c>)이 같은 함정을 안고 있어 그쪽에는 지금도
+        //   「반드시 Load 뒤」가 주석으로 못박혀 있다(<c>CharacterProgressionDirector.Start</c>).
+        //
+        // ★ 남아 있는 니들 <see cref="SaveLoadCall"/>·<see cref="StartHeader"/>는 아래 §3과
+        //   구역 추출기 자체 대조(§5)가 계속 쓴다 — 지우지 않았다.
 
         // ====================================================================
-        // §3. 관문 — 활쏘기 동전은 «정중앙 · Release · 같은 발 방어» 안쪽에서 나간다
+        // §3. 관문 — 활쏘기 보상 판정은 «정중앙 · Release · 같은 발 방어» 안쪽에서 나간다
         // ====================================================================
 
         [Test]
-        public void 활쏘기_상금은_명중_관문_안쪽에서_나간다()
+        public void 활쏘기_보상_판정은_명중_관문_안쪽에서_나간다()
         {
             Source director = DirectorSourceOrFail(ProductionOrFail());
             string region = MemberRegionOrNull(director.Code, ArcheryHookHeader);
@@ -353,16 +307,16 @@ namespace StickMate.Tests.EditMode
             {
                 StringAssert.Contains(gate, region,
                     $"{LogPrefix} 명중 훅에서 관문 「{gate}」가 사라졌습니다. " +
-                    "그 관문이 없으면 빗나간 발이나 Aim 시점에도 동전이 나갑니다 — " +
-                    "«명중 = 동전»이라는 규칙이 화면에서 깨집니다.");
+                    "그 관문이 없으면 빗나간 발이나 Aim 시점에도 보상이 나갑니다 — " +
+                    "«명중 = 보상»이라는 규칙이 화면에서 깨집니다.");
             }
 
             List<string> forms = FormsPresent(region, ArcheryCallForms);
             Assert.IsNotEmpty(forms,
-                $"{LogPrefix} 명중 훅 구역에서 활쏘기 지급을 찾지 못했습니다(기대 형태: " +
+                $"{LogPrefix} 명중 훅 구역에서 활쏘기 보상 판정을 찾지 못했습니다(기대 형태: " +
                 string.Join(" 또는 ", ArcheryCallForms) + "). " +
-                "지급을 다른 구독으로 빼면 «명중 1회»의 정의가 두 벌이 되고, 둘이 갈라지는 날 " +
-                "«XP는 들어왔는데 동전은 안 들어왔다»가 됩니다.");
+                "판정을 다른 구독으로 빼면 «명중 1회»의 정의가 두 벌이 되고, 둘이 갈라지는 날 " +
+                "«쿨다운은 도는데 XP는 새는» 형태가 된다 — 2026-09-07 보안 결함이 정확히 그것이었다.");
 
             // 지급은 관문 <b>뒤</b>에 있어야 한다(관문 앞이면 관문이 아무것도 막지 못한다).
             int gateAt = region.IndexOf(nameof(ArcheryShotPhase) + "." + nameof(ArcheryShotPhase.Release),
@@ -374,11 +328,12 @@ namespace StickMate.Tests.EditMode
             }
         }
 
-        /// <summary>★ 활쏘기 지급이 <b>단조 시계</b>를 받는지. 벽시계를 넣으면 시계를 되감는 것만으로
-        /// 무한 파밍이 된다(§20-3-b). <c>DailyLimitClampAuditTests</c>가 «금지 토큰»쪽에서 같은 것을
+        /// <summary>★ 활쏘기 보상 판정이 <b>단조 시계</b>를 받는지. 벽시계를 넣으면 시계를 되감는 것만으로
+        /// 무한 파밍이 된다(§20-3-b — 2026-09-29 이후 그 파밍의 대상은 동전이 아니라 <b>XP</b>다).
+        /// <c>DailyLimitClampAuditTests</c>가 «금지 토큰»쪽에서 같은 것을
         /// 반대 방향으로 잠그고 있어, 둘이 함께 있어야 «올바른 시계를 쓴다»가 증명된다.</summary>
         [Test]
-        public void 활쏘기_상금은_단조시계를_받는다()
+        public void 활쏘기_보상_판정은_단조시계를_받는다()
         {
             Source director = DirectorSourceOrFail(ProductionOrFail());
 
@@ -409,7 +364,7 @@ namespace StickMate.Tests.EditMode
                 "위 모든 초록은 아무것도 증명하지 않습니다.");
 
             // (2) 음성 — 존재할 수 없는 이름은 0건이어야 한다.
-            string absent = SeedModelCall.Replace("(", "ThatCannotExist(");
+            string absent = ArcheryModelCall.Replace("(", "ThatCannotExist(");
             CollectionAssert.IsEmpty(FilesCalling(all, absent),
                 $"{LogPrefix} 존재하지 않는 이름 「{absent}」이 잡혔습니다 — " +
                 "스캐너가 아무 문자열이나 참으로 만듭니다.");
@@ -444,12 +399,21 @@ namespace StickMate.Tests.EditMode
         }
 
         // ====================================================================
-        // §5. 계약 — 시드 1회 보장이 <b>디스크를 왕복</b>하는가
+        // §5. 계약 — 저장 왕복
         // ====================================================================
         //
-        // ★ 여기가 «재실행해도 중복 지급 안 됨»의 실체다. 배선은 앱을 켤 때마다 부르므로,
-        //   1회 보장은 «부르지 않는 것»이 아니라 «디스크의 seedGranted가 참으로 돌아오는 것»이다.
-        //   CurrencyRulesTests는 메모리 안에서만 그것을 쟀다 — 저장 왕복은 여기서 처음 잰다.
+        // ★ 원래 이 절은 «시드 1회 보장이 디스크를 왕복하는가»였다. 배선이 앱을 켤 때마다 부르므로
+        //   1회 보장의 실체는 «부르지 않는 것»이 아니라 «디스크의 seedGranted가 참으로 돌아오는 것»
+        //   이라는 것이 요점이었다.
+        //
+        // ★★★ 2026-09-29 DLC·재화 폐지 R5 — 시드 지급이 삭제돼 그 두 테스트
+        //   (<c>시드는_저장과_재로드를_거쳐도_두_번_나오지_않는다</c> ·
+        //   <c>파일이_있는_기존_사용자도_시드_지급_대상이다</c>)를 뗐다.
+        //   <b>세이브 필드 <c>seedGranted</c>의 왕복 자체는 여전히 검증된다</b> —
+        //   <c>Tests/EditMode/EquipmentMigrationTests</c>의 v10 왕복/하위 호환 테스트와
+        //   <c>CurrencyDayRolloverTests.사흘_만에_재실행해도…</c>가 그 필드를 단언한다.
+        //
+        // ★ 남은 것은 «지급이 저장 대상으로 표시되는가» 하나이고, 대상이 활쏘기 판정으로 좁혀졌다.
 
         private bool _hadRealFile;
         private string _realFileBackup;
@@ -493,105 +457,30 @@ namespace StickMate.Tests.EditMode
         }
 
         /// <summary>
-        /// ★★ <b>앱을 두 번 켜도 시드는 한 번이다.</b> 배선은 실행마다 <see cref="CurrencyModel.TryGrantSeedCoins"/>를
-        /// 부르므로, 1회 보장의 실체는 «디스크의 <c>seedGranted</c>가 참으로 돌아오는 것» 하나다.
-        /// 그 필드가 저장되지 않거나 복원되지 않으면 <b>켤 때마다 시드가 나온다</b>.
-        /// </summary>
-        [Test]
-        public void 시드는_저장과_재로드를_거쳐도_두_번_나오지_않는다()
-        {
-            string path = CharacterSaveStore.FilePath;
-            if (File.Exists(path)) File.Delete(path);      // 「첫 실행」 = 파일이 없다
-
-            // ── 1회차 실행 흉내: 로드(파일 없음) → 배선이 부르는 것과 같은 호출 → 주기 저장
-            CharacterSaveStore.Load();
-            Assert.IsFalse(CharacterSaveStore.LoadedFromFile,
-                "전제 — 파일이 없어야 «첫 실행»입니다. 앞선 테스트의 파일이 남아 있습니다.");
-            Assert.IsFalse(CurrencyModel.SeedGranted, "전제 — 새 캐릭터는 시드를 받은 적이 없어야 합니다.");
-
-            Assert.AreEqual(CurrencyRules.SeedCoins, CurrencyModel.TryGrantSeedCoins(),
-                "첫 실행에서 시드가 나오지 않았습니다.");
-            Assert.AreEqual(CurrencyRules.SeedCoins, CurrencyModel.CoinBalance,
-                "지급했다는데 잔액이 그만큼이 아닙니다.");
-
-            Assert.IsTrue(CharacterSaveStore.Save(),
-                "저장이 실패/보류됐습니다 — 아래 재로드는 «저장된 것»이 아니라 «아무것도 아닌 것»을 읽게 되고, " +
-                "그러면 이 테스트의 초록은 아무것도 증명하지 않습니다.");
-
-            // ── 2회차 실행 흉내: 정적 상태를 전부 날리고 디스크에서 다시 읽는다.
-            ResetModels();
-            Assert.AreEqual(0, CurrencyModel.CoinBalance,
-                "전제 — 초기화가 정적 상태를 안 지웠다면 아래 단언은 «파일이 말한 것»을 재지 못합니다.");
-            Assert.IsFalse(CurrencyModel.SeedGranted, "전제 — 초기화 후에는 플래그가 꺼져 있어야 합니다.");
-
-            CharacterSaveStore.Load();
-            Assert.IsTrue(CharacterSaveStore.LoadedFromFile, "방금 쓴 파일을 다시 읽지 못했습니다.");
-            Assert.IsTrue(CurrencyModel.SeedGranted,
-                "seedGranted가 디스크를 왕복하지 못했습니다 — <b>앱을 켤 때마다 시드가 다시 나옵니다</b>. " +
-                "저장 필드가 빠졌거나 복원 경로에서 누락됐습니다.");
-            Assert.AreEqual(CurrencyRules.SeedCoins, CurrencyModel.CoinBalance,
-                "잔액이 왕복하지 못했습니다.");
-
-            // ── 배선이 2회차에도 부른다(그게 정상 경로다). 그때 아무 일도 없어야 한다.
-            Assert.AreEqual(0, CurrencyModel.TryGrantSeedCoins(),
-                "두 번째 실행에서 시드가 또 나왔습니다 — 무한 시드입니다.");
-            Assert.AreEqual(CurrencyRules.SeedCoins, CurrencyModel.CoinBalance,
-                "두 번째 호출이 0을 돌려주고도 잔액을 올렸습니다.");
-        }
-
-        /// <summary>
-        /// ★ <b>기존 사용자도 받는다</b> — 확정 계약은 «신규 캐릭터만»이 아니라 «전원 평생 1회»다
-        /// (<c>CurrencyRules.SeedCoins</c> 문서, U-42 리더 승인 2026-09-05).
-        /// <para>여기서 재는 것은 «파일이 있는 사용자»(= 기존 사용자)가 로드 직후 지급 대상인가다.
-        /// 이 단언이 깨지는 유일한 길은 배선을 «파일이 없을 때만»으로 좁히는 것이고,
-        /// 그러면 지금까지 놀던 사용자 전원이 시드를 영영 못 받는다.</para>
-        /// </summary>
-        [Test]
-        public void 파일이_있는_기존_사용자도_시드_지급_대상이다()
-        {
-            string path = CharacterSaveStore.FilePath;
-            if (File.Exists(path)) File.Delete(path);
-
-            // 시드를 <b>받지 않은</b> 기존 사용자를 만든다 — 레벨만 올려 놓고 저장한다.
-            CharacterProgressionModel.RestoreFromSave(12, 0f, 0f, "기존사용자");
-            Assert.IsTrue(CharacterSaveStore.Save(), "기존 사용자 파일을 만들지 못했습니다.");
-
-            ResetModels();
-            CharacterSaveStore.Load();
-
-            Assert.IsTrue(CharacterSaveStore.LoadedFromFile,
-                "전제 — 파일이 있어야 «기존 사용자»입니다.");
-            Assert.IsFalse(CurrencyModel.SeedGranted,
-                "전제 — 이 사용자는 아직 시드를 받은 적이 없습니다.");
-            Assert.IsTrue(CurrencyRules.CanGrantSeed(CurrencyModel.SeedGranted),
-                "파일이 있다는 이유로 지급 대상에서 빠졌습니다 — U-42는 «기존 사용자 포함 전원 평생 1회»입니다.");
-            Assert.AreEqual(CurrencyRules.SeedCoins, CurrencyModel.TryGrantSeedCoins(),
-                "기존 사용자가 시드를 못 받았습니다.");
-        }
-
-        /// <summary>
-        /// ★ 지급이 <b>저장에 실리는 경로</b>가 살아 있는가. 시드도 활쏘기도 즉시 저장을 부르지 않고
+        /// ★ 판정이 <b>저장에 실리는 경로</b>가 살아 있는가. 활쏘기는 즉시 저장을 부르지 않고
         /// <c>IsDirty</c>만 세운 뒤 주기/종료 저장에 얹힌다 — 그 합류 지점
         /// (<c>CharacterProgressionDirector.IsAnythingDirty</c>)에서 <c>CurrencyModel.IsDirty</c>가
-        /// 빠지면 <b>번 동전이 통째로 사라진다</b>. 여기서는 그 전제인 «지급이 IsDirty를 세운다»를 잠근다.
+        /// 빠지면 <b>오늘의 관문 누계가 디스크에 한 줄도 남지 않는다</b>. 그러면 앱을 껐다 켤 때마다
+        /// 활쏘기 일일 상한이 초기화되고, 그 상한이 <b>XP 도배 방어선</b>이라 곧 익스플로잇이 된다.
+        /// 여기서는 그 전제인 «판정이 IsDirty를 세운다»를 잠근다.
         /// </summary>
         [Test]
-        public void 시드와_활쏘기_지급은_저장_대상으로_표시된다()
+        public void 활쏘기_판정은_저장_대상으로_표시된다()
         {
             Assert.IsFalse(CurrencyModel.IsDirty, "전제 — 초기화 직후에는 저장할 것이 없어야 합니다.");
 
-            Assert.Greater(CurrencyModel.TryGrantSeedCoins(), 0, "전제 — 시드가 나와야 합니다.");
+            Assert.Greater(CurrencyModel.TryClaimArcheryAward(0.0), 0, "전제 — 보상 판정이 통과해야 합니다.");
             Assert.IsTrue(CurrencyModel.IsDirty,
-                "시드를 지급했는데 저장 대상으로 표시되지 않았습니다 — 주기/종료 저장이 이 지급을 " +
-                "싣지 않고, 사용자는 다음 실행에서 시드를 다시 받게 됩니다(또는 영영 못 받습니다).");
+                "활쏘기 판정이 저장 대상으로 표시되지 않았습니다 — 오늘 누계가 디스크에 남지 않아 " +
+                "앱을 껐다 켜면 일일 상한이 초기화되고, 그 상한이 XP 도배 방어선입니다.");
 
             Assert.IsTrue(CharacterSaveStore.Save(), "저장이 실패/보류됐습니다.");
             Assert.IsFalse(CurrencyModel.IsDirty, "저장했는데 더티 플래그가 그대로입니다.");
 
-            Assert.Greater(CurrencyModel.TryAwardArcheryCoins(0.0), 0, "전제 — 활쏘기 상금이 나와야 합니다.");
-            Assert.IsTrue(CurrencyModel.IsDirty,
-                "활쏘기 상금을 지급했는데 저장 대상으로 표시되지 않았습니다 — " +
-                "그날 번 활쏘기 동전이 디스크에 한 푼도 남지 않습니다.");
+            // 음성 대조 — 쿨다운에 막힌 호출은 아무것도 바꾸지 않으므로 더티를 세우지 않는다.
+            Assert.AreEqual(0, CurrencyModel.TryClaimArcheryAward(1.0), "전제 — 쿨다운에 막혀야 합니다.");
+            Assert.IsFalse(CurrencyModel.IsDirty,
+                "아무 일도 없었는데 저장 대상이 됐습니다 — 하루 종일 켜 두는 앱이 헛되이 디스크를 두드립니다.");
         }
     }
 }

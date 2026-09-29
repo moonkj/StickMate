@@ -56,7 +56,8 @@ namespace StickMate.Interaction
             rects.Add(RawScreenRectOf(_closeRect));
             rects.Add(RawScreenRectOf(_settingsRect));
             rects.Add(RawScreenRectOf(_ownedChipRect));
-            rects.Add(RawScreenRectOf(_coinChipRect));
+            // ★ 2026-09-29 DLC 폐지 R2 — 동전 칩 줄을 지웠다. 목록이 <b>짧아지는</b> 방향이라
+            //   「빈 자리를 고르는」 테스트는 그대로 유효하다(피할 사각형이 하나 줄었을 뿐이다).
             return rects.ToArray();
         }
 

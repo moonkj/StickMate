@@ -191,9 +191,12 @@ namespace StickMate.Tests.EditMode
             List<string> sources = ProductionSources();
             Assert.Greater(sources.Count, 200, "최소 수집량 미달 — 이 실행의 숫자는 전부 무효입니다.");
 
-            // ★ 양성 대조 — 이미 배선된 것으로 <b>독립 확인된</b> API(집중 모드 완주 지급,
-            //   GAME_ARCHITECTURE_REVIEW §17-14가 Interaction/FocusWatchDirector.cs에서 실측).
-            string known = nameof(CurrencyModel) + "." + nameof(CurrencyModel.PayFocusCompletionCoins) + "(";
+            // ★ 양성 대조 — 이미 배선된 것으로 <b>독립 확인된</b> API(집중 모드 완주 지급).
+            //   2026-09-29 DLC 폐지 R5로 옛 앵커 PayFocusCompletionCoins의 유일한 호출부
+            //   (Interaction/FocusWatchDirector.cs, GAME_ARCHITECTURE_REVIEW §17-14가 실측한 자리)가
+            //   사라져 앵커를 그 후신인 TryGrantFocusCompletionXp(Interaction/CharacterProgressionDirector.cs가
+            //   부른다)로 옮겼다 — 재화가 아니라 XP로 지급 형태가 바뀌었을 뿐 「완주 시 지급」 배선 자체는 살아 있다.
+            string known = nameof(CurrencyModel) + "." + nameof(CurrencyModel.TryGrantFocusCompletionXp) + "(";
             Assert.IsNotEmpty(FilesCalling(sources, known),
                 $"이미 배선돼 있는 「{known}」조차 못 찾았습니다 — 스캐너가 죽었습니다. " +
                 "위 테스트의 초록은 아무것도 증명하지 않습니다.");
@@ -368,84 +371,70 @@ namespace StickMate.Tests.EditMode
         }
 
         // ====================================================================
-        // §4. 일일 상한이 <b>실제로 다시 열리는가</b>
+        // §4. 일일 카운터가 <b>실제로 다시 열리는가</b>
         // ====================================================================
+        //
+        // ★★★ 2026-09-29 DLC·재화 폐지 R5 — 이 절의 계기가 <b>동전에서 활쏘기 보상 판정으로</b>
+        //   옮겨졌다. 헬퍼 <c>FillTodayToCap()</c>(유휴 수급으로 상한을 채웠다)과
+        //   <c>회복제로_올린_상한도_다음_날_기본_상한으로_돌아온다</c>를 뗐다 —
+        //   <c>TickIdleIncome</c>·<c>TryUsePotion</c>·<c>DailyCapCoins()</c>·
+        //   <c>RemainingDailyRoomCoins()</c>가 삭제됐다.
+        //
+        // ★ <b>단언은 두 종류를 나눠 유지한다</b>:
+        //   ① 폐기된 카운터 넷(<c>todayGrantedCoins</c>·<c>potionsUsedToday</c>·
+        //      <c>idleWindowUsedSeconds</c>·<c>todoCoinPaidToday</c>)이 <b>여전히 0으로 돌아가는가</b> —
+        //      값은 파일에서 세우고 결과만 본다(계약이 조용히 깨지지 않게).
+        //   ② 살아 있는 채널(활쏘기)이 <b>실제로 다시 통과하는가</b> — 「표시만 리셋되고 실제로는
+        //      안 열리는」 경우를 가르는 자리이고, 이쪽은 실제 API로 잰다.
 
-        /// <summary>오늘의 상한을 남김없이 채운다. 초를 상수에서 유도하고, 부동소수 때문에
-        /// 마지막 1동전이 안 떨어질 수 있어 잔여가 0이 될 때까지만 반복한다.</summary>
-        private static void FillTodayToCap()
+        /// <summary>오늘의 폐기 카운터들을 「남김없이 소진한」 모습으로 세운다.
+        /// ★ 지급 API가 사라졌으므로 <b>파일에서 읽은 값</b>으로 만든다 — 이 테스트가 재는 것은
+        /// 「어떻게 찼는가」가 아니라 「찬 것이 롤오버로 0이 되는가」다.</summary>
+        private static void SeedTodaySpent(int dayIndex)
         {
-            double secondsToCap = CurrencyModel.DailyCapCoins() / CurrencyRules.IdleCoinsPerSecond;
-            Assert.Less(secondsToCap, CurrencyRules.IdleWindowCapSeconds,
-                "전제 — 8시간 창 안에서 상한에 닿을 수 있어야 합니다(T-D-15가 보장하는 관계).");
-
-            for (int i = 0; i < 4 && CurrencyModel.RemainingDailyRoomCoins() > 0; i++)
+            CurrencyModel.RestoreFromSave(new CurrencySaveState
             {
-                CurrencyModel.TickIdleIncome(secondsToCap, true, out _);
-            }
-            Assert.AreEqual(0, CurrencyModel.RemainingDailyRoomCoins(), "전제 — 상한까지 채웠어야 합니다.");
+                DayIndex = dayIndex,
+                DayBoundaryOffsetSaved = true,
+                DayBoundaryOffsetMinutes = 0,
+                TodayGrantedCoins = CurrencyRules.DailyCapCoins(CurrencyRules.MaxPotionsPerDay),
+                PotionsUsedToday = CurrencyRules.MaxPotionsPerDay,
+                IdleWindowUsedSeconds = (float)CurrencyRules.IdleWindowCapSeconds,
+                TodoCoinPaidToday = true,
+                ArcheryCoinsToday = CurrencyRules.ArcheryDailyCoinLimit,
+            });
         }
 
         [Test]
-        public void 날짜가_바뀌면_일일_상한이_실제로_다시_열린다()
+        public void 날짜가_바뀌면_일일_카운터가_실제로_다시_열린다()
         {
-            // 1일차 — 첫 판정이 일자와 경계 오프셋을 함께 못박는다.
-            Assert.IsTrue(CurrencyModel.TickDayRollover(0.0), "전제 — 첫 판정에서 일자가 고정돼야 합니다.");
-            int day1 = CurrencyModel.DayIndex;
-            Assert.AreEqual(CurrencyRules.BaseDailyCapCoins, CurrencyModel.DailyCapCoins(),
-                "전제 — 회복제를 안 썼으면 오늘 상한은 기본 상한입니다.");
+            int today = CurrencyRules.LocalDayIndex(DateTime.UtcNow, 0);
+            SeedTodaySpent(today);
 
-            FillTodayToCap();
-            Assert.AreEqual(CurrencyRules.BaseDailyCapCoins, CurrencyModel.TodayGrantedCoins);
-            Assert.AreEqual(0, CurrencyModel.TickIdleIncome(60.0, true, out _),
-                "상한에 걸렸는데 동전이 더 나왔습니다 — 상한이 아무 일도 안 하고 있습니다.");
-            int walletAtCap = CurrencyModel.CoinBalance;
-            Assert.AreEqual(CurrencyRules.BaseDailyCapCoins, walletAtCap,
-                "전제 — 오늘 번 것이 그대로 지갑에 있어야 합니다.");
+            // 전제 — 로드 직후에는 「오늘 다 썼다」 상태여야 한다(그래야 아래가 공허하지 않다).
+            Assert.IsTrue(CurrencyModel.ArcheryDailyLimitReached, "전제 — 활쏘기 상한에 걸려 있어야 합니다.");
+            Assert.AreEqual(0, CurrencyModel.TryClaimArcheryAward(0.0),
+                "전제 — 상한에 걸렸는데 보상 판정이 통과했습니다.");
+            Assert.Greater(CurrencyModel.TodayGrantedCoins, 0, "전제 — 폐기 카운터도 채워져 있어야 합니다.");
 
             // 자정 통과 — 「어제까지 봤다」로 만들고 리필 최소 간격을 채운다.
-            CurrencyModel.SetDayIndexForTesting(day1 - 1);
+            CurrencyModel.SetDayIndexForTesting(today - 1);
             Assert.IsTrue(CurrencyModel.TickDayRollover(CurrencyRules.MinRefillGapSeconds),
                 "날짜가 바뀌고 최소 간격도 채웠는데 롤오버가 안 일어났습니다.");
 
+            // ① 폐기 카운터도 계약대로 0으로 돌아간다.
             Assert.AreEqual(0, CurrencyModel.TodayGrantedCoins, "오늘 지급량이 0으로 안 돌아갔습니다.");
-            Assert.AreEqual(CurrencyRules.BaseDailyCapCoins, CurrencyModel.RemainingDailyRoomCoins(),
-                "잔여 예산이 상한 전액으로 돌아오지 않았습니다 — 화면의 「N / 1,500」이 어제 값을 물고 있습니다.");
-            Assert.AreEqual(0.0, CurrencyModel.IdleWindowUsedSeconds, 1e-9, "8시간 창이 리셋되지 않았습니다.");
-
-            // ★ <b>표시만 리셋되고 실제로는 안 나오는</b> 경우를 가른다 — 진짜로 다시 벌린다.
-            Assert.Greater(CurrencyModel.TickIdleIncome(60.0, true, out _), 0,
-                "새 날인데 유휴 수급이 다시 열리지 않았습니다.");
-            Assert.Greater(CurrencyModel.CoinBalance, walletAtCap,
-                "지급됐다는데 잔액이 안 늘었습니다.");
-        }
-
-        [Test]
-        public void 회복제로_올린_상한도_다음_날_기본_상한으로_돌아온다()
-        {
-            Assert.IsTrue(CurrencyModel.TickDayRollover(0.0), "전제 — 첫 판정에서 일자가 고정돼야 합니다.");
-            int day1 = CurrencyModel.DayIndex;
-
-            for (int i = 0; i < CurrencyRules.MaxPotionsPerDay; i++)
-            {
-                Assert.IsTrue(CurrencyModel.TryUsePotion(), $"전제 — {i + 1}번째 회복제를 써야 합니다.");
-            }
-            Assert.AreEqual(CurrencyRules.HardCeilingCoins, CurrencyModel.DailyCapCoins(),
-                "전제 — 회복제 최대치를 쓰면 오늘 상한이 절대 천장입니다.");
-            FillTodayToCap();
-            Assert.AreEqual(CurrencyRules.HardCeilingCoins, CurrencyModel.TodayGrantedCoins);
-
-            CurrencyModel.SetDayIndexForTesting(day1 - 1);
-            Assert.IsTrue(CurrencyModel.TickDayRollover(CurrencyRules.MinRefillGapSeconds));
-
             Assert.AreEqual(0, CurrencyModel.PotionsUsedToday,
-                "무료 회복제가 부활하지 않았습니다(T-D-10) — 무료 1개는 별도 플래그가 아니라 " +
-                "이 카운터의 첫 1회라서, 이게 안 돌아가면 무료분이 영영 사라집니다.");
-            Assert.AreEqual(CurrencyRules.BaseDailyCapCoins, CurrencyModel.DailyCapCoins(),
-                "오늘 상한이 어제의 회복제 확장분을 물고 있습니다 — 상한이 함수가 아니라 " +
-                "저장된 값처럼 굴고 있다는 신호입니다(T-D-9).");
-            Assert.AreEqual(CurrencyRules.BaseDailyCapCoins, CurrencyModel.RemainingDailyRoomCoins());
-            Assert.IsTrue(CurrencyModel.TryUsePotion(), "새 날인데 회복제를 다시 못 씁니다.");
+                "무료 회복제 카운터가 부활하지 않았습니다(T-D-10).");
+            Assert.AreEqual(0.0, CurrencyModel.IdleWindowUsedSeconds, 1e-9, "8시간 창이 리셋되지 않았습니다.");
+            Assert.IsFalse(CurrencyModel.TodoCoinPaidToday, "[오늘 할일] 카운터가 리셋되지 않았습니다.");
+
+            // ② ★ <b>표시만 리셋되고 실제로는 안 열리는</b> 경우를 가른다 — 진짜로 다시 통과한다.
+            Assert.AreEqual(0, CurrencyModel.ArcheryCoinsToday, "활쏘기 카운터가 0으로 안 돌아갔습니다.");
+            Assert.IsFalse(CurrencyModel.ArcheryDailyLimitReached, "활쏘기 상한 표시가 안 풀렸습니다.");
+            Assert.Greater(CurrencyModel.TryClaimArcheryAward(CurrencyRules.MinRefillGapSeconds), 0,
+                "새 날인데 활쏘기 보상 판정이 다시 열리지 않았습니다 — " +
+                "이 판정이 막히면 활쏘기 XP가 첫날 이후 영구히 나오지 않습니다.");
         }
 
         // ====================================================================
@@ -486,10 +475,9 @@ namespace StickMate.Tests.EditMode
             });
 
             // 전제 — 로드 직후에는 아직 사흘 전 상태 그대로다(그래야 "따라잡았다"에 의미가 있다).
-            Assert.AreEqual(0, CurrencyModel.RemainingDailyRoomCoins(), "전제 — 예산이 0이어야 합니다.");
-            Assert.AreEqual(0, CurrencyModel.TickIdleIncome(600.0, true, out _), "전제 — 유휴 수급이 막혀 있어야 합니다.");
-            Assert.AreEqual(0, CurrencyModel.TryPayTodoDailyCoins(), "전제 — [오늘 할일]이 막혀 있어야 합니다.");
-            Assert.AreEqual(0, CurrencyModel.TryAwardArcheryCoins(0.0), "전제 — 활쏘기가 막혀 있어야 합니다.");
+            Assert.AreEqual(CurrencyRules.HardCeilingCoins, CurrencyModel.TodayGrantedCoins,
+                "전제 — 폐기 카운터가 「다 썼다」로 읽혀야 합니다.");
+            Assert.AreEqual(0, CurrencyModel.TryClaimArcheryAward(0.0), "전제 — 활쏘기가 막혀 있어야 합니다.");
             Assert.IsTrue(CurrencyModel.ArcheryDailyLimitReached, "전제 — 활쏘기 일일 상한에 걸려 있어야 합니다.");
 
             // 재실행 직후 1회 — 프로세스가 방금 떴으므로 단조 시각은 작은 값이다.
@@ -524,15 +512,13 @@ namespace StickMate.Tests.EditMode
             Assert.IsTrue(CurrencyModel.HasDayBoundaryOffset,
                 "고정된 경계 오프셋이 풀렸습니다 — 시간대를 옮길 때마다 하루 경계가 흔들립니다(T-D-4).");
 
-            // ★★ 「리셋될 준비가 돼 있는가」의 실물 확인 — 지급 함수가 실제로 다시 돈다.
-            //    (지급 배선 자체는 이 라운드의 과제가 아니다. 모델이 다시 지급 가능한 상태인지만 잰다.)
-            Assert.AreEqual(CurrencyRules.TodoDailyCoins, CurrencyModel.TryPayTodoDailyCoins(),
-                "[오늘 할일] 하루 1회가 다시 열리지 않았습니다.");
-            Assert.AreEqual(CurrencyRules.ArcheryCoinsPerAward, CurrencyModel.TryAwardArcheryCoins(0.0),
-                "활쏘기 상금이 다시 열리지 않았습니다.");
-            Assert.Greater(CurrencyModel.TickIdleIncome(60.0, true, out _), 0,
-                "유휴 수급이 다시 열리지 않았습니다.");
-            Assert.Greater(CurrencyModel.CoinBalance, walletBefore, "다시 열렸다는데 지갑이 안 늘었습니다.");
+            // ★★ 「리셋될 준비가 돼 있는가」의 실물 확인 — 판정 함수가 실제로 다시 돈다.
+            //    ★ 2026-09-29 — 옛 확인은 셋이었다([오늘 할일] · 활쏘기 · 유휴). 앞뒤 둘은 폐지돼
+            //    <b>살아 있는 채널 하나</b>만 남았고, 대신 그 하나가 XP 방어선이라 무게는 더 커졌다.
+            Assert.AreEqual(CurrencyRules.ArcheryCoinsPerAward, CurrencyModel.TryClaimArcheryAward(0.0),
+                "활쏘기 보상 판정이 다시 열리지 않았습니다 — 그 사용자는 오늘도 활쏘기 XP를 못 받습니다.");
+            Assert.AreEqual(walletBefore, CurrencyModel.CoinBalance,
+                "★ 판정이 다시 열렸는데 지갑이 움직였습니다 — 활쏘기가 동전을 다시 냅니다.");
 
             // 같은 프로세스에서 곧바로 또 굴려도 두 번째 리필은 없다.
             // ★ 여기서는 <b>일자 관문</b>이 막는다(날이 안 바뀌었다).
@@ -562,24 +548,24 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 음성대조_롤오버가_없으면_카운터는_영원히_잠긴_채다()
         {
-            Assert.IsTrue(CurrencyModel.TickDayRollover(0.0), "전제.");
-            FillTodayToCap();
-            Assert.Greater(CurrencyModel.TryPayTodoDailyCoins(), 0, "전제.");
-            Assert.Greater(CurrencyModel.TryAwardArcheryCoins(0.0), 0, "전제.");
+            int today = CurrencyRules.LocalDayIndex(DateTime.UtcNow, 0);
+            SeedTodaySpent(today);
+            Assert.IsTrue(CurrencyModel.ArcheryDailyLimitReached, "전제 — 활쏘기 상한에 걸려 있어야 합니다.");
 
             // 일자를 <b>건드리지 않고</b> 시간만 아무리 흘려도 — 즉 롤오버가 안 일어나면 —
-            // 상한도 채널 카운터도 그대로다. 이것이 배선 0건 상태의 사용자가 겪던 일이다.
+            // 카운터는 그대로다. 이것이 배선 0건 상태의 사용자가 겪던 일이다.
             for (int i = 1; i <= 5; i++)
             {
                 Assert.IsFalse(CurrencyModel.TickDayRollover(CurrencyRules.MinRefillGapSeconds * i * 2.0),
                     "날이 안 바뀌었는데 롤오버가 일어났습니다.");
             }
 
-            Assert.AreEqual(0, CurrencyModel.RemainingDailyRoomCoins(), "상한이 저절로 풀렸습니다.");
-            Assert.AreEqual(0, CurrencyModel.TickIdleIncome(600.0, true, out _), "유휴 수급이 저절로 풀렸습니다.");
-            Assert.AreEqual(0, CurrencyModel.TryPayTodoDailyCoins(), "[오늘 할일]이 저절로 풀렸습니다.");
-            Assert.AreEqual(CurrencyRules.ArcheryCoinsPerAward, CurrencyModel.ArcheryCoinsToday,
+            Assert.AreEqual(CurrencyRules.ArcheryDailyCoinLimit, CurrencyModel.ArcheryCoinsToday,
                 "활쏘기 카운터가 저절로 0이 됐습니다.");
+            Assert.AreEqual(0, CurrencyModel.TryClaimArcheryAward(CurrencyRules.MinRefillGapSeconds * 20.0),
+                "활쏘기 상한이 저절로 풀렸습니다 — 그러면 XP 도배 상한도 함께 풀립니다.");
+            Assert.Greater(CurrencyModel.TodayGrantedCoins, 0, "폐기 카운터가 저절로 0이 됐습니다.");
+            Assert.IsTrue(CurrencyModel.TodoCoinPaidToday, "[오늘 할일] 카운터가 저절로 풀렸습니다.");
         }
     }
 }

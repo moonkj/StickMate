@@ -13,13 +13,18 @@ namespace StickMate.Tests.EditMode
     /// docs/DESIGN_SYSTEMS_LEVEL_STAT_GROWTH_PROPOSAL.md).
     ///
     /// ============================================================================
-    /// 배경 — 지금까지 집중 모드는 동전만 줬다
+    /// 배경 — 지금까지 집중 모드는 동전만 줬다. ★★ 2026-09-29 이후 <b>XP만 준다</b>
     /// ============================================================================
-    /// <see cref="FocusSessionPayoutTests"/>가 이미 동전 산식(<c>FocusCompletionCoins</c>/
-    /// <c>FocusCancelCoins</c>)을 잠그고 있다. 이 파일은 그 <b>산식 패턴을 XP로 그대로 복제</b>한
-    /// <c>FocusCompletionXp</c>/<c>FocusCancelXp</c>를 잠그되, 동전과 <b>다른 점 하나</b>(XP는
-    /// 일일 상한이 있다, §22-13은 코인 한정)를 집중적으로 검증한다. 겹치는 부분(floor 위치
-    /// 비대칭, 1분 미만 취소는 0)은 같은 방법으로 재확인하되 새로 발명하지 않는다.
+    /// 원래 <c>Tests/EditMode/FocusSessionPayoutTests.cs</c>가 동전 산식
+    /// (<c>FocusCompletionCoins</c>/<c>FocusCancelCoins</c>)을 잠그고 있었고, 이 파일은 그
+    /// <b>산식 패턴을 XP로 그대로 복제</b>한 <c>FocusCompletionXp</c>/<c>FocusCancelXp</c>를 잠갔다.
+    ///
+    /// <para>★★★ <b>DLC·재화 폐지 R5(2026-09-29)로 그 동전 파일을 삭제했고, 이 파일이 집중 모드
+    /// 보상의 유일한 계기가 됐다.</b> 삭제가 안전했던 근거는 「같은 계약을 여기서도 잰다」는 사실이고,
+    /// 항목별 대조는 이렇다: floor 위치 비대칭(90.5초·149.9초 · 기각된 해석과의 대조 · 대조가
+    /// 죽었는지 먼저 확인) · 1분 미만은 0 · 음수/NaN은 0 · 오버플로가 누계를 음수로 감지 않음 ·
+    /// 취소 스팸이 완주 시급을 못 넘음 · 0지급이면 더티를 세우지 않음. <b>여섯 항목 전부 아래에
+    /// 살아 있다</b>(동전 쪽에만 있던 「일일 상한 밖」은 대상이 사라져 옮기지 않았다).</para>
     ///
     /// ============================================================================
     /// ★ 숫자를 베끼지 않는다
@@ -142,11 +147,11 @@ namespace StickMate.Tests.EditMode
                 CurrencyRules.FocusCancelXpPerMinute * 6,
                 "취소:완주 = 5:6 관계가 깨졌습니다.");
 
-            // ★ 코인과 XP가 «같은 비율»이라는 design-systems §15-2의 확정 사실 — 상수가 따로
-            //   움직여 비율이 갈라지면 "완주가 이득"이라는 메시지가 코인·XP에서 다르게 읽힌다.
-            Assert.AreEqual(CurrencyRules.FocusCancelCoinsPerMinute * CurrencyRules.FocusXpPerMinute,
-                CurrencyRules.FocusCoinsPerMinute * CurrencyRules.FocusCancelXpPerMinute,
-                "코인의 취소:완주 비율과 XP의 취소:완주 비율이 서로 다릅니다(§15-2 위반).");
+            // ★★ 2026-09-29 DLC·재화 폐지 R5 — 여기 있던 «코인과 XP의 비율이 같다»(design-systems
+            //    §15-2) 단언을 뗐다. <b>비교 대상인 코인 취소 요율(FocusCancelCoinsPerMinute)이
+            //    삭제됐다</b> — 남은 한쪽만으로 「같다」를 주장할 수 없다.
+            //    그 사실이 지키던 것(«완주가 이득»이 두 축에서 다르게 읽히지 않게)은 이제 축이
+            //    하나뿐이라 위/아래 두 단언으로 닫힌다.
 
             Assert.Less(CurrencyRules.FocusCancelXpPerMinute, CurrencyRules.FocusXpPerMinute,
                 "취소가 완주보다 이득이면 완주할 이유가 사라집니다.");
@@ -311,67 +316,39 @@ namespace StickMate.Tests.EditMode
         }
 
         // ====================================================================
-        // 6. ★★★ 독립성 — 코인 상한과 XP 상한은 서로 다른 지갑이다 (design-systems §12)
+        // 6. ★★★ 독립성 — 활쏘기 천장과 집중 XP 천장은 서로 다른 카운터다 (design-systems §12)
         // ====================================================================
+        //
+        // ★★ 2026-09-29 DLC·재화 폐지 R5 — 이 절의 <b>코인 쪽 세 단언을 뗐다</b>:
+        //   ① «유휴 코인 일일 상한에 도달해도 XP는 계속» ② «XP 상한에 도달해도 코인은 계속»
+        //   ③ «XP 지급이 유휴 코인 버킷을 갉지 않는다»의 코인 버킷 두 항(TodayGrantedCoins·창).
+        //   이유는 판단이 아니라 <b>대상 소멸</b>이다 — 유휴 수급과 코인 상한 조회가 삭제됐으므로
+        //   그 전제를 만들 방법이 없다. ⚠ <b>남은 축의 독립성은 계속 잰다</b>(아래 둘).
 
         [Test]
-        public void 코인_일일_상한에_도달해도_집중모드_XP는_별도로_계속_지급된다()
-        {
-            // 유휴 수급으로 코인 일일 상한을 끝까지 채운다(회복제 미사용 기준 상한).
-            CurrencyModel.TickIdleIncome(CurrencyRules.IdleWindowCapSeconds, true, out _);
-            Assert.AreEqual(0, CurrencyModel.RemainingDailyRoomCoins(),
-                "전제 — 코인 일일 상한이 다 차지 않았습니다.");
-
-            int xpGranted = CurrencyModel.TryGrantFocusCompletionXp(25.0 * 60.0);
-            Assert.AreEqual(CurrencyRules.FocusXpPerMinute * 25, xpGranted,
-                "★ 코인 일일 상한에 도달했다고 집중 모드 XP까지 막혔습니다 — 두 상한은 독립적이어야 합니다.");
-        }
-
-        [Test]
-        public void 활쏘기_코인_일일_상한에_도달해도_집중모드_XP는_별도로_계속_지급된다()
+        public void 활쏘기_일일_상한에_도달해도_집중모드_XP는_별도로_계속_지급된다()
         {
             for (int i = 0; i < CurrencyRules.ArcheryDailyAwardLimit; i++)
             {
                 // 쿨다운을 매번 지나도록 넉넉히 시간을 흘린다.
-                CurrencyModel.TryAwardArcheryCoins(i * (CurrencyRules.ArcheryAwardCooldownSeconds + 1.0));
+                CurrencyModel.TryClaimArcheryAward(i * (CurrencyRules.ArcheryAwardCooldownSeconds + 1.0));
             }
             Assert.IsTrue(CurrencyModel.ArcheryDailyLimitReached, "전제 — 활쏘기 일일 상한에 도달해야 합니다.");
 
             int xpGranted = CurrencyModel.TryGrantFocusCompletionXp(15.0 * 60.0);
             Assert.AreEqual(CurrencyRules.FocusXpPerMinute * 15, xpGranted,
-                "★ 활쏘기 코인 상한에 도달했다고 집중 모드 XP까지 막혔습니다.");
+                "★ 활쏘기 상한에 도달했다고 집중 모드 XP까지 막혔습니다 — 두 천장은 독립적이어야 합니다.");
         }
 
         [Test]
-        public void 집중모드_XP_상한에_도달해도_코인은_별도로_계속_지급된다()
+        public void 집중모드_XP_지급은_활쏘기_카운터를_갉지_않는다()
         {
-            int granted = CurrencyModel.TryGrantFocusCompletionXp(
-                (double)CurrencyRules.FocusXpDailyCap / CurrencyRules.FocusXpPerMinute * 60.0);
-            Assert.AreEqual(CurrencyRules.FocusXpDailyCap, granted, "전제 — XP 상한까지 채웠어야 합니다.");
-            Assert.IsTrue(CurrencyModel.FocusXpDailyLimitReached, "전제 — XP 상한에 도달해야 합니다.");
-
-            int coinsBefore = CurrencyModel.CoinBalance;
-            int coinsPaid = CurrencyModel.PayFocusCompletionCoins(25.0 * 60.0);
-            Assert.AreEqual(CurrencyRules.FocusCoinsPerMinute * 25, coinsPaid,
-                "★ 집중 모드 XP 상한에 도달했다고 코인 지급까지 막혔습니다(§22-13: 코인은 상한 밖).");
-            Assert.AreEqual(coinsBefore + coinsPaid, CurrencyModel.CoinBalance);
-        }
-
-        [Test]
-        public void 집중모드_XP_지급은_유휴_코인_버킷을_갉지_않는다()
-        {
-            int coinRoomBefore = CurrencyModel.RemainingDailyRoomCoins();
-            double windowBefore = CurrencyModel.IdleWindowUsedSeconds;
             int archeryBefore = CurrencyModel.ArcheryCoinsToday;
 
             CurrencyModel.TryGrantFocusCompletionXp(25.0 * 60.0);
 
-            Assert.AreEqual(coinRoomBefore, CurrencyModel.RemainingDailyRoomCoins(),
-                "★ 집중 모드 XP 지급이 유휴 코인 버킷(TodayGrantedCoins)을 갉았습니다.");
-            Assert.AreEqual(windowBefore, CurrencyModel.IdleWindowUsedSeconds,
-                "★ 집중 모드 XP 지급이 8시간 유휴 창을 갉았습니다.");
             Assert.AreEqual(archeryBefore, CurrencyModel.ArcheryCoinsToday,
-                "★ 집중 모드 XP 지급이 활쏘기 코인 누계를 갉았습니다.");
+                "★ 집중 모드 XP 지급이 활쏘기 누계를 갉았습니다 — 카운터는 채널마다 하나씩이어야 합니다.");
         }
 
         // ====================================================================

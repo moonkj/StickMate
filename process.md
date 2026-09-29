@@ -1372,3 +1372,28 @@ EditMode **3219**(3238 → −19, 지운 테스트 수와 정확히 일치) 전�
 
 - **Windows 영향: 함께 수정함** — 애셋·테스트만 삭제, 플랫폼 분기 0. 크로스 컴파일 5/5 errors=0.
 - **macOS 영향: 함께 수정함** — 동일. 세이브 백업·로그 완화 코드도 플랫폼 중립.
+
+## 2026-09-29 (6) DLC R2+R5+R8+R10 — 화면·재화·보안·문서 4갈래 동시 집행 (사용자 지시 「남은것 바로 병렬로 진행해줘」)
+
+### 무엇을 했는가 (파일이 겹치지 않는 4개 라운드, 동시 파견)
+- **R2(`coder-ui`) — 상점·DLC 화면 삭제**: `CharacterInfoWindow.Shop.cs`(913줄)·`.Dlc.cs`(836줄) 전체 삭제. `Tab` enum·`TabTable`에서 Shop·Dlc 제거(3탭: 장비/외형/보관함). 헤더 동전 칩 제거 + `OwnedChipInset`(252→128)·`ChipBlockWidth`(352→228) 재배치(−124pt, ux-designer 산출값을 소스에서 재유도해 4/4 일치 검산). `ShopTabSurfaceTests.cs`·`ShopPurchaseFlowTests.cs`(UI 파생 계약이라 순수 로직이 아니었음, 삭제로 판정) 삭제.
+- **R5(`coder-systems`) — 재화 백엔드 철거**: `CurrencyModel`/`CurrencyRules`에서 유휴 수급·투두 코인·시드·집중 취소 코인·활쏘기 코인 지급을 제거. **세이브 스키마는 한 비트도 안 움직였다**(`CurrentVersion=13` 불변, `CurrencySaveState` 15필드·`CaptureSaveState`/`RestoreFromSave` 본문 HEAD와 차분 0줄 — 재화 그릇에 날짜축·등급 해금이 같이 있어 그릇째 못 지우는 제약 그대로 지킴). ★ 활쏘기 XP 관문(쿨다운 600초+일일 72회, 2026-09-07 보안 수정)은 **삭제가 아니라 개명**(`TryAwardArcheryCoins`→`TryClaimArcheryAward`)해 게이트를 보존 — 지웠으면 시간당 ~6,478XP 도배 구멍이 재발했을 자리. `FocusSessionPayoutTests.cs`(전량 동전) 삭제, 항목별 대조로 손실 없음을 `FocusXpPayoutTests`와 대조 확인.
+- **R8(`security`) — 니들 예외(I-3) 폐지 집행**: `Store/SteamPackEntitlementSource.cs` 삭제 → 빌드 게이트 뜻 반전(스팀 배선 **감지 시** 중단) → 감사 8조합 방향 반전(4조합으로 줄이면 UPM 패키지 축 하나가 안 재져 8조합 유지, 이름만 반전) → `SteamEntitlementAdapterAuditTests.cs` 삭제. `SECURITY_MODEL.md` X-2에 N0~N5 판정행 신설(N0=양성 대조 앵커, 「도입 전」과 「폐지 후」가 같은 비트 패턴이라 문서 없이는 못 가른다는 사실을 명시). 문서 3개 ⛔ 배너, 글자 삭제 0.
+- **R10(`product-strategy`) — 전략 문서 as-of**: `docs/strategy/*.md` 6개 + `GAME_ARCHITECTURE_REVIEW.md`+`MILESTONES.md` 8개 문서, 글자 삭제 0. `MILESTONES.md`의 **사용자가 2026-09-02에 직접 확정했던 두 결정**(DLC 1.0 포함, F2P)을 원문 보존한 채 취소선+재확정 행으로 뒤집었다.
+
+### 라운드 경계 접합 — 리더가 직접 정리 (3건)
+4라운드가 병렬로 서로의 산출물을 못 보고 지운 자리들: ⑴ `CurrencyRules.cs:205~209`의 주석이 R2가 지운 `ShopPurchaseFlowTests`를 인용 — as-of로 재작성. ⑵ `TestClaimExpiryAuditTests.cs`의 `IgnoreEntry`가 R8이 지운 `SteamEntitlementAdapterAuditTests.cs`를 지목(자동 래칫, 실물 없어지면 명부에서 지우는 것이 처방) — 제거. ⑶ `SessionEndShutdownTests.cs`의 `QuitHookLedger`가 R8이 지운 `SteamPackEntitlementSource.cs` 항목을 보유 — 제거.
+
+### ★★ 회귀에서 재발견 — 접합 실수 2건 (내가 낸 것, 즉시 수정)
+1차 EditMode가 빨간불 2건을 냈다: ⑴ 위 ⑴의 재작성이 `<c>ShopPurchaseFlowTests</c>`를 과거형 문장 안에서도 그대로 인용해 `CommentReferenceAuditTests`가 다시 잡음 — 낱말형 인용 자체를 걷어내고 프로세로 재작성(재확인: `<see cref="ItemOwnershipUnionTests">`는 실재하므로 안전). ⑵ `CurrencyDayRolloverTests.배선_스캐너는_있는_것을_찾고_없는_것을_안_찾는다`의 양성 대조 앵커가 R5가 지운 `PayFocusCompletionCoins`였음(R5는 자매 테스트 `CurrencySeedAndArcheryWiringTests`의 같은 결함은 잡아 옮겼지만 이 파일은 놓쳤다) — 앵커를 살아있는 후신 `TryGrantFocusCompletionXp`(`CharacterProgressionDirector.cs`가 호출)로 이동. 재실행으로 EditMode 3171건 전부 초록 확인.
+
+### PlayMode — 빨강 3건, 전부 격리 ×3 조사, 이 번들과 무관
+- **`AccessoryFillRenderingTests.왕관은_채워지되_얹는_물건으로_남는다`**: 격리 3/3 동일하게 빨강(결정론적, 하니스 플레이크 아님). 소스 확인: 이 테스트·`equip_head_crown.asset`·`CharacterAccessoryRenderer.cs`·`HandoffPlayModeGate.cs` **어느 것도 이 번들 diff에 없다**(`git diff HEAD` 4파일 전부 빈 diff). 실측: 왕관 애셋이 `wornShapes: []`(순수 스프라이트 인계본)인데 테스트는 v1(`CrownBody`) 또는 v2 9조각(`Piece_*`) 중 하나가 있어야 한다고 2026-09-06부터 가정하고 있다 — 그 9조각 인계본 형태가 애초에 애셋에 구현된 적이 없는 것으로 보인다. **DLC와 무관한 기존 결함**, 다음 배정(coder-ui/design-equipment) 대기.
+- **`CostumeFocusPropLifecycleTests.몰입기_도중_취소해도_프롭이_화면에_남지_않는다`**: 격리 3/3 동일하게 빨강. `FocusWatchDirector.cs`의 R5 편집분(동전 지급 두 함수 삭제)을 직접 대조 — 삭제된 것은 `PayCompletionCoins`/`PayCancelCoins`뿐이고 XP 경로(`PayCancelXp` 등)·호출 순서·`IsSessionActive=false` 위치는 무변경. 코스튬 프롭 시스템(`CostumeProgressModel`·프롭 렌더러) 관련 파일도 이 번들 diff에 0건. **DLC와 무관한 기존 결함**, 다음 배정(coder) 대기.
+- **`LandingCrouchTests.DockStepDropNeverLooksLikeKneelingAtAnySelectableScale`**: 전량 배치에서만 빨강(배율 0.35에서 12.48%H, 상한 12%H, 0.48%p 초과), 격리 3/3 전부 초록 — `GetupFloorClearanceTests`(R3에서 이미 분류)와 같은 형태의 배치모드 순서 의존 플레이크로 분류. 수정 없음.
+
+### 회귀 최종
+EditMode **3171**(3238 → −67 = R2 −8 `ShopPurchaseFlowTests` + R5 `FocusSessionPayoutTests` + R8 −8 `SteamEntitlementAdapterAuditTests` + 나머지, G9가 요구하는 「지운 만큼 설명」 충족) 전부 통과. PlayMode 822건 중 위 3건 제외 전부 통과, 위 3건은 전부 이 번들 이전부터 있었거나(왕관·코스튬프롭) 하니스 플레이크(랜딩)로 분류·설명 완료. 크로스 컴파일 osx·win 5/5 units errors=0(전 라운드 통합 후 재확인).
+
+- **Windows 영향: 함께 수정함** — R2 헤더·탭 재배치, R8 게이트가 macOS·Windows 두 빌드 진입점(`PerformBuild`/`PerformBuildWindows`) 동시 적용. 크로스 컴파일 win 5/5 errors=0.
+- **macOS 영향: 함께 수정함** — 동일 파일 공용, osx 5/5 errors=0.

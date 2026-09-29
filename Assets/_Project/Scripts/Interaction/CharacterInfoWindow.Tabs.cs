@@ -42,26 +42,26 @@ namespace StickMate.Interaction
             /// <summary>20줄 가상 목록([보관함]).</summary>
             Inventory,
 
-            /// <summary>상품 격자 + 상세 줄([상점]).
-            /// <para>★ 2026-09-06 — 여기 있던 <c>Placeholder</c>("본문이 아직 없는 탭 — 문구 한 줄만
-            /// 놓는다")를 <b>지웠다</b>. 쓰는 탭이 [상점] 하나였고 그 본문이 이 라운드에 생겼다.
-            /// 죽은 자리를 남겨 두면 <c>ShopNotice</c>("상점은 다음 업데이트에 들어옵니다")가 코드에
-            /// 남아 언젠가 다시 화면에 나간다 — 그 문장은 이제 <b>거짓</b>이다.</para></summary>
-            Shop,
-
-            /// <summary>팩별 카드 진열 + 상세 줄([DLC], 2026-09-08).
-            /// <para>★ <b>[상점]과 같은 페이지 종류로 만들지 않았다.</b> 그 탭의 상품 필터는
-            /// <c>CohortId == BaseCohortId</c>이고 그것은 «팩이 동전으로 팔리는 사고»를 막는 장치다
-            /// (<c>CharacterInfoWindow.Shop.cs</c> 클래스 문서). 팩을 그 격자에 섞으려면 그 필터를
-            /// 풀어야 하고, 푸는 순간 $4.99짜리가 동전에 팔린다 — 그래서 <b>선반을 하나 더</b> 만들었다.
-            /// 본문은 <c>CharacterInfoWindow.Dlc.cs</c>.</para></summary>
-            Dlc,
+            // ★ 2026-09-29 DLC 폐지 R2 — 여기 있던 <c>Shop</c>·<c>Dlc</c>를 <b>지웠다</b>. 두 본문
+            //   조각(같은 이름의 partial 파일 둘)도 같은 커밋에서 삭제됐다.
+            //   ★ 그 파일 이름을 여기 적지 않는다 — CommentReferenceAuditTests가 프로덕션 주석의
+            //     «.cs» 인용을 실재 파일과 대조하므로, 사라진 파일을 인용하면 그 감사가 빨개진다.
+            //   <b>이름만 남기지 않는다</b> — 2026-09-06에 <c>Placeholder</c>를 지운 그 관례를 그대로
+            //   따른다. 그때의 판단 근거가 여기서도 그대로 성립한다: 죽은 자리를 남겨 두면 다음 사람이
+            //   그 자리에 본문을 다시 붙이고, 그 순간 폐지가 되돌려진다.
+            //   실측(삭제 직전): 두 값의 참조는 본문 조각 2곳 · 이 파일 4곳 · 입력 조각 2곳 ·
+            //   창 본체 1곳이고 <b>전부 이 라운드가 함께 지웠다</b> — 남는 참조가 0이라
+            //   「남겨도 무해」가 아니라 「남기면 죽은 코드」다.
         }
 
         /// <summary>탭 순서. <b>값을 박아 둔다</b> — 이 창의 로그·테스트가 정수 인덱스로 탭을 부르고
         /// (<see cref="TabScreenRect"/>), 중간에서 하나를 지우면 그 뒤가 한 칸씩 당겨진다
         /// (<see cref="StickmanStateId"/>가 실제로 겪은 사고와 같은 종류).</summary>
-        private enum Tab { Equipment = 0, Appearance = 1, Inventory = 2, Shop = 3, Dlc = 4 }
+        /// <remarks>★ 2026-09-29 DLC 폐지 R2 — <c>Shop = 3</c>·<c>Dlc = 4</c>를 지웠다. 둘이
+        /// <b>끝 두 자리</b>였으므로 남은 0·1·2는 값이 <b>한 칸도 밀리지 않는다</b>(위 문단이 경고하는
+        /// 「중간에서 하나를 지우면 그 뒤가 당겨진다」에 해당하지 않는다). 정수 인덱스로 탭을 부르는
+        /// 테스트 두 곳(<c>TabInventory = 2</c>)이 그대로 유효하다.</remarks>
+        private enum Tab { Equipment = 0, Appearance = 1, Inventory = 2 }
 
         /// <summary>카드 페이지가 아니라 아이콘셋이 없다는 표시.</summary>
         private const int NoIconSet = -1;
@@ -100,12 +100,8 @@ namespace StickMate.Interaction
             new TabDef("장비",   TabPage.Cards, appearanceSlots: false, iconSet: 0),
             new TabDef("외형",   TabPage.Cards, appearanceSlots: true,  iconSet: 1),
             new TabDef("보관함", TabPage.Inventory),
-            new TabDef("상점",   TabPage.Shop),
-            // ★ 이름이 <b>라틴 3글자</b>인 이유: 팩의 한글 이름은 오늘 존재하지 않는다
-            //   (매니페스트가 들고 있는 것은 로컬라이즈 «키»뿐 — CharacterInfoWindow.Dlc.cs 참고).
-            //   여기에 한글 상품명을 지어 넣으면 스토어 페이지와 다른 이름이 화면에 박힌다.
-            //   ★ TODO(design-narrative · marketing): 번역 테이블이 오는 라운드에 이 낱말을 재확정.
-            new TabDef("DLC",    TabPage.Dlc),
+            // ★ 2026-09-29 DLC 폐지 R2 — 여기 있던 「상점」·「DLC」 두 줄을 지웠다. 표와 enum을
+            //   <b>같은 편집에서</b> 3칸으로 맞춘다(아래 정적 생성자의 길이 대조가 그것을 잡는다).
         };
 
         /// <summary>탭 수. 상수로 적지 않고 <b>표에서 센다</b>.</summary>
@@ -144,13 +140,9 @@ namespace StickMate.Interaction
                                $"WCAG 2.2 2.5.8 하한 {UiChrome.MinTargetSizePoints}보다 작습니다.");
             }
 
-            // ★ [상점] 격자의 열 수는 폭에서 <b>파생</b>된다(숫자를 적지 않는다). 창이나 카드 폭이
-            //   움직여 이 값이 0이 되면 격자가 나눗셈에서 죽는다 — 그 전에 여기서 말한다.
-            if (ShopColumns < 1)
-            {
-                Debug.LogError($"[상점] 상품 격자의 열 수가 {ShopColumns}입니다 — 본문 폭 " +
-                               $"{PageContentWidth}pt에 카드 한 장({CardWidth}pt)도 들어가지 않습니다.");
-            }
+            // ★ 2026-09-29 DLC 폐지 R2 — 여기 있던 [상점] 격자 열 수 가드(ShopColumns < 1)를 지웠다.
+            //   그 상수는 함께 삭제된 상점 조각에 있었고, 격자 자체가 사라졌으므로 <b>지켜야 할
+            //   불변식이 없다</b>. 가드만 남기면 없는 상수를 참조해 컴파일이 깨진다.
         }
 
         /// <summary>이 탭의 정의. 표 밖이면 <b>조용히 넘어가지 않는다</b>.</summary>
@@ -215,12 +207,8 @@ namespace StickMate.Interaction
                 RefreshDetail();
             }
 
-            // [상점]으로 들어오는 동안 잔액이 올랐을 수 있다 — 들어오는 그 프레임에 다시 칠한다
-            // (탭이 꺼져 있는 동안에는 0.25초 주기 갱신도 이 페이지를 보지 않는다).
-            if (def.Page == TabPage.Shop) RefreshShop();
-
-            // [DLC]도 같은 이유다 — 다른 탭에서 팩 아이템을 갈아입고 오면 착용 칩이 옛 낱말로 남는다.
-            if (def.Page == TabPage.Dlc) RefreshDlc();
+            // ★ 2026-09-29 DLC 폐지 R2 — 여기 있던 [상점]·[DLC] 진입 갱신 두 줄을 지웠다.
+            //   남은 두 페이지 종류(카드·보관함)는 위 분기와 0.25초 주기 갱신이 모두 덮는다.
 
             Debug.Log($"[정보창] 탭 전환 -> [{def.Name}].");
         }
@@ -236,8 +224,8 @@ namespace StickMate.Interaction
             ApplyColumnVisibility();
             if (_sectionPage != null) _sectionPage.SetActive(cards);
             if (_inventoryPage != null) _inventoryPage.SetActive(page == TabPage.Inventory);
-            ApplyShopPage(page == TabPage.Shop);
-            ApplyDlcPage(page == TabPage.Dlc);
+            // ★ 2026-09-29 DLC 폐지 R2 — 여기 있던 ApplyShopPage/ApplyDlcPage 두 줄을 지웠다.
+            //   그 페이지 오브젝트는 이제 만들어지지도 않는다(<see cref="BuildUi"/>).
 
             // ★ 2026-09-06 — 여기 있던 <c>ready</c>(= 준비 중 탭인가) 분기와 <b>탭 밑줄</b>을 지웠다.
             //   네 탭이 전부 본문을 갖게 되면서 <c>ready</c>가 언제나 참이 됐고, 밑줄은 오직
@@ -267,7 +255,9 @@ namespace StickMate.Interaction
         // -------------------- 헤더 안의 탭 스트립 (§4-2) --------------------
 
         /// <summary>
-        /// 인계본 탭 스트립 — <b>칩 4개가 든 상자</b>다(옛 밑줄 탭에서 바뀌었다).
+        /// 인계본 탭 스트립 — <b><see cref="TabCount"/>개의 칩이 든 상자</b>다(옛 밑줄 탭에서 바뀌었다).
+        /// <para>★ 2026-09-29 — 여기 「칩 4개」라고 숫자를 적어 두었다가 DLC 폐지 R2가 표를 3칸으로
+        /// 줄이는 순간 <b>거짓</b>이 됐다. 개수는 <see cref="TabTable"/>에서만 나온다.</para>
         /// 상자는 <see cref="UiChrome.CardSurfaceMuted"/>에 <see cref="UiChrome.CardBorder"/> 테두리이고,
         /// 활성 탭만 <see cref="UiChrome.Accent"/> 면 + <see cref="UiChrome.OnAccentSolid"/> 글자다
         /// (대비 7.37 / 7.91 — §4-4 실측).

@@ -18,7 +18,9 @@ namespace StickMate.Interaction
     /// ============================================================================
     /// 헤더 66 + 본문 736. <b>옛 타이틀바 40은 헤더가 흡수했다</b>(L-2) — 제목이 두 벌이 되지 않고
     /// 세로 여유가 34 -> 74로 2.2배가 된다. 헤더는 왼쪽에 이름·<c>Lv.N</c>·EXP 진행선(L-5), 가운데
-    /// 탭 4개, 오른쪽에 보유 칩·동전 칩·[설정]·[✕]를 놓고 <b>그 자식 사각형을 뺀 나머지가 드래그 표면</b>이다.
+    /// 탭 <b>3개</b>, 오른쪽에 보유 칩·[설정]·[✕]를 놓고 <b>그 자식 사각형을 뺀 나머지가 드래그 표면</b>이다.
+    /// <para>★ 2026-09-29 DLC 폐지 R2 — 이 줄은 원래 「탭 4개 … 보유 칩·동전 칩」이었다. 탭 표가
+    /// 3칸이 되고 동전 칩이 떼어지면서 <b>둘 다 거짓</b>이 됐다. 탭 개수의 정본은 <c>TabTable</c>이다.</para>
     ///
     /// 본문은 <b>3컬럼</b>이다(인계본 구조 그대로, 폭만 카드 열 하나를 뺀 값):
     ///  · 컬럼 1 (306) — 프리뷰 무대 265×238 / 착용 슬롯 4행 / 선택 상세 카드(주 버튼 없음, L-9)
@@ -159,19 +161,27 @@ namespace StickMate.Interaction
         private const int HeaderChipRadius = 16;
         private const float HeaderChipY = 17f;
         private const float HeaderChipPadX = 12f;
-        private const float HeaderCoinChipWidth = 112f;
         private const float HeaderOwnedChipWidth = 100f;
         private const float HeaderSettingsChipWidth = 48f;
 
         // ★ 오른쪽 칩의 <b>순서가 곧 우선순위</b>다. 창이 좁아지면 왼쪽부터 접히므로
         //   (<see cref="SyncHeaderChips"/>), 왼쪽일수록 덜 중요한 것을 둔다:
-        //     [✕](절대 안 접는다) < [설정](설정창의 유일한 GUI 경로) < 동전 < 보유(순수 정보).
+        //     [✕](절대 안 접는다) < [설정](설정창의 유일한 GUI 경로) < 보유(순수 정보).
         //   인계본 그림은 「보유 · 동전 · ✕」 순이고, [설정]은 우리 것이라 인계본에 자리가 없다 —
         //   [✕] 옆에 붙이는 것은 옛 타이틀바에서 두 크롬 칩이 나란히 있던 배치 그대로다.
+        //
+        // ★★ 2026-09-29 DLC 폐지 R2 — <b>동전 칩을 화면에서 뗐다</b>(그 자리에 있던
+        //    HeaderCoinChipWidth = 112와 HeaderCoinChipInset도 함께 지웠다). 동전을 쓰는 표면
+        //    ([상점] 탭)이 사라졌으므로 잔액만 떠 있는 칩은 <b>쓸 곳 없는 숫자</b>가 된다.
+        //    ux-designer 도출값을 그대로 적용한다(숫자를 여기서 새로 정하지 않는다):
+        //      [✕]   24                    (불변)
+        //      [설정] 24 + 32 + 12 = 68     (불변)
+        //      보유   68 + 48 + 12 = 128    (기존 252에서 −124)
+        //      블록폭 128 + 100 = 228       (기존 352에서 −124)
+        //    −124는 동전 칩 폭 112 + 칩 간격 12이고, 두 파생값의 감소분이 <b>같아야</b> 맞다.
         private const float HeaderCloseChipInset = HeaderPadRight;
         private const float HeaderSettingsChipInset = HeaderCloseChipInset + HeaderChipHeight + UiChrome.Space3;
-        private const float HeaderCoinChipInset = HeaderSettingsChipInset + HeaderSettingsChipWidth + UiChrome.Space3;
-        private const float HeaderOwnedChipInset = HeaderCoinChipInset + HeaderCoinChipWidth + UiChrome.Space3;
+        private const float HeaderOwnedChipInset = HeaderSettingsChipInset + HeaderSettingsChipWidth + UiChrome.Space3;
         private const float HeaderChipBlockWidth = HeaderOwnedChipInset + HeaderOwnedChipWidth;
         private const float HeaderTabStripHeight = 34f;
         private const float HeaderTabHeight = 28f;
@@ -553,9 +563,11 @@ namespace StickMate.Interaction
         private RectTransform _closeRect;
         private RectTransform _settingsRect;   // 헤더의 작은 [설정] 칩 — 설정창의 주 진입점(36-11).
         private RectTransform _ownedChipRect;
-        private RectTransform _coinChipRect;
         private Text _ownedChipValue;
-        private Text _coinChipValue;
+        // ★ 2026-09-29 DLC 폐지 R2 — 여기 있던 _coinChipRect / _coinChipValue를 지웠다.
+        //   동전 칩의 배선은 넷이었고 <b>넷 다</b> 같은 커밋에서 걷었다: 생성(BuildHeader) ·
+        //   갱신(RefreshNumbers) · 접힘 판정(SyncHeaderChips) · 드래그 제외(TryBeginPanelDrag).
+        //   하나만 남기면 「칩이 없는데 그 자리를 잡아도 창이 안 끌린다」가 된다.
 
         /// <summary>드래그 손잡이 — <b>헤더 전체</b>(L-2로 타이틀바를 흡수했다). 실제 손잡이는
         /// 여기서 탭·칩·[✕]·[설정] 사각형을 뺀 나머지다(<see cref="TryBeginPanelDrag"/>).</summary>
@@ -974,12 +986,9 @@ namespace StickMate.Interaction
             _lastSurfaceTouchTime = Time.unscaledTime;
             _hoveredCard = -1;
             _pendingEquipCard = -1;
-            _pendingShopCard = -1;
-            _pendingDlcCard = -1;
-            ClearShopConfirm();        // 지난 세션의 「정말 살까요?」를 새로 연 창이 물려받지 않는다.
+            // ★ 2026-09-29 DLC 폐지 R2 — 여기 있던 _pendingShopCard/_pendingDlcCard 초기화와
+            //   ClearShopConfirm()·EndShopDrag()·EndDlcDrag() 호출을 지웠다(그 상태 자체가 사라졌다).
             EndGridDrag();
-            EndShopDrag();
-            EndDlcDrag();
             if (_canvas != null) _canvas.gameObject.SetActive(true);
             if (_clickBlocker != null) _clickBlocker.enabled = true;
             EndNameEdit(commit: false);
@@ -1000,12 +1009,8 @@ namespace StickMate.Interaction
             //   바뀌었다"가 된다(전체화면 자동 숨김도 이 경로로 들어온다).
             _windowDrag.Cancel();
             _pendingEquipCard = -1;
-            _pendingShopCard = -1;
-            _pendingDlcCard = -1;
-            ClearShopConfirm();        // 창을 닫는 것도 「가만히 두기」다 — 확정되지 않은 구매는 사라진다.
+            // ★ 2026-09-29 DLC 폐지 R2 — Open()과 같은 자리를 같이 걷었다(상점·DLC 보류 상태 전부).
             EndGridDrag();
-            EndShopDrag();
-            EndDlcDrag();
             EndNameEdit(commit: true);
             if (_canvas != null) _canvas.gameObject.SetActive(false);
             if (_clickBlocker != null) _clickBlocker.enabled = false;
@@ -1074,8 +1079,8 @@ namespace StickMate.Interaction
             if (_slowTimer < SlowRefreshInterval) return;
             _slowTimer = 0f;
             RefreshNumbers();
-            // [상점]만 보는 두 가지(확인 단계 만료 · 잔액 변화). 그 탭이 아니면 첫 줄에서 돌아간다.
-            if (Def(_tab).Page == TabPage.Shop) TickShopTab();
+            // ★ 2026-09-29 DLC 폐지 R2 — 여기 있던 [상점] 전용 틱(확인 단계 만료 · 잔액 변화 감시)을
+            //   지웠다. 0.25초 주기 경로에 남은 것은 RefreshNumbers() 하나다.
         }
 
         // ============================================================================
@@ -1101,7 +1106,7 @@ namespace StickMate.Interaction
             RefreshCards();     // 레벨이 오르면 잠긴 카드가 열린다.
             RefreshDetail();
             RefreshInventoryList();
-            RefreshShop();      // 레벨로 열린 상품은 [상점]에서 「보유 중」이 된다(같은 사실, 같은 프레임).
+            // ★ 2026-09-29 DLC 폐지 R2 — 여기 있던 RefreshShop() 한 줄을 지웠다([상점] 탭 삭제).
         }
 
         private void OnEquipmentChanged()
@@ -1110,9 +1115,7 @@ namespace StickMate.Interaction
             RefreshCards();
             RefreshDetail();
             RefreshInventoryList();
-            // ★ [DLC] 카드의 착용 칩도 같은 사실을 말한다 — 빼면 다른 탭에서 갈아입고 온 사람에게
-            //   「착용」이라고 적힌 칩이 이미 입고 있는 아이템 위에 남는다.
-            RefreshDlc();
+            // ★ 2026-09-29 DLC 폐지 R2 — 여기 있던 RefreshDlc() 한 줄을 지웠다([DLC] 탭 삭제).
         }
 
         private void RefreshAll()
@@ -1126,8 +1129,7 @@ namespace StickMate.Interaction
             RefreshCards();
             RefreshDetail();
             RefreshInventoryList();
-            RefreshShop();
-            RefreshDlc();
+            // ★ 2026-09-29 DLC 폐지 R2 — RefreshShop()·RefreshDlc() 두 줄을 지웠다.
             RefreshInkSwatches();
         }
 
@@ -1146,7 +1148,8 @@ namespace StickMate.Interaction
             //   둘 다 Listed* 로 간다 — 같은 술어, 같은 모집단. 숫자는 여기 적지 않는다.
             int ownedItems = ItemCatalog.ListedUnlockedEquipmentCount(_config);
             if (_ownedChipValue != null) _ownedChipValue.text = $"{ownedItems} / {ItemCatalog.ListedEquipmentCount}";
-            if (_coinChipValue != null) _coinChipValue.text = CurrencyModel.CoinBalance.ToString("N0");
+            // ★ 2026-09-29 DLC 폐지 R2 — 여기 있던 동전 칩 갱신 한 줄을 지웠다. 이 창은 이제 잔액을
+            //   읽지 않는다 — 읽어서 쓸 표면이 없다.
 
             float stress = StressGauge.CurrentLevel;
             SetBarFill(_stressFill, stress);
@@ -1438,8 +1441,9 @@ namespace StickMate.Interaction
             BuildColumn2(body);
             BuildSectionPage(body);
             BuildInventoryPage(body);
-            BuildShopPage(body);
-            BuildDlcPage(body);
+            // ★ 2026-09-29 DLC 폐지 R2 — BuildShopPage(body)·BuildDlcPage(body) 두 줄을 지웠다.
+            //   그래서 이 창의 RectMask2D는 <b>5개에서 3개</b>가 된다(Body · 컬럼2 뷰포트 · 카드
+            //   캐러셀 뷰포트). 아래 _masks는 계속 GetComponentsInChildren으로 세므로 숫자를 적지 않는다.
             ApplyTabVisibility();
 
             // 클릭관통 차단막 — 씬 루트에 둔다(캐릭터의 자식으로 두면 캐릭터가 걷거나 랙돌로 회전할 때
@@ -1458,8 +1462,8 @@ namespace StickMate.Interaction
         /// <summary>
         /// 헤더 66pt — <b>옛 타이틀바 40을 흡수했다</b>(L-2, §4-2).
         ///
-        /// <para>왼쪽부터 이름 · <c>Lv.N</c> · EXP 진행선(L-5) · 탭 4개, 오른쪽 끝에서 안쪽으로
-        /// [✕] · 동전 칩 · 보유 칩 · [설정]. <b>남는 자리가 드래그 표면</b>이다 —
+        /// <para>왼쪽부터 이름 · <c>Lv.N</c> · EXP 진행선(L-5) · 탭 <b>3개</b>, 오른쪽 끝에서 안쪽으로
+        /// [✕] · [설정] · 보유 칩. <b>남는 자리가 드래그 표면</b>이다 —
         /// <see cref="TryBeginPanelDrag"/>가 "헤더 안 + 알려진 자식 밖"으로 기계적으로 판정한다.</para>
         ///
         /// <para>★ 이름은 <b>읽기 전용</b>이다. 편집은 컬럼 2의 「표시」 블록 한 곳뿐 — 같은 값을 두
@@ -1552,14 +1556,10 @@ namespace StickMate.Interaction
             closeButton.transition = Selectable.Transition.None;
             closeButton.onClick.AddListener(() => { if (TryClaimAction("close")) Close("[✕] 클릭"); });
 
-            // 동전 칩 — 인계본 재화 칩. 값은 CurrencyModel이 실제로 들고 있는 잔액이다.
-            // ★ 2026-09-06부터 이 숫자에 <b>쓸 곳</b>이 생겼다([상점] 탭) — 라벨의 글리프는
-            //   상점 가격표와 같은 한 자리(CharacterInfoWindow.Shop.cs의 CoinGlyph)에서 온다.
-            _coinChipRect = BuildHeaderChip(barGo.transform, "CoinChip", HeaderCoinChipWidth,
-                HeaderCoinChipInset,
-                UiChrome.Flatten(UiChrome.AccentSurface, UiChrome.PanelSurface),
-                UiChrome.Flatten(UiChrome.AccentBorder, UiChrome.PanelSurface),
-                UiChrome.Accent, CoinChipLabel, out _coinChipValue);
+            // ★★ 2026-09-29 DLC 폐지 R2 — 여기 있던 <b>동전 칩</b>(「◎ 동전」 + 잔액)을 지웠다.
+            //   2026-09-06 주석은 「이 숫자에 쓸 곳이 생겼다([상점] 탭)」였고, 그 탭이 사라지면서
+            //   그 문장이 거짓이 됐다. 글리프 「◎」와 라벨 상수도 상점 조각과 함께 삭제됐다.
+            //   ★ 되살리지 마라 — 잔액만 보여 주는 칩은 «무엇을 할 수 있는가»를 하나도 말하지 않는다.
 
             // 보유 칩 — 잠금 해제한 장비 수 / 전체.
             _ownedChipRect = BuildHeaderChip(barGo.transform, "OwnedChip", HeaderOwnedChipWidth,

@@ -1531,9 +1531,6 @@ namespace StickMate.Tests.EditMode
                     "IMMDeviceEnumerator COM 참조 해제뿐. 남기는 시스템 상태가 없다 — 위와 같은 이유로 세션 종료 구간에 넣지 않는다."),
                 ["WindowsVirtualDesktopProbe.cs|" + QuittingKind] = (SessionEndDecision.QuitOnly,
                     "IVirtualDesktopManager COM 참조 해제뿐. 남기는 시스템 상태가 없다 — 위와 같은 이유로 세션 종료 구간에 넣지 않는다."),
-                ["SteamPackEntitlementSource.cs|" + QuittingKind] = (SessionEndDecision.QuitOnly,
-                    "SteamAPI.Shutdown(서드파티 네이티브). 세션 종료면 스팀 클라이언트도 함께 끝난다. 짧은 동기 구간에 서드파티 호출을 넣지 않는다. " +
-                    "현재 STICKMATE_STEAMWORKS_INSTALLED 미정의라 컴파일 대상도 아니다."),
                 ["CharacterProgressionDirector.cs|" + OnApplicationQuitKind] = (SessionEndDecision.OpenGap,
                     "종료 직전 마지막 저장(IsAnythingDirty면 CharacterSaveStore.Save). Unity가 로그오프·시스템 종료에서 OnApplicationQuit을 " +
                     "부르는지 실기 미확인이고, 안 부르면 주기 저장 사이의 진행(주석상 최대 1분)이 날아간다. Interaction/은 coder 소유라 " +

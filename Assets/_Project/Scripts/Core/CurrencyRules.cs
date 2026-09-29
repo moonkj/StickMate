@@ -3,13 +3,43 @@ using System;
 namespace StickMate.Core
 {
     /// <summary>
-    /// ★ 재화(동전) 경제의 <b>순수 규칙</b> — 상태를 하나도 들고 있지 않다.
+    /// ★ 하루 경계 · 등급 래칫 · 집중 모드 XP의 <b>순수 규칙</b> — 상태를 하나도 들고 있지 않다.
+    ///
+    /// ============================================================================
+    /// ★★★ 2026-09-29 DLC·재화 폐지 R5 — <b>동전 경제는 여기서 끝났다</b>
+    /// ============================================================================
+    /// 사용자 확정(DLC·재화 폐지, 1회 구매 전환)으로 <b>동전을 지급하거나 차감하는 산식을 전부
+    /// 걷어냈다</b>. 지운 것: 유휴 수급 1틱(<c>IdleTick</c>·<c>IdleTickResult</c>) · 유휴 요율
+    /// (<c>IdleCoinsPerMinute</c>) · [오늘 할일] 정액(<c>TodoDailyCoins</c>) · 첫 실행 시드
+    /// (<c>SeedCoins</c>·<c>CanGrantSeed</c>) · 집중 취소 지급(<c>FocusCancelCoins</c>·
+    /// <c>FocusCancelCoinsPerMinute</c>) · 창/천장 불변식(<c>WindowToCeilingRatio</c>).
+    ///
+    /// <para>★ <b>남긴 것과 그 이유</b> — 세 갈래뿐이고, 어느 것도 지갑을 늘리지 않는다:
+    /// <list type="number">
+    ///   <item><b>저장값 위생</b>(<see cref="ClampPotionsUsed"/> · <see cref="DailyCapCoins"/> ·
+    ///     <see cref="ClampGrantedCoins"/> · <see cref="ClampIdleWindowSeconds"/> ·
+    ///     <see cref="ClampCoinBalance"/> · <see cref="ClampArcheryCoinsToday"/>). 폐기한 세이브
+    ///     필드들은 <b>스키마에 그대로 남아 왕복만 한다</b>(스키마 버전 불변) — 그 왕복이 손상된
+    ///     파일에서도 같은 답을 내야 하므로 클램프는 남는다.
+    ///     <c>Tests/EditMode/DailyLimitClampAuditTests</c>가 이 셋의 실재를 매 실행 확인한다.</item>
+    ///   <item><b>활쏘기 정중앙 관문</b>(<see cref="ArcheryAwardCooldownSeconds"/> ·
+    ///     <see cref="ArcheryDailyCoinLimit"/>). ★ 동전이 아니라 <b>XP 보안</b>이 이 관문에 걸려 있다 —
+    ///     <c>CharacterProgressionDirector</c>가 이 판정 결과를 XP 게이트로 재사용하고, 그 재사용이
+    ///     2026-09-07 보안 결함(시간당 ~6,478XP 도배)의 수정 그 자체다. <b>지우면 그 구멍이 다시
+    ///     열린다.</b></item>
+    ///   <item><b>하루 경계 · 등급 · 집중 XP</b> — 원래부터 동전과 무관한 축이다.</item>
+    /// </list></para>
+    ///
+    /// <para>★ <b>죽은 잔재 표시</b>: <see cref="FocusCoinsPerMinute"/> ·
+    /// <see cref="FocusCompletionCoins"/> · 상점 가격 4종 + <see cref="PriceCoins"/>는
+    /// <b>호출부가 사라지는 중인 상점 화면 라운드와 병렬</b>이라 이번 라운드에 남겼다. 상점 표면이
+    /// 착지하면 프로덕션 호출부 0이 되고, 그때 다음 라운드가 지운다.</para>
     ///
     /// ============================================================================
     /// 이 파일이 존재하는 이유 — 「같은 사실이 두 곳에서 계산되지 않게」
     /// ============================================================================
-    /// 상한·요율·클램프·창 소비는 <b>세 곳</b>에서 필요해진다: 세이브 로드(정규화), 매 틱 수급,
-    /// 그리고 화면 표시(오늘 잔여). 그 셋이 각자 계산하면 그 순간 어긋나고, 어긋난 뒤에는
+    /// 상한·클램프·하루 경계는 <b>두 곳</b>에서 필요해진다: 세이브 로드(정규화)와 판정.
+    /// 그 둘이 각자 계산하면 그 순간 어긋나고, 어긋난 뒤에는
     /// "누가 옳은가"를 판정할 기준이 사라진다. 그래서 <b>숫자와 산식은 전부 여기 한 곳</b>에 있고
     /// <see cref="CurrencyModel"/>은 그 결과를 담기만 한다.
     ///
@@ -36,46 +66,28 @@ namespace StickMate.Core
     public static class CurrencyRules
     {
         // ====================================================================
-        // 요율 — §18-2 확정 상수표
+        // ★ 죽은 잔재 — 상점 표면 제거 라운드와 병렬이라 이번에 남겼다
         // ====================================================================
 
-        /// <summary>집중 모드 완주 시의 분당 동전. 사용자 최초 지시값.</summary>
+        /// <summary>집중 모드 완주 시의 분당 동전. 사용자 최초 지시값.
+        /// <para>★★ <b>2026-09-29 — 이 값으로 지갑이 늘어나는 프로덕션 경로는 0개다.</b>
+        /// <c>Interaction/FocusWatchDirector</c>의 완주 지급 호출을 같은 라운드에 뗐다.
+        /// 선언이 남아 있는 이유는 <see cref="FocusCompletionCoins"/>와 같다 — 상점 화면을 지우는
+        /// <b>병렬 라운드</b>와 같은 시각에 돌아 같은 커밋에서 지울 수 없었다. 그 라운드는 같은 날
+        /// 착지했고, <b>2026-09-29 실측으로 이 이름의 프로덕션 호출부는 0건</b>이다(남은 독자는
+        /// <see cref="FocusCompletionCoins"/> 하나이고 그것도 호출부가 0이다).
+        /// <b>새로 부르지 마라 — 다음 라운드가 둘을 함께 지운다.</b></para></summary>
         public const int FocusCoinsPerMinute = 24;
 
-        /// <summary>
-        /// 집중 모드 <b>중도 취소</b>의 분당 동전. 정본 §13-3 표(「불변」) — 완주의 <b>83.3%</b>.
-        ///
-        /// <para>★★ <b>선언 「형태」는 design-systems 확인 대기 중이다(값 20은 확정, 2026-09-06).</b>
-        /// 리터럴로 둘 것인지 <c>FocusCoinsPerMinute * 5 / 6</c>(= 정확히 20)으로 유도할 것인지만
-        /// 열려 있다. <b>어느 쪽이든 이 줄 하나만 바꾸면 되고 값도 동작도 바뀌지 않는다</b> —
-        /// <c>Tests/EditMode/FocusSessionPayoutTests</c>가 <c>FocusCancelCoinsPerMinute × 6 ==
-        /// FocusCoinsPerMinute × 5</c>(83.3%)를 매 실행 확인하므로, 두 형태 모두 같은 관문을 지난다.
-        /// <b>지금 리터럴을 고른 이유는 판단이 아니라 컴파일이다</b> — 선언이 없으면 트리 전체가
-        /// 빌드되지 않아 병렬 라운드가 전부 막힌다.</para>
-        ///
-        /// <para>참고로 <see cref="IdleCoinsPerMinute"/>가 유도식인 것은 §18-2가 <b>"집중의 정확히 1/2"</b>이라는
-        /// <b>관계</b>를 정본으로 정했기 때문이고, 여기는 §13-3이 <b>20이라는 숫자</b>를 정본으로 적었다 —
-        /// 그 차이가 형태를 가르는 축이다.</para>
-        ///
-        /// <para>스팸 이득이 없다는 것은 §22-12가 전수로 확인했다 — 어떤 취소 주기(0.5·0.99·1.0·1.5·5·60분)로도
-        /// 완주 시급(1,440)을 넘지 못하고, 1분 미만 취소는 <b>0동전</b>이라 바닥이 자동으로 막힌다.
-        /// 그래서 최소 보상 하한·세션 쿨다운·세션당 고정비는 <b>전부 기각됐다</b>(DS-8).
-        /// <b>되살리지 마라</b> — 격자별 최대 수입이 동일해서 방어할 이득이 없다.</para>
-        /// </summary>
-        public const int FocusCancelCoinsPerMinute = 20;
-
-        /// <summary>온라인 유휴의 분당 동전. ★ 숫자를 따로 적지 않고 <b>집중의 정확히 1/2</b>로
-        /// 유도한다 — §18-2가 정한 관계가 그것이고, 둘을 각각 적으면 한쪽만 바뀌는 날 관계가
-        /// 조용히 깨진다. 오프라인 요율은 <b>0</b>이고, 그건 상수가 아니라
-        /// "오프라인 수급 코드가 존재하지 않는다"로 표현된다(I-13′).</summary>
-        public const int IdleCoinsPerMinute = FocusCoinsPerMinute / 2;
-
-        /// <summary>유휴 초당 동전. 정수 나눗셈을 피하려고 double로 유도한다.</summary>
-        public const double IdleCoinsPerSecond = IdleCoinsPerMinute / 60.0;
-
         // ====================================================================
-        // 일일 상한 — §18-2 · T-14-5-b · T-D-9
+        // 일일 상한 — ★ 지금은 <b>저장값 위생 전용</b>이다 (T-14-5-b · T-D-9)
         // ====================================================================
+        //
+        // ★★ 2026-09-29 — 이 네 상수는 더 이상 «오늘 얼마까지 벌 수 있는가»를 정하지 않는다.
+        //   유휴 수급이 폐지됐으므로 이 값을 읽는 지급 코드가 존재하지 않는다. 남은 용도는 하나뿐이다:
+        //   폐기된 세이브 필드 <c>todayGrantedCoins</c>·<c>potionsUsedToday</c>를 <b>왕복시킬 때
+        //   손상 값을 다듬는 것</b>(<see cref="ClampGrantedCoins"/>). 스키마 버전을 올리지 않기
+        //   위해 필드를 남겼고, 남긴 필드는 위생을 지나야 한다 — 그 하나의 이유로 여기 있다.
 
         /// <summary>회복제를 하나도 안 썼을 때의 하루 유휴 상한. 사용자 확정 1.</summary>
         public const int BaseDailyCapCoins = 1500;
@@ -92,11 +104,14 @@ namespace StickMate.Core
         public const int HardCeilingCoins = BaseDailyCapCoins + PotionBonusCoins * MaxPotionsPerDay;
 
         // ====================================================================
-        // 8시간 창 — T-15
+        // 8시간 창 — T-15. ★ 여기도 지금은 <b>저장값 위생 전용</b>이다(위 문단과 같은 이유)
         // ====================================================================
 
         /// <summary>하루에 <b>동전이 실제로 지급될 수 있는</b> 분. 사용자 최초 지시(480분).
-        /// ★ "앱이 켜져 있던 분"이 아니다 — T-15-1-a.</summary>
+        /// ★ "앱이 켜져 있던 분"이 아니다 — T-15-1-a.
+        /// <para>★★ 2026-09-29 — 창을 갉는 코드가 사라졌다. 남은 용도는
+        /// <see cref="ClampIdleWindowSeconds"/> 하나이고, 그건 폐기 필드
+        /// <c>idleWindowUsedSeconds</c>의 왕복 위생이다.</para></summary>
         public const int IdleWindowCapMinutes = 480;
 
         /// <summary>창 상한(초). 저장 필드 <c>idleWindowUsedSeconds</c>의 상한이기도 하다.</summary>
@@ -117,15 +132,26 @@ namespace StickMate.Core
         // 채널별 카운터 — §20-1 D군
         // ====================================================================
 
-        /// <summary>[오늘 할일] 하루 1회 지급액(§0-2-6).</summary>
-        public const int TodoDailyCoins = 300;
+        // ★★ 2026-09-29 — [오늘 할일] 정액(<c>TodoDailyCoins</c> = 300)은 <b>삭제됐다</b>.
+        //    지급 경로(<c>Core/TodoListModel.PayTodoDailyCoins</c>)를 같은 라운드에 뗐다.
+        //    세이브 필드 <c>todoCoinPaidToday</c>는 스키마에 남아 왕복만 한다(버전 불변).
 
-        /// <summary>활쏘기 1회 상금.</summary>
+        /// <summary>활쏘기 정중앙 1회의 <b>관문 단위</b>. ★ 원래 「1회 상금 20동전」이었고,
+        /// 2026-09-29 이후 <b>지갑에 들어가지 않는다</b> — 아래 일일 총량과 짝이 되어
+        /// «오늘 몇 번까지 보상 판정을 통과시킬 것인가»만 정한다.
+        /// <para>★ <b>이름에 <c>Coins</c>가 남아 있는 것은 의도다</b>: 카운터가 실리는 세이브 필드가
+        /// <c>archeryCoinsToday</c>이고 그 이름은 <b>스키마 버전을 올리지 않기 위해 바꿀 수 없다</b>.
+        /// 상수 이름을 필드 이름과 갈라 놓으면 「같은 사실이 두 이름으로」 살게 된다 —
+        /// 그 대가로 여기 한 줄을 읽게 하는 쪽을 골랐다.</para></summary>
         public const int ArcheryCoinsPerAward = 20;
 
-        /// <summary>활쏘기 상금의 쿨다운(초). ★ <b>세이브에 남기지 않는다</b> — 벽시계 유닉스 초를
+        /// <summary>활쏘기 보상 판정의 쿨다운(초). ★ <b>세이브에 남기지 않는다</b> — 벽시계 유닉스 초를
         /// 저장하던 <c>lastArcheryCoinUnix</c>는 T-3-a 위반이라 폐기됐다(§20-3). 쿨다운은
-        /// 단조 시계로 세션 안에서만 산다.</summary>
+        /// 단조 시계로 세션 안에서만 산다.
+        /// <para>★★ <b>이 쿨다운은 이제 XP 방어선이다.</b> <c>CharacterProgressionDirector</c>가
+        /// <c>CurrencyModel.TryClaimArcheryAward</c>의 판정 결과를 XP 게이트로 재사용한다
+        /// (2026-09-07 보안 결함 수정 — 그 게이트가 없으면 연속 도배로 시간당 ~6,478XP).
+        /// 동전이 사라졌다고 이 값을 지우면 <b>그 구멍이 그대로 다시 열린다.</b></para></summary>
         public const double ArcheryAwardCooldownSeconds = 600.0;
 
         /// <summary>★ <b>임시값, U-41 확정 대기.</b> 활쏘기 하루 상금 횟수 상한.
@@ -152,8 +178,19 @@ namespace StickMate.Core
         public const int MaxStatTier = 3;
 
         // ====================================================================
-        // 상점 가격 — 등급에서 파생한다 (§21-10-a (4) · U-17 확정 §21-5)
+        // 상점 가격 — ★★ 2026-09-29 <b>죽은 잔재</b>다. 새로 부르지 마라.
         // ====================================================================
+        //
+        // ★★★ DLC·재화 폐지(사용자 확정)로 상점 자체가 없어졌다. 이 네 상수와 PriceCoins가
+        //   아직 선언으로 남아 있는 이유는 판단이 아니라 <b>병렬</b>이었다: 상점 화면
+        //   (<c>Interaction/CharacterInfoWindow.Shop</c>)을 지우는 라운드가 같은 시각에 돌고 있어
+        //   이 라운드가 지우면 어느 한쪽이 컴파일되지 않는 순간이 생겼다.
+        //   ⇒ 그 라운드는 <b>같은 날 착지했고</b>, 2026-09-29 실측으로 이 다섯의
+        //   <b>프로덕션 호출부는 0건</b>이다. <b>다음 라운드가 이 절 전체를 지운다</b>
+        //   (함께 지울 것: <c>Tests/EditMode/CurrencyRulesTests</c>의 §8 가격 테스트 3개).
+        //
+        // 아래 옛 근거 문단은 그대로 남긴다 — 「왜 여기였나」가 사라지면 다음 사람이 같은 자리를
+        // ItemCatalog로 다시 옮기려 든다.
         //
         // ★ <b>왜 여기(재화 규칙)이고 ItemCatalog가 아닌가</b> — 리더 판정 2026-09-05.
         //   <c>ItemCatalog</c>의 <c>SubStat</c>·<c>Theme</c>은 아이템마다 <b>선언</b>되는 원시 데이터인데
@@ -166,10 +203,12 @@ namespace StickMate.Core
         //   알게 되는 순간 "순수 규칙"이 아니게 되고(위 클래스 문서), 테스트가 <c>Resources.LoadAll</c>
         //   없이는 못 돌게 된다. 여기서 쓰는 <see cref="ItemRarity"/>는 <b>그 자체로 독립된 열거형</b>이다.
         //
-        // ★ 2026-09-06 — <b>배선이 붙었다</b>(이 자리에 «배선은 아직 없다»가 남아 있었다).
-        //   구매 플로우는 <c>CharacterInfoWindow.Shop</c>이고, 그것이 <c>TryPurchaseItem</c>을 부른다.
-        //   값을 미리 여기 한 곳에 못박아 둔 목적은 그대로 달성됐다 — 화면이 9,600을 손으로 적지
-        //   않고 <c>ShopPriceCoins</c>가 등급에서 파생시킨다(<c>ShopPurchaseFlowTests</c>가 그 항등을 잠근다).
+        // ★ 2026-09-29 — <b>대상 소멸(DLC 폐지)</b>. 2026-09-06에 여기 적혀 있던 배선
+        //   (상점 화면 → 구매 API → 이 가격 상수를 등급에서 파생시키는 테스트가 항등을 잠금)은
+        //   상점 화면·구매 경로 전체가 폐지되며 사라졌다. 구매 API는 R1 회귀 잠금
+        //   (<see cref="ItemOwnershipUnionTests"/>) 때문에 죽은 잔재로만 남아 있다
+        //   (<c>CurrencyModel.cs</c> 클래스 문서 참조) — 이 등급별 가격 상수를 실제로 읽는
+        //   프로덕션 호출부는 지금 0개다.
 
         /// <summary>일반 등급 아이템 가격.</summary>
         public const int CommonPriceCoins = 600;
@@ -208,42 +247,20 @@ namespace StickMate.Core
         }
 
         // ====================================================================
-        // 첫 실행 시드 — U-42 확정 (리더 승인 2026-09-05)
+        // 첫 실행 시드 — ★★★ 2026-09-29 <b>폐지</b>(DLC·재화 폐지, 사용자 확정)
         // ====================================================================
-
-        /// <summary>
-        /// ★ 첫 실행 시드 동전 — <b>U-42 확정값</b>(리더 승인 2026-09-05).
-        /// <b>기존 사용자를 포함한 전원에게 평생 1회</b> 지급한다.
-        ///
-        /// <para><b>왜 1,200인가</b>(<c>ECONOMY_SPEC</c> §0-6-4(a)): 0이면 <b>첫 50분간 상점 버튼이
-        /// 전부 회색</b>이라 1일차에 누를 것이 없다. 1,200은 §0-2-3이 구단위 60으로 만들려던 구조를
-        /// 그대로 옮긴 값이고(×20), 그 구조는 <i>"시드가 2개를 사고, 그날 수입이 3번째를 사고,
-        /// 잔액이 남아 「다음은 모아야 한다」가 즉시 성립한다"</i>이다.
-        /// ★ <b>1,800을 안 고른 이유</b>: 셋 다 살 수 있으면 첫 화면이 "고르는 화면"이 아니라
-        /// "전부 누르는 화면"이 된다.</para>
-        ///
-        /// <para>★★ <b>기존 사용자가 받을 수 있는 이유 — 이 값이 0이었던 덕분이다.</b>
-        /// <see cref="CanGrantSeed"/>가 <c>SeedCoins &gt; 0</c>을 요구했으므로 미확정 기간에
-        /// <b>지급도 안 했고 <c>seedGranted</c> 플래그도 안 세웠다</b>. 그래서 지금까지의 모든 세이브에서
-        /// 그 필드는 <c>false</c>이고, 이 상수가 켜지는 순간 전원이 첫 지급 대상이 된다.
-        /// <b>순서를 반대로 했으면(플래그 먼저) 되돌릴 수 없는 손실이었다</b> — 그 방어가
-        /// 실제로 값을 한 셈이므로 기록으로 남긴다.</para>
-        ///
-        /// <para>★ <b>design-systems 확인 요청 1건(값을 막지는 않는다)</b>: §0-6-4(a)의 유도표는
-        /// <i>"Lv.1에 살 수 있는 것은 외형 3슬롯 rank0 3종(각 600)뿐"</i>을 전제로 「2/3을 산다」를
-        /// 셌는데, <b>출하 카탈로그에서 그 3종은 <c>requiredLevel = 1</c>이라 이미 무상 보유</b>다
-        /// (<c>look.hair.cowlick</c>·<c>look.fx.none</c>·<c>look.pet.ball</c>, 골든 실측).
-        /// <see cref="ItemCatalogEntry.IsOwned"/>가 레벨 파생 ∪ 구매이므로 <b>Lv.1 7종 전부가 공짜</b>이고,
-        /// 시드로 처음 살 수 있는 것은 레벨 위쪽 아이템이다. <b>금액 자체는 리더가 별도 근거
-        /// (「최저가 600도 이틀 걸리는 첫 30분」)로 승인했으므로 그대로 간다</b> — 다만 유도표의
-        /// 분모가 출하 데이터와 다르다.</para>
-        /// </summary>
-        public const int SeedCoins = 1200;
-
-        /// <summary>시드를 지급할 수 있는 상태인가. <b>평생 1회</b>이고,
-        /// 금액이 0이면(과거 U-42 미확정 상태) 지급도 플래그 설정도 하지 않는다.</summary>
-        public static bool CanGrantSeed(bool seedAlreadyGranted)
-            => !seedAlreadyGranted && SeedCoins > 0;
+        //
+        // 지운 것: <c>SeedCoins</c>(1,200) · <c>CanGrantSeed(bool)</c> ·
+        //   <c>CurrencyModel.TryGrantSeedCoins()</c> ·
+        //   <c>Interaction/CharacterProgressionDirector.TryGrantSeedCoinsOnce()</c>와 그 Start 배선.
+        //
+        // ★ <b>세이브 필드 <c>seedGranted</c>는 지우지 않았다</b> — 스키마에 그대로 남아 왕복만 한다
+        //   (스키마 버전 불변). 그래서 이미 시드를 받은 사용자의 파일도, 못 받은 사용자의 파일도
+        //   읽기/쓰기가 어제와 한 비트도 다르지 않다.
+        //
+        // ★★ <b>되살리지 마라.</b> 옛 설계의 핵심은 「금액이 0인 동안에는 플래그를 세우지 않는다」였고
+        //   그 덕에 기존 사용자 전원이 아직 <c>seedGranted == false</c>다. 즉 <b>이 절을 다시 켜는
+        //   순간 전원에게 동전이 한 번 더 나간다</b> — 사용자가 닫은 문(재화)을 되돌리는 것이 된다.
 
         // ====================================================================
         // ★ 클램프 — "복구"가 아니라 "정규화"다 (T-14-5-b)
@@ -252,6 +269,15 @@ namespace StickMate.Core
         // 이건 방어이기 전에 <b>위생</b>이다 — 손상된 세이브·구버전 파일·`.writing` 잔해에도
         // 같은 코드가 같은 답을 낸다. 값을 거부하지 않으므로 "우리 버그를 치터보다 먼저 만나는"
         // 종류의 검사가 아니다(§4-1-4).
+
+        // ★★ 2026-09-29 — 아래 다섯 클램프(<c>ClampPotionsUsed</c>·<c>ClampGrantedCoins</c>·
+        //   <c>ClampIdleWindowSeconds</c>·<c>ClampArcheryCoinsToday</c>·<c>ClampCoinBalance</c>)의
+        //   <b>역할이 바뀌었다</b>. 원래는 「지급 경로가 상한을 넘지 못하게」였고, 지금은 그 지급 경로가
+        //   없으므로 «폐기된 세이브 필드를 무손실로 왕복시킬 때의 위생»만 남았다.
+        //   <b>지우지 마라</b>: 필드를 스키마에 남긴 채(버전 불변) 클램프를 떼면, 손상된 파일이나
+        //   손으로 편집한 파일에서 읽은 값이 그대로 다시 디스크로 나가고 —
+        //   <c>Tests/EditMode/DailyLimitClampAuditTests</c>가 그 순간 빨개진다(그 표가 세 값의 실재를
+        //   존재 단언으로 못박고 있다).
 
         /// <summary>오늘 쓴 회복제 개수. ★ I-12′의 유일한 방어선 — 9999를 써 넣어도 2에서 멈춘다.</summary>
         public static int ClampPotionsUsed(int potionsUsedToday)
@@ -277,9 +303,10 @@ namespace StickMate.Core
         /// <summary>
         /// 오늘 갉아 먹은 창(초). ★★ <b>NaN을 0이 아니라 상한으로 보낸다</b> — 다른 클램프와
         /// <b>방향이 반대</b>라 반드시 이유를 남긴다(T-15-1-c).
-        /// <para>0으로 보내면 <b>손상된 파일이 창을 리셋하는 무료 우회</b>가 된다. 상한으로 보내면
-        /// 손상 파일을 만난 정상 사용자가 그날 유휴 수급만 못 하고, 일일 상한 2,500은 그대로
-        /// 살아 있어 활쏘기·집중 모드·[오늘 할일]로 계속 벌 수 있다 — <b>잠기지 않는다</b>.</para>
+        /// <para>0으로 보내면 <b>손상된 파일이 창을 리셋하는 무료 우회</b>가 됐다 — 그것이 방향을 뒤집은
+        /// 원래 이유다. ★ 2026-09-29 이후 이 값으로 벌 수 있는 것이 없어서 두 방향 모두 사용자에게
+        /// 아무 결과를 내지 않지만, <b>방향을 되돌리지 마라</b>: 되돌리는 변경은 「무해하다」를 근거로
+        /// 삼게 되고, 그 근거는 재화가 다시 붙는 날 조용히 거짓이 된다.</para>
         /// </summary>
         public static double ClampIdleWindowSeconds(double usedSeconds)
         {
@@ -288,7 +315,9 @@ namespace StickMate.Core
             return usedSeconds > IdleWindowCapSeconds ? IdleWindowCapSeconds : usedSeconds;
         }
 
-        /// <summary>오늘 활쏘기로 받은 동전(§20-3-b — 위조 이득 상한이 곧 이 값이다).</summary>
+        /// <summary>오늘 활쏘기 보상 판정을 통과한 누계(§20-3-b). ★ 2026-09-29 이후 <b>동전이 아니라
+        /// 관문 단위</b>다 — 단위와 필드 이름(<c>archeryCoinsToday</c>)은 스키마 불변을 위해 그대로 두고,
+        /// 이 값이 상한에 닿으면 <b>XP도 함께</b> 멈춘다(<see cref="ArcheryAwardCooldownSeconds"/> 문서).</summary>
         public static int ClampArcheryCoinsToday(int coins)
             => coins < 0 ? 0 : coins > ArcheryDailyCoinLimit ? ArcheryDailyCoinLimit : coins;
 
@@ -351,125 +380,54 @@ namespace StickMate.Core
                && (nowMonotonic - lastRefillMonotonic) >= MinRefillGapSeconds;
 
         // ====================================================================
-        // 유휴 수급 1틱 — 순수 함수 (T-15-1-b)
+        // 유휴 수급 1틱 — ★★★ 2026-09-29 <b>폐지</b>(DLC·재화 폐지, 사용자 확정)
         // ====================================================================
+        //
+        // 지운 것: <c>IdleTickResult</c>(구조체) · <c>IdleTick(...)</c>(7인자 순수 함수) ·
+        //   요율 <c>IdleCoinsPerMinute</c>/<c>IdleCoinsPerSecond</c> ·
+        //   불변식 <c>MinWindowToCeilingRatio</c>/<c>WindowToCeilingRatio</c> ·
+        //   모델 진입점 <c>CurrencyModel.TickIdleIncome</c> ·
+        //   배선 <c>Interaction/CharacterProgressionDirector.AccrueIdleIncome</c>와 그 정지/요약 로그.
+        //
+        // ★ <b>여기 있던 설계 지식 중 하나는 폐기하지 않는다</b>(다른 축에서 계속 참이다):
+        //   «같은 1초가 두 번 지급되지 않는다»(I-7′)는 <b>분기를 하나로 두어 구조로</b> 만들었다.
+        //   집중 모드 XP가 지금 그 형태를 쓰고 있다 — 유휴 버킷이 없어졌으므로 그쪽은 이제
+        //   자동으로 참이지만, 두 번째 적립 축을 새로 만드는 라운드는 이 문장을 먼저 읽어라.
+        //
+        // ★★ <b>되살리지 마라.</b> 되살리려면 요율·상한·창·소수분 carry가 한꺼번에 돌아오고,
+        //   그 넷 중 하나만 빠져도 「하루 종일 켜 뒀는데 0원」 또는 「정상 동작이 5초에 한 번
+        //   고장으로 신고되는」 형태가 된다(둘 다 이 저장소에서 실제로 났다).
 
-        /// <summary>한 틱의 결과. 세 값을 한꺼번에 돌려주는 이유는 <b>세 값이 한 사건</b>이기
-        /// 때문이다 — 지급액만 받고 창 소비를 따로 계산하면 그 둘이 어긋난다.</summary>
-        public readonly struct IdleTickResult
-        {
-            /// <summary>이번 틱에 지급할 동전(정수).</summary>
-            public readonly int CoinsGranted;
-
-            /// <summary>이번 틱이 창에서 갉아먹은 초. ★ <b>지급이 일어난 초만</b> 값이 있다
-            /// (T-15-1-a·T-D-13) — 상한에 걸려 한 푼도 못 버는 동안 창이 닳으면
-            /// 그건 방어가 아니라 버그다.</summary>
-            public readonly double WindowSecondsSpent;
-
-            /// <summary>다음 틱으로 넘기는 <b>동전 소수분</b>.
-            /// <para>★ 이게 없으면 60fps에서 한 틱의 수입이 0.0033동전이라 <c>(int)</c> 절단으로
-            /// <b>전부 사라진다</b>(하루 종일 켜 둬도 0원). 같은 계열의 실제 사고를 security T-3-c가
-            /// "적게 쌓이는 방향의 공정성 문제"로 적어 뒀다. 소수분은 세이브에 넣지 않는다 —
-            /// 최대 1동전 미만이라 잃어도 무해하고, 필드 하나를 아끼는 쪽이 낫다.</para></summary>
-            public readonly double CarryCoins;
-
-            public IdleTickResult(int coinsGranted, double windowSecondsSpent, double carryCoins)
-            {
-                CoinsGranted = coinsGranted;
-                WindowSecondsSpent = windowSecondsSpent;
-                CarryCoins = carryCoins;
-            }
-        }
+        // ====================================================================
+        // ★ 집중 모드 <b>동전</b> 지급 — 2026-09-29 현재 <b>죽은 잔재 1개</b>만 남았다
+        // ====================================================================
+        //
+        // 지운 것: <c>FocusCancelCoins</c> · <c>FocusCancelCoinsPerMinute</c>(취소 요율 20) ·
+        //   모델 진입점 <c>CurrencyModel.PayFocusCancelCoins</c> ·
+        //   배선 <c>FocusWatchDirector.PayCancelCoins</c>/<c>PayCompletionCoins</c>(둘 다).
+        //
+        // ★ 남은 <see cref="FocusCompletionCoins"/>는 <b>프로덕션 호출부가 0건</b>이다(2026-09-29 실측).
+        //   상점 표면을 지우는 병렬 라운드와 같은 시각에 돌아 같은 커밋에서 지울 수 없었다 —
+        //   그 라운드는 같은 날 착지했으므로 <b>다음 라운드가 이 함수와 FocusCoinsPerMinute를 함께 지운다.</b>
+        //
+        // ★★ 옛 설계 지식 보존(되살릴 때가 아니라 <b>비슷한 계단을 새로 만들 때</b> 읽어라):
+        //   완주는 «초를 그대로 읽고 마지막에 floor», 취소는 «분을 먼저 floor한 뒤 요율»이었고
+        //   그 비대칭은 <b>의도</b>였다. 취소를 「보상에 floor」로 읽으면 지급이 초 단위로 연속이 되어
+        //   사용자가 취소 타이밍을 초 단위로 재는 동기가 생긴다 — 분 격자에 계단으로 묶으면 0이다.
+        //   집중 모드 <b>XP</b>(아래 절)가 지금 그 비대칭을 그대로 쓰고 있다.
 
         /// <summary>
-        /// 유휴 수급 한 틱. <b>세 축이 전부 여기서 만난다</b>(T-15-3): ① 일일 상한 ② (호출부의)
-        /// 리필 간격 ③ 8시간 창.
-        ///
-        /// <para><paramref name="deltaSeconds"/>는 <b>단조 시계 델타</b>여야 한다
-        /// (<c>Time.realtimeSinceStartupAsDouble</c>의 차). 벽시계 델타를 넣으면 T-3-a가 깨진다 —
-        /// 이 함수는 그것을 알 수 없으므로 호출부의 책임이고,
-        /// <c>Tests/EditMode/DailyLimitClampAuditTests</c>가 소스 스캔으로 그 책임을 잠근다.</para>
-        ///
-        /// <para><paramref name="idleWindowCapSeconds"/>를 인자로 받는 이유는 <b>네거티브 컨트롤</b>
-        /// 때문이다 — <see cref="double.PositiveInfinity"/>를 넣어 "창이 없으면 실제로 얼마까지
-        /// 새는가"를 재야 5,760이 창의 성과임이 증명된다(T-15-7 B).</para>
-        /// </summary>
-        public static IdleTickResult IdleTick(
-            double deltaSeconds,
-            bool isIdleEarning,
-            int todayGrantedCoins,
-            int potionsUsedToday,
-            double idleWindowUsedSeconds,
-            double idleWindowCapSeconds,
-            double carryCoins)
-        {
-            if (double.IsNaN(carryCoins) || carryCoins < 0.0) carryCoins = 0.0;
-
-            // 비유휴/역행/NaN 델타 — 아무 일도 없다. 창도 안 갉는다(T-15-1-a).
-            if (!isIdleEarning || !(deltaSeconds > 0.0))
-                return new IdleTickResult(0, 0.0, carryCoins);
-
-            int room = DailyCapCoins(potionsUsedToday) - todayGrantedCoins;
-            if (room <= 0) return new IdleTickResult(0, 0.0, carryCoins);
-
-            double windowRoom = idleWindowCapSeconds - ClampIdleWindowSeconds(idleWindowUsedSeconds);
-            if (!(windowRoom > 0.0)) return new IdleTickResult(0, 0.0, carryCoins);
-
-            double paidSeconds = deltaSeconds < windowRoom ? deltaSeconds : windowRoom;
-            double earned = carryCoins + paidSeconds * IdleCoinsPerSecond;
-
-            int pay = (int)Math.Floor(earned);
-            double carry = earned - pay;
-
-            // 상한에 걸리면 남은 소수분은 버린다 — 오늘은 어차피 못 받는다.
-            if (pay >= room) { pay = room; carry = 0.0; }
-
-            return new IdleTickResult(pay, paidSeconds, carry);
-        }
-
-        // ====================================================================
-        // ★★ 집중 모드 지급 — floor의 「위치」가 완주와 취소에서 다르다 (DS-5′ · §22-12)
-        // ====================================================================
-        //
-        //   완주 = floor( FocusCoinsPerMinute × 경과초 / 60 )        ← 초를 그대로 읽고 <b>마지막에</b> floor
-        //   취소 = floor( 경과초 / 60 ) × FocusCancelCoinsPerMinute  ← <b>분을 먼저</b> floor한 뒤 요율
-        //
-        // ★ <b>이 비대칭은 의도다. 「통일」하지 마라.</b> 90.5초에서 취소가 20이냐 30이냐로 갈리고
-        //   (1.5배), 149.9초에서 40이냐 49냐로 갈린다(§22-12 표). 취소를 「동전에 floor」로 읽으면
-        //   지급이 <b>초 단위로 연속</b>이 되어 사용자가 취소 타이밍을 초 단위로 재는 동기가 생긴다.
-        //   분 격자에 계단으로 묶으면 그 동기가 0이다. 완주 쪽이 반대로 초를 그대로 읽는 이유는
-        //   데모 90초·최소 60초 같은 <b>격자 밖 진입로를 같은 식 하나로</b> 처리하기 위해서다.
-        //   <c>Tests/EditMode/FocusSessionPayoutTests</c>가 기각된 해석 (나)를 대조로 함께 못박는다.
-        //
-        // ★ <b>여기가 집중 지급 산식의 유일한 출처다.</b> 화면(「[그만두기]가 지금 얼마인지 말한다」,
-        //   UX_WIDGETS R2-5)도 이 함수를 부른다 — 미리보기가 자기 식을 따로 쓰면 그 순간
-        //   "표시된 금액과 실제 지급액이 다르다"가 되고, 그건 우리가 반복해 당한 형태다
-        //   (같은 사실이 두 곳에서 계산되면 그게 다음 버그다 — CLAUDE.md).
-
-        /// <summary>
-        /// 집중 세션 <b>완주</b> 지급액. <paramref name="sessionDurationSeconds"/>는
-        /// <b>명목 세션 길이</b>(<c>분 × 60</c>)를 넣는다 — 누적 계측한 경과 시간이 아니다.
-        /// <para>그래야 25분 완주가 <b>정확히 600</b>이 된다. 계측값을 넣으면 부동소수 누적 오차로
-        /// 1499.9997초가 들어와 <c>floor</c>가 599를 내고, 사용자는 그것을 「1동전 떼먹혔다」로 읽는다.
-        /// 명목값은 <c>minutes × 60f</c>를 <c>/60</c>이 <b>정확히</b> 복원한다(float 가수 24비트,
-        /// m ≤ 60이라 오차 0 — §22-11).</para>
+        /// 집중 세션 <b>완주</b> 동전. ★★ <b>2026-09-29 — 죽은 잔재다(프로덕션 호출부 0).</b>
+        /// <see cref="FocusCoinsPerMinute"/>와 같은 이유로 선언만 남겼다. <b>새로 부르지 마라.</b>
+        /// <para><paramref name="sessionDurationSeconds"/>는 <b>명목 세션 길이</b>(<c>분 × 60</c>)였다 —
+        /// 누적 계측값이 아니다. 계측값을 넣으면 부동소수 누적 오차로 1499.9997초가 들어와
+        /// <c>floor</c>가 599를 내고, 사용자는 그것을 「1동전 떼먹혔다」로 읽는다. 같은 계약이
+        /// <see cref="FocusCompletionXp"/>에 <b>그대로 살아 있으므로</b> 이 문단은 여전히 값을 한다.</para>
         /// </summary>
         public static int FocusCompletionCoins(double sessionDurationSeconds)
         {
             if (double.IsNaN(sessionDurationSeconds) || !(sessionDurationSeconds > 0.0)) return 0;
             return ToFlooredNonNegativeInt(Math.Floor(FocusCoinsPerMinute * sessionDurationSeconds / 60.0));
-        }
-
-        /// <summary>
-        /// 집중 세션 <b>중도 취소</b> 지급액. <paramref name="elapsedSeconds"/>는
-        /// <c>명목 세션 길이 − 잔여 초</c>다.
-        /// <para><b>1분 미만은 0동전</b>이고, 그것은 별도 규칙이 아니라 <c>floor(경과/60) = 0</c>에서
-        /// <b>저절로</b> 나온다. 하한 규칙을 따로 넣지 마라 — 넣는 순간 두 곳이 같은 사실을 말하게 된다.</para>
-        /// </summary>
-        public static int FocusCancelCoins(double elapsedSeconds)
-        {
-            if (double.IsNaN(elapsedSeconds) || !(elapsedSeconds > 0.0)) return 0;
-            return ToFlooredNonNegativeInt(Math.Floor(elapsedSeconds / 60.0) * FocusCancelCoinsPerMinute);
         }
 
         /// <summary>이미 <c>floor</c>된 실수값을 <c>int</c>로 안전하게 내린다. 이름이 <c>…Coin…</c>이
@@ -515,10 +473,10 @@ namespace StickMate.Core
 
         /// <summary>
         /// 집중 모드 <b>중도 취소</b>의 분당 XP. <c>FocusXpPerMinute × 5 / 6</c>(= 정확히 5)로
-        /// 유도할 수도 있었지만 <see cref="FocusCancelCoinsPerMinute"/>가 겪은 것과 같은 이유로
-        /// 리터럴을 쓴다 — 그 문서가 이미 적어 둔 "선언 형태는 판단이 아니라 컴파일" 그대로다.
-        /// <para>취소:완주 = 5:6 = 코인의 20:24와 <b>정확히 같은 비율</b>(design-systems §15-2) —
-        /// "완주가 항상 이득"이라는 메시지를 코인·XP 어느 쪽으로 봐도 하나로 통일하기 위해서다.
+        /// 유도할 수도 있었지만 리터럴을 쓴다 — "선언 형태는 판단이 아니라 컴파일"이다.
+        /// <para>취소:완주 = 5:6이고, 폐지된 코인 쪽 요율(20:24)도 <b>같은 비율</b>이었다
+        /// (design-systems §15-2) — "완주가 항상 이득"이라는 메시지를 한 벌로 통일한 결과다.
+        /// ★ 코인 요율이 사라졌으므로 지금 그 비율을 지키는 곳은 <b>여기 하나</b>다.
         /// <c>Tests</c>가 <c>FocusCancelXpPerMinute × 6 == FocusXpPerMinute × 5</c>를 항등식으로 고정한다.</para>
         /// </summary>
         public const int FocusCancelXpPerMinute = 5;
@@ -548,8 +506,8 @@ namespace StickMate.Core
         }
 
         /// <summary>
-        /// 집중 세션 <b>중도 취소</b> XP. <paramref name="elapsedSeconds"/>는 <see cref="FocusCancelCoins"/>와
-        /// 같은 계약이다(명목 세션 길이 − 잔여 초). <b>1분 미만은 0XP</b>이고, 코인과 같은 이유로
+        /// 집중 세션 <b>중도 취소</b> XP. <paramref name="elapsedSeconds"/>는 <c>명목 세션 길이 − 잔여 초</c>다
+        /// (폐지된 코인 쪽 <c>FocusCancelCoins</c>와 같은 계약이었다). <b>1분 미만은 0XP</b>이고,
         /// 별도 하한 규칙을 두지 않는다 — <c>floor(경과/60) = 0</c>에서 저절로 나온다.
         /// </summary>
         public static int FocusCancelXp(double elapsedSeconds)
@@ -564,18 +522,16 @@ namespace StickMate.Core
             => xp < 0 ? 0 : xp > FocusXpDailyCap ? FocusXpDailyCap : xp;
 
         // ====================================================================
-        // 불변식 검산 — 이 파일 안에서 닫힌다 (T-D-15)
+        // 불변식 검산 — ★★★ 2026-09-29 <b>폐지</b>(T-D-15의 전제가 사라졌다)
         // ====================================================================
-
-        /// <summary>
-        /// T-D-15: 창(480분 × 12동전)이 하루 절대 천장(2,500)의 <b>1.5배 이상</b>이어야 한다.
-        /// 이 비율이 1.0 아래로 내려가면 <b>창이 정상 사용자에게 먼저 걸려</b> 오탐이 기본값이 된다.
-        /// 요율·상한·창 중 하나만 바꿔도 이 비율이 움직이므로, 테스트가 매 실행 확인한다.
-        /// </summary>
-        public const double MinWindowToCeilingRatio = 1.5;
-
-        /// <summary>현재 상수 조합의 창/천장 비율. 지금은 5,760 / 2,500 = 2.304배다.</summary>
-        public static double WindowToCeilingRatio =>
-            (IdleWindowCapMinutes * (double)IdleCoinsPerMinute) / HardCeilingCoins;
+        //
+        // 지운 것: <c>MinWindowToCeilingRatio</c>(1.5) · <c>WindowToCeilingRatio</c>(실측 2.304배).
+        //
+        // ★ <b>왜 「값이 여전히 참이니 남겨 두자」가 아닌가.</b> 이 비율의 분자는 유휴 요율
+        //   (<c>IdleWindowCapMinutes × IdleCoinsPerMinute</c>)이었고 그 요율이 삭제됐다. 분자를
+        //   1로 바꾸거나 상수를 남겨 두면 <b>비율이 참인 채로 아무것도 보장하지 않는</b> 계기가 된다 —
+        //   이 저장소가 반복해 당한 「죽은 프로브가 산 프로브와 똑같이 생겼다」 그 형태다.
+        //   T-D-15가 지키려던 것(「창이 정상 사용자에게 먼저 걸려 오탐이 기본값이 되는」 일)은
+        //   창을 갉는 코드가 없어서 <b>구조적으로</b> 일어나지 않는다.
     }
 }

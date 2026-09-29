@@ -800,15 +800,29 @@ namespace StickMate.EditorTools
 
         // ============================================================================
         // ★ 스팀 엔타이틀먼트 배선 게이트 (security S-14, 2026-09-05)
+        //   ★★ 2026-09-28 뜻 반전 — 「배선이 불완전하면 중단」 → 「배선이 감지되면 중단」
+        //      (사용자 결정: DLC 폐지. 판정 정본은 docs/security/STEAMWORKS_ENTITLEMENT_EXCEPTION.md 머리 배너)
         // ============================================================================
 
-        /// <summary>스팀 DLC 엔타이틀먼트 어댑터의 <b>소스 경로</b>. 이 파일이 있으면 "팩을 팔 준비를
-        /// 하는 중"이라는 뜻이고, 그때부터 아래 게이트가 의미를 갖는다.</summary>
+        /// <summary>
+        /// ~~스팀 DLC 엔타이틀먼트 어댑터의 <b>소스 경로</b>. 이 파일이 있으면 "팩을 팔 준비를
+        /// 하는 중"이라는 뜻이고, 그때부터 아래 게이트가 의미를 갖는다.~~
+        ///
+        /// <para>★★ <b>2026-09-28 사용자 결정(DLC 폐지) — 이 상수의 뜻을 반전했다.</b>
+        /// 「있어야 하는 경로」에서 <b>「있으면 안 되는 경로」</b>로 바뀌었다. 상수 <b>이름은 유지</b>한다 —
+        /// <c>SteamBuildSymbolGateAuditTests</c>가 이 이름으로 상수를 리플렉션으로 집어 오고,
+        /// 이름을 바꾸면 그 감사가 「상수가 없습니다」로 빨개져 <b>무엇이 바뀌었는지</b>를 가린다.</para>
+        ///
+        /// <para>왜 경로 상수를 지우지 않는가: 지우면 「어댑터가 되살아났는지」를 아무도 재지 않는다.
+        /// 폐지는 파일을 지우는 것으로 끝나지 않고 <b>다시 생기지 않는지 재는 것</b>까지다.</para>
+        /// </summary>
         public const string SteamEntitlementAdapterAssetPath =
             "Assets/_Project/Scripts/Store/SteamPackEntitlementSource.cs";
 
-        /// <summary>어댑터의 실제 구현을 켜는 스크립팅 정의 심볼. 이 이름은
-        /// <see cref="SteamEntitlementAdapterAssetPath"/> 안의 <c>#if</c>와 같은 값이어야 한다.</summary>
+        /// <summary>~~어댑터의 실제 구현을 켜는 스크립팅 정의 심볼. 이 이름은
+        /// <see cref="SteamEntitlementAdapterAssetPath"/> 안의 <c>#if</c>와 같은 값이어야 한다.~~
+        /// <para>★★ 2026-09-28 — 켤 대상(어댑터)이 삭제됐다. 이 심볼은 이제 <b>켜져 있으면 안 되는 이름</b>이고,
+        /// 이 상수는 그것을 재는 계기다. Player Settings에 이 심볼이 들어오면 위 게이트가 빌드를 멈춘다.</para></summary>
         public const string SteamworksInstalledDefineSymbol = "STICKMATE_STEAMWORKS_INSTALLED";
 
         /// <summary>Steamworks.NET 패키지가 실제로 설치돼 있는지 <b>타입 하나로</b> 묻는 프로브.
@@ -844,53 +858,53 @@ namespace StickMate.EditorTools
         /// 내리게 된다. 여기서는 <b>멈추고 사람에게 묻는다.</b></para>
         ///
         /// <para>순수 함수다 — 디스크도 <see cref="PlayerSettings"/>도 읽지 않는다. 사실 수집은
-        /// <see cref="VerifySteamEntitlementWiring"/>가 하고, 판정은 여기서만 한다. 그래야 8가지 조합을
-        /// 테스트가 전부 먹여 볼 수 있다(<c>SteamBuildSymbolGateAuditTests</c>).</para>
+        /// <see cref="VerifySteamEntitlementWiring"/>가 하고, 판정은 여기서만 한다. 그래야 ~~8가지~~
+        /// 모든 조합을 테스트가 전부 먹여 볼 수 있다(<c>SteamBuildSymbolGateAuditTests</c>).</para>
+        ///
+        /// ============================================================================
+        /// ★★★ 2026-09-28 사용자 결정(DLC 폐지) — <b>이 게이트의 뜻을 뒤집었다</b>
+        /// ============================================================================
+        /// <para>옛 뜻: 「스팀 배선이 <b>불완전</b>하면 중단」(3중단 조건 / 8조합).
+        /// 새 뜻: <b>「스팀 배선이 조금이라도 감지되면 중단」</b>(1중단 조건 / 4조합).</para>
+        ///
+        /// <para><b>왜 지우지 않고 뒤집는가</b>: 폐지는 「지금 없다」가 아니라 <b>「다시 생기지 않는다」</b>여야
+        /// 한다. 게이트를 지우면 다음 라운드가 어댑터를 되살려도 빌드가 조용히 성공하고, 그 순간
+        /// 사용자 결정이 코드에서 사라진다. 여기서는 <b>멈추고 사람에게 묻는다</b> — 방향만 반대가 됐다.</para>
+        ///
+        /// <para><b>세 사실 중 하나라도 참이면 중단한다</b>: 어댑터 파일이 있다 / Steamworks 패키지가
+        /// 로드돼 있다 / 정의 심볼이 켜져 있다. 셋 다 거짓일 때만 통과한다 —
+        /// 그게 2026-09-28 이후의 정상 상태다.</para>
+        ///
+        /// <para>★ <b>심볼을 자동으로 끄는 안은 채택하지 않았다</b>(옛 판정의 대칭). 그건 컴파일 결과를
+        /// 바꾸는 전역 프로젝트 설정 변경이고, 「스팀을 파는가」라는 <b>사용자 결정</b>을 빌드 스크립트가
+        /// 대신 되돌리게 된다.</para>
         /// </summary>
         /// <returns>빌드를 중단해야 하면 true.</returns>
         public static bool ShouldStopBuild(bool adapterPresent, bool packagePresent, bool symbolDefined,
             out string reason)
         {
-            if (symbolDefined && !packagePresent)
+            // ★ 1중단 조건 — 셋 중 하나라도 참이면 멈춘다. 어느 것이 걸렸는지 전부 적는다
+            //   (하나만 적으면 「고쳤는데 또 멈춘다」가 반복된다).
+            if (adapterPresent || packagePresent || symbolDefined)
             {
-                reason = $"{SteamworksInstalledDefineSymbol} 심볼은 켜져 있는데 Steamworks 패키지" +
-                    $"({SteamworksProbeTypeFullName})가 없습니다. 이 상태의 빌드는 어댑터에서 " +
-                    "컴파일이 깨지거나, 깨지지 않더라도 무엇이 켜졌는지 아무도 설명할 수 없습니다.";
+                var found = new List<string>();
+                if (adapterPresent) found.Add($"어댑터 파일이 있습니다: {SteamEntitlementAdapterAssetPath}");
+                if (packagePresent) found.Add($"Steamworks 패키지가 로드돼 있습니다({SteamworksProbeTypeFullName})");
+                if (symbolDefined) found.Add($"{SteamworksInstalledDefineSymbol} 정의 심볼이 켜져 있습니다");
+
+                reason = "스팀 엔타이틀먼트 배선이 감지됐습니다 — 2026-09-28 사용자 결정으로 DLC가 " +
+                    "폐지되어 이 저장소에는 스팀 배선이 있어서는 안 됩니다:\n    · " +
+                    string.Join("\n    · ", found) + "\n" +
+                    "  되살리려면 순서가 있습니다: ① 사용자 결정(DLC 폐지를 뒤집는 것) → ② 리더 재결재 → " +
+                    "③ docs/security/STEAMWORKS_ENTITLEMENT_EXCEPTION.md 예외 재개 → " +
+                    "④ EntitlementFailOpenAuditTests의 승인 표 · OfflineFirstNetworkAuditTests의 전송 계열 " +
+                    "명부 · 라인 단위 재검증 감사를 같은 diff에서 되살리기. " +
+                    "이 게이트를 지워서 통과시키는 것은 ①~④ 전부를 건너뛰는 것입니다.";
                 return true;
             }
 
-            if (symbolDefined && !adapterPresent)
-            {
-                reason = $"{SteamworksInstalledDefineSymbol} 심볼이 켜져 있는데 어댑터 파일이 없습니다: " +
-                    $"{SteamEntitlementAdapterAssetPath}. 심볼이 켤 대상이 사라졌다는 뜻입니다.";
-                return true;
-            }
-
-            if (adapterPresent && packagePresent && !symbolDefined)
-            {
-                reason = $"Steamworks 패키지가 설치돼 있고 어댑터({SteamEntitlementAdapterAssetPath})도 " +
-                    $"있는데 {SteamworksInstalledDefineSymbol} 심볼이 없습니다. 이대로 구우면 " +
-                    "엔타이틀먼트 조회가 전부 Unknown이 되어 산 사람과 안 산 사람이 똑같아 보이고, " +
-                    "산출물만 봐서는 그 사실을 알 수 없습니다(security S-14). " +
-                    "Player Settings > Scripting Define Symbols에 심볼을 추가한 뒤 다시 구우십시오.";
-                return true;
-            }
-
-            if (adapterPresent && packagePresent)
-            {
-                reason = "스팀 엔타이틀먼트 배선 완료 — 어댑터 · 패키지 · 심볼 셋 다 있습니다.";
-            }
-            else if (adapterPresent)
-            {
-                reason = "스팀 엔타이틀먼트 어댑터는 있으나 Steamworks 패키지가 없어 휴면 상태입니다 " +
-                    "— 이 빌드에서 팩 소유 판정은 전부 Unknown입니다(설계상 의도된 상태). " +
-                    "팩을 실제로 팔기 시작하면 패키지 설치 + 심볼 추가가 필요하고, " +
-                    "패키지만 깔고 심볼을 빠뜨리면 이 게이트가 빌드를 멈춥니다.";
-            }
-            else
-            {
-                reason = "스팀 엔타이틀먼트 어댑터가 없습니다 — 이 빌드는 스팀 배선과 무관합니다.";
-            }
+            reason = "스팀 배선 없음 — 어댑터 · 패키지 · 심볼 셋 다 없습니다(2026-09-28 폐지 후의 정상 상태). " +
+                "이 빌드는 스팀과 무관합니다.";
             return false;
         }
 
@@ -905,6 +919,10 @@ namespace StickMate.EditorTools
         ///     똑같이 적용</b>된다. 즉 이 <c>#if</c>는 곧 플레이어가 받을 값이며, 문서화가 흔들리는
         ///     API 시그니처를 추측하지 않아도 된다(이 파일의 <c>macOSXArchitecture</c> 선례).</item>
         /// </list>
+        ///
+        /// <para>★ 2026-09-28 — <b>모으는 사실 셋과 모으는 방법은 한 줄도 바뀌지 않았다.</b> 바뀐 것은
+        /// <see cref="ShouldStopBuild"/>가 그 셋을 읽는 방향뿐이다. 계기를 그대로 두고 판정만 뒤집는 편이,
+        /// 계기까지 새로 만들어 「무엇이 바뀌었는지」를 흐리는 것보다 안전하다.</para>
         /// </summary>
         /// <returns>빌드를 계속해도 되면 true.</returns>
         public static bool VerifySteamEntitlementWiring()
@@ -915,12 +933,12 @@ namespace StickMate.EditorTools
 
             if (ShouldStopBuild(adapterPresent, packagePresent, SteamworksSymbolDefined, out string reason))
             {
-                Debug.LogError("[BuildStandalone] 스팀 엔타이틀먼트 배선 검사 실패 — 빌드를 만들지 않습니다.\n  " +
+                Debug.LogError("[BuildStandalone] 스팀 배선 감지 검사 실패 — 빌드를 만들지 않습니다.\n  " +
                     reason + $"\n  (어댑터={adapterPresent} 패키지={packagePresent} 심볼={SteamworksSymbolDefined})");
                 return false;
             }
 
-            Debug.Log("[BuildStandalone] 스팀 엔타이틀먼트 배선 검사 — " + reason +
+            Debug.Log("[BuildStandalone] 스팀 배선 감지 검사 — " + reason +
                 $"\n  (어댑터={adapterPresent} 패키지={packagePresent} 심볼={SteamworksSymbolDefined})");
             return true;
         }

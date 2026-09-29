@@ -6,8 +6,22 @@ using StickMate.Core;
 namespace StickMate.Tests.EditMode
 {
     /// <summary>
-    /// ★ <b>유휴 수급 · [오늘 할일] 보상 · H-8 등급 눈금이 실제로 배선됐는가</b>
+    /// ★ 원래 제목: <b>유휴 수급 · [오늘 할일] 보상 · H-8 등급 눈금이 실제로 배선됐는가</b>
     /// — 2026-09-06 배선 라운드 3차(재화 획득 경로의 마지막 세 개).
+    ///
+    /// ============================================================================
+    /// ★★★ 2026-09-29 DLC·재화 폐지 R5 — <b>앞 둘의 방향이 뒤집혔다</b>
+    /// ============================================================================
+    /// 유휴 수급과 [오늘 할일] 동전이 폐지됐다. 이 파일은 그 둘에 대해 원래
+    /// <b>「배선이 실재하는가」(존재 단언)</b>를 재고 있었는데, 지금은
+    /// <b>「배선이 0건인가」(부재 단언)</b>를 잰다 — <b>되살아나는 것을 막는 잠금</b>이다.
+    ///
+    /// <para>★★ 부재 단언은 썩으면 <b>조용히 초록</b>이 된다(CLAUDE.md). 그래서 두 부재 단언 모두
+    /// <b>같은 실행·같은 스캐너</b>로 잡히는 양성 대조를 옆에 붙였다: 살아 있는 세 번째 축
+    /// (등급 눈금 기록)이 실제로 <b>잡히는지</b>를 함께 확인한다. 그 양성 대조가 0건이면 이 실행의
+    /// 부재 판정은 전부 무효다.</para>
+    ///
+    /// <para>★ 등급 눈금(§1-③·§4)은 <b>재화와 무관한 축</b>이라 한 줄도 바뀌지 않았다.</para>
     ///
     /// ============================================================================
     /// 착수 직전 실측 — 셋 다 프로덕션 호출부 <b>0건</b>이었다
@@ -54,11 +68,19 @@ namespace StickMate.Tests.EditMode
         // 니들 — nameof로 조립한다(오타가 컴파일 에러가 되도록)
         // ====================================================================
 
-        private static string IdleModelCall =>
-            nameof(CurrencyModel) + "." + nameof(CurrencyModel.TickIdleIncome) + "(";
+        // ★★ 2026-09-29 — 폐지된 두 진입점의 니들은 <c>nameof</c>로 조립할 수 없다(멤버가 없다).
+        //   그래서 <b>문자열 리터럴</b>로 둔다. 니들이 죽는 것을 막는 장치는 두 가지다:
+        //   ① 이 두 이름이 <b>되살아나면</b> 아래 부재 단언이 빨개진다(그것이 이 니들의 목적이다).
+        //   ② 스캐너 자체가 죽는 경우는 <see cref="TierRecorderCall"/> 양성 대조가 잡는다
+        //      (같은 실행·같은 함수로 «잡히는 이름»이 하나 이상 있음을 증명한다).
+        //   ⚠ 「소스에 문자열이 없다 = 죽은 니들」은 틀린 판정법이다(CLAUDE.md) — 여기서는
+        //      부재가 <b>기대값</b>이고, 계기의 생존은 ②로 따로 잰다.
 
-        private static string TodoModelCall =>
-            nameof(CurrencyModel) + "." + nameof(CurrencyModel.TryPayTodoDailyCoins) + "(";
+        /// <summary>폐지된 유휴 수급 진입점. <b>다시 나타나면 빨개진다.</b></summary>
+        private const string RetiredIdleModelCall = "CurrencyModel.TickIdleIncome(";
+
+        /// <summary>폐지된 [오늘 할일] 정액 진입점. <b>다시 나타나면 빨개진다.</b></summary>
+        private const string RetiredTodoModelCall = "CurrencyModel.TryPayTodoDailyCoins(";
 
         private static string TierRecorderCall =>
             nameof(EquipmentStatRules) + "." + nameof(EquipmentStatRules.RecordTierHighWaterMarks) + "(";
@@ -67,13 +89,10 @@ namespace StickMate.Tests.EditMode
         /// 이름이 바뀌면 <see cref="집중세션_판정의_단일출처가_실재한다"/>가 먼저 빨개진다.</summary>
         private const string FocusSessionFlag = "IsSessionActive";
 
-        private const string DirectorFileSuffix = "/CharacterProgressionDirector.cs";
         private const string StatsDirectorFileSuffix = "/CharacterStatsDirector.cs";
         private const string TodoModelFileSuffix = "/TodoListModel.cs";
         private const string TierRulesFileSuffix = "/EquipmentStatRules.cs";
 
-        private const string IdleMemberHeader = "void AccrueIdleIncome()";
-        private const string UpdateHeader = "void Update()";
         private const string ToggleHeader = "void ToggleComplete(";
 
         // ====================================================================
@@ -115,37 +134,46 @@ namespace StickMate.Tests.EditMode
         // §1. 배선 실재 — <b>이 라운드 전에는 셋 다 빨갛다</b>
         // ====================================================================
 
+        /// <summary>
+        /// ★★★ 2026-09-29 — <b>방향이 뒤집힌 테스트</b>. 옛 이름은
+        /// <c>프로덕션에_유휴_수급_호출부가_실재한다</c>였고 「0건이면 실패」였다.
+        /// 지금은 <b>0건이 기대값</b>이다(DLC·재화 폐지, 사용자 확정).
+        /// <para>★ 부재 단언이 조용히 썩지 않도록 <b>같은 실행에서 같은 스캐너</b>로 양성 대조를 잡는다:
+        /// 살아 있는 축(등급 눈금 기록)이 실제로 걸리는지 확인한다. 그쪽이 0이면 스캐너가 죽은 것이고,
+        /// 이 실행의 «0건» 판정은 <b>측정이 아니라 침묵</b>이다.</para>
+        /// </summary>
         [Test]
-        public void 프로덕션에_유휴_수급_호출부가_실재한다()
+        public void 폐지된_유휴_수급과_할일_정액은_프로덕션에_되살아나지_않았다()
         {
-            List<string> callers = FilesCalling(All(), IdleModelCall);
-            Assert.IsNotEmpty(callers,
-                $"{LogPrefix} 「{IdleModelCall}」를 부르는 프로덕션 파일이 0건입니다. " +
-                "하루 종일 켜 두는 앱의 <b>주 수급원</b>이라, 이게 없으면 사용자는 집중 모드를 " +
-                "돌리지 않는 한 동전을 한 푼도 못 법니다.");
+            List<CurrencySeedAndArcheryWiringTests.Source> all = All();
 
-            Assert.AreEqual(1, callers.Count,
-                $"{LogPrefix} 유휴 수급 호출부가 {callers.Count}곳입니다(1이어야 합니다): " +
-                string.Join(", ", callers) + ". 둘이 되면 <b>같은 1초가 두 번</b> 지급됩니다 — " +
-                "각자 자기 기산점을 들고 있기 때문입니다.");
+            // ── 양성 대조 먼저. 이게 0이면 아래 두 «0건»은 아무 뜻이 없다.
+            var outside = new List<CurrencySeedAndArcheryWiringTests.Source>();
+            foreach (CurrencySeedAndArcheryWiringTests.Source s in all)
+            {
+                if (s.Path.EndsWith(TierRulesFileSuffix, StringComparison.Ordinal)) continue;
+                outside.Add(s);
+            }
+            List<string> liveCallers = FilesCalling(outside, TierRecorderCall);
+            Assert.IsNotEmpty(liveCallers,
+                $"{LogPrefix} 양성 대조 실패 — 같은 스캐너가 살아 있는 호출부(「{TierRecorderCall}」)도 " +
+                "찾지 못했습니다. 스캐너가 눈이 멀었으므로 아래 «0건»은 측정이 아닙니다.");
 
-            TestContext.WriteLine($"{LogPrefix} 유휴 호출부: {string.Join(", ", callers)}");
-        }
+            // ── 부재 단언 둘.
+            List<string> idleCallers = FilesCalling(all, RetiredIdleModelCall);
+            Assert.IsEmpty(idleCallers,
+                $"{LogPrefix} 폐지된 유휴 수급(「{RetiredIdleModelCall}」)이 되살아났습니다: " +
+                string.Join(", ", idleCallers) + ". 사용자가 닫은 문(재화)을 다시 여는 변경입니다 — " +
+                "되살리려면 요율·일일 상한·8시간 창·소수분 캐리가 한꺼번에 돌아와야 하고, " +
+                "그 넷 중 하나만 빠져도 「하루 종일 켜 뒀는데 0원」이 됩니다.");
 
-        [Test]
-        public void 프로덕션에_할일_보상_호출부가_실재한다()
-        {
-            List<string> callers = FilesCalling(All(), TodoModelCall);
-            Assert.IsNotEmpty(callers,
-                $"{LogPrefix} 「{TodoModelCall}」를 부르는 프로덕션 파일이 0건입니다. " +
-                "할일을 체크해도 동전이 나오지 않습니다.");
+            List<string> todoCallers = FilesCalling(all, RetiredTodoModelCall);
+            Assert.IsEmpty(todoCallers,
+                $"{LogPrefix} 폐지된 [오늘 할일] 정액(「{RetiredTodoModelCall}」)이 되살아났습니다: " +
+                string.Join(", ", todoCallers) + ".");
 
-            Assert.AreEqual(1, callers.Count,
-                $"{LogPrefix} 할일 보상 호출부가 {callers.Count}곳입니다(1이어야 합니다): " +
-                string.Join(", ", callers) + ". «완료했다»의 정의가 여러 벌이 되면 " +
-                "어떤 진입점으로 체크했는지에 따라 보상이 갈립니다.");
-
-            TestContext.WriteLine($"{LogPrefix} 할일 호출부: {string.Join(", ", callers)}");
+            TestContext.WriteLine($"{LogPrefix} 폐지 확인 — 유휴 0건 / 할일 0건. " +
+                $"양성 대조(등급 눈금) {liveCallers.Count}건: {string.Join(", ", liveCallers)}");
         }
 
         [Test]
@@ -176,55 +204,25 @@ namespace StickMate.Tests.EditMode
         }
 
         // ====================================================================
-        // §2. ★★ 유휴 — 기산점 전진이 조건 없는가 (I-7′의 소스 쪽 자)
+        // §2. 유휴 기산점 순서 — ★★★ 2026-09-29 <b>절 전체 폐지</b>
         // ====================================================================
+        //
+        // 뗀 것: <c>유휴_기산점은_집중세션_판정보다_먼저_조건없이_전진한다</c> ·
+        //   <c>유휴_수급은_Update에서_롤오버_뒤에_돈다</c>. 배선(<c>AccrueIdleIncome</c>)이 삭제됐다.
+        //
+        // ★★ <b>그 두 테스트가 지키던 사실은 다음 적립 축에서 그대로 필요하다</b>:
+        //   ① 기산점 전진은 <b>어떤 분기보다도 앞</b>에서, 조건 없이 일어나야 한다 — 「집중 중에는
+        //      전진하지 않는」 코드로 미끄러지면 세션이 끝난 첫 틱이 세션 길이 전체를 한 번 더 지급한다.
+        //   ② 지급 배선은 <b>날짜 롤오버 뒤</b>에 놓아야 한다 — 앞에 놓으면 자정 직후 한 틱이 어제
+        //      카운터를 보고 상한에 걸려 조용히 0을 준다(화면에도 로그에도 흔적이 없다).
+        //   ③ 그 배선의 시간 입력은 <b>단조 시계 두 시점의 차</b>다(프레임 델타·벽시계 금지).
+        //   ③은 지금도 <c>DailyLimitClampAuditTests</c>가 살아 있는 진입점들에 대해 계속 잰다.
 
-        [Test]
-        public void 유휴_기산점은_집중세션_판정보다_먼저_조건없이_전진한다()
-        {
-            string code = CodeOfOrFail(All(), DirectorFileSuffix);
-            string region = RegionOrFail(code, IdleMemberHeader);
-
-            // ── 구역 추출기 음성 대조: 다른 멤버를 삼키지 않았는가.
-            Assert.Less(region.IndexOf("CharacterSaveStore.Load(", StringComparison.Ordinal), 0,
-                $"{LogPrefix} 유휴 구역에 Start의 내용이 섞였습니다 — 구역이 너무 넓어 순서 판정이 무효입니다.");
-
-            int assignAt = region.IndexOf("_idleTickMonotonic =", StringComparison.Ordinal);
-            Assert.GreaterOrEqual(assignAt, 0,
-                $"{LogPrefix} 유휴 구역에서 기산점 대입(_idleTickMonotonic =)을 찾지 못했습니다. " +
-                "필드 이름이 바뀌었다면 이 니들을 갱신하고, 대입 자체가 사라졌다면 " +
-                "<b>델타가 영원히 커지는</b> 상태입니다.");
-
-            int flagAt = region.IndexOf(FocusSessionFlag, StringComparison.Ordinal);
-            Assert.GreaterOrEqual(flagAt, 0,
-                $"{LogPrefix} 유휴 구역에서 「{FocusSessionFlag}」를 찾지 못했습니다 — " +
-                "집중 세션 판정을 다른 방법으로(그림자 상태로) 하고 있다는 뜻입니다. " +
-                "CurrencyModel.TickIdleIncome 문서가 명시적으로 금지한 형태입니다.");
-
-            int callAt = region.IndexOf(IdleModelCall, StringComparison.Ordinal);
-            Assert.GreaterOrEqual(callAt, 0, $"{LogPrefix} 유휴 구역에 모델 호출이 없습니다.");
-
-            Assert.Less(assignAt, flagAt,
-                $"{LogPrefix} ★ 기산점 전진이 집중 세션 판정 <b>뒤</b>에 있습니다. " +
-                "그 순서면 «집중 중에는 전진하지 않는» 코드로 쉽게 미끄러지고, 그러면 세션이 끝난 " +
-                "첫 틱이 세션 길이 전체를 유휴로 <b>한 번 더</b> 지급합니다(I-7′ 파손). " +
-                "전진은 어떤 분기보다도 앞에서, 조건 없이 일어나야 합니다.");
-            Assert.Less(assignAt, callAt,
-                $"{LogPrefix} 기산점 전진이 모델 호출보다 뒤에 있습니다 — 같은 파손입니다.");
-
-            // ── 프레임 델타 금지(이 배선의 시간 입력은 단조 시계 두 시점의 차다).
-            foreach (string forbidden in new[] { "deltaTime", "Time.time", "DateTime.Now", "DateTime.UtcNow" })
-            {
-                Assert.Less(region.IndexOf(forbidden, StringComparison.Ordinal), 0,
-                    $"{LogPrefix} 유휴 구역에 「{forbidden}」이 들어왔습니다. " +
-                    "프레임 델타는 기계가 잠든 시간을 잃고(T-3-c), 벽시계는 시계를 앞으로 돌리는 것만으로 " +
-                    "동전을 만듭니다(T-3-a).");
-            }
-        }
-
-        /// <summary>★ 위 테스트의 니들 <see cref="FocusSessionFlag"/>가 <b>실재를 가리키는지</b>
-        /// 같은 실행에서 대조한다. 이 니들이 썩으면 위 단언은 «찾지 못했습니다»로 빨개지므로 조용히
-        /// 초록이 되지는 않지만, <b>어느 쪽이 썩었는지</b>는 이 테스트가 가른다.</summary>
+        /// <summary>★ <see cref="FocusSessionFlag"/>가 <b>실재를 가리키는지</b> 확인한다.
+        /// <para>★ 2026-09-29 — 이 니들의 원래 독자(유휴 배선)는 사라졌지만 니들 자체는
+        /// <b>살아 있는 계약</b>을 가리킨다: 세션 보상 셋(완주·중도 취소·긴급정지)이 전부 이 플래그를
+        /// 재진입 관문으로 쓰고, <c>IsSessionActive = false</c> <b>앞</b>에서 지급해야 한다는 규약
+        /// (DS-5′)이 그것에 걸려 있다. 이름이 바뀌면 그 규약을 재는 테스트들이 조용히 무력화된다.</para></summary>
         [Test]
         public void 집중세션_판정의_단일출처가_실재한다()
         {
@@ -240,50 +238,37 @@ namespace StickMate.Tests.EditMode
             }
             Assert.IsNotEmpty(owners,
                 $"{LogPrefix} 「{FocusSessionFlag}」를 선언한 FocusWatchDirector를 찾지 못했습니다 — " +
-                "유휴 배선이 읽는 값이 실재하지 않거나 이름이 바뀌었습니다.");
-        }
-
-        [Test]
-        public void 유휴_수급은_Update에서_롤오버_뒤에_돈다()
-        {
-            string code = CodeOfOrFail(All(), DirectorFileSuffix);
-            string region = RegionOrFail(code, UpdateHeader);
-
-            int rolloverAt = region.IndexOf("TickIfDue(", StringComparison.Ordinal);
-            int idleAt = region.IndexOf("AccrueIdleIncome(", StringComparison.Ordinal);
-
-            Assert.GreaterOrEqual(rolloverAt, 0, $"{LogPrefix} Update에서 롤오버 틱을 찾지 못했습니다.");
-            Assert.GreaterOrEqual(idleAt, 0,
-                $"{LogPrefix} Update에서 유휴 틱 호출을 찾지 못했습니다 — 유휴 수급은 매 틱 돌아야 합니다.");
-            Assert.Less(rolloverAt, idleAt,
-                $"{LogPrefix} 유휴 수급이 날짜 롤오버 <b>앞</b>에서 돕니다. 자정 직후 한 틱이 어제 " +
-                "카운터를 보고, 상한에 걸려 조용히 0동전을 줍니다 — 화면에도 로그에도 흔적이 없습니다.");
+                "세션 보상 세 경로의 재진입 관문이 실재하지 않거나 이름이 바뀌었습니다.");
         }
 
         // ====================================================================
-        // §3. 할일 — 지급이 «완료 전이» 한 자리에만 있는가
+        // §3. 할일 — ★ 방향이 뒤집혔다: 지급이 <b>어디에도</b> 없는가
         // ====================================================================
 
+        /// <summary>
+        /// ★★★ 2026-09-29 — 옛 이름은 <c>할일_보상은_UI가_아니라_완료_전이_한_곳에서_나간다</c>였고
+        /// 「완료 전이 안에 지급이 있어야 한다」를 재고 있었다. 지금은 <b>지급이 없어야 한다</b>.
+        /// <para>★ 양성 대조를 그대로 살렸다(그쪽이 원래 이 테스트의 강점이었다): UI 두 곳이 실제로
+        /// <c>ToggleComplete</c>를 부르는지 먼저 확인한다 — 안 부르면 아래 부재 판정이
+        /// 「이 파일은 할일과 무관하다」와 구분되지 않는다.</para>
+        /// </summary>
         [Test]
-        public void 할일_보상은_UI가_아니라_완료_전이_한_곳에서_나간다()
+        public void 할일_완료_전이와_UI_어디에도_동전_지급이_없다()
         {
             List<CurrencySeedAndArcheryWiringTests.Source> all = All();
 
-            // (1) 지급은 모델의 완료 전이 안에 있다.
+            // (1) 완료 전이 구역 자체는 살아 있다(앵커 생존 확인 = 양성 대조).
             string todoCode = CodeOfOrFail(all, TodoModelFileSuffix);
             string region = RegionOrFail(todoCode, ToggleHeader);
-
             Assert.GreaterOrEqual(region.IndexOf("Completed", StringComparison.Ordinal), 0,
-                $"{LogPrefix} 완료 전이 구역에서 Completed 갱신을 찾지 못했습니다 — 구역 앵커가 낡았습니다.");
-            Assert.GreaterOrEqual(
-                region.IndexOf("PayTodoDailyCoins(", StringComparison.Ordinal),
-                0,
-                $"{LogPrefix} 완료 전이(ToggleComplete) 안에서 보상 지급을 찾지 못했습니다. " +
-                "지급이 다른 자리로 가면 «완료했다»의 정의가 두 벌이 됩니다.");
+                $"{LogPrefix} 완료 전이 구역에서 Completed 갱신을 찾지 못했습니다 — 구역 앵커가 낡았습니다. " +
+                "이 상태의 «지급 없음»은 측정이 아닙니다.");
 
-            // (2) ★ 부재 단언 — UI 두 곳은 지급을 <b>직접</b> 하지 않는다.
-            //     부재 단언은 썩으면 조용히 초록이 되므로, 바로 아래에 <b>같은 파일 같은 스캐너</b>로
-            //     잡히는 양성 대조를 붙인다(그 파일들이 완료 전이를 실제로 부르는가).
+            Assert.Less(region.IndexOf("PayTodoDailyCoins(", StringComparison.Ordinal), 0,
+                $"{LogPrefix} 완료 전이(ToggleComplete)에 [오늘 할일] 동전 지급이 되살아났습니다 — " +
+                "사용자가 닫은 문(재화)을 다시 여는 변경입니다.");
+
+            // (2) UI 두 곳도 마찬가지. 각 파일마다 양성 대조(ToggleComplete 호출)를 먼저 확인한다.
             string toggleCall = nameof(TodoListModel) + "." + nameof(TodoListModel.ToggleComplete) + "(";
             foreach (string uiSuffix in new[] { "/TodoPostItWidget.cs", "/TodoBoardPopover.cs" })
             {
@@ -291,13 +276,11 @@ namespace StickMate.Tests.EditMode
 
                 Assert.GreaterOrEqual(uiCode.IndexOf(toggleCall, StringComparison.Ordinal), 0,
                     $"{LogPrefix} {uiSuffix}가 「{toggleCall}」를 부르지 않습니다 — " +
-                    "아래 «지급을 직접 하지 않는다»가 «이 파일은 할일과 무관하다»와 구분되지 않습니다. " +
+                    "아래 부재 판정이 «이 파일은 할일과 무관하다»와 구분되지 않습니다. " +
                     "양성 대조가 죽었으므로 이 실행의 부재 판정은 무효입니다.");
 
-                Assert.Less(uiCode.IndexOf(TodoModelCall, StringComparison.Ordinal), 0,
-                    $"{LogPrefix} {uiSuffix}가 「{TodoModelCall}」를 직접 부릅니다. " +
-                    "지급처가 UI로 번지면 진입점마다 규칙이 갈리고, 새 진입점이 생기는 날 " +
-                    "그 길로 체크한 사용자만 조용히 보상을 못 받습니다.");
+                Assert.Less(uiCode.IndexOf(RetiredTodoModelCall, StringComparison.Ordinal), 0,
+                    $"{LogPrefix} {uiSuffix}가 폐지된 「{RetiredTodoModelCall}」를 부릅니다.");
             }
         }
 
@@ -358,138 +341,58 @@ namespace StickMate.Tests.EditMode
         }
 
         /// <summary>
-        /// ★ <b>완료 전이 → 지급</b>이 실제로 이어지는가, 그리고 하루 1회인가.
-        /// <para>여기서는 UI를 거치지 않고 <see cref="TodoListModel.ToggleComplete"/>를 직접 부른다 —
-        /// 그것이 <b>두 UI가 공유하는 유일한 진입점</b>이고, 이 라운드가 지급을 얹은 자리다.</para>
+        /// ★★★ 2026-09-29 — 옛 이름은 <c>할일을_체크하면_동전이_들어오고_같은_날_두_번째부터는_0이다</c>였다.
+        /// 지금 잠그는 것은 <b>반대</b>다: 할일을 체크해도 <b>지갑이 한 푼도 움직이지 않는다</b>.
+        /// <para>★ 양성 대조를 반드시 함께 둔다 — 토글이 실제로 <b>완료 상태를 바꾸는지</b>. 그것 없이
+        /// 「잔액 불변」만 재면 <b>토글 자체가 고장난 상태</b>와 구분되지 않는다(실패한 측정과 성공한
+        /// 측정이 똑같이 생긴다 — 이 저장소의 거짓 통과 형태 #4).</para>
+        /// <para>★ [오늘 할일] <b>기능</b>은 폐지 대상이 아니다. 사라진 것은 완료에 붙던 동전뿐이다.</para>
         /// </summary>
         [Test]
-        public void 할일을_체크하면_동전이_들어오고_같은_날_두_번째부터는_0이다()
+        public void 할일을_체크해도_지갑이_움직이지_않는다()
         {
             const int SoftCap = 99;
             TodoListModel.Add("첫 번째 할일", SoftCap);
             TodoListModel.Add("두 번째 할일", SoftCap);
             Assert.AreEqual(2, TodoListModel.ActiveItems.Count, "전제 — 할일 두 개가 있어야 합니다.");
 
+            // 파일에서 읽은 잔액을 깔아 둔다 — 0에서 재면 「줄어들었는가」를 볼 수 없다.
+            CurrencyModel.RestoreFromSave(new CurrencySaveState { CoinBalance = 1234 });
             int before = CurrencyModel.CoinBalance;
+            Assert.Greater(before, 0, "전제 — 잔액이 0이면 이 단언이 약해집니다.");
             Assert.IsFalse(CurrencyModel.TodoCoinPaidToday, "전제 — 오늘 아직 안 받았어야 합니다.");
 
-            // ── 첫 완료 → 지급
-            TodoListModel.ToggleComplete(TodoListModel.ActiveItems[0].Id);
-            Assert.AreEqual(before + CurrencyRules.TodoDailyCoins, CurrencyModel.CoinBalance,
-                "할일을 체크했는데 보상이 들어오지 않았습니다(또는 금액이 상수와 다릅니다).");
-            Assert.IsTrue(CurrencyModel.TodoCoinPaidToday);
-            Assert.IsTrue(CurrencyModel.IsDirty, "지급이 저장 대상으로 표시되지 않았습니다.");
+            int id = TodoListModel.ActiveItems[0].Id;
+            TodoListModel.ToggleComplete(id);
 
-            int afterFirst = CurrencyModel.CoinBalance;
+            // ── 양성 대조: 토글이 실제로 일했다.
+            Assert.IsTrue(TodoListModel.ActiveItems[0].Completed,
+                "토글이 완료 상태를 바꾸지 않았습니다 — 아래 «잔액 불변»은 «아무것도 안 일어났다»와 " +
+                "구분되지 않으므로 이 실행의 판정은 무효입니다.");
 
-            // ── 체크 해제 → 아무 일도 없다(되돌리기로 환불하지 않는다).
-            TodoListModel.ToggleComplete(TodoListModel.ActiveItems[0].Id);
-            Assert.AreEqual(afterFirst, CurrencyModel.CoinBalance,
-                "체크를 해제했더니 잔액이 움직였습니다.");
-
-            // ── 다시 체크 → 하루 1회이므로 0
-            TodoListModel.ToggleComplete(TodoListModel.ActiveItems[0].Id);
-            Assert.AreEqual(afterFirst, CurrencyModel.CoinBalance,
-                "★ 체크를 껐다 켜는 것만으로 보상이 또 나왔습니다 — 무한 파밍입니다.");
-
-            // ── 다른 할일을 완료해도 오늘은 0
-            TodoListModel.ToggleComplete(TodoListModel.ActiveItems[1].Id);
-            Assert.AreEqual(afterFirst, CurrencyModel.CoinBalance,
-                "같은 날 두 번째 할일에도 보상이 나왔습니다 — 하루 1회 계약이 깨졌습니다.");
-        }
-
-        /// <summary>
-        /// ★ 그 «하루 1회»가 <b>내일 다시 열리는가</b>. 이 라운드가 배선한 롤오버가 실제로
-        /// <c>todoCoinPaidToday</c>를 되돌리는지까지 이어서 잰다(리더 요청).
-        /// <para>일자는 <see cref="CurrencyModel.SetDayIndexForTesting"/>으로 «어제»로 만든다 —
-        /// 벽시계를 밀어 넣을 구멍은 이 모델에 <b>일부러</b> 없다(T-3-a).</para>
-        /// </summary>
-        [Test]
-        public void 할일_보상은_날짜가_바뀌면_다시_열린다()
-        {
-            TodoListModel.Add("오늘 할일", 99);
-            TodoListModel.ToggleComplete(TodoListModel.ActiveItems[0].Id);
-            Assert.IsTrue(CurrencyModel.TodoCoinPaidToday, "전제 — 오늘 보상을 받았어야 합니다.");
-
-            int balanceBeforeRollover = CurrencyModel.CoinBalance;
-
-            // 어제까지 본 것으로 만들고, 프로세스가 방금 켜진 상태(직전 리필 −∞)에서 한 번 굴린다.
-            CurrencyModel.SetDayIndexForTesting(0);
-            Assert.IsTrue(CurrencyModel.TickDayRollover(0.0), "롤오버가 일어나지 않았습니다.");
-
+            // ── 부재 단언: 동전이 없다.
+            Assert.AreEqual(before, CurrencyModel.CoinBalance,
+                "★ 할일을 체크했더니 동전이 들어왔습니다 — 사용자가 닫은 문(재화)을 되열었습니다.");
             Assert.IsFalse(CurrencyModel.TodoCoinPaidToday,
-                "날짜가 바뀌었는데 [오늘 할일] 카운터가 그대로입니다 — 보상이 <b>영영</b> 다시 열리지 않습니다.");
-            Assert.AreEqual(balanceBeforeRollover, CurrencyModel.CoinBalance,
-                "롤오버가 지갑을 건드렸습니다 — 리셋되는 것은 «오늘의 예산»이지 «지갑»이 아닙니다.");
+                "★ [오늘 할일] 수령 플래그가 세워졌습니다 — 그 필드는 왕복만 해야 합니다(스키마 불변).");
 
-            // 새 날의 첫 완료는 다시 지급된다.
-            TodoListModel.Add("내일 할일", 99);
-            TodoListModel.ToggleComplete(TodoListModel.ActiveItems[TodoListModel.ActiveItems.Count - 1].Id);
-            Assert.AreEqual(balanceBeforeRollover + CurrencyRules.TodoDailyCoins, CurrencyModel.CoinBalance,
-                "날짜가 바뀐 뒤 첫 완료에 보상이 안 나왔습니다.");
+            // 두 번째 할일도 같다.
+            TodoListModel.ToggleComplete(TodoListModel.ActiveItems[1].Id);
+            Assert.AreEqual(before, CurrencyModel.CoinBalance, "두 번째 완료에서 동전이 나왔습니다.");
         }
 
-        /// <summary>
-        /// ★ 유휴 수급이 <b>집중 세션 중에는 한 푼도 만들지 않는다</b>(모델 쪽 자).
-        /// <para>배선 쪽 자는 §2(소스 순서)와 PlayMode(실제 세션)에 있다. 셋이 서로 다른 방법으로
-        /// 같은 불변식을 재는 것이 의도다 — 하나가 썩어도 나머지가 남는다.</para>
-        /// </summary>
-        [Test]
-        public void 집중_세션_중_유휴_틱은_창도_안_갉고_한_푼도_안_준다()
-        {
-            double windowBefore = CurrencyModel.IdleWindowUsedSeconds;
-
-            Assert.AreEqual(0, CurrencyModel.TickIdleIncome(600.0, false, out _),
-                "집중 세션 중(isIdleEarning=false)인데 유휴 수급이 지급됐습니다 — 같은 1초가 두 번 지급됩니다(I-7′).");
-            Assert.AreEqual(windowBefore, CurrencyModel.IdleWindowUsedSeconds, 1e-9,
-                "지급도 안 했으면서 8시간 창을 갉았습니다 — 그건 방어가 아니라 버그입니다(T-15-1-a).");
-            Assert.IsFalse(CurrencyModel.IsDirty, "아무 일도 없었는데 저장 대상이 됐습니다.");
-
-            // 양성 대조 — 같은 델타를 «유휴»로 넣으면 실제로 지급된다(위 0이 «아무것도 안 도는 것»이 아니다).
-            Assert.Greater(CurrencyModel.TickIdleIncome(600.0, true, out _), 0,
-                "유휴로 넣어도 0입니다 — 위의 «0동전»은 계약이 아니라 기능 부재입니다.");
-        }
-
-        /// <summary>
-        /// ★★ <b>«0동전»과 «멈췄다»는 다른 사실이다</b> — 그 둘을 가르는 값이
-        /// <c>windowSecondsSpent</c>라는 계약(2026-09-06).
-        ///
-        /// <para><b>왜 필요한가.</b> 요율이 <c>IdleCoinsPerMinute</c>(분당 12 = 초당 0.2)라
-        /// <b>정상 상태에서도 프레임의 대부분이 0동전</b>이다(소수분은 다음 틱으로 넘어간다).
-        /// 그 0을 정지로 읽던 <c>CharacterProgressionDirector.LogIdleStallOnce</c>가
-        /// <b>5초에 한 줄(실측 720줄/시간)</b>을 찍었다. 그 오판을 구조적으로 불가능하게 만드는 것이
-        /// 이 계약이고, 정지 판정이 이 값을 보는 한 «0동전 프레임»은 절대 정지로 읽히지 않는다.</para>
-        ///
-        /// <para>★ 이 테스트는 <b>모델의 계약</b>만 잰다. «디렉터가 실제로 조용한가»는 로그 줄 수를
-        /// 세는 <c>Tests/PlayMode/CurrencyWiringRuntimeTests</c> §6이 잰다 — 서로 다른 자 두 개다.</para>
-        /// </summary>
-        [Test]
-        public void 정상_프레임의_0동전과_정지의_0동전은_창_소비로_구별된다()
-        {
-            // 숫자를 베끼지 않는다 — «1동전이 안 되는 시간»을 요율에서 유도한다.
-            double underOneCoinSeconds = 0.5 / CurrencyRules.IdleCoinsPerSecond;
-
-            // ── (가) 정상. 0동전이지만 <b>창은 갉힌다</b>.
-            int coins = CurrencyModel.TickIdleIncome(underOneCoinSeconds, true, out double windowSpent);
-            Assert.AreEqual(0, coins,
-                $"{LogPrefix} 전제 — 초당 {CurrencyRules.IdleCoinsPerSecond}동전이라 " +
-                $"{underOneCoinSeconds:F1}초는 0동전이어야 합니다. 여기서 지급이 나오면 아래 대조가 공허합니다.");
-            Assert.Greater(windowSpent, 0.0,
-                $"{LogPrefix} ★ 0동전 프레임인데 창도 안 갉혔습니다 — 그러면 «정상»과 «정지»가 " +
-                "관측상 완전히 같아지고, 정지 로그를 <b>매 프레임</b> 찍는 것 말고는 방법이 없어집니다.");
-
-            // ── (나) 진짜 정지(오늘 상한 도달). 이번에는 창도 안 갉힌다.
-            CurrencyModel.TickIdleIncome(
-                CurrencyModel.DailyCapCoins() / CurrencyRules.IdleCoinsPerSecond, true, out _);
-            Assert.AreEqual(0, CurrencyModel.RemainingDailyRoomCoins(),
-                $"{LogPrefix} 전제 — 상한을 채우지 못하면 «정지»를 만들 수 없습니다.");
-
-            Assert.AreEqual(0,
-                CurrencyModel.TickIdleIncome(underOneCoinSeconds, true, out double stalledWindow),
-                $"{LogPrefix} 상한에 걸렸는데 지급이 나왔습니다.");
-            Assert.AreEqual(0.0, stalledWindow, 1e-12,
-                $"{LogPrefix} 지급도 없이 8시간 창만 닳았습니다 — 방어가 아니라 버그입니다(T-15-1-a). " +
-                "그리고 이 값이 0이 아니면 정지 판정이 «정지»를 영원히 못 봅니다.");
-        }
+        // ★★ 2026-09-29 — 여기 있던 세 테스트를 뗐다(전부 <b>대상 소멸</b>):
+        //   <c>할일_보상은_날짜가_바뀌면_다시_열린다</c> ·
+        //   <c>집중_세션_중_유휴_틱은_창도_안_갉고_한_푼도_안_준다</c> ·
+        //   <c>정상_프레임의_0동전과_정지의_0동전은_창_소비로_구별된다</c>.
+        //
+        // ★ 첫 번째가 재던 «롤오버가 todoCoinPaidToday를 되돌린다»는 계약은 <b>사라지지 않았다</b> —
+        //   <c>CurrencyDayRolloverTests</c>와 <c>CurrencyRulesTests</c>가 폐기 카운터 넷을 한 묶음으로
+        //   계속 잰다(값은 파일에서 세우고 결과만 본다).
+        //
+        // ★★ 세 번째가 남긴 <b>관측 설계</b>는 기록으로 남긴다: 「0지급」과 「멈췄다」가 관측상 같아지면
+        //   정지 로그를 매 프레임 찍는 것 말고는 방법이 없어진다. 그래서 두 사실을 가르는 <b>별도의
+        //   관측값</b>(그때는 창 소비 초)이 필요했고, 그것이 없던 옛 코드는 정상 동작을 5초에 한 번
+        //   고장으로 신고했다(실측 720줄/시간). <b>다음에 「조용히 멈추는 기능」을 만들 때 읽어라.</b>
     }
 }

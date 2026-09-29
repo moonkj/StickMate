@@ -15,6 +15,23 @@ namespace StickMate.Tests.EditMode
     /// <b>마이그레이션과 무관한 테스트가 함께 빨개지고</b> 고치는 사람은 "숫자만 맞추면 되는 잡음"으로
     /// 학습한다(CLAUDE.md 2026-09-01 확정 규칙). 기대값은 전부
     /// <see cref="CurrencyRules"/> 상수에서 <b>이 파일 안에서 계산</b>한다.
+    ///
+    /// ============================================================================
+    /// ★★★ 2026-09-29 DLC·재화 폐지 R5 — <b>동전 지급을 재던 테스트를 뗐다</b>
+    /// ============================================================================
+    /// 뗀 것과 그 이유(전부 <b>대상 소멸</b>이다 — 판정이 바뀐 것이 아니다):
+    /// <list type="bullet">
+    ///   <item>§3 <b>8시간 창 래칫 전체</b>(하루 시뮬레이션 · 창 없음 음성 대조 · 「지급된 초만 갉는다」 ·
+    ///     프레임 단위 소수분 캐리) — <c>CurrencyRules.IdleTick</c>/<c>IdleTickResult</c>가 삭제됐다.
+    ///     ⚠ 그 절이 잡던 것 중 <b>「음성 대조 없이는 5,760이 창의 성과인지 알 수 없다」</b>는 방법론은
+    ///     이 파일 다른 곳(<c>창_소비량의_NaN…</c>의 음성 대조)과 <c>FocusXpPayoutTests</c>에 남아 있다.</item>
+    ///   <item>회복제 사용(<c>TryUsePotion</c>) · [오늘 할일] 정액 · 첫 실행 시드 3건 —
+    ///     지급 API가 삭제됐다. ★ <b>클램프는 남았고 여기서 계속 잰다</b>(§1·§2) — 폐기 필드를
+    ///     왕복시킬 때의 위생이기 때문이다.</item>
+    ///   <item>T-D-15 창/천장 비율 · 「유휴는 집중의 절반」 — 분자인 유휴 요율이 삭제됐다.</item>
+    /// </list>
+    /// <para>★ 남긴 것: 하루 경계/리필 래칫 · 활쏘기 두 관문(<b>이제 XP 방어선이다</b>) · 등급 래칫 ·
+    /// 댄스 정규화 · 잔액 하한 · 창 NaN 방향 · 상점 가격 사다리(죽은 잔재, 다음 라운드에 함께 삭제).</para>
     /// </summary>
     public sealed class CurrencyRulesTests
     {
@@ -69,17 +86,11 @@ namespace StickMate.Tests.EditMode
             Assert.AreEqual(0, CurrencyRules.ClampPotionsUsed(-5));
         }
 
-        [Test]
-        public void 하루에_쓸_수_있는_회복제는_상수만큼이다()
-        {
-            for (int i = 0; i < CurrencyRules.MaxPotionsPerDay; i++)
-            {
-                Assert.IsTrue(CurrencyModel.TryUsePotion(), $"{i + 1}번째 회복제를 못 썼습니다.");
-            }
-            Assert.IsFalse(CurrencyModel.TryUsePotion(),
-                "상한을 넘겨 회복제를 또 썼습니다 — 「유료 SKU 무한」을 막는 유일한 정상 경로 방어선입니다.");
-            Assert.AreEqual(CurrencyRules.HardCeilingCoins, CurrencyModel.DailyCapCoins());
-        }
+        // ★ 2026-09-29 — 여기 있던 <c>하루에_쓸_수_있는_회복제는_상수만큼이다</c>를 뗐다.
+        //   <c>CurrencyModel.TryUsePotion()</c>과 <c>CurrencyModel.DailyCapCoins()</c>가 삭제됐다
+        //   (폐지 시점에 <c>TryUsePotion</c>의 프로덕션 호출부는 이미 0이었다).
+        //   ⚠ 그 테스트가 지키던 <b>위조 방어</b>는 바로 위 <c>회복제_개수를_위조해도…</c>가 계속 잰다 —
+        //   그쪽은 순수 클램프만 부르므로 모델 API가 없어도 살아 있다.
 
         // ====================================================================
         // 2. ★ NaN은 0이 아니라 상한으로 간다 (T-15-1-c) — 방향이 반대인 유일한 clamp
@@ -118,135 +129,23 @@ namespace StickMate.Tests.EditMode
         }
 
         // ====================================================================
-        // 3. ★★ 8시간 창 래칫 — T-15-7 (B). 두 번째가 이 파일에서 가장 중요한 테스트다
+        // 3. 8시간 창 래칫 — ★★★ 2026-09-29 <b>절 전체 폐지</b>(T-15-7 (B)의 대상이 사라졌다)
         // ====================================================================
-
-        /// <summary>하루(1,440분)를 유휴로만 시뮬레이션한다. <b>일일 상한은 무한 롤오버로 무력화됐다고
-        /// 가정</b>한다(= <c>todayGrantedCoins</c>를 매 틱 0으로 둔다) — T-15-7의 최악 가정 그대로다.
-        /// 그래야 <b>창 하나만</b>이 변수로 남고, 5,760이 창의 성과인지 다른 것의 성과인지 갈린다.
-        /// <para>틱 간격을 60초로 두는 이유: 벽시계를 기다리지 않는 순수 계산이라 프레임 수와 무관하고,
-        /// 분당 요율이 정수라 부동소수 누적 오차가 소수분 캐리 안에서 닫힌다.</para></summary>
-        private static int SimulateOneDay(double windowCapSeconds)
-        {
-            const double tickSeconds = 60.0;
-            int minutesInDay = 24 * 60;
-
-            int total = 0;
-            double windowUsed = 0.0;
-            double carry = 0.0;
-
-            for (int minute = 0; minute < minutesInDay; minute++)
-            {
-                CurrencyRules.IdleTickResult tick = CurrencyRules.IdleTick(
-                    tickSeconds, true,
-                    todayGrantedCoins: 0,               // ★ 롤오버 무한 허용 = 상한이 안 걸린다
-                    potionsUsedToday: 0,
-                    idleWindowUsedSeconds: windowUsed,
-                    idleWindowCapSeconds: windowCapSeconds,
-                    carryCoins: carry);
-
-                total += tick.CoinsGranted;
-                windowUsed += tick.WindowSecondsSpent;
-                carry = tick.CarryCoins;
-            }
-            return total;
-        }
-
-        [Test]
-        public void 창이_있으면_하루_수입이_창_길이에서_잘린다()
-        {
-            int expected = CurrencyRules.IdleWindowCapMinutes * CurrencyRules.IdleCoinsPerMinute;
-            Assert.AreEqual(expected, SimulateOneDay(CurrencyRules.IdleWindowCapSeconds),
-                "창이 하루 수입을 자르지 못했습니다.");
-        }
-
-        [Test]
-        public void 음성대조_창을_없애면_실제로_하루치가_전부_샌다()
-        {
-            // ★★ T-15-7이 "이 라운드에서 가장 중요한 한 줄"이라고 적은 테스트다.
-            //    위 테스트만 있으면 "창이 걸려서 5,760"인지 "다른 이유로 우연히 5,760"인지
-            //    구별할 수 없다 — 이 저장소가 반복해 당한 형태가 정확히 그것이다
-            //    (실패한 측정과 성공한 측정이 똑같이 생겼다).
-            int leaked = SimulateOneDay(double.PositiveInfinity);
-            int capped = SimulateOneDay(CurrencyRules.IdleWindowCapSeconds);
-            int expectedLeak = 24 * 60 * CurrencyRules.IdleCoinsPerMinute;
-
-            Assert.AreEqual(expectedLeak, leaked,
-                "창을 없앴는데도 하루치가 다 새지 않았습니다 — 그러면 위 테스트의 '잘렸다'가 " +
-                "창의 성과라는 증거가 없습니다.");
-            Assert.Greater(leaked, capped,
-                "창이 있을 때와 없을 때가 같습니다 — 창이 아무 일도 하지 않고 있습니다.");
-        }
-
-        [Test]
-        public void 창은_지급이_일어난_초만_갉는다()
-        {
-            // T-15-1-a · T-D-13 — 상한에 걸려 한 푼도 못 버는 동안 창이 닳으면 그건 버그다.
-            CurrencyRules.IdleTickResult atCap = CurrencyRules.IdleTick(
-                60.0, true,
-                todayGrantedCoins: CurrencyRules.HardCeilingCoins,
-                potionsUsedToday: CurrencyRules.MaxPotionsPerDay,
-                idleWindowUsedSeconds: 0.0,
-                idleWindowCapSeconds: CurrencyRules.IdleWindowCapSeconds,
-                carryCoins: 0.0);
-            Assert.AreEqual(0, atCap.CoinsGranted);
-            Assert.AreEqual(0.0, atCap.WindowSecondsSpent, 1e-9,
-                "상한에 걸려 한 푼도 못 버는데 창이 닳았습니다 — 정상 사용자가 아무 이득 없이 창을 잃습니다.");
-
-            CurrencyRules.IdleTickResult notIdle = CurrencyRules.IdleTick(
-                60.0, false, 0, 0, 0.0, CurrencyRules.IdleWindowCapSeconds, 0.0);
-            Assert.AreEqual(0.0, notIdle.WindowSecondsSpent, 1e-9,
-                "집중 세션 중(비유휴)인데 창이 닳았습니다.");
-
-            // 음성 대조 — 정상 조건에서는 실제로 갉는다(위 두 0이 "함수가 늘 0"이 아님을 보인다).
-            CurrencyRules.IdleTickResult normal = CurrencyRules.IdleTick(
-                60.0, true, 0, 0, 0.0, CurrencyRules.IdleWindowCapSeconds, 0.0);
-            Assert.AreEqual(60.0, normal.WindowSecondsSpent, 1e-9);
-            Assert.AreEqual(CurrencyRules.IdleCoinsPerMinute, normal.CoinsGranted);
-        }
-
-        /// <summary>프레임 단위 틱을 1분치 돌린다. <paramref name="keepCarry"/>가 false면
-        /// 소수분을 버리는 <b>옛 형태</b>(security T-3-c가 적은 "적게 쌓이는 방향")를 재현한다.</summary>
-        private static int SimulateOneMinuteOfFrames(bool keepCarry)
-        {
-            const double frame = 1.0 / 60.0;
-            int total = 0;
-            double carry = 0.0;
-            double windowUsed = 0.0;
-
-            for (int i = 0; i < 60 * 60; i++)
-            {
-                CurrencyRules.IdleTickResult tick = CurrencyRules.IdleTick(
-                    frame, true, 0, 0, windowUsed, CurrencyRules.IdleWindowCapSeconds, carry);
-                total += tick.CoinsGranted;
-                windowUsed += tick.WindowSecondsSpent;
-                carry = keepCarry ? tick.CarryCoins : 0.0;
-            }
-            return total;
-        }
-
-        [Test]
-        public void 짧은_틱이_반복돼도_절단으로_동전이_사라지지_않는다()
-        {
-            // 60fps 한 틱의 수입은 0.0033동전이라 (int) 절단이 <b>전부</b> 먹어 버릴 수 있다 —
-            // 그러면 하루 종일 켜 둬도 0원이다. 소수분 캐리가 그것을 막는다.
-            int withCarry = SimulateOneMinuteOfFrames(true);
-
-            // ★ 등호를 걸지 않는다(걸면 안 된다): 3,600번의 double 덧셈에서 마지막 소수분이
-            //   1동전 문턱을 못 넘을 수 있다. 이 테스트가 잠그는 것은 "정확히 12"가 아니라
-            //   <b>"수입이 증발하지 않는다"</b>이고, 손실 상한은 <b>1동전 미만</b>이다.
-            //   (실측 오차는 하루로 늘려도 요율 1분치를 넘지 않는다 — 캐리가 오차를 누적시키지 않고
-            //    매 틱 정수분을 떼어 내기 때문이다.)
-            Assert.GreaterOrEqual(withCarry, CurrencyRules.IdleCoinsPerMinute - 1,
-                "프레임 단위 틱에서 분당 요율의 1동전 안쪽으로도 못 들어왔습니다 — 절단으로 수입이 샙니다.");
-            Assert.LessOrEqual(withCarry, CurrencyRules.IdleCoinsPerMinute,
-                "프레임 단위 틱이 분당 요율보다 많이 줬습니다 — 캐리가 중복 지급되고 있습니다.");
-
-            // ★ 음성 대조 — 캐리를 버리면 실제로 <b>0원</b>이 된다는 것을 보인다.
-            //   이게 없으면 위 단언이 "캐리 덕분"인지 "원래 그런지" 구별되지 않는다.
-            Assert.AreEqual(0, SimulateOneMinuteOfFrames(false),
-                "소수분을 버려도 동전이 나왔습니다 — 그러면 위 단언이 캐리의 성과라는 증거가 없습니다.");
-        }
+        //
+        // 뗀 것: 헬퍼 <c>SimulateOneDay(double)</c>·<c>SimulateOneMinuteOfFrames(bool)</c>와
+        //   테스트 4개(<c>창이_있으면_하루_수입이_창_길이에서_잘린다</c> ·
+        //   <c>음성대조_창을_없애면_실제로_하루치가_전부_샌다</c> ·
+        //   <c>창은_지급이_일어난_초만_갉는다</c> · <c>짧은_틱이_반복돼도_절단으로_동전이_사라지지_않는다</c>).
+        //   전부 <c>CurrencyRules.IdleTick</c>을 부르고, 그 함수가 삭제됐다.
+        //
+        // ★★ <b>여기서 나온 방법론 셋은 기록으로 남긴다</b>(다음 상한·창 기능에서 그대로 필요하다):
+        //   ① 「잘렸다」만 재면 <b>창이 잘랐는지 다른 이유로 우연히 같은 값인지</b> 알 수 없다 —
+        //      상한을 <c>PositiveInfinity</c>로 준 <b>음성 대조</b>가 그것을 가른다(T-15-7이 「이 라운드에서
+        //      가장 중요한 한 줄」이라고 적은 테스트가 그쪽이었다).
+        //   ② 프레임 단위 틱은 <b>(int) 절단으로 전부 증발</b>할 수 있다(60fps 한 틱 = 0.0033). 소수분
+        //      캐리를 버린 형태를 함께 돌려 «0원이 된다»를 보여야 캐리의 성과가 증명된다.
+        //   ③ 그 단언에 <b>등호를 걸지 않는다</b> — 3,600번의 double 덧셈에서 마지막 소수분이 1 문턱을
+        //      못 넘을 수 있고, 잠글 것은 「정확히 12」가 아니라 「증발하지 않는다」였다.
 
         // ====================================================================
         // 4. 날짜 롤오버는 「하나의 사건」이다 (T-D-10 · T-D-14 · I-15′)
@@ -274,19 +173,36 @@ namespace StickMate.Tests.EditMode
                 "일자가 후퇴했는데 리필했습니다 — 「오늘 연장」 공격이 열립니다.");
         }
 
+        /// <summary>
+        /// ★ I-15′ — 여러 일일 카운터를 다른 조건으로 나누면 (카) 공격이 각 경계를 따로 넘어 보상이
+        /// 배가 되고, T-14-3-a 방어를 여러 곳에 걸어야 한다. 한 곳만 빠뜨려도 조용히 새는 문이 된다.
+        ///
+        /// <para>★★ <b>2026-09-29 — 전제를 만드는 방법이 둘로 갈렸다.</b> 살아 있는 축(활쏘기)은
+        /// 여전히 <b>실제 API</b>로 만들고, 폐기된 축 셋(<c>todayGrantedCoins</c>·<c>potionsUsedToday</c>·
+        /// <c>idleWindowUsedSeconds</c>·<c>todoCoinPaidToday</c>)은 지급 API가 없으므로
+        /// <b>파일에서 읽은 값</b>으로 세운다. 폐기한 축을 단언에서 빼지 <b>않은</b> 이유:
+        /// 롤오버가 그것들을 계속 0으로 되돌린다는 것이 <see cref="CurrencyModel"/>의 명시적 계약이고
+        /// (「예외를 만들면 I-15′가 부분적으로만 참인 문장이 된다」), 그 계약이 조용히 깨지면
+        /// 재화가 다시 붙는 날 상한이 열린 채로 출하된다.</para>
+        /// </summary>
         [Test]
         public void 롤오버는_상한과_무료회복제와_창과_채널카운터를_한꺼번에_되돌린다()
         {
-            // ★ I-15′ — 셋을 다른 조건으로 나누면 (카) 공격이 각 경계를 따로 넘어 상금이 배가 되고,
-            //   T-14-3-a 방어를 세 곳에 걸어야 한다. 한 곳만 빠뜨려도 조용히 새는 문이 된다.
-            Assert.IsTrue(CurrencyModel.TryUsePotion());
-            Assert.Greater(CurrencyModel.TickIdleIncome(120.0, true, out _), 0, "전제 — 유휴 수급이 있어야 한다.");
-            Assert.Greater(CurrencyModel.TryPayTodoDailyCoins(), 0, "전제 — 할일 보상이 있어야 한다.");
-            Assert.Greater(CurrencyModel.TryAwardArcheryCoins(0.0), 0, "전제 — 활쏘기 상금이 있어야 한다.");
+            CurrencyModel.RestoreFromSave(new CurrencySaveState
+            {
+                CoinBalance = 777,
+                TodayGrantedCoins = CurrencyRules.BaseDailyCapCoins / 2,
+                PotionsUsedToday = 1,
+                IdleWindowUsedSeconds = 120f,
+                TodoCoinPaidToday = true,
+            });
+            Assert.Greater(CurrencyModel.TryClaimArcheryAward(0.0), 0, "전제 — 활쏘기 보상 판정이 통과해야 한다.");
 
             int balanceBefore = CurrencyModel.CoinBalance;
             Assert.Greater(CurrencyModel.TodayGrantedCoins, 0);
+            Assert.Greater(CurrencyModel.PotionsUsedToday, 0);
             Assert.Greater(CurrencyModel.IdleWindowUsedSeconds, 0.0);
+            Assert.IsTrue(CurrencyModel.TodoCoinPaidToday);
             Assert.Greater(CurrencyModel.ArcheryCoinsToday, 0);
 
             // 어제까지 본 것으로 만들고, 프로세스가 방금 켜진 상태(직전 리필 -∞)에서 한 번 굴린다.
@@ -297,11 +213,15 @@ namespace StickMate.Tests.EditMode
             Assert.AreEqual(0, CurrencyModel.PotionsUsedToday, "② 무료 회복제가 부활하지 않았습니다.");
             Assert.AreEqual(0.0, CurrencyModel.IdleWindowUsedSeconds, 1e-9, "③ 8시간 창이 리셋되지 않았습니다.");
             Assert.IsFalse(CurrencyModel.TodoCoinPaidToday, "[오늘 할일] 카운터가 리셋되지 않았습니다.");
-            Assert.AreEqual(0, CurrencyModel.ArcheryCoinsToday, "활쏘기 카운터가 리셋되지 않았습니다.");
+            Assert.AreEqual(0, CurrencyModel.ArcheryCoinsToday,
+                "활쏘기 카운터가 리셋되지 않았습니다 — 이 카운터가 안 열리면 활쏘기 XP가 " +
+                "첫날 상한 이후 영구히 막힙니다(2026-09-29 이후 이 축은 XP 천장이다).");
 
-            // ★ 그러나 <b>잔액은 건드리지 않는다</b> — 리셋되는 것은 "오늘의 예산"이지 "지갑"이 아니다.
+            // ★ 그러나 <b>지갑은 건드리지 않는다</b> — 리셋되는 것은 "오늘의 예산"이지 "지갑"이 아니다.
+            //   ★ 2026-09-29 — 지갑에 더하는 경로는 사라졌지만 <b>파일에서 읽은 잔액을 롤오버가 지우면
+            //   안 된다</b>는 계약은 그대로다(사용자가 어제까지 번 값이 보존돼야 한다).
             Assert.AreEqual(balanceBefore, CurrencyModel.CoinBalance,
-                "롤오버가 지갑까지 비웠습니다 — 하루가 지날 때마다 번 돈이 사라집니다.");
+                "롤오버가 지갑까지 비웠습니다 — 하루가 지날 때마다 파일의 잔액이 사라집니다.");
 
             // 두 번째 롤오버는 같은 프로세스에서 즉시 일어나지 않는다(T-14-3-a).
             CurrencyModel.SetDayIndexForTesting(CurrencyModel.DayIndex - 1);
@@ -342,84 +262,64 @@ namespace StickMate.Tests.EditMode
         // 5. 채널 상한 · 쿨다운
         // ====================================================================
 
+        /// <summary>
+        /// 활쏘기 정중앙 보상은 두 관문(세션 쿨다운 · 일일 총량)을 지난다.
+        /// <para>★★ <b>2026-09-29 — 이 테스트의 무게가 늘었다.</b> 이 두 관문이 재던 것은 원래
+        /// 「동전 파밍 상한」이었는데, 재화 폐지 뒤 <b>활쏘기 XP의 유일한 방어선</b>이 됐다
+        /// (2026-09-07 보안 결함 수정이 XP를 이 판정 결과에 묶었다 — 없으면 연속 도배로 시간당
+        /// ~6,478XP). 그래서 <b>여기가 빨개지면 XP 익스플로잇이 열린 것</b>이다.</para>
+        /// </summary>
         [Test]
         public void 활쏘기는_세션_쿨다운과_일일_총량_두_관문을_지난다()
         {
-            Assert.AreEqual(CurrencyRules.ArcheryCoinsPerAward, CurrencyModel.TryAwardArcheryCoins(0.0));
-            Assert.AreEqual(0, CurrencyModel.TryAwardArcheryCoins(1.0),
-                "쿨다운 중인데 상금이 또 나왔습니다.");
+            Assert.AreEqual(CurrencyRules.ArcheryCoinsPerAward, CurrencyModel.TryClaimArcheryAward(0.0));
+            Assert.AreEqual(0, CurrencyModel.TryClaimArcheryAward(1.0),
+                "쿨다운 중인데 보상 판정이 또 통과했습니다.");
             Assert.AreEqual(CurrencyRules.ArcheryCoinsPerAward,
-                CurrencyModel.TryAwardArcheryCoins(CurrencyRules.ArcheryAwardCooldownSeconds),
-                "쿨다운이 지났는데 상금이 안 나왔습니다.");
+                CurrencyModel.TryClaimArcheryAward(CurrencyRules.ArcheryAwardCooldownSeconds),
+                "쿨다운이 지났는데 보상 판정이 통과하지 않았습니다.");
 
             // 일일 총량 — 쿨다운을 계속 지나도 상한에서 멈춘다(앱 재시작 파밍의 유일한 상한).
             double t = CurrencyRules.ArcheryAwardCooldownSeconds;
             for (int i = 0; i < CurrencyRules.ArcheryDailyAwardLimit + 5; i++)
             {
                 t += CurrencyRules.ArcheryAwardCooldownSeconds;
-                CurrencyModel.TryAwardArcheryCoins(t);
+                CurrencyModel.TryClaimArcheryAward(t);
             }
             Assert.AreEqual(CurrencyRules.ArcheryDailyCoinLimit, CurrencyModel.ArcheryCoinsToday,
-                "활쏘기 일일 총량이 상한을 넘었습니다.");
+                "활쏘기 일일 총량이 상한을 넘었습니다 — XP 도배 상한이 뚫렸습니다.");
             Assert.IsTrue(CurrencyModel.ArcheryDailyLimitReached,
                 "상한에 도달했는데 그 사실을 화면 쪽에 알릴 수 없습니다 — 연출은 계속 도는데 " +
-                "동전만 안 나오면 사용자는 그걸 '고장'으로 읽습니다(§20-8).");
+                "보상만 안 나오면 사용자는 그걸 '고장'으로 읽습니다(§20-8).");
         }
 
         [Test]
-        public void 할일_보상은_하루에_한_번뿐이다()
+        public void 활쏘기_판정은_지갑을_건드리지_않는다()
         {
-            Assert.AreEqual(CurrencyRules.TodoDailyCoins, CurrencyModel.TryPayTodoDailyCoins());
-            Assert.AreEqual(0, CurrencyModel.TryPayTodoDailyCoins(), "하루 1회 보상이 두 번 나왔습니다.");
+            // ★★ 2026-09-29 DLC·재화 폐지 R5의 <b>핵심 회귀 잠금</b>. 이 관문을 남긴 이유는 XP 보안인데,
+            //    그 사실이 「동전도 같이 되살리자」로 오해되기 쉽다. 여기서 부재를 <b>존재 대조와 함께</b>
+            //    못박는다: 카운터는 늘고 지갑은 안 늘어야 한다(둘 중 하나만 재면 «아무것도 안 하는
+            //    구현»과 구별되지 않는다 — 실패한 측정과 성공한 측정이 똑같이 생긴다).
+            CurrencyModel.RestoreFromSave(new CurrencySaveState { CoinBalance = 500 });
+            int walletBefore = CurrencyModel.CoinBalance;
+            int counterBefore = CurrencyModel.ArcheryCoinsToday;
+
+            Assert.Greater(CurrencyModel.TryClaimArcheryAward(0.0), 0, "전제 — 판정이 통과해야 한다.");
+
+            Assert.Greater(CurrencyModel.ArcheryCoinsToday, counterBefore,
+                "양성 대조 — 관문 카운터가 늘지 않았습니다. 이 테스트는 아무것도 재지 않고 있습니다.");
+            Assert.AreEqual(walletBefore, CurrencyModel.CoinBalance,
+                "★ 활쏘기가 다시 동전을 냅니다 — 사용자가 닫은 문(재화)을 되열었습니다.");
         }
 
-        /// <summary>★ <b>U-42 확정</b>(2026-09-05) — 시드는 <b>정확히 한 번, 상수만큼</b> 지급된다.
-        /// <para>금액을 숫자로 베끼지 않는다. 잰 것은 ① 지급액 = 상수 ② 잔액 증가 = 상수
-        /// ③ 두 번째 호출은 0이고 잔액이 <b>안 움직인다</b>(평생 1회) 셋이다.</para></summary>
-        [Test]
-        public void 시드는_평생_한_번_상수만큼_지급된다()
-        {
-            Assert.Greater(CurrencyRules.SeedCoins, 0,
-                "시드가 0입니다 — 첫 실행에 상점 버튼이 전부 회색이 됩니다(§0-6-4(a)).");
-            Assert.IsFalse(CurrencyModel.SeedGranted, "초기 상태가 '이미 받음'입니다.");
-
-            int before = CurrencyModel.CoinBalance;
-            Assert.AreEqual(CurrencyRules.SeedCoins, CurrencyModel.TryGrantSeedCoins(),
-                "지급액이 상수와 다릅니다.");
-            Assert.AreEqual(before + CurrencyRules.SeedCoins, CurrencyModel.CoinBalance,
-                "지급했다고 했는데 잔액이 그만큼 안 늘었습니다.");
-            Assert.IsTrue(CurrencyModel.SeedGranted);
-
-            int afterFirst = CurrencyModel.CoinBalance;
-            Assert.AreEqual(0, CurrencyModel.TryGrantSeedCoins(), "시드가 두 번 나왔습니다.");
-            Assert.AreEqual(afterFirst, CurrencyModel.CoinBalance,
-                "두 번째 호출이 0을 돌려주고도 잔액을 올렸습니다 — 무한 시드입니다.");
-        }
-
-        /// <summary>
-        /// ★★ <b>기존 사용자도 시드를 받는다</b>(리더 승인 문구: "기존 사용자 포함 전원에게 평생 1회").
-        ///
-        /// <para>이게 성립하는 <b>구조적 이유</b>를 잰다: v9 이하 세이브에는 <c>seedGranted</c> 키가
-        /// 아예 없어 <c>false</c>로 채워지고, 미확정 기간에 <see cref="CurrencyRules.CanGrantSeed"/>가
-        /// <c>SeedCoins &gt; 0</c>을 요구했으므로 <b>플래그가 켜진 적이 없다</b>.
-        /// 순서를 반대로(플래그 먼저) 했으면 되돌릴 수 없는 손실이었다.</para>
-        ///
-        /// <para>구버전 파일을 흉내 내려고 <c>RestoreFromSave</c>에 <b>기본값 상태</b>를 밀어 넣는다 —
-        /// 그것이 곧 "그 키가 없던 파일"이 로드된 뒤의 모습이다.</para>
-        /// </summary>
-        [Test]
-        public void 시드_플래그가_꺼진_구버전_세이브도_시드를_받는다()
-        {
-            CurrencyModel.RestoreFromSave(default);   // v9 파일 = 모든 신규 키가 기본값
-            Assert.IsFalse(CurrencyModel.SeedGranted,
-                "구버전 세이브가 '이미 받음'으로 읽혔습니다 — 기존 사용자가 시드를 영영 못 받습니다.");
-            Assert.IsTrue(CurrencyRules.CanGrantSeed(CurrencyModel.SeedGranted));
-            Assert.AreEqual(CurrencyRules.SeedCoins, CurrencyModel.TryGrantSeedCoins());
-
-            // 양성 대조 — 같은 판정기가 「이미 받음」은 실제로 막는다(위 통과가 공허하지 않다).
-            Assert.IsFalse(CurrencyRules.CanGrantSeed(true),
-                "이미 받은 사용자에게도 지급 가능으로 나옵니다.");
-        }
+        // ★ 2026-09-29 — 여기 있던 세 테스트를 뗐다(전부 <b>대상 소멸</b>):
+        //   <c>할일_보상은_하루에_한_번뿐이다</c>(<c>TryPayTodoDailyCoins</c>·<c>TodoDailyCoins</c> 삭제) ·
+        //   <c>시드는_평생_한_번_상수만큼_지급된다</c>와
+        //   <c>시드_플래그가_꺼진_구버전_세이브도_시드를_받는다</c>(<c>SeedCoins</c>·<c>CanGrantSeed</c>·
+        //   <c>TryGrantSeedCoins</c> 삭제).
+        //   ★ 시드 쪽이 잠그던 <b>구조적 사실</b>은 이제 반대 방향으로 중요하다: 기존 사용자 전원의
+        //   <c>seedGranted</c>가 아직 <c>false</c>이므로 <b>시드를 되살리면 전원에게 한 번 더 나간다</b>
+        //   (<c>CurrencyRules</c>의 「첫 실행 시드」 절이 그 함정을 적어 뒀다).
 
         // ====================================================================
         // 6. 소유 · 등급 · 댄스 집합
@@ -429,7 +329,10 @@ namespace StickMate.Tests.EditMode
         public void 같은_것을_두_번_살_수_없다()
         {
             // ★ 경제 원칙 E-1(I-15) — 판정 기준 한 줄: "같은 사용자가 같은 것을 두 번 살 수 있는가".
-            CurrencyModel.TryPayTodoDailyCoins();
+            // ★ 2026-09-29 — 자금을 «지급»이 아니라 «파일에서 읽은 잔액»으로 만든다(지급 API 삭제).
+            //   <c>TryPurchaseItem</c> 자체는 아직 죽은 잔재로 남아 있고, 상점 표면을 지우는 병렬
+            //   라운드가 착지하면 이 테스트도 그 함수와 함께 사라진다.
+            CurrencyModel.RestoreFromSave(new CurrencySaveState { CoinBalance = 100 });
             Assert.IsTrue(CurrencyModel.TryPurchaseItem("equip.head.crown", 10));
             Assert.IsFalse(CurrencyModel.TryPurchaseItem("equip.head.crown", 10),
                 "이미 산 것을 또 팔았습니다 — 반복 구매가 생기면 시계 조작 피해 상한이 즉시 무한이 됩니다.");
@@ -490,29 +393,24 @@ namespace StickMate.Tests.EditMode
         }
 
         // ====================================================================
-        // 7. T-D-15 — 창과 천장 사이 여유
+        // 7. T-D-15 창/천장 여유 — ★★★ 2026-09-29 <b>절 전체 폐지</b>
         // ====================================================================
-
-        [Test]
-        public void 창은_정상_사용자에게_먼저_걸리지_않는다()
-        {
-            Assert.GreaterOrEqual(CurrencyRules.WindowToCeilingRatio, CurrencyRules.MinWindowToCeilingRatio,
-                "창(길이 × 요율)이 하루 절대 천장의 1.5배 아래로 내려왔습니다 — 그러면 " +
-                "<b>창이 정상 사용자에게 먼저 걸려</b> 오탐이 기본값이 됩니다(T-D-15). " +
-                "요율·상한·창 중 하나를 바꿨다면 나머지도 함께 재검토해야 합니다.");
-        }
-
-        [Test]
-        public void 유휴_요율은_집중_요율의_정확히_절반이다()
-        {
-            Assert.AreEqual(CurrencyRules.FocusCoinsPerMinute, CurrencyRules.IdleCoinsPerMinute * 2,
-                "유휴가 집중의 절반이 아닙니다 — §18-2가 정한 관계이고, 이게 깨지면 " +
-                "'켜 두기만 해도 집중과 같다'가 되어 집중 모드의 존재 이유가 사라집니다.");
-        }
+        //
+        // 뗀 것: <c>창은_정상_사용자에게_먼저_걸리지_않는다</c>(<c>WindowToCeilingRatio</c>·
+        //   <c>MinWindowToCeilingRatio</c> 삭제) · <c>유휴_요율은_집중_요율의_정확히_절반이다</c>
+        //   (<c>IdleCoinsPerMinute</c> 삭제).
+        //
+        // ★ <b>상수를 남겨 두고 단언만 살리는 선택을 하지 않았다.</b> 비율의 분자가 유휴 요율이었고
+        //   그 요율이 없으므로, 남기면 «참인 채로 아무것도 보장하지 않는 계기»가 된다 —
+        //   이 저장소가 반복해 당한 「죽은 프로브가 산 프로브와 똑같이 생겼다」 그 형태다.
 
         // ====================================================================
-        // 8. 상점 가격 — 등급 파생 (U-17 확정 §21-5 · §21-10-a (4))
+        // 8. 상점 가격 — ★ 죽은 잔재(등급 파생). 상점 표면 라운드와 함께 삭제 예정
         // ====================================================================
+        //
+        // 아래 세 테스트는 <c>CurrencyRules.PriceCoins</c>와 가격 4상수를 재는데, 그 다섯은
+        // 2026-09-29 현재 <b>프로덕션 호출부가 0</b>이다(상점 화면을 지우는 병렬 라운드 소관).
+        // 남긴 이유: 그 라운드가 착지하기 전까지 선언이 살아 있고, 살아 있는 선언은 계기가 있어야 한다.
 
         /// <summary>사다리가 <b>단조 증가</b>하고 어느 단도 공짜가 아니다.
         /// <para>기대값을 숫자로 베끼지 않는다 — 등급 사다리의 <b>모양</b>만 잰다.

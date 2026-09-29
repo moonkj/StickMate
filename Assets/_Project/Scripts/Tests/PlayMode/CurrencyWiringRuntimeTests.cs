@@ -23,19 +23,31 @@ namespace StickMate.Tests.PlayMode
     ///
     /// <para>그래서 이 파일은 <b>실제 씬을 띄우고</b>:</para>
     /// <list type="number">
-    ///   <item>새 캐릭터로 켜면 <b>시드가 실제로 지갑에 들어오는가</b>(§1).</item>
-    ///   <item>저장하고 <b>다시 켜면 두 번째 시드가 안 나오는가</b>(§2 — 사용자 요구 그대로).</item>
-    ///   <item>정중앙 명중 이벤트가 <b>실제로 동전을 늘리는가</b>, 그리고 빗나감·조준 시점·쿨다운이
-    ///     <b>실제로 막는가</b>(§3).</item>
-    ///   <item>★★ <b>집중 세션 중 유휴가 멈추고, 끝난 뒤에 그 시간을 몰아주지 않는가</b>(§4).
-    ///     실제 세션을 켜고 벽시계로 재는, 이 라운드에서 가장 값진 단언이다 —
-    ///     I-7′ 파손은 화면에도 로그에도 «두 번 받았다»는 흔적을 남기지 않는다.</item>
+    ///   <item><s>새 캐릭터로 켜면 시드가 실제로 지갑에 들어오는가</s>(§1 — 2026-09-29 폐지).</item>
+    ///   <item><s>저장하고 다시 켜면 두 번째 시드가 안 나오는가</s>(§2 — 폐지).</item>
+    ///   <item>정중앙 명중 이벤트가 <b>실제로 관문을 통과하는가</b>, 그리고 빗나감·조준 시점·쿨다운이
+    ///     <b>실제로 막는가</b>(§3-보안). ★ 2026-09-29 이후 이 관문이 여는 것은 동전이 아니라 <b>XP</b>다.</item>
+    ///   <item><s>집중 세션 중 유휴가 멈추고, 끝난 뒤에 그 시간을 몰아주지 않는가</s>(§4 — 폐지).</item>
     ///   <item>장비를 <b>실제로 갈아입어</b> H-8 등급 눈금이 새겨지고, 벗어도 안 내려가는가(§5).</item>
-    ///   <item>★★ <b>「유휴 수급이 멈췄다」가 정상 동작을 고장으로 신고하지 않는가</b>(§6, 2026-09-06).
-    ///     정지 판정이 «0동전»이던 동안 <b>5초에 한 줄(실측 720줄/시간)</b>이 쌓였다. 실제 씬을
-    ///     벽시계로 돌려 <b>줄 수를 세는</b> 것 말고는 이 결함을 잡을 자가 없다 — 소스 스캔은
-    ///     «어떤 조건으로 찍는가»만 보고, 모델 테스트는 로그를 아예 안 본다.</item>
+    ///   <item><s>「유휴 수급이 멈췄다」가 정상 동작을 고장으로 신고하지 않는가</s>(§6 — 폐지).</item>
     /// </list>
+    ///
+    /// ============================================================================
+    /// ★★★ 2026-09-29 DLC·재화 폐지 R5 — <b>여섯 절 중 넷을 뗐다</b>
+    /// ============================================================================
+    /// 뗀 것: §1·§2(첫 실행 시드) · §3의 동전 판(정중앙 명중이 <b>동전</b>을 늘린다) ·
+    /// §4(유휴 수급 I-7′ 실주행) · §6(정지 로그 줄 수 세기)와 그 로그 감시 장치.
+    /// <b>전부 대상 소멸</b>이다 — 배선이 삭제됐으므로 실주행으로 관측할 것이 없다.
+    ///
+    /// <para>★ <b>남긴 둘이 더 중요해졌다</b>: §3-보안(활쏘기 관문이 XP를 실제로 막는가)은
+    /// 2026-09-07 보안 결함의 회귀 시험이고, 동전이 사라진 뒤에도 <b>그 결함은 그대로 재현 가능</b>하다.
+    /// §5(등급 눈금)는 재화와 무관한 축이라 한 줄도 바뀌지 않았다.</para>
+    ///
+    /// <para>★★ §4·§6이 남긴 <b>실주행 방법론</b>은 기록으로 남긴다(다음 상시 적립 기능에서 필요하다):
+    /// ① 시간 예산은 <b>벽시계(초)</b>로 잡는다 — 배치모드 PlayMode는 수천 fps라 프레임 예산이
+    /// 밀리초가 된다. ② 「0이어야 한다」는 단언에는 <b>같은 실행의 양성 대조</b>(그 값이 실제로 늘기는
+    /// 하는가)를 반드시 붙인다 — 없으면 «계약을 지켰다»와 «기능이 죽었다»가 똑같이 생긴다.
+    /// ③ 로그 문구는 베끼지 않고 <b>프로덕션 상수를 참조</b>한다.</para>
     ///
     /// ============================================================================
     /// ★ 격리 — 개발자의 실제 저장 파일을 건드리지 않는다
@@ -71,7 +83,6 @@ namespace StickMate.Tests.PlayMode
         [TearDown]
         public void Clean()
         {
-            StopWatchingLogs();
             _director = null;
             CurrencyModel.ResetForTesting();
         }
@@ -87,128 +98,27 @@ namespace StickMate.Tests.PlayMode
             _director = Object.FindFirstObjectByType<CharacterProgressionDirector>();
             Assert.IsNotNull(_director,
                 $"{LogPrefix} 씬에 {nameof(CharacterProgressionDirector)}가 없습니다 — " +
-                "이 컴포넌트가 없으면 시드도 활쏘기 상금도 <b>영원히</b> 지급되지 않습니다.");
+                "이 컴포넌트가 없으면 활쏘기 XP도 집중 모드 XP도 <b>영원히</b> 지급되지 않습니다.");
         }
 
         // ====================================================================
-        // §1. 새 캐릭터로 켜면 시드가 실제로 들어온다
+        // §1·§2. 첫 실행 시드 — ★★★ 2026-09-29 <b>폐지</b>
         // ====================================================================
-
-        [UnityTest]
-        public IEnumerator 새_캐릭터로_켜면_시드가_실제로_지갑에_들어온다()
-        {
-            Assert.IsTrue(CharacterSaveStore.IsRedirectedForTesting,
-                $"{LogPrefix} 저장 경로가 격리돼 있지 않습니다 — 개발자의 실제 파일을 읽게 되므로 여기서 멈춥니다.");
-            Assert.IsFalse(CurrencyModel.SeedGranted, "전제 — 초기화 직후에는 시드를 받은 적이 없어야 합니다.");
-
-            yield return LoadSceneAndFindDirector();
-
-            Assert.IsFalse(CharacterSaveStore.LoadedFromFile,
-                $"{LogPrefix} 격리 폴더에 앞선 테스트의 저장 파일이 남아 있습니다 — " +
-                "이 테스트는 «새 캐릭터»를 전제로 하므로 지금 재는 것은 그것이 아닙니다.");
-
-            Assert.IsTrue(CurrencyModel.SeedGranted,
-                $"{LogPrefix} 앱을 켰는데 시드 플래그가 서지 않았습니다 — 지급 배선이 돌지 않았습니다.");
-            Assert.AreEqual(CurrencyRules.SeedCoins, CurrencyModel.CoinBalance,
-                $"{LogPrefix} 첫 실행 잔액이 시드({CurrencyRules.SeedCoins})와 다릅니다. " +
-                "0이면 배선이 안 돌았거나 로드가 지급을 덮어쓴 것이고, 그보다 크면 다른 경로가 " +
-                "같은 프레임에 지급한 것입니다 — 어느 쪽이든 원인을 찾아야 합니다.");
-
-            Assert.IsTrue(CurrencyModel.IsDirty,
-                $"{LogPrefix} 시드를 지급했는데 저장 대상으로 표시되지 않았습니다 — " +
-                "주기/종료 저장이 이 지급을 싣지 못합니다.");
-        }
+        //
+        // 뗀 것: <c>새_캐릭터로_켜면_시드가_실제로_지갑에_들어온다</c> ·
+        //   <c>저장하고_다시_켜도_시드는_두_번_나오지_않는다</c>.
+        //
+        // ★ 두 번째가 잡던 <b>실주행 형태</b>는 기록으로 남긴다: 「다시 켜기」를 재현할 때 정적 모델을
+        //   <b>일부러 초기화</b>해야 한다 — 그러지 않으면 프로세스에 남은 정적 상태가 «디스크가 말한 것»을
+        //   가려서, 저장이 아예 안 되는 구현도 초록이 된다.
 
         // ====================================================================
-        // §2. 저장하고 다시 켜면 두 번째 시드는 없다 (사용자 요구 그대로)
+        // §3. 활쏘기 — ★ 동전 판 폐지, <b>관문 판(§3-보안)은 유지</b>
         // ====================================================================
-
-        [UnityTest]
-        public IEnumerator 저장하고_다시_켜도_시드는_두_번_나오지_않는다()
-        {
-            yield return LoadSceneAndFindDirector();
-            Assert.AreEqual(CurrencyRules.SeedCoins, CurrencyModel.CoinBalance, "전제 — 첫 실행 시드.");
-
-            // 주기 저장(60초)을 기다리는 대신 같은 경로를 직접 부른다 — 재는 것은 «시드가 디스크에
-            // 남는가»이지 «타이머가 도는가»가 아니다(타이머는 다른 테스트의 주제다).
-            Assert.IsTrue(CharacterSaveStore.Save(), $"{LogPrefix} 저장이 실패/보류됐습니다.");
-
-            // ── 「다시 켜기」. 정적 모델은 프로세스가 살아 있는 동안 남으므로 <b>일부러 지운다</b> —
-            //    그래야 두 번째 실행이 «디스크가 말한 것»만 보고 판단한다.
-            CurrencyModel.ResetForTesting();
-            CharacterProgressionModel.ResetForTesting();
-            Assert.IsFalse(CurrencyModel.SeedGranted, "전제 — 초기화가 안 먹으면 아래 단언이 공허합니다.");
-
-            yield return LoadSceneAndFindDirector();
-
-            Assert.IsTrue(CharacterSaveStore.LoadedFromFile,
-                $"{LogPrefix} 두 번째 실행이 저장 파일을 읽지 못했습니다 — 「다시 켜기」가 재현되지 않았습니다.");
-            Assert.IsTrue(CurrencyModel.SeedGranted, $"{LogPrefix} seedGranted가 디스크를 왕복하지 못했습니다.");
-            Assert.AreEqual(CurrencyRules.SeedCoins, CurrencyModel.CoinBalance,
-                $"{LogPrefix} 다시 켰더니 잔액이 {CurrencyModel.CoinBalance}입니다 — " +
-                $"시드({CurrencyRules.SeedCoins})의 2배라면 <b>켤 때마다 시드가 나오는 상태</b>이고, " +
-                "0이라면 시드가 저장되지 않은 것입니다.");
-        }
-
-        // ====================================================================
-        // §3. 활쏘기 — 정중앙 명중이 실제로 동전을 늘린다
-        // ====================================================================
-
-        /// <summary>
-        /// ★ 이벤트를 <b>버스에 직접 발행</b>한다. 실제 활쏘기 사이클을 기다리지 않는 이유는
-        /// 그 사이클이 «걸어가서 · 과녁을 세우고 · 세 발을 쏘는» 십수 초짜리 연출이고, 결과가
-        /// <b>확률로 뽑히기 때문</b>이다(<c>archeryHitChance</c>/<c>archeryBullseyeChance</c>).
-        /// 여기서 재려는 것은 «정중앙이 나왔을 때 동전이 들어오는가»이지 «정중앙이 얼마나 자주
-        /// 나오는가»가 아니다 — 뒤쪽은 <c>ArcheryShotProbabilityTests</c>의 주제다.
-        /// </summary>
-        [UnityTest]
-        public IEnumerator 정중앙_명중이_실제로_동전을_늘린다()
-        {
-            yield return LoadSceneAndFindDirector();
-
-            // 시드가 들어온 판 위에서 재면 «얼마가 늘었는가»가 흐려진다 — 깨끗한 지갑으로 시작한다.
-            CurrencyModel.ResetForTesting();
-            Assert.AreEqual(0, CurrencyModel.CoinBalance, "전제 — 지갑이 비어 있어야 증가분을 잰다.");
-
-            // ── (가) 빗나간 발은 한 푼도 만들지 않는다.
-            RaiseShot(0, ArcheryShotPhase.Release, ArcheryShotResult.Miss);
-            yield return null;
-            Assert.AreEqual(0, CurrencyModel.CoinBalance,
-                $"{LogPrefix} 빗나갔는데 동전이 나왔습니다 — «명중 = 동전» 규칙이 깨졌습니다.");
-
-            // ── (나) 조준(Aim) 시점도 아니다. Release에서만 한 번이다.
-            RaiseShot(1, ArcheryShotPhase.Aim, ArcheryShotResult.Bullseye);
-            yield return null;
-            Assert.AreEqual(0, CurrencyModel.CoinBalance,
-                $"{LogPrefix} 시위를 당긴 것만으로 동전이 나왔습니다 — 한 발에 두 번 지급되는 형태입니다.");
-
-            // ── (다) 정중앙 + Release = 지급.
-            RaiseShot(1, ArcheryShotPhase.Release, ArcheryShotResult.Bullseye);
-            yield return null;
-            Assert.AreEqual(CurrencyRules.ArcheryCoinsPerAward, CurrencyModel.CoinBalance,
-                $"{LogPrefix} 정중앙에 맞았는데 지급액이 {CurrencyModel.CoinBalance}입니다 " +
-                $"(기대 {CurrencyRules.ArcheryCoinsPerAward}). 0이면 배선이 안 돌았고, " +
-                "다른 값이면 지급 상수가 두 곳에 있습니다.");
-            Assert.AreEqual(CurrencyRules.ArcheryCoinsPerAward, CurrencyModel.ArcheryCoinsToday,
-                $"{LogPrefix} 오늘 활쏘기 누계가 지급액과 다릅니다 — 일일 상한이 잘못 세어집니다.");
-
-            // ── (라) 같은 발이 다시 발행돼도 두 번 지급하지 않는다.
-            RaiseShot(1, ArcheryShotPhase.Release, ArcheryShotResult.Bullseye);
-            yield return null;
-            Assert.AreEqual(CurrencyRules.ArcheryCoinsPerAward, CurrencyModel.CoinBalance,
-                $"{LogPrefix} 같은 발이 두 번 지급됐습니다.");
-
-            // ── (마) 다음 발이 또 정중앙이어도 <b>쿨다운</b>에 막힌다(§20-3-b).
-            //    쿨다운은 단조 시계 600초라 이 테스트 안에서는 절대 풀리지 않는다 — 결정론적이다.
-            RaiseShot(2, ArcheryShotPhase.Release, ArcheryShotResult.Bullseye);
-            yield return null;
-            Assert.AreEqual(CurrencyRules.ArcheryCoinsPerAward, CurrencyModel.CoinBalance,
-                $"{LogPrefix} 쿨다운({CurrencyRules.ArcheryAwardCooldownSeconds:F0}초) 중인데 상금이 또 나왔습니다 — " +
-                "연속 명중만으로 무제한 파밍이 됩니다.");
-
-            Assert.IsTrue(CurrencyModel.IsDirty,
-                $"{LogPrefix} 활쏘기 상금이 저장 대상으로 표시되지 않았습니다 — 그날 번 동전이 디스크에 안 남습니다.");
-        }
+        //
+        // 뗀 것: <c>정중앙_명중이_실제로_동전을_늘린다</c>. 그 시나리오 다섯 단계
+        // (빗나감 · 조준 시점 · 정중앙 지급 · 같은 발 재발행 · 쿨다운)는 아래 §3-보안이
+        // <b>XP로 그대로</b> 재생하므로 관문 자체의 실주행 검증은 하나도 잃지 않았다.
 
         private static void RaiseShot(int shotIndex, ArcheryShotPhase phase, ArcheryShotResult result)
             => StickmanEventBus.RaiseArcheryShotChanged(shotIndex, phase, result, Vector2.zero, 0.5f);
@@ -239,10 +149,10 @@ namespace StickMate.Tests.PlayMode
         {
             yield return LoadSceneAndFindDirector();
 
-            // 깨끗한 지갑·깨끗한 XP로 시작한다(시드/이전 테스트 잔여가 증가분을 흐리지 않도록).
+            // 깨끗한 카운터·깨끗한 XP로 시작한다(이전 테스트 잔여가 증가분을 흐리지 않도록).
             CurrencyModel.ResetForTesting();
             CharacterProgressionModel.ResetForTesting();
-            Assert.AreEqual(0, CurrencyModel.CoinBalance, "전제 — 지갑이 비어 있어야 증가분을 잰다.");
+            Assert.AreEqual(0, CurrencyModel.ArcheryCoinsToday, "전제 — 관문 누계가 0이어야 증가분을 잰다.");
             Assert.AreEqual(0f, CharacterProgressionModel.TotalXpEarned, "전제 — 누적 XP가 0이어야 증가분을 잰다.");
 
             var agent = Object.FindFirstObjectByType<StickmanAgent>();
@@ -263,11 +173,14 @@ namespace StickMate.Tests.PlayMode
             Assert.AreEqual(0f, CharacterProgressionModel.TotalXpEarned,
                 $"{LogPrefix} 시위를 당긴 것만으로 XP가 나왔습니다.");
 
-            // ── (다) 정중앙 + Release = 코인과 XP가 함께 지급된다.
+            // ── (다) 정중앙 + Release = 관문 통과 + XP 지급.
             RaiseShot(11, ArcheryShotPhase.Release, ArcheryShotResult.Bullseye);
             yield return null;
-            Assert.AreEqual(CurrencyRules.ArcheryCoinsPerAward, CurrencyModel.CoinBalance,
-                $"{LogPrefix} 전제 — 첫 명중은 코인이 나와야 아래 XP 대조가 의미를 갖습니다.");
+            Assert.AreEqual(CurrencyRules.ArcheryCoinsPerAward, CurrencyModel.ArcheryCoinsToday,
+                $"{LogPrefix} 전제 — 첫 명중은 관문을 통과해야 아래 XP 대조가 의미를 갖습니다.");
+            Assert.AreEqual(0, CurrencyModel.CoinBalance,
+                $"{LogPrefix} ★ 활쏘기가 다시 동전을 냈습니다(잔액 {CurrencyModel.CoinBalance}) — " +
+                "2026-09-29에 사용자가 닫은 문(재화)을 되열었습니다.");
             Assert.AreEqual(bullseyeXp, CharacterProgressionModel.TotalXpEarned, 0.001f,
                 $"{LogPrefix} 첫 정중앙 명중인데 누적 XP가 {CharacterProgressionModel.TotalXpEarned}입니다 " +
                 $"(기대 {bullseyeXp}). 0이면 배선이 죽은 것이고, 다른 값이면 지급량이 두 곳에 있습니다.");
@@ -278,91 +191,37 @@ namespace StickMate.Tests.PlayMode
             Assert.AreEqual(bullseyeXp, CharacterProgressionModel.TotalXpEarned, 0.001f,
                 $"{LogPrefix} 같은 발이 XP를 두 번 줬습니다.");
 
-            // ── (마) ★★ 회귀의 핵심 — 새 발(다른 shotIndex)이 또 정중앙이어도 코인이 쿨다운에
-            //    막히면 XP도 함께 막혀야 한다(§3-(마)와 대칭). 수정 전에는 코인은 0인데 XP만
-            //    계속 나갔다 — 그것이 이 보안 결함의 실체였다.
+            // ── (마) ★★ 회귀의 핵심 — 새 발(다른 shotIndex)이 또 정중앙이어도 관문이 쿨다운에
+            //    막히면 XP도 함께 막혀야 한다. 수정 전에는 관문은 막혔는데 XP만 계속 나갔다 —
+            //    그것이 이 보안 결함의 실체였다.
             RaiseShot(12, ArcheryShotPhase.Release, ArcheryShotResult.Bullseye);
             yield return null;
-            Assert.AreEqual(CurrencyRules.ArcheryCoinsPerAward, CurrencyModel.CoinBalance,
+            Assert.AreEqual(CurrencyRules.ArcheryCoinsPerAward, CurrencyModel.ArcheryCoinsToday,
                 $"{LogPrefix} 전제 — 쿨다운({CurrencyRules.ArcheryAwardCooldownSeconds:F0}초) 중이라 " +
-                $"코인은 여전히 {CurrencyRules.ArcheryCoinsPerAward}이어야 합니다.");
+                $"관문 누계는 여전히 {CurrencyRules.ArcheryCoinsPerAward}이어야 합니다.");
             Assert.AreEqual(bullseyeXp, CharacterProgressionModel.TotalXpEarned, 0.001f,
-                $"{LogPrefix} ★★ 코인은 쿨다운에 막혔는데 누적 XP가 {CharacterProgressionModel.TotalXpEarned}로 " +
+                $"{LogPrefix} ★★ 관문은 쿨다운에 막혔는데 누적 XP가 {CharacterProgressionModel.TotalXpEarned}로 " +
                 $"늘었습니다(기대 {bullseyeXp}, 변화 없음) — 쿨다운 없는 XP 무한 파밍 결함이 되돌아왔습니다 " +
                 "(docs/DESIGN_SYSTEMS_LEVEL_STAT_GROWTH_PROPOSAL.md §3-3, 시간당 ~6,478XP 이론치로 " +
-                "Lv50 요구량을 22.4시간에 채울 수 있었던 그 구멍입니다).");
+                "Lv50 요구량을 22.4시간에 채울 수 있었던 그 구멍입니다). " +
+                "★ 2026-09-29 이후 이 관문은 <b>XP 전용 방어선</b>이라 이 단언의 무게가 더 커졌습니다.");
         }
 
         // ====================================================================
-        // §4. ★★ 유휴 수급 — I-7′를 <b>실제 세션을 돌려</b> 잰다
+        // §4. 유휴 수급 I-7′ 실주행 — ★★★ 2026-09-29 <b>폐지</b>
         // ====================================================================
         //
-        // ★ <b>왜 CoinBalance가 아니라 TodayGrantedCoins를 보는가.</b> 잔액은 활쏘기·집중·시드가
-        //   함께 쓰는 칸이라, 20초를 기다리는 동안 캐릭터가 스스로 활쏘기를 시작하면 잔액이 흔들린다
-        //   (그 흔들림은 «유휴가 샜다»와 똑같이 생겼다). <c>todayGrantedCoins</c>는 정의상
-        //   <b>«오늘 유휴로 지급된 동전»</b>이고 다른 채널은 그 칸을 건드리지 않는다 —
-        //   집중 지급이 일부러 이 칸을 안 지나는 것이 그 증거다(CurrencyModel 「집중 모드 지급」 문단).
-        //   ⇒ 다른 연출이 무엇을 하든 이 테스트는 <b>유휴만</b> 본다.
-
-        /// <summary>1동전이 확실히 쌓이는 관측 시간(초). ★ 상수를 베끼지 않고
-        /// <see cref="CurrencyRules.IdleCoinsPerSecond"/>에서 유도한다 — 요율이 바뀌면 이 예산이
-        /// 저절로 따라간다. 2를 곱해 여유를 둔다(경계에서 <c>floor</c>에 걸려 0이 나오지 않게).</summary>
-        private static float IdleProbeSeconds => (float)(2.0 / CurrencyRules.IdleCoinsPerSecond);
-
-        /// <summary>벽시계(초) 대기. ★ 프레임 수로 예산을 잡지 않는다 —
-        /// 이 저장소의 배치모드 PlayMode는 수천 fps로 돌아서 프레임 예산이 밀리초가 된다(CLAUDE.md).</summary>
-        private static IEnumerator WaitRealSeconds(float seconds)
-        {
-            double until = Time.realtimeSinceStartupAsDouble + seconds;
-            while (Time.realtimeSinceStartupAsDouble < until) yield return null;
-        }
-
-        [UnityTest]
-        public IEnumerator 집중_세션_중에는_유휴가_멈추고_끝난_뒤에_몰아주지_않는다()
-        {
-            yield return LoadSceneAndFindDirector();
-
-            var focus = Object.FindFirstObjectByType<FocusWatchDirector>();
-            Assert.IsNotNull(focus, $"{LogPrefix} 씬에 {nameof(FocusWatchDirector)}가 없습니다.");
-            Assert.IsFalse(focus.IsSessionActive, "전제 — 세션이 꺼져 있어야 합니다.");
-
-            CurrencyModel.ResetForTesting();
-            Assert.AreEqual(0, CurrencyModel.TodayGrantedCoins, "전제 — 유휴 버킷이 비어 있어야 합니다.");
-
-            // ── 세션을 켜고 관측 시간만큼 기다린다. 이 동안 유휴는 <b>한 푼도</b> 나오면 안 된다.
-            focus.StartFocusSession(5f);
-            Assert.IsTrue(focus.IsSessionActive, "집중 세션이 시작되지 않았습니다.");
-
-            yield return WaitRealSeconds(IdleProbeSeconds);
-
-            Assert.AreEqual(0, CurrencyModel.TodayGrantedCoins,
-                $"{LogPrefix} 집중 세션 중에 유휴 수급이 들어왔습니다 — 같은 1초가 집중과 유휴 " +
-                "양쪽에서 지급되고 있습니다(I-7′ 파손).");
-            Assert.AreEqual(0.0, CurrencyModel.IdleWindowUsedSeconds, 1e-6,
-                $"{LogPrefix} 지급도 없이 8시간 창만 닳았습니다 — 그건 방어가 아니라 버그입니다(T-15-1-a).");
-
-            // ── 세션을 끈다. 1분 미만 경과라 취소 지급은 0이고(§22-12), 유휴 버킷도 그대로여야 한다.
-            focus.StopFocusSession();
-            Assert.IsFalse(focus.IsSessionActive);
-
-            // ★★ 여기가 이 테스트의 본론이다. 기산점이 세션 동안 멈춰 있었다면, 세션이 끝난
-            //    <b>첫 틱의 델타에 세션 전체 길이가 실려</b> 유휴 버킷이 그 자리에서 훌쩍 뛴다.
-            yield return null;
-            yield return null;
-            Assert.AreEqual(0, CurrencyModel.TodayGrantedCoins,
-                $"{LogPrefix} ★ 세션이 끝나자마자 유휴 버킷이 {CurrencyModel.TodayGrantedCoins}동전으로 " +
-                "뛰었습니다 — 집중 세션 동안 멈춰 뒀던 기산점이 그 시간을 <b>유휴로 한 번 더</b> " +
-                "지급한 것입니다. 사용자는 25분 세션마다 300동전을 덤으로 받게 됩니다.");
-
-            // ── 양성 대조 — 유휴가 <b>실제로 벌기는 하는가</b>. 이게 없으면 위 두 개의 «0»은
-            //    «계약을 지켰다»가 아니라 «유휴 수급이 아예 안 돈다»와 구분되지 않는다.
-            yield return WaitRealSeconds(IdleProbeSeconds);
-            Assert.Greater(CurrencyModel.TodayGrantedCoins, 0,
-                $"{LogPrefix} 세션이 끝난 뒤에도 유휴 수급이 0입니다 — 위의 «집중 중 0동전»은 " +
-                "계약이 아니라 <b>기능 부재</b>입니다. 배선이 죽었는지 확인하십시오.");
-            Assert.Greater(CurrencyModel.IdleWindowUsedSeconds, 0.0,
-                $"{LogPrefix} 동전은 늘었는데 8시간 창이 안 닳았습니다 — 두 값이 한 사건이어야 합니다.");
-        }
+        // 뗀 것: <c>집중_세션_중에는_유휴가_멈추고_끝난_뒤에_몰아주지_않는다</c>와 그 시간 예산 헬퍼
+        //   (<c>IdleProbeSeconds</c> · <c>WaitRealSeconds</c>).
+        //
+        // ★★ <b>이 테스트가 가장 값졌던 이유를 남긴다</b>: I-7′ 파손(같은 시간이 두 축에서 보상됨)은
+        //   화면에도 로그에도 흔적을 남기지 않고, <b>정상보다 오히려 후해 보여서</b> 아무도 신고하지
+        //   않는다. 잡는 방법은 하나였다 — 실제 세션을 켜고 벽시계로 기다린 뒤 «세션이 끝난 첫 틱에
+        //   버킷이 훌쩍 뛰는가»를 보는 것. 두 번째 적립 축을 만드는 라운드는 이 형태를 복제하라.
+        //
+        // ★ 그리고 관측 대상을 «지갑»이 아니라 «그 축 전용 카운터»로 잡아야 했다 — 지갑은 여러 채널이
+        //   함께 쓰는 칸이라, 기다리는 동안 캐릭터가 스스로 활쏘기를 시작하면 잔액이 흔들리고
+        //   그 흔들림은 «샜다»와 똑같이 생긴다.
 
         // ====================================================================
         // §5. H-8 등급 눈금 — 장비를 갈아입으면 실제로 새겨지는가
@@ -499,136 +358,23 @@ namespace StickMate.Tests.PlayMode
             return best;
         }
         // ====================================================================
-        // §6. ★★ 「멈췄다」 로그 — 정상 동작을 고장으로 신고하지 않는가
+        // §6. 「멈췄다」 로그 줄 수 세기 — ★★★ 2026-09-29 <b>절 전체 폐지</b>
         // ====================================================================
         //
-        // ★ 무슨 일이 있었나(2026-09-06 debugger 규명): 정지 판정이 <b>«이번 틱의 지급액이 0인가»</b>
-        //   였다. 그런데 요율이 CurrencyRules.IdleCoinsPerMinute(분당 12 = 초당 0.2)라
-        //   <b>정상 상태에서도 프레임의 대부분이 0동전</b>이다 — 소수분은 다음 틱으로 넘어간다.
-        //   결과: 5초에 한 줄(동전 1개마다 플래그가 풀리고 다음 프레임에 다시 찍힌다).
-//   실측(CurrencyRules.IdleTick을 그대로 컴파일해 60fps 1시간): 옛 기준 720줄, 새 기준 0줄.
-//   그 720줄은 <b>전부</b> «지급 가능 시간(480분)을 다 썼다»고 적혔다 — 그때 창은 60분 썼다.
-        //   그 함수 바로 옆 주석이 «매 프레임 찍지 않는다(24시간 상주 앱)»라고 금지한 바로 그 상황이다.
+        // 뗀 것: 로그 감시 장치(<c>_stallLines</c> · <c>StartWatchingLogs</c> · <c>StopWatchingLogs</c> ·
+        //   <c>OnLogMessage</c>)와 테스트 둘(<c>정상_수급_중에는_정지_로그가_한_줄도_안_찍힌다</c> ·
+        //   <c>상한에_도달하면_정지_로그가_한_줄만_그리고_상한만_말한다</c>).
+        //   정지 로그와 그 표지 상수 4개가 프로덕션에서 삭제됐다(유휴 수급 폐지).
         //
-        // ★ <b>여기가 이 결함을 잡는 유일한 자</b>다. EditMode 소스 스캔은 «어떤 조건으로 찍는가»를
-        //   구조로만 볼 수 있고, 모델 단위 테스트는 로그를 보지 않는다. 실제 씬을 벽시계로 돌려
-        //   <b>줄 수를 세는</b> 것만이 «정상인데 시끄러운가»를 잰다.
-        //
-        // ★ 문구를 베끼지 않는다 — 표지와 사유 낱말은 프로덕션 상수를 <b>참조</b>한다
-        //   (CharacterProgressionDirector.IdleStallLogMarker 등). 문구를 다듬는 라운드에 이 테스트가
-        //   조용히 초록이 되지 않게 하는 유일한 방법이다(CLAUDE.md — 부재 단언용 니들은 썩어도 안 빨개진다).
-
-        private readonly List<string> _stallLines = new List<string>();
-        private bool _watchingLogs;
-
-        private void StartWatchingLogs()
-        {
-            _stallLines.Clear();
-            if (_watchingLogs) return;
-            Application.logMessageReceived += OnLogMessage;
-            _watchingLogs = true;
-        }
-
-        private void StopWatchingLogs()
-        {
-            if (!_watchingLogs) return;
-            Application.logMessageReceived -= OnLogMessage;
-            _watchingLogs = false;
-        }
-
-        private void OnLogMessage(string condition, string stackTrace, LogType type)
-        {
-            if (condition != null
-                && condition.IndexOf(CharacterProgressionDirector.IdleStallLogMarker,
-                    System.StringComparison.Ordinal) >= 0)
-            {
-                _stallLines.Add(condition);
-            }
-        }
-
-        /// <summary>
-        /// ★★ <b>정상 수급 중에는 «멈췄다»가 한 줄도 안 나온다.</b>
-        /// <para>양성 대조를 같은 실행에 붙인다 — 관측 시간 동안 유휴 버킷이 <b>실제로 늘어야</b>
-        /// 이 «0줄»이 «수급이 아예 안 돈다»와 구분된다.</para>
-        /// </summary>
-        [UnityTest]
-        public IEnumerator 정상_수급_중에는_정지_로그가_한_줄도_안_찍힌다()
-        {
-            yield return LoadSceneAndFindDirector();
-
-            // 깨끗한 하루로 되돌린다 — 상한도 창도 남아 있으니 «멈출» 이유가 하나도 없는 상태다.
-            CurrencyModel.ResetForTesting();
-            Assert.Greater(CurrencyModel.RemainingDailyRoomCoins(), 0, "전제 — 오늘 상한이 남아 있어야 합니다.");
-            Assert.Greater(CurrencyModel.RemainingIdleWindowSeconds(), 0.0, "전제 — 창이 남아 있어야 합니다.");
-
-            StartWatchingLogs();
-            yield return WaitRealSeconds(IdleProbeSeconds);
-            StopWatchingLogs();
-
-            // ── 양성 대조 먼저. 이게 0이면 아래 «정지 로그 0줄»은 계약이 아니라 기능 부재다.
-            Assert.Greater(CurrencyModel.TodayGrantedCoins, 0,
-                $"{LogPrefix} 관측 시간({IdleProbeSeconds:F0}초) 동안 유휴 수급이 한 푼도 안 들어왔습니다 — " +
-                "아래 «정지 로그 0줄»은 «조용하다»가 아니라 <b>아무것도 안 돈다</b>는 뜻이 됩니다.");
-
-            Assert.AreEqual(0, _stallLines.Count,
-                $"{LogPrefix} ★ 정상 수급 중인데 «{CharacterProgressionDirector.IdleStallLogMarker}»가 " +
-                $"{_stallLines.Count}줄 찍혔습니다(관측 {IdleProbeSeconds:F0}초, 그동안 유휴 " +
-                $"{CurrencyModel.TodayGrantedCoins}동전이 실제로 들어왔습니다). 요율이 초당 " +
-                $"{CurrencyRules.IdleCoinsPerSecond}동전이라 <b>0동전 프레임은 정상</b>입니다 — " +
-                "정지 판정이 지급액이 아니라 «창이 갉혔는가»를 봐야 합니다. " +
-                "첫 줄: " + (_stallLines.Count > 0 ? _stallLines[0] : "(없음)"));
-        }
-
-        /// <summary>
-        /// ★ 진짜로 멈췄을 때는 <b>정확히 한 줄</b>, 그리고 그 줄은 <b>맞는 이유 하나만</b> 말한다.
-        /// <para>실제 로그에 «8시간 창을 0으로 리셋했다»와 «480분을 다 썼다»가 11줄 간격으로 함께
-        /// 찍힌 적이 있다. 창은 설계상 상한보다 <b>2.3배 넉넉</b>해서(<c>WindowToCeilingRatio</c>)
-        /// 거의 도달할 수 없는 쪽인데, 옛 구현이 그것을 <b>기본 분기</b>로 적었기 때문이다.</para>
-        /// </summary>
-        [UnityTest]
-        public IEnumerator 상한에_도달하면_정지_로그가_한_줄만_그리고_상한만_말한다()
-        {
-            yield return LoadSceneAndFindDirector();
-
-            CurrencyModel.ResetForTesting();
-
-            // 오늘 상한까지 한 번에 채운다. 숫자를 베끼지 않고 상한/요율에서 <b>유도</b>한다 —
-            // 상한이나 요율이 바뀌어도 이 테스트는 저절로 따라간다.
-            double secondsToCap = CurrencyModel.DailyCapCoins() / CurrencyRules.IdleCoinsPerSecond;
-            CurrencyModel.TickIdleIncome(secondsToCap, true, out _);
-
-            Assert.AreEqual(0, CurrencyModel.RemainingDailyRoomCoins(),
-                $"{LogPrefix} 상한을 채우지 못했습니다(오늘 유휴 {CurrencyModel.TodayGrantedCoins}/" +
-                $"{CurrencyModel.DailyCapCoins()}) — 아래 단언이 재는 것은 «정지»가 아닙니다.");
-            Assert.Greater(CurrencyModel.RemainingIdleWindowSeconds(), 0.0,
-                $"{LogPrefix} 창까지 함께 소진됐습니다 — 이 실행은 «상한만 말하는가»를 가릴 수 없습니다. " +
-                "설계상 창은 상한보다 " +
-                $"{CurrencyRules.WindowToCeilingRatio:F1}배 넉넉해야 합니다(WindowToCeilingRatio).");
-
-            StartWatchingLogs();
-            yield return WaitRealSeconds(1.0f);   // 수백~수천 프레임. 반복해서 찍히면 여기서 드러난다.
-            StopWatchingLogs();
-
-            Assert.AreEqual(1, _stallLines.Count,
-                $"{LogPrefix} 정지 로그가 {_stallLines.Count}줄입니다(1이어야 합니다). " +
-                "0이면 상한에 걸린 상태가 <b>화면에서 고장과 똑같이 생긴 채</b> 아무 흔적도 안 남고, " +
-                "2 이상이면 24시간 상주 앱의 로그를 매 프레임 채웁니다.");
-
-            string line = _stallLines[0];
-            StringAssert.Contains(CharacterProgressionDirector.IdleStallCapPhrase, line,
-                $"{LogPrefix} 상한에 걸렸는데 그 사실이 로그에 없습니다: {line}");
-            Assert.IsFalse(
-                line.IndexOf(CharacterProgressionDirector.IdleStallWindowPhrase,
-                    System.StringComparison.Ordinal) >= 0,
-                $"{LogPrefix} ★ 상한 정지인데 «창을 다 썼다»까지 같이 주장합니다 — 같은 로그가 서로 " +
-                $"모순되는 두 이유를 말합니다(남은 창 {CurrencyModel.RemainingIdleWindowSeconds() / 60.0:F0}분): {line}");
-            Assert.IsFalse(
-                line.IndexOf(CharacterProgressionDirector.IdleStallUnknownPhrase,
-                    System.StringComparison.Ordinal) >= 0,
-                $"{LogPrefix} 상한 도달을 «원인 불명»으로 적었습니다 — 사유 판정이 정지 판정과 " +
-                $"어긋났습니다: {line}");
-
-            TestContext.WriteLine($"{LogPrefix} 정지 로그 1줄 — {line}");
-        }
+        // ★★ <b>이 절이 잡은 실제 결함과 방법을 남긴다</b>(다음에 「조용히 멈추는 기능」을 만들 때
+        //   그대로 필요하다):
+        //   ① 결함: 정지 판정이 «이번 틱의 지급액이 0인가»였는데, 요율이 초당 0.2라 <b>정상 상태에서도
+        //      프레임의 대부분이 0</b>이었다 ⇒ 5초에 한 줄, 실측 <b>720줄/시간</b>. 게다가 그 720줄이
+        //      <b>전부</b> «지급 가능 시간(480분)을 다 썼다»고 적혀 있었다 — 그때 창은 60분 썼다.
+        //   ② 방법: 실제 씬을 <b>벽시계로</b> 돌려 <b>줄 수를 센다</b>. 소스 스캔은 «어떤 조건으로
+        //      찍는가»만 보고, 모델 테스트는 로그를 아예 안 본다 — 줄 수를 세는 자가 따로 있어야 했다.
+        //   ③ 「0줄」 단언에는 <b>같은 실행의 양성 대조</b>를 붙였다(그 사이 값이 실제로 늘었는가).
+        //   ④ 문구는 베끼지 않고 프로덕션 상수를 참조했다 — 문구를 다듬는 라운드에 조용히 초록이
+        //      되지 않게 하는 유일한 방법이다.
     }
 }

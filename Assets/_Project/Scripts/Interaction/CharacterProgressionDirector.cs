@@ -20,15 +20,16 @@ namespace StickMate.Interaction
     ///  · 패시브        : progressionPassiveTickSeconds 주기로 분당 값을 쪼개 적립.
     ///                    "아무것도 안 해도 자란다"(관찰형 앱 철학)가 주 경로다.
     ///  · 활쏘기 명중    : ArcheryShotChanged.Result == Bullseye (Release 시점 1회)
-    ///                    ★ 2026-09-06 — <b>같은 훅이 동전 20도 낸다</b>(아래 「2차」 절). 관문 셋을
-    ///                    공유하므로 «XP는 들어왔는데 동전은 안 들어왔다»가 구조적으로 불가능하다.
-    ///                    ★★ 2026-09-07 보안 결함 수정(design-systems 발견, §3-3) — <b>반대 방향도
-    ///                    막았다</b>. 옛 코드는 동전이 쿨다운(600초)·일일 상한(72회)에 막혀도 XP는
-    ///                    <b>무조건</b> 나갔다 — 연속 도배 시 시간당 ~6,478XP(패시브의 72배)로 Lv50
-    ///                    전체 요구량을 22.4시간에 채우는 익스플로잇이었다. 지금은
-    ///                    <see cref="AwardArcheryCoins"/>가 돌려주는 <c>coinsAwarded</c>(동전이 이미
-    ///                    통과한 쿨다운·일일상한 판정 결과)가 0이면 XP도 지급하지 않는다 — XP 전용
-    ///                    쿨다운을 새로 만들지 않고 동전 쪽 판정을 그대로 재사용한다.
+    ///                    ★★ 2026-09-07 보안 결함 수정(design-systems 발견, §3-3) — 옛 코드는
+    ///                    쿨다운(600초)·일일 상한(72회)에 막혀도 XP는 <b>무조건</b> 나갔다 —
+    ///                    연속 도배 시 시간당 ~6,478XP(패시브의 72배)로 Lv50 전체 요구량을
+    ///                    22.4시간에 채우는 익스플로잇이었다. 지금은
+    ///                    <see cref="ClaimArcheryAward"/>가 돌려주는 값이 0이면 XP도 지급하지 않는다 —
+    ///                    XP 전용 쿨다운을 새로 만들지 않고 <b>이미 있는 판정 한 곳</b>을 재사용한다.
+    ///                    ★★★ 2026-09-29 DLC·재화 폐지 R5 — 그 훅이 내던 <b>동전 20이 사라졌다</b>.
+    ///                    <b>관문은 그대로다</b>: <c>CurrencyModel.TryClaimArcheryAward</c>가 쿨다운·
+    ///                    일일 총량을 한 글자도 안 바꾼 채 판정만 하고, 이 파일은 계속 그 결과를
+    ///                    XP 게이트로 쓴다. <b>관문을 「동전이 없어졌으니」 지우면 위 구멍이 다시 열린다.</b>
     ///
     /// ★ 2026-09-02 — 보너스 소스가 <b>2종에서 1종</b>이 됐다(격파 승리 +25XP 삭제, 격파 놀이 기능
     ///   제거). 패시브가 주 경로라는 설계 덕에 성장 속도에 미치는 영향은 사실상 없다 —
@@ -36,8 +37,8 @@ namespace StickMate.Interaction
     ///
     ///  · 집중 모드 완주/취소(2026-09-07, design-systems §15) — <see cref="GrantFocusCompletionXp"/>·
     ///    <see cref="GrantFocusCancelXp"/>. 위 둘과 달리 <b>이벤트 구독이 아니라 직접 호출</b>이다 —
-    ///    <c>FocusWatchDirector</c>가 코인(<c>CurrencyModel.PayFocusCompletionCoins</c>류)도 같은
-    ///    방식(직접 호출)으로 지급하고 있어 그 관례를 그대로 따른다. 산식은
+    ///    <c>FocusWatchDirector</c>가 코인도 같은 방식(직접 호출)으로 지급하고 있어 그 관례를
+    ///    따랐다(그 코인 지급은 2026-09-29에 폐지됐고, 이 XP 경로만 남았다). 산식은
     ///    <c>CurrencyRules.FocusCompletionXp</c>/<c>FocusCancelXp</c> 한 곳에만 있고, <b>일일 상한
     ///    (<c>CurrencyRules.FocusXpDailyCap</c>)은 코인과 달리 존재한다</b> — 활쏘기/패시브와
     ///    달리 코인 쪽 §22-13("집중 지급은 일일 상한 밖")을 XP는 물려받지 않는다(design-systems
@@ -62,26 +63,35 @@ namespace StickMate.Interaction
     /// <c>Core/CurrencyModel.TickDayRollover</c>가 안다. 이 파일은 <b>둘을 잇기만 한다</b>.</para>
     ///
     /// ============================================================================
-    /// ★ 2026-09-06 (2차) — <b>첫 실행 시드</b>와 <b>활쏘기 상금</b>도 여기서 흐른다
+    /// ★★★ 2026-09-29 DLC·재화 폐지 R5 — <b>여기서 흐르던 동전 셋 중 둘이 사라졌다</b>
     /// ============================================================================
-    /// <c>docs/GAME_ARCHITECTURE_REVIEW.md</c> §17-11의 착수 순서 2·3번이 지목한 자리가 둘 다
-    /// 이 파일이다. 새 컴포넌트를 만들지 않은 이유는 롤오버와 <b>같다</b> —
-    /// 시드는 «로드 직후 1회»라 <see cref="Start"/>의 <c>CharacterSaveStore.Load()</c> 바로 뒤가
-    /// 유일하게 옳은 자리이고, 활쏘기는 <b>이미 있는 명중 훅</b>(<see cref="OnArcheryShotChanged"/>)에
-    /// 얹는 것이 «명중 1회 = 판정 1회»를 한 이음매로 유지하는 유일한 방법이다.
+    /// 이 파일에서 뗀 것:
     /// <list type="bullet">
-    ///  <item><b>시드</b> — <see cref="TryGrantSeedCoinsOnce"/>. 1회 보장은 이 파일이 아니라
-    ///    세이브 필드 <c>seedGranted</c>(v10, 이미 존재)와 <c>CurrencyRules.CanGrantSeed</c>가 한다.
-    ///    <b>이 파일에는 「받았는가」를 판정하는 코드가 한 줄도 없다</b> — 같은 사실을 두 곳에서
-    ///    계산하지 않는다.</item>
-    ///  <item><b>활쏘기</b> — <see cref="AwardArcheryCoins"/>. 쿨다운(단조 시계 600초)과 일일 총량은
-    ///    <c>CurrencyModel.TryAwardArcheryCoins</c> 안에만 있다. 이 파일은 <b>언제 물어볼지</b>만 안다.</item>
-    ///  <item><b>유휴 수급</b>(2026-09-06 3차) — <see cref="AccrueIdleIncome"/>. <see cref="Update"/>의
-    ///    롤오버 <b>바로 아래</b>. 이 배선의 본체는 지급이 아니라 <b>기산점을 조건 없이 전진시키는 것</b>이다 —
-    ///    집중 세션 동안 멈춰 두면 세션이 끝난 첫 틱이 그 25분을 유휴로 <b>한 번 더</b> 지급한다(I-7′ 파손).</item>
+    ///  <item><b>첫 실행 시드</b>(<c>TryGrantSeedCoinsOnce</c>와 <see cref="Start"/>의 그 한 줄) —
+    ///    삭제. 「평생 1회」를 보장하던 세이브 필드 <c>seedGranted</c>는 스키마에 그대로 남아
+    ///    왕복만 한다. <b>되살리지 마라</b> — 기존 사용자 전원의 플래그가 <c>false</c>라 되살리는
+    ///    순간 전원에게 한 번 더 나간다(<c>CurrencyRules</c>의 「첫 실행 시드」 절).</item>
+    ///  <item><b>유휴 수급</b>(<c>AccrueIdleIncome</c> · <c>LogIdleStallOnce</c> ·
+    ///    <c>LogIdleIncomeIfDue</c>와 그 네 필드) — 삭제. 그 배선의 본체는 지급이 아니라
+    ///    <b>기산점을 조건 없이 전진시키는 것</b>이었다(집중 세션 동안 멈춰 두면 세션이 끝난 첫 틱이
+    ///    그 25분을 유휴로 <b>한 번 더</b> 지급한다 — I-7′ 파손). <b>두 번째 적립 축을 새로 만드는
+    ///    라운드는 이 문장을 먼저 읽어라.</b></item>
+    ///  <item><b>활쏘기 상금</b> — <b>판정은 남기고 지급만 뗐다.</b> <see cref="ClaimArcheryAward"/>가
+    ///    <c>CurrencyModel.TryClaimArcheryAward</c>를 계속 부르고, 그 반환값이 <b>XP 게이트</b>다
+    ///    (2026-09-07 보안 결함 수정의 본체 — 위 XP 소스 절).</item>
     /// </list>
-    /// <para>★ <b>지급액·쿨다운·상한 숫자는 이 파일에 한 개도 없다</b>(<c>CurrencyRules</c> 전용).
-    /// 여기에 20이나 1200을 적으면 그 순간 같은 사실이 두 곳에 살게 된다.</para>
+    ///
+    /// ★ <b>남은 것 — 이 파일이 여전히 소유하는 재화 책임 하나</b>: 일일 롤오버 구동
+    /// (<c>_dayRollover</c>). <c>CurrencyModel.DayIndex</c>는 [오늘 할일] 날짜축이 읽는
+    /// <b>「오늘」의 유일 출처</b>라 재화와 함께 지울 수 없다.
+    ///
+    /// <para>★ 활쏘기는 <b>이미 있는 명중 훅</b>(<see cref="OnArcheryShotChanged"/>)에 얹는 것이
+    /// «명중 1회 = 판정 1회»를 한 이음매로 유지하는 유일한 방법이다. 쿨다운(단조 시계 600초)과
+    /// 일일 총량은 <c>CurrencyModel.TryClaimArcheryAward</c> 안에만 있고, 이 파일은
+    /// <b>언제 물어볼지</b>만 안다.</para>
+    ///
+    /// <para>★ <b>쿨다운·상한 숫자는 이 파일에 한 개도 없다</b>(<c>CurrencyRules</c> 전용).
+    /// 여기에 600이나 72를 적으면 그 순간 같은 사실이 두 곳에 살게 된다.</para>
     ///
     /// ============================================================================
     /// 매 프레임 할당 금지 (24시간 상주 앱)
@@ -104,61 +114,31 @@ namespace StickMate.Interaction
         private float _passiveTimer;
         private float _autoSaveTimer;
 
-        /// <summary>같은 GameObject의 집중 모드 감시자. <b>«집중 세션 중인가»의 유일한 출처</b>다 —
-        /// 유휴 수급이 그 사실을 따로 계산하면(그림자 상태) 두 값이 갈라지는 날 같은 1초가 두 번
-        /// 지급된다(I-7′). 없으면 «세션이 존재할 수 없는 조립»이므로 유휴로 본다.</summary>
-        private FocusWatchDirector _focusWatch;
-
-        /// <summary>유휴 수급의 단조 기산점. <see cref="double.NaN"/>은 «아직 한 틱도 안 돌았다»이고,
-        /// 그 첫 틱은 <b>기산점만 잡고 지급하지 않는다</b>(앱 시작~첫 프레임 사이를 지급하지 않기 위해).</summary>
-        private double _idleTickMonotonic = double.NaN;
-
-        /// <summary>직전 유휴 요약 로그의 단조 시각.</summary>
-        private double _idleLogMonotonic = double.NaN;
-
-        /// <summary>직전 요약 이후 유휴로 들어온 동전(요약 한 줄에 실어 보내고 0으로 되돌린다).</summary>
-        private int _idleCoinsSinceLog;
-
-        /// <summary>«유휴 수급이 멈췄다»를 이미 알렸는가. <b>창이 다시 갉히기 시작하면</b> 내려간다 —
-        /// 그래야 다음 정지가 <b>새 사건</b>으로 한 번 더 보고된다.
-        /// <para>★ 2026-09-06 정정 — 원래는 «동전이 1개라도 들어오면» 내렸다. 그 기준이
-        /// <see cref="LogIdleStallOnce"/>의 오판과 짝을 이뤄 <b>5초에 한 줄</b>을 만들었다
-        /// (0동전 프레임에서 찍고 → 5초 뒤 동전 1개에 플래그가 풀리고 → 다음 프레임에 또 찍는다).
-        /// 이제 올리는 조건과 내리는 조건이 <b>같은 사실 하나</b>(창이 갉혔는가)를 본다.</para></summary>
-        private bool _idleStallLogged;
-
-        /// <summary>유휴 수급 요약 로그의 최소 간격(초). 동전은 5초에 1개꼴로 들어오므로 지급마다
-        /// 찍으면 하루 1만 줄이 넘는다 — 24시간 상주 앱에서 그건 로그가 아니라 소음이다.</summary>
-        private const double IdleIncomeLogIntervalSeconds = 1800.0;
-
         // ====================================================================
-        // ★ 정지 로그의 식별 표지 — 테스트가 문장을 <b>베끼지 않고</b> 참조한다
+        // ★★★ 2026-09-29 DLC·재화 폐지 R5 — 유휴 수급 배선이 통째로 사라졌다
         // ====================================================================
-        // 문장을 테스트에 하드코딩하면 문구를 다듬는 라운드마다 «부재 단언»이 조용히 초록이 된다
-        // (CLAUDE.md — 부재 단언용 니들이 썩으면 아무도 모른다). 여기 상수로 두면 이름이 바뀌는
-        // 순간 테스트가 컴파일되지 않는다.
-
-        /// <summary>정지 로그 한 줄의 머리말. 이 문자열이 로그에 있으면 «멈췄다»를 알린 것이다.</summary>
-        public const string IdleStallLogMarker = "[재화] 유휴 수급이 멈췄습니다";
-
-        /// <summary>정지 사유 ① — 오늘의 일일 상한을 다 채웠다.</summary>
-        public const string IdleStallCapPhrase = "오늘 상한";
-
-        /// <summary>정지 사유 ② — 8시간 창을 다 썼다. ★ 실제로는 <b>거의 도달할 수 없는</b> 사유다
-        /// (<c>CurrencyRules.WindowToCeilingRatio</c> = 2.3배 — 창이 하루 절대 천장의 2배가 넘게
-        /// 설계돼 있어 상한이 <b>먼저</b> 걸린다). 옛 구현은 이 사유를 <b>기본 분기</b>로 적었고,
-        /// 그래서 상한 정지에 «480분을 다 썼다»는 거짓 문장이 붙어 나갔다.</summary>
-        public const string IdleStallWindowPhrase = "지급 가능 시간";
-
-        /// <summary>정지 사유 ③ — 위 둘 다 아니다. 여기에 오면 <b>우리가 모르는 정지</b>이므로
-        /// 아는 척하지 않고 숫자를 그대로 늘어놓는다(두 사유를 동시에 주장하지 않는다).</summary>
-        public const string IdleStallUnknownPhrase = "원인을 특정하지 못했습니다";
+        // 지운 필드: <c>_focusWatch</c>(집중 세션 조회) · <c>_idleTickMonotonic</c>(기산점) ·
+        //   <c>_idleLogMonotonic</c> · <c>_idleCoinsSinceLog</c> · <c>_idleStallLogged</c> ·
+        //   <c>IdleIncomeLogIntervalSeconds</c>, 그리고 정지 로그 표지 4개
+        //   (<c>IdleStallLogMarker</c> · <c>IdleStallCapPhrase</c> · <c>IdleStallWindowPhrase</c> ·
+        //   <c>IdleStallUnknownPhrase</c> — 테스트가 문장을 베끼지 않도록 상수로 두었던 것들).
+        //
+        // ★ <b>여기 있던 관측 설계를 기록으로 남긴다</b>(다음에 「조용히 멈추는 기능」을 만들 때 읽어라):
+        //   ① 상한/창에 걸린 상태는 화면에서 <b>고장과 똑같이 생겨서</b> 전용 로그가 필요했다.
+        //   ② 그런데 그 로그가 «지급액 0»을 정지로 읽어 <b>정상 동작을 5초에 한 번 고장으로 신고</b>했다
+        //      (실측 720줄/시간). ③ 고친 방법은 판정 기준을 «지급액»에서 «창이 갉혔는가»로 바꾼 것 —
+        //      후자는 «지급이 실제로 일어난 초»에만 값이 있어 0과 0이 다른 사실이 된다.
+        //   ④ 그리고 사유를 <b>추측하지 않고</b> 둘을 각각 확인했다(둘 다 아니면 그렇다고 적었다).
 
         /// <summary>
-        /// ★ <b>재화 일일 리셋의 유일한 구동자</b>(2026-09-06 배선). 상한 리셋 · 무료 회복제 부활 ·
-        /// 8시간 창 리셋 · [오늘 할일] · 활쏘기 카운터를 되돌리는 코드는
-        /// <c>Core/CurrencyModel.TickDayRollover</c> 하나뿐인데(불변식 I-15′)
-        /// <b>그것을 부르는 프로덕션 코드가 0건이었다</b>.
+        /// ★ <b>일일 롤오버의 유일한 구동자</b>(2026-09-06 배선). 「오늘의 것」을 되돌리는 코드는
+        /// <c>Core/CurrencyModel.TickDayRollover</c> 하나뿐이다(불변식 I-15′).
+        ///
+        /// <para>★★ <b>2026-09-29 — 재화가 폐지된 뒤에도 이 배선은 그대로 남는다.</b> 이 롤오버가
+        /// 전진시키는 <c>CurrencyModel.DayIndex</c>는 [오늘 할일] 날짜축
+        /// (<c>Interaction/TodoBoardPopover.TodayIndex</c>)이 읽는 <b>「오늘」의 유일 출처</b>이고,
+        /// 활쏘기·집중 XP의 일일 천장도 여기서 열린다. <b>「재화 정리」 명목으로 지우지 마라</b> —
+        /// 지우면 [오늘 할일]의 날짜가 앱 생애 동안 고정되고, XP 천장이 하루 뒤 영구히 닫힌다.</para>
         ///
         /// <para><b>왜 이 파일인가</b>: 여기가 이미 세이브 파일의 「언제」를 전부 쥐고 있다 —
         /// 로드(<see cref="Start"/>) · 주기 저장 · 종료 저장 · <c>CurrencyModel.IsDirty</c> 합류
@@ -180,8 +160,9 @@ namespace StickMate.Interaction
         //    두 번째 것이 <b>조용히 버려진다</b>. 형제 파일 <c>CharacterStatsDirector</c>는 같은 방어를
         //    쓰면서 <c>ArcheryOverlayChanged(Started)</c>에서 <c>-1</c>로 되돌려 이 구멍을 이미 막았다
         //    (그 파일의 <c>OnArcheryOverlayChanged</c>). 여기는 그 구독이 없다.
-        //    ⇒ 영향: XP 보너스가 그 경우 누락되고, 동전은 어차피 600초 쿨다운이라 대부분 지연에 그친다.
-        //    ⇒ <b>이번 라운드에서 고치지 않았다</b> — XP 거동을 바꾸는 변경이고, 먼저 빨간 테스트를
+        //    ⇒ 영향: XP 보너스가 그 경우 누락된다(2026-09-29 이전에는 동전도 함께였지만, 동전은
+        //      600초 쿨다운이라 대부분 지연에 그쳤다 — 지금은 <b>XP 누락만</b> 남았고 영향이 더 크다).
+        //    ⇒ <b>이번 라운드에서도 고치지 않았다</b> — XP 거동을 바꾸는 변경이고, 먼저 빨간 테스트를
         //      세워야 한다(CLAUDE.md). 고칠 때는 형제 파일의 형태를 그대로 가져오면 된다.
         private int _lastRewardedShotIndex = -1;
 
@@ -192,11 +173,10 @@ namespace StickMate.Interaction
             _agent = GetComponent<StickmanAgent>();
             if (_config == null && _agent != null) _config = _agent.Config;
 
-            // ★ 유휴 수급이 «집중 세션 중인가»를 물어볼 상대. 같은 프리팹 루트에 함께 붙는다
-            //   (Assets/Editor/SceneBootstrapper.cs가 둘 다 root에 AddComponent한다).
-            //   FindFirstObjectByType을 쓰지 않는 이유는 위 _agent와 같다 — 복제본이 남의 세션을
-            //   읽으면 그 복제본만 유휴 수급이 멈춘다.
-            _focusWatch = GetComponent<FocusWatchDirector>();
+            // ★ 2026-09-29 — 여기 있던 `_focusWatch = GetComponent<FocusWatchDirector>();`를 뗐다.
+            //   그 참조의 유일한 독자가 유휴 수급(«집중 세션 중인가»)이었고 그 배선이 폐지됐다.
+            //   ⚠ 집중 모드 <b>XP</b>는 반대 방향이다 — FocusWatchDirector가 이 컴포넌트를 찾아
+            //   GrantFocusCompletionXp/GrantFocusCancelXp를 부른다. 그 방향은 건드리지 않았다.
         }
 
         private void Start()
@@ -222,38 +202,23 @@ namespace StickMate.Interaction
             //    앞에서 부르면 기본값(DayIndex = 0) 위에서 한 번 굴러가고 로드가 그것을 덮어써
             //    <b>아무 일도 안 한 것이 된다</b>(그리고 그 실패는 로그도 예외도 안 남긴다).
             //    주기 틱(Update)을 기다리지 않는 이유: 기다리면 그 사이 60초 동안 어제 상태로 산다 —
-            //    수급 배선이 그 창에서 「오늘 이미 다 받았다」를 보게 된다. ★ 2026-09-06 현재 그
-            //    말이 실제로 걸리는 채널이 생겼다: 활쏘기 상금(archeryCoinsToday)은 <b>배선됐고</b>,
-            //    유휴·[오늘 할일]은 아직이다. 즉 이 줄은 이제 가정이 아니라 <b>실효 방어</b>다.
+            //    그 창에서 「오늘 이미 다 받았다」를 보게 되는 채널이 실재한다: 활쏘기 보상 판정
+            //    (archeryCoinsToday)이 XP의 일일 천장이다. 즉 이 줄은 가정이 아니라 <b>실효 방어</b>다.
+            //    ★ 2026-09-29 — 여기 있던 「유휴·[오늘 할일]은 아직이다」는 폐지로 영구히 해소됐다.
             if (_dayRollover.CheckNow(Time.realtimeSinceStartupAsDouble)) LogDayRollover("실행 직후");
 
-            // ★★ 첫 실행 시드 — 반드시 위 CharacterSaveStore.Load() <b>뒤</b>다(롤오버와 같은 함정).
-            //    앞에서 부르면 RestoreFromSave가 디스크의 seedGranted(=false)와 coinBalance를 그대로
-            //    덮어써 <b>지급이 통째로 사라진다</b>. 그리고 그 실패는 예외도 로그도 남기지 않고
-            //    <b>다음 실행에서도 똑같이</b> 사라져, 사용자는 시드를 영영 못 받는다.
-            //    롤오버 「아래」에 둔 것은 이 파일의 규약 그대로다(수급 배선은 롤오버 뒤).
-            //    ※ 시드는 일일 카운터를 건드리지 않으므로 롤오버와 순서 의존이 실제로는 없다 —
-            //      그래도 규약을 지켜 «수급은 항상 롤오버 뒤»를 한 줄도 예외 없이 유지한다.
-            TryGrantSeedCoinsOnce();
+            // ★★★ 2026-09-29 — 이 자리에 있던 `TryGrantSeedCoinsOnce();`를 뗐다(첫 실행 시드 폐지).
+            //    ★ 그 한 줄이 여기 있어야 했던 이유는 기록으로 남긴다: 반드시 위
+            //      CharacterSaveStore.Load() <b>뒤</b>여야 했다 — 앞에서 부르면 RestoreFromSave가
+            //      디스크의 seedGranted(=false)를 그대로 덮어써 지급이 통째로 사라지고, 그 실패는
+            //      예외도 로그도 남기지 않은 채 <b>다음 실행에서도 똑같이</b> 사라졌다.
+            //      「로드 뒤에 지급」은 새 지급 채널을 배선할 때마다 같은 함정으로 돌아온다.
 
             Debug.Log($"[성장] 준비 완료 — {CharacterProgressionModel.CharacterName} Lv.{CharacterProgressionModel.Level} " +
                 $"({CharacterProgressionModel.CurrentXp:F0}/{CharacterProgressionModel.XpToNextLevel(_config):F0} XP). " +
                 $"저장 파일={(CharacterSaveStore.LoadedFromFile ? "불러옴" : "없음 — 새 캐릭터로 시작")} " +
                 $"({CharacterSaveStore.FilePath}). " +
                 $"패시브 {(_config != null ? _config.progressionPassiveXpPerMinute : 0f):F1}XP/분.");
-
-            // ★★ 조립 사고를 <b>조용하지 않게</b> 만든다. 이 참조가 null이면 유휴 수급이 집중 세션
-            //    중에도 계속 돌아 «같은 1초가 두 번» 지급된다(I-7′). 그런데 그 상태는 화면에서
-            //    <b>정상보다 오히려 후해 보여서</b> 아무도 신고하지 않는다 — 이 저장소가 반복해 당한
-            //    «고장과 정상이 똑같이 생겼다»의 최악 형태다. 프리팹에서 컴포넌트가 빠지거나
-            //    다른 GameObject로 옮겨 가면 여기서 한 줄이 뜬다.
-            if (_focusWatch == null)
-            {
-                Debug.LogWarning("[재화] 같은 GameObject에서 " + nameof(FocusWatchDirector) + "를 찾지 못했습니다 — " +
-                    "유휴 수급이 <b>집중 세션 중에도</b> 계속 적립됩니다(같은 1초가 두 번 지급, I-7′). " +
-                    "프리팹 루트에 그 컴포넌트가 붙어 있는지 확인하세요" +
-                    "(Assets/Editor/SceneBootstrapper.cs가 둘 다 root에 붙입니다).");
-            }
         }
 
         private void OnEnable()
@@ -284,10 +249,10 @@ namespace StickMate.Interaction
             // ================================================================
             // 앱을 켠 채로 자정을 넘긴 경우가 여기서 해소된다(재실행 경로는 Start의 CheckNow).
             //
-            // ★ <b>수급 배선을 이 Update에 넣는다면 반드시 이 줄 「아래」다.</b> 위에 넣으면 자정 직후
-            //   한 틱이 어제 카운터를 보고, 그 한 틱은 상한에 걸려 조용히 0동전을 준다 — 화면에도
-            //   로그에도 아무 흔적이 없다. ★ 2026-09-06 현재 그 규약을 지키는 것이 바로 아래
-            //   AccrueIdleIncome() 한 줄이다(활쏘기는 이벤트 훅, [오늘 할일]은 Core/TodoListModel).
+            // ★ <b>지급 배선을 이 Update에 넣는다면 반드시 이 줄 「아래」다.</b> 위에 넣으면 자정 직후
+            //   한 틱이 어제 카운터를 보고, 그 한 틱은 상한에 걸려 조용히 0을 준다 — 화면에도
+            //   로그에도 아무 흔적이 없다. ★ 2026-09-29 현재 이 Update에 지급 배선은 <b>없다</b>
+            //   (유휴 수급 폐지). 활쏘기는 이벤트 훅이고, 집중 모드 XP는 FocusWatchDirector가 부른다.
             //
             // ★ 일시정지(전체화면 게임 감지) 상태에서도 <b>멈추지 않는다</b>. 하루가 넘어간 것은
             //   달력의 사실이지 우리 연출 상태가 아니고, 저녁 내내 게임한 사용자만 리셋을 못 받는
@@ -296,10 +261,6 @@ namespace StickMate.Interaction
             // 비용: 대부분의 프레임에서 double 뺄셈 1회(주기 게이트). 달력을 실제로 읽는 것은
             //   CurrencyDayRolloverTicker.CheckIntervalSeconds마다 한 번뿐이다.
             if (_dayRollover.TickIfDue(Time.realtimeSinceStartupAsDouble)) LogDayRollover("가동 중 날짜 경계 통과");
-
-            // ★★ 유휴 수급 — <b>반드시 위 롤오버 줄 아래</b>다(바로 위 문단이 요구한 자리).
-            //    자정 직후 한 틱이 어제 카운터를 보면 상한에 걸려 조용히 0동전을 준다.
-            AccrueIdleIncome();
 
             // ★ 배율 적용 유예(랙돌/스펙터클 중)를 푸는 <b>상시 구동자</b>. 설정창도 부르지만 그쪽
             //   Update는 `if (!_open) return;`으로 시작한다 — 창을 닫으면 유예가 영영 안 풀려서
@@ -326,152 +287,15 @@ namespace StickMate.Interaction
         }
 
         // ====================================================================
-        // ★★ 유휴 수급 (2026-09-06 3차 배선) — I-7′가 「구조로」 참인 자리
+        // 유휴 수급 (2026-09-06 3차 배선) — ★★★ 2026-09-29 <b>폐지</b>
         // ====================================================================
-
-        /// <summary>
-        /// 유휴 수급 한 틱. ★ <b>이 메서드의 핵심은 지급이 아니라 기산점 전진이다.</b>
-        ///
-        /// <para><b>왜 <see cref="_idleTickMonotonic"/>을 조건 없이 매 프레임 전진시키는가.</b>
-        /// 집중 세션 중에 기산점을 멈춰 두면, 세션이 끝난 <b>첫 틱의 델타에 세션 전체 길이가 실린다</b> —
-        /// 25분 세션을 완주한 사용자가 완주 보상(600)을 받고 <b>그 25분을 유휴로 한 번 더</b> 받는다.
-        /// 그게 정확히 불변식 I-7′(«같은 1초가 두 번 지급되지 않는다»)의 파손이고,
-        /// <b>테스트로 잡기 전에 코드 모양으로 막아야 하는 종류</b>다. 그래서 전진은 무조건,
-        /// 분기는 <c>isIdleEarning</c> 하나로만 한다(<c>CurrencyRules.IdleTick</c>이 false면
-        /// 창도 안 갉고 0을 돌려준다 — 그 초는 <b>버려지는 것이 맞다</b>).</para>
-        ///
-        /// <para>★ <b>«집중 중인가»를 이 파일이 따로 계산하지 않는다.</b> 같은 GameObject의
-        /// <see cref="FocusWatchDirector.IsSessionActive"/>를 그대로 읽는다 — 그림자 상태를 만들지
-        /// 말라는 것이 <c>CurrencyModel.TickIdleIncome</c> 문서의 명시적 요구다. 컴포넌트가 없으면
-        /// «세션이 존재할 수 없는 조립»이므로 유휴로 본다(그 방향이 안전한 쪽이다).</para>
-        ///
-        /// <para>★ <b>일시정지(전체화면 게임 감지) 중에도 멈추지 않는다</b> —
-        /// <c>DESIGN_SYSTEMS_STATS §16-8 U-33</c>의 권고("온라인으로 치는 것을 권고 — 아니라고 하면
-        /// 게임할 때만 손해 보는 벌칙이 된다")를 그대로 따랐다. ⚠ <b>리더 확정 대기 항목</b>이고,
-        /// 뒤집으려면 이 메서드에 <c>IsSuspended</c> 분기 한 줄을 더하면 된다.</para>
-        ///
-        /// <para>★ 시간 입력은 <b>단조 시계 두 시점의 차</b>다. <c>Time.deltaTime</c> 누적을 쓰면
-        /// ① 엔진 상한 때문에 조용히 적게 쌓이고 ② 기계가 잠든 시간을 통째로 잃는다(T-3-c).</para>
-        ///
-        /// <para>★★ <b>«멈췄다»의 기준은 동전이 아니라 창이다</b>(2026-09-06 수정). 요율이
-        /// <c>IdleCoinsPerMinute</c>(분당 12 = 초당 0.2)라 <b>정상 상태에서도 프레임의 대부분이
-        /// 0동전</b>이고 — 소수분은 <c>CarryCoins</c>로 다음 틱에 넘어간다 — 그 0을 정지로 읽던
-        /// 옛 코드는 <b>정상 동작을 5초에 한 번씩 고장으로 신고</b>했다.
-        /// <b>실측</b>(<c>CurrencyRules.IdleTick</c>을 그대로 컴파일해 60fps 1시간을 돌린 결과):
-        /// 옛 기준 <b>720줄/시간</b>, 새 기준 <b>0줄</b>. 하루로는 동전 1개당 한 줄이라 상한(1,500)에
-        /// 걸릴 때까지 약 1,500줄이고, 회복제 2개면 약 2,500줄이다.
-        /// 그래서 분기는 지급액이 아니라 <c>windowSecondsSpent</c>를 본다: 그 값은 «지급이 실제로
-        /// 일어난 초»에만 값이 있으므로(T-15-1-a) 0동전과 0초가 <b>다른 사실</b>이 된다.</para>
-        /// </summary>
-        private void AccrueIdleIncome()
-        {
-            double nowMonotonic = Time.realtimeSinceStartupAsDouble;
-            double previousMonotonic = _idleTickMonotonic;
-            _idleTickMonotonic = nowMonotonic;                  // ★ 조건 없이 전진(위 문단)
-            if (double.IsNaN(previousMonotonic)) return;        // 첫 틱 — 기산점만 잡고 지급은 없다
-
-            double elapsedSeconds = nowMonotonic - previousMonotonic;
-            bool isIdleEarning = _focusWatch == null || !_focusWatch.IsSessionActive;
-            int coins = CurrencyModel.TickIdleIncome(elapsedSeconds, isIdleEarning,
-                out double windowSecondsSpent);
-
-            if (coins > 0)
-            {
-                _idleCoinsSinceLog += coins;
-                LogIdleIncomeIfDue(nowMonotonic);
-            }
-
-            if (!isIdleEarning) return;        // 집중 세션 중 — 0원이 정상이고 알릴 것이 없다.
-
-            // 같은 단조 시각이 두 번 읽히면(또는 시계가 역행하면) 이 틱은 <b>수급에 대해 아무것도
-            // 말하지 않는다</b> — 창이 안 갉힌 것은 정지가 아니라 «잰 시간이 없다»는 뜻이다.
-            if (!(elapsedSeconds > 0.0)) return;
-
-            // ★ 창이 갉혔다 = 수급은 살아 있다. 이번 틱이 0동전이어도 그건 요율의 결과일 뿐이다.
-            //   여기서 플래그를 내리므로 «다음 정지»는 새 사건으로 다시 한 번 보고된다.
-            if (windowSecondsSpent > 0.0) { _idleStallLogged = false; return; }
-
-            LogIdleStallOnce();
-        }
-
-        /// <summary>
-        /// 유휴 수급이 <b>멈춘 이유</b>를 딱 한 번 알린다.
-        /// <para>★ <b>이 로그가 없으면 이 기능은 관측할 수 없다.</b> 상한/창에 걸린 상태는 화면에서
-        /// «고장»과 똑같이 생겼다 — 앱은 그대로 떠 있고 동전만 안 는다. 이 저장소는 같은 형태의
-        /// 오진을 반복해서 받았다. 대신 <b>매 프레임 찍지 않는다</b>(24시간 상주 앱).</para>
-        ///
-        /// <para>★★ <b>사유를 추측하지 않는다</b>(2026-09-06 수정). 옛 구현은 «상한이 아니면 창»이라는
-        /// 2분기였는데, 하필 <b>창은 거의 도달할 수 없는 쪽</b>이다
-        /// (<c>CurrencyRules.WindowToCeilingRatio</c> = 480분×12 ÷ 2,500 = 2.3배 — 상한이 항상
-        /// 먼저 걸리도록 설계돼 있다). 그래서 그 기본 분기는 사실상 <b>거짓 문장 전용</b>이었고,
-        /// 실제 로그에 «8시간 창을 0으로 리셋했다»와 «480분을 다 썼다»가 11줄 간격으로 함께 찍혔다.
-        /// 지금은 두 사실을 <b>각각</b> 확인하고, 둘 다 아니면 그렇다고 적는다.</para>
-        /// </summary>
-        private void LogIdleStallOnce()
-        {
-            if (_idleStallLogged) return;
-            _idleStallLogged = true;
-
-            bool capReached = CurrencyModel.RemainingDailyRoomCoins() <= 0;
-            bool windowExhausted = CurrencyModel.RemainingIdleWindowSeconds() <= 0.0;
-
-            string capLine =
-                $"{IdleStallCapPhrase}({CurrencyModel.DailyCapCoins()}동전)을 다 채웠습니다" +
-                $"(오늘 유휴 {CurrencyModel.TodayGrantedCoins}동전). " +
-                $"회복제를 쓰면 상한이 늘고(오늘 {CurrencyModel.PotionsUsedToday}/{CurrencyRules.MaxPotionsPerDay}개), " +
-                "집중 모드 지급은 이 상한 <b>밖</b>이라 계속 들어옵니다.";
-
-            string windowLine =
-                $"오늘의 {IdleStallWindowPhrase}({CurrencyRules.IdleWindowCapMinutes}분)을 다 썼습니다. " +
-                "앱이 켜져 있던 시간이 아니라 «동전이 실제로 나온 시간»만 세는 창입니다.";
-
-            string why;
-            if (capReached && windowExhausted)
-            {
-                // 설계상 거의 나올 수 없는 조합이다 — 나왔다면 그 사실 자체가 보고할 값어치가 있다.
-                why = capLine + " 그리고 " + windowLine;
-            }
-            else if (capReached)
-            {
-                why = capLine;
-            }
-            else if (windowExhausted)
-            {
-                why = windowLine;
-            }
-            else
-            {
-                why = $"{IdleStallUnknownPhrase} — 상한도 창도 남아 있는데 창이 갉히지 않았습니다" +
-                      $"(오늘 유휴 {CurrencyModel.TodayGrantedCoins}/{CurrencyModel.DailyCapCoins()}동전, " +
-                      $"남은 창 {CurrencyModel.RemainingIdleWindowSeconds() / 60.0:F0}분). " +
-                      "이건 «의도된 천장»이 아니라 우리가 모르는 상태입니다 — 이 줄이 보이면 " +
-                      "CurrencyRules.IdleTick의 관문과 이 호출부의 인자를 함께 보십시오.";
-            }
-
-            Debug.Log($"{IdleStallLogMarker} — {why} " +
-                $"잔액 {CurrencyModel.CoinBalance}동전. 날짜가 바뀌면 상한과 창이 함께 다시 열립니다.");
-        }
-
-        /// <summary>주기 요약. 동전은 5초에 1개꼴로 들어오므로 <b>한 번씩 찍으면 안 된다</b> —
-        /// 하루 17,000줄이 된다. 대신 첫 지급과 <see cref="IdleIncomeLogIntervalSeconds"/>마다 누계만 남긴다.</summary>
-        private void LogIdleIncomeIfDue(double nowMonotonic)
-        {
-            if (!double.IsNaN(_idleLogMonotonic)
-                && nowMonotonic - _idleLogMonotonic < IdleIncomeLogIntervalSeconds)
-            {
-                return;
-            }
-
-            _idleLogMonotonic = nowMonotonic;
-            // ★ 「남은 창」의 뺄셈을 여기서 다시 하지 않는다 — 클램프를 빠뜨린 사본이 하나 생기는
-            //   순간 같은 사실을 두 곳이 다르게 말하게 된다(위 정지 로그도 같은 함수를 부른다).
-            Debug.Log($"[재화] 유휴 수급 +{_idleCoinsSinceLog}동전(직전 요약 이후) — " +
-                $"잔액 {CurrencyModel.CoinBalance}동전, 오늘 유휴 {CurrencyModel.TodayGrantedCoins}/" +
-                $"{CurrencyModel.DailyCapCoins()}, 남은 창 " +
-                $"{CurrencyModel.RemainingIdleWindowSeconds() / 60.0:F0}분. " +
-                "저장은 다음 주기/종료 저장에 실립니다.");
-            _idleCoinsSinceLog = 0;
-        }
+        //
+        // 지운 메서드: <c>AccrueIdleIncome()</c> · <c>LogIdleStallOnce()</c> ·
+        //   <c>LogIdleIncomeIfDue(double)</c>. 배선 지점(<c>Update</c>의 롤오버 바로 아래)과
+        //   <c>Awake</c>의 <c>_focusWatch</c> 조회, <c>Start</c>의 조립 경고도 함께 뗐다.
+        //
+        // ★ 이 절이 지키던 두 사실은 위쪽 「지운 것」 문단과 필드 절에 남겼다(기산점 무조건 전진 /
+        //   «멈췄다»의 기준은 지급액이 아니라 창).
 
         /// <summary>같은 파일에 실리는 모델 중 하나라도 바뀌었는가 — 안 바뀌었으면 디스크를 두드리지
         /// 않는다(하루 종일 켜져 있는 앱이다).</summary>
@@ -480,9 +304,11 @@ namespace StickMate.Interaction
                || TodoListModel.IsDirty    // v4 — 사용자가 적은 할일은 반드시 남아야 한다.
                || CharacterAppearanceModel.IsDirty    // v7 — 잉크색(우클릭 메뉴/단축키 경로는 즉시 저장을 부르지 않는다).
                || AppSettingsModel.IsDirty            // v8 — 설정창(슬라이더는 드래그 중 즉시 저장을 부르지 않는다).
-               // ★ v10 — 동전·구매 이력·등급 해금·장착한 춤. 이 한 줄이 빠지면 유휴 수급이 60초 주기
-               //   저장에도 종료 시 저장에도 실리지 않고, 사용자는 하루 종일 번 동전을 통째로 잃는다.
+               // ★ 등급 해금 · 장착한 춤 · 하루 경계 · 활쏘기/집중 XP 카운터. 이 한 줄이 빠지면
+               //   그것들이 60초 주기 저장에도 종료 시 저장에도 실리지 않는다.
                //   (그리고 그 실패는 초록 테스트와 똑같이 생겼다 — 즉시 저장 경로만 보는 테스트는 통과한다.)
+               //   ★ 2026-09-29 — 옛 주석은 「동전·구매 이력」을 이 줄의 이유로 적었다. 그 축은
+               //   폐기됐지만 <b>이 줄은 더 중요해졌다</b>: 이제 등급 해금과 XP 천장이 여기 실린다.
                || CurrencyModel.IsDirty;
 
         /// <summary>
@@ -500,12 +326,12 @@ namespace StickMate.Interaction
         /// </summary>
         private void LogDayRollover(string why)
         {
-            Debug.Log($"[재화] 날짜 롤오버({why}) — 일자 #{CurrencyModel.DayIndex}. " +
-                $"오늘 상한 {CurrencyModel.DailyCapCoins()}동전이 다시 열렸고" +
-                $"(잔여 {CurrencyModel.RemainingDailyRoomCoins()}), 8시간 창·회복제·[오늘 할일]·활쏘기 " +
-                "카운터가 함께 0으로 돌아갔습니다. " +
-                $"지갑({CurrencyModel.CoinBalance}동전)은 건드리지 않습니다 — 리셋되는 것은 " +
-                "「오늘의 예산」이지 「지갑」이 아닙니다. " +
+            // ★ 2026-09-29 — 문장에서 동전 문구를 뺐다. 롤오버가 실제로 여는 것은 이제 둘이다:
+            //   활쏘기 보상 판정의 오늘 총량과 집중 모드 XP 일일 상한. 그리고 일자 번호가 전진한다.
+            Debug.Log($"[성장] 날짜 롤오버({why}) — 일자 #{CurrencyModel.DayIndex}. " +
+                $"오늘 활쏘기 보상 판정과 집중 모드 XP 상한(잔여 " +
+                $"{CurrencyModel.RemainingFocusXpRoomToday()}XP)이 다시 열렸습니다. " +
+                "이 일자 번호는 [오늘 할일] 날짜축이 읽는 «오늘»과 같은 값입니다. " +
                 $"경계 오프셋 {CurrencyModel.DayBoundaryOffsetMinutes}분(고정됨=" +
                 $"{CurrencyModel.HasDayBoundaryOffset}). 저장은 다음 주기/종료 저장에 실립니다.");
         }
@@ -519,119 +345,87 @@ namespace StickMate.Interaction
             if (shot.ShotIndex == _lastRewardedShotIndex) return; // 같은 발 재발행 방어.
             _lastRewardedShotIndex = shot.ShotIndex;
 
-            // ★★ 2026-09-06 — 동전이 <b>이 한 이음매</b>에서 나간다. 위 세 관문(정중앙 · Release ·
-            //    같은 발 방어)을 XP와 <b>그대로 공유</b>하는 것이 요점이다. 별도 구독을 새로 만들면
-            //    「명중 1회」의 정의가 두 벌이 되고, 둘이 갈라지는 날 «XP는 들어왔는데 동전은
-            //    안 들어왔다»(또는 그 반대)가 된다 — 재현도 설명도 불가능한 형태다.
-            //
-            // ★★★ 2026-09-07 보안 결함 수정(design-systems 발견, §3-3) — <b>XP도 이 지급의 성패에
-            //    묶는다</b>. 옛 코드는 위 세 관문만 지나면 XP를 <b>무조건</b> 지급했다 — 동전에는
-            //    이미 있는 쿨다운(단조 600초)·일일 상한(72회)이 XP에는 없어서, 연속 도배 시 시간당
-            //    ~6,478XP(패시브의 72배)로 Lv50 전체 요구량을 22.4시간 만에 채울 수 있었다
+            // ★★★ 2026-09-07 보안 결함 수정(design-systems 발견, §3-3) — <b>XP를 보상 판정의 성패에
+            //    묶는다</b>. 옛 코드는 위 세 관문만 지나면 XP를 <b>무조건</b> 지급했다 — 쿨다운(단조
+            //    600초)·일일 상한(72회)이 XP에는 없어서, 연속 도배 시 시간당 ~6,478XP(패시브의 72배)로
+            //    Lv50 전체 요구량을 22.4시간 만에 채울 수 있었다
             //    (docs/DESIGN_SYSTEMS_LEVEL_STAT_GROWTH_PROPOSAL.md §3-3). <b>새 쿨다운/카운터를
-            //    XP 전용으로 만들지 않는다</b> — <c>CurrencyModel.TryAwardArcheryCoins</c>가 이미
-            //    계산한 판정(쿨다운 통과 + 오늘 상한 이내)을 <c>coinsAwarded &gt; 0</c>으로 그대로
-            //    재사용한다. 코인과 XP가 같은 사용자 행동(정중앙 1회)을 보상하므로 같은 관문을
-            //    공유하는 것이 자연스럽고, 판정처가 하나면 「코인은 막혔는데 XP는 새는」 갈라짐이
-            //    구조적으로 불가능해진다.
-            int coinsAwarded = AwardArcheryCoins();
-            if (coinsAwarded > 0)
+            //    XP 전용으로 만들지 않는다</b> — <c>CurrencyModel.TryClaimArcheryAward</c>가 이미
+            //    계산한 판정(쿨다운 통과 + 오늘 상한 이내)을 <c>&gt; 0</c>으로 그대로 재사용한다.
+            //    판정처가 하나면 「한쪽은 막혔는데 다른 쪽은 새는」 갈라짐이 구조적으로 불가능해진다.
+            //
+            // ★★ 2026-09-29 DLC·재화 폐지 R5 — 여기서 나가던 <b>동전 20이 사라졌다</b>. 그런데
+            //    <b>관문은 그대로 남겼다</b>: 위 문단이 못박은 XP 방어선이 정확히 그 관문이기 때문이다.
+            //    「동전이 없어졌으니 활쏘기 판정도 지우자」는 <b>보안 회귀</b>다.
+            int awarded = ClaimArcheryAward();
+            if (awarded > 0)
             {
                 Grant(_config != null ? _config.progressionBullseyeXp : 0f, "활쏘기 정중앙 명중");
             }
         }
 
         /// <summary>
-        /// 활쏘기 정중앙 <b>1회당</b> 상금. ★ 세션 완료당이 아니다 —
-        /// <c>DESIGN_SYSTEMS_STATS</c> §13-3 표가 <i>"활쏘기 정중앙 1회 · 20동전 · 쿨다운 600초"</i>이고,
+        /// 활쏘기 정중앙 <b>1회당</b> 보상 판정. ★ 세션 완료당이 아니다 —
+        /// <c>DESIGN_SYSTEMS_STATS</c> §13-3 표가 <i>"활쏘기 정중앙 1회 · 쿨다운 600초"</i>이고,
         /// 그래서 이 호출은 <b>명중 판정이 확정되는 그 자리</b>(위 훅)에 붙는다.
         ///
-        /// <para>★ <b>지급 여부를 이 파일이 정하지 않는다.</b> 쿨다운(단조 시계 600초)도 일일 총량도
-        /// <c>CurrencyModel.TryAwardArcheryCoins</c> 안에만 있다. 여기서 «쿨다운이 지났는지»를 한 번 더
+        /// <para>★★ <b>2026-09-29 — 이 함수는 더 이상 동전을 내지 않는다</b>(옛 이름
+        /// <c>AwardArcheryCoins</c>). 반환값의 유일한 용도는 <b>XP 게이트</b>다.</para>
+        ///
+        /// <para>★ <b>판정 여부를 이 파일이 정하지 않는다.</b> 쿨다운(단조 시계 600초)도 일일 총량도
+        /// <c>CurrencyModel.TryClaimArcheryAward</c> 안에만 있다. 여기서 «쿨다운이 지났는지»를 한 번 더
         /// 계산하면 같은 사실이 두 곳에서 살게 되고, 그 둘은 반드시 갈라진다.</para>
         ///
-        /// <para>★ <b>0동전일 때도 로그를 남긴다</b>(<c>FocusWatchDirector.PayCancelCoins</c>와 같은 이유).
-        /// 명중 연출은 그대로 도는데 동전만 안 나오는 화면은 <b>고장과 똑같이 생겼다</b>. 실제로 이
-        /// 저장소는 «지급이 고장났다»는 오진을 반복해서 받았다. 쿨다운 대기인지 오늘 상한 도달인지를
-        /// 구분해 적는 이유도 같다 — 뒤쪽은 <b>내일까지 안 나온다</b>는 다른 사실이다(§20-8).</para>
+        /// <para>★ <b>0일 때도 로그를 남긴다.</b> 명중 연출은 그대로 도는데 XP만 안 나오는 화면은
+        /// <b>고장과 똑같이 생겼다</b>. 실제로 이 저장소는 «지급이 고장났다»는 오진을 반복해서 받았다.
+        /// 쿨다운 대기인지 오늘 상한 도달인지를 구분해 적는 이유도 같다 — 뒤쪽은 <b>내일까지
+        /// 안 나온다</b>는 다른 사실이다(§20-8).</para>
         ///
-        /// <para>★ <b>여기서 저장을 강제하지 않는다.</b> 지급은 <c>CurrencyModel.IsDirty</c>를 세우고
+        /// <para>★ <b>여기서 저장을 강제하지 않는다.</b> 판정은 <c>CurrencyModel.IsDirty</c>를 세우고
         /// 주기 저장(60초)·종료 저장이 이미 싣는다(<see cref="IsAnythingDirty"/>).
-        /// 최악 손실은 1주기 = 20동전이고, 그 대가로 하루 종일 켜 두는 앱이 명중마다 디스크를
-        /// 두드리지 않는다 — <c>DESIGN_SYSTEMS_STATS</c> §20-7 저장 빈도표가 이 채널에 대해
-        /// <i>"<c>archeryCoinsToday</c> — <c>IsDirty</c>만, 주기 저장에 태운다(최악 1분/20동전 손실)"</i>로
-        /// 명시적으로 고른 저울이다.</para>
-        ///
-        /// <para>★★ <b>반환값은 이제 XP 게이트로도 쓰인다</b>(2026-09-07 보안 결함 수정). 호출부
-        /// (<see cref="OnArcheryShotChanged"/>)가 이 값이 0보다 클 때만 XP를 지급한다 — 쿨다운·일일
-        /// 상한 판정을 이 함수 안에 <b>한 곳</b>에만 두고 XP가 그 결과를 빌려 쓰는 것이지, XP가
-        /// 따로 판정하는 것이 아니다.</para>
+        /// 최악 손실은 1주기이고, 그 대가로 하루 종일 켜 두는 앱이 명중마다 디스크를 두드리지 않는다 —
+        /// <c>DESIGN_SYSTEMS_STATS</c> §20-7 저장 빈도표가 이 채널에 대해 명시적으로 고른 저울이다.</para>
         /// </summary>
-        /// <returns>실제로 지급된 동전(0이면 쿨다운 중이거나 오늘 상한에 도달 — 이때 XP도 지급하지 않는다).</returns>
-        private int AwardArcheryCoins()
+        /// <returns>관문을 통과한 단위(0이면 쿨다운 중이거나 오늘 상한에 도달 — 이때 XP도 지급하지 않는다).</returns>
+        private int ClaimArcheryAward()
         {
             // 단조 시계다. 벽시계(DateTime.Now)를 넣으면 시계를 600초 되감는 것만으로 무한 파밍이
             // 되고(§20-3-b), Tests/EditMode/DailyLimitClampAuditTests가 그 순간 빨개진다.
-            int coins = CurrencyModel.TryAwardArcheryCoins(Time.realtimeSinceStartupAsDouble);
+            int awarded = CurrencyModel.TryClaimArcheryAward(Time.realtimeSinceStartupAsDouble);
 
-            if (coins > 0)
+            if (awarded > 0)
             {
-                Debug.Log($"[재화] 활쏘기 정중앙 명중 — +{coins}동전. " +
-                    $"잔액 {CurrencyModel.CoinBalance}동전(오늘 활쏘기 누계 {CurrencyModel.ArcheryCoinsToday}). " +
-                    "저장은 다음 주기/종료 저장에 실립니다.");
-                return coins;
+                Debug.Log("[성장] 활쏘기 정중앙 명중 — 보상 관문 통과(XP 지급). " +
+                    $"오늘 활쏘기 누계 {CurrencyModel.ArcheryCoinsToday}/" +
+                    $"{CurrencyRules.ArcheryDailyCoinLimit}. 저장은 다음 주기/종료 저장에 실립니다.");
+                return awarded;
             }
 
-            Debug.Log("[재화] 활쏘기 정중앙 명중 — 0동전(XP도 함께 보류). " +
+            Debug.Log("[성장] 활쏘기 정중앙 명중 — XP 보류. " +
                 (CurrencyModel.ArcheryDailyLimitReached
-                    ? $"오늘 활쏘기 상금이 상한({CurrencyModel.ArcheryCoinsToday}동전)에 도달했습니다 — " +
+                    ? $"오늘 활쏘기 보상이 상한({CurrencyModel.ArcheryCoinsToday})에 도달했습니다 — " +
                       "고장이 아니라 의도된 천장이고(§20-3-b), 날짜가 바뀌면 다시 열립니다. " +
-                      "집중 모드·[오늘 할일]로는 계속 벌 수 있습니다."
-                    : "상금 쿨다운 중입니다 — 고장이 아니라 의도된 간격이고(§20-3-b), " +
+                      "집중 모드와 패시브로는 계속 자랍니다."
+                    : "보상 쿨다운 중입니다 — 고장이 아니라 의도된 간격이고(§20-3-b), " +
                       "쿨다운이 풀린 뒤 첫 정중앙에서 다시 나옵니다. " +
                       "쿨다운은 단조 시계로만 재므로 앱을 껐다 켜면 초기화됩니다(그 상한이 일일 총량입니다)."));
             return 0;
         }
 
-        /// <summary>
-        /// ★ 첫 실행 시드 — <b>평생 1회</b>. 이 파일에 «받았는가»를 판정하는 코드는 <b>한 줄도 없다</b>:
-        /// 그 사실은 세이브 필드 <c>seedGranted</c>(v10, 이미 존재) 하나에만 있고
-        /// <c>CurrencyRules.CanGrantSeed</c>가 그것을 읽는다. 여기서 «신규 유저인가»를 따로 재면
-        /// (예: <c>CharacterSaveStore.LoadedFromFile</c>) <b>같은 사실이 두 곳에서 계산</b>되고,
-        /// 두 판정이 갈라지는 날 시드가 두 번 나가거나 영영 안 나간다.
-        ///
-        /// <para>★ <b>「신규 캐릭터만」이 아니라 「전원 평생 1회」가 확정 계약이다</b>
-        /// (<c>CurrencyRules.SeedCoins</c> 문서, 리더 승인 2026-09-05 U-42). 금액이 0이던 기간에
-        /// <c>CanGrantSeed</c>가 <c>SeedCoins &gt; 0</c>을 요구한 덕에 <b>기존 사용자 전원의 플래그가
-        /// 아직 false</b>이고, 그래서 이 배선이 켜지는 순간 그들도 첫 지급 대상이 된다.
-        /// 그 방어가 실제로 값을 한 자리라 여기에 다시 적어 둔다 — <b>«신규 파일일 때만»으로 좁히면
-        /// 그 설계가 조용히 무효가 된다.</b></para>
-        ///
-        /// <para>★ <b>저장을 강제하지 않는다.</b> 지급은 <c>IsDirty</c>를 세우므로 주기/종료 저장이
-        /// 싣는다. 그 둘을 <b>둘 다 놓쳐도</b>(전원 차단 등) 디스크의 <c>seedGranted</c>가 여전히
-        /// false라 <b>다음 실행이 같은 지급을 다시 한다</b> — 스스로 낫는다. 반대 방향(두 번 지급)은
-        /// 구조적으로 불가능하다: 플래그와 잔액이 <b>같은 파일에 한 덩어리로</b> 실리므로
-        /// «지급은 저장됐는데 플래그는 안 저장된» 상태가 존재할 수 없다.</para>
-        /// </summary>
-        private static void TryGrantSeedCoinsOnce()
-        {
-            int coins = CurrencyModel.TryGrantSeedCoins();
-            if (coins <= 0) return;   // 이미 받았다 — 정상 경로이므로 조용히 지나간다.
-
-            Debug.Log($"[재화] 첫 실행 시드 +{coins}동전 — 잔액 {CurrencyModel.CoinBalance}동전. " +
-                "평생 1회이고, 받았다는 사실은 저장 파일의 seedGranted 한 곳에만 남습니다. " +
-                "저장은 다음 주기/종료 저장에 실립니다 — 그 전에 앱이 죽으면 이 지급은 " +
-                "«없던 일»이 되고 다음 실행이 다시 지급합니다(두 번 지급되는 방향은 없습니다).");
-        }
+        // 첫 실행 시드 — ★★★ 2026-09-29 <b>폐지</b>. 여기 있던 <c>TryGrantSeedCoinsOnce()</c>를 지웠다.
+        //   1회 보장은 이 파일이 아니라 세이브 필드 <c>seedGranted</c> 하나에만 있었고, 그 필드는
+        //   스키마에 그대로 남아 왕복만 한다. <b>되살리지 마라</b> — 기존 사용자 전원의 플래그가
+        //   <c>false</c>라(금액이 0이던 기간에 플래그를 세우지 않는 설계였다) 되살리는 순간 전원에게
+        //   한 번 더 나간다.
 
         // ==================== 집중 모드 XP (직접 호출, 2026-09-07) ====================
 
-        /// <summary>집중 세션 <b>완주</b> XP — <c>FocusWatchDirector</c>가 세션 완주 시점에
-        /// (코인 지급과 나란히, 그러나 <b>독립적으로</b>) 부른다.
+        /// <summary>집중 세션 <b>완주</b> XP — <c>FocusWatchDirector</c>가 세션 완주 시점에 부른다
+        /// (2026-09-29까지는 코인 지급과 나란히였고, 지금은 이 XP 하나뿐이다).
         /// <para>상한 체크는 이 메서드가 하지 않는다 — <see cref="CurrencyModel.TryGrantFocusCompletionXp"/>가
         /// 오늘 이미 <c>CurrencyRules.FocusXpDailyCap</c>에 얼마나 가까운지를 판정해 클램프된 XP를
         /// 돌려주고, 여기는 그 결과가 0보다 클 때만 기존 <see cref="Grant"/>를 부른다 — 활쏘기가
-        /// <c>coinsAwarded &gt; 0</c>을 XP 게이트로 재사용하는 것과 <b>같은 모양</b>이다.</para>
+        /// <see cref="ClaimArcheryAward"/>의 <c>&gt; 0</c>을 XP 게이트로 재사용하는 것과 <b>같은 모양</b>이다.</para>
         /// </summary>
         public void GrantFocusCompletionXp(double sessionDurationSeconds)
         {
@@ -640,26 +434,35 @@ namespace StickMate.Interaction
 
             Debug.Log("[성장] 집중 모드 완주 — 0XP(오늘 상한 도달). " +
                 $"고장이 아니라 의도된 천장입니다(오늘 집중 XP {CurrencyModel.FocusXpToday}/" +
-                $"{CurrencyRules.FocusXpDailyCap}, design-systems §15-4) — 코인은 이 상한과 무관하게 " +
-                "그대로 지급됩니다. 날짜가 바뀌면 다시 열립니다.");
+                $"{CurrencyRules.FocusXpDailyCap}, design-systems §15-4). 날짜가 바뀌면 다시 열립니다.");
         }
 
         /// <summary>집중 세션 <b>중도 취소</b> XP — <c>FocusWatchDirector</c>가 취소/긴급정지 시점에 부른다.
-        /// <para>0XP에는 <b>두 가지 다른 사유</b>가 있고 섞어 말하지 않는다: 경과가 1분 미만이면
-        /// 산식 자체가 0을 내는데(§22-12와 같은 계단), 그건 상한이 아니라 "아직 안 쌓였다"는 사실이라
-        /// 조용히 넘어간다(코인 쪽 <c>PayCancelCoins</c>가 이미 같은 사유로 0을 알린다 — 두 번 말하지
-        /// 않는다). 반면 <see cref="CurrencyModel.FocusXpDailyLimitReached"/>가 참이면 그건 진짜
-        /// 천장이라 활쏘기(<see cref="AwardArcheryCoins"/>)와 같은 방식으로 알린다.</para></summary>
+        /// <para>0XP에는 <b>두 가지 다른 사유</b>가 있고 섞어 말하지 않는다: ① 경과가 1분 미만이면
+        /// 산식 자체가 0을 낸다(§22-12와 같은 계단) — 상한이 아니라 "아직 안 쌓였다"는 사실이다.
+        /// ② <see cref="CurrencyModel.FocusXpDailyLimitReached"/>가 참이면 그건 진짜 천장이다.</para>
+        /// <para>★★ <b>2026-09-29 — ①에도 로그를 남기게 바꿨다.</b> 원래 ①은 조용히 넘어갔는데,
+        /// 그 근거가 «코인 쪽 <c>PayCancelCoins</c>가 이미 같은 사유로 0을 알린다 — 두 번 말하지
+        /// 않는다»였다. <b>그 코인 경로를 같은 라운드에 폐지했으므로 근거가 사라졌다.</b>
+        /// 그대로 두면 1분 미만 취소가 <b>아무 기록도 남기지 않고</b> 끝나고, 그건 이 저장소가 반복해
+        /// 받은 «지급이 고장났다» 오진을 그대로 불러온다(폐지된 <c>PayCancelCoins</c> 문서가 그 오진을
+        /// 명시적으로 적어 뒀다). 이음매를 <b>잃은 것이 아니라 여기로 옮긴 것</b>이다.</para></summary>
         public void GrantFocusCancelXp(double elapsedSeconds)
         {
             int xp = CurrencyModel.TryGrantFocusCancelXp(elapsedSeconds);
             if (xp > 0) { Grant(xp, "집중 모드 중도 취소"); return; }
-            if (!CurrencyModel.FocusXpDailyLimitReached) return;   // 1분 미만 — 코인 쪽이 이미 알린다.
+
+            if (!CurrencyModel.FocusXpDailyLimitReached)
+            {
+                Debug.Log($"[성장] 집중 모드 중도 취소 — 0XP(경과 {elapsedSeconds:F1}초). " +
+                    "★ 1분을 채우지 못해 0입니다 — 고장이 아니라 의도된 계단이고(§22-12), " +
+                    "패널티가 아니라 「아직 안 쌓였다」입니다. 다음 1분을 채우면 그때부터 붙습니다.");
+                return;
+            }
 
             Debug.Log("[성장] 집중 모드 중도 취소 — 0XP(오늘 상한 도달). " +
                 $"고장이 아니라 의도된 천장입니다(오늘 집중 XP {CurrencyModel.FocusXpToday}/" +
-                $"{CurrencyRules.FocusXpDailyCap}, design-systems §15-4) — 코인은 이 상한과 무관하게 " +
-                "그대로 지급됩니다. 날짜가 바뀌면 다시 열립니다.");
+                $"{CurrencyRules.FocusXpDailyCap}, design-systems §15-4). 날짜가 바뀌면 다시 열립니다.");
         }
 
         /// <summary>XP 적립의 단일 경로 — 레벨업 감지/즉시 저장/로그가 전부 여기 한 곳에만 있다.</summary>

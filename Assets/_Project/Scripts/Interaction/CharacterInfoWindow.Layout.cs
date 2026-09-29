@@ -195,7 +195,9 @@ namespace StickMate.Interaction
         {
             float limit = _tabStripRightEdge + UiChrome.Space4;
             SetChipVisible(_settingsRect, panelWidth - HeaderSettingsChipInset - HeaderSettingsChipWidth >= limit);
-            SetChipVisible(_coinChipRect, panelWidth - HeaderCoinChipInset - HeaderCoinChipWidth >= limit);
+            // ★ 2026-09-29 DLC 폐지 R2 — 동전 칩 줄을 지웠다. 「보유」 칩의 인셋은 같은 커밋에서
+            //   252 → 128로 내려갔고(동전 칩 폭 112 + 간격 12), 이 판정식은 <b>그 상수를 그대로 읽으므로</b>
+            //   손댈 곳이 없다 — 숫자를 여기 베끼지 않은 덕이다.
             SetChipVisible(_ownedChipRect, panelWidth - HeaderOwnedChipInset - HeaderOwnedChipWidth >= limit);
         }
 

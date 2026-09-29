@@ -43,13 +43,16 @@ namespace StickMate.Interaction
         [SerializeField] private StickConfig _config;
 
         /// <summary>같은 GameObject의 성장 디렉터 — 집중 모드 XP(2026-09-07, design-systems §15)를
-        /// 지급할 때 부른다. 코인(<c>CurrencyModel.PayFocus*Coins</c>)은 이 파일이 직접 부르지만,
-        /// XP는 레벨업 로그·즉시 저장·장비 해금 알림을 <see cref="CharacterProgressionDirector.Grant"/>가
-        /// 이미 갖고 있어 그걸 재사용한다 — <c>Assets/Editor/SceneBootstrapper.cs</c>가 둘 다 같은
-        /// 루트에 붙이므로(<c>CharacterProgressionDirector</c>가 이미 <c>GetComponent&lt;FocusWatchDirector&gt;()</c>로
-        /// 그 반대 방향 참조를 쓰고 있는 것과 같은 관례) 값이 존재한다. null이면 조립 사고이고,
-        /// 코인 지급 로그와 똑같이 <b>말하게</b> 만든다(조용한 스킵을 만들지 않는다 — 아래
-        /// <see cref="PayCompletionXp"/>/<see cref="PayCancelXp"/>의 경고 로그).</summary>
+        /// 지급할 때 부른다. XP는 레벨업 로그·즉시 저장·장비 해금 알림을
+        /// <see cref="CharacterProgressionDirector.Grant"/>가 이미 갖고 있어 그걸 재사용한다 —
+        /// <c>Assets/Editor/SceneBootstrapper.cs</c>가 둘 다 같은 루트에 붙이므로 값이 존재한다.
+        /// <para>★★ 2026-09-29 — 옛 문장은 「코인은 이 파일이 직접 부르지만…」이었다. 그 코인 지급이
+        /// 폐지돼 <b>이 참조가 세션 보상의 유일한 통로</b>가 됐다. null이면 조립 사고이고 그때는
+        /// <b>보상이 통째로 사라지므로</b> 반드시 말하게 만든다(조용한 스킵을 만들지 않는다 — 아래
+        /// <see cref="PayCompletionXp"/>/<see cref="PayCancelXp"/>의 경고 로그).</para>
+        /// <para>참고: <c>CharacterProgressionDirector</c>가 갖고 있던 반대 방향 참조
+        /// (<c>GetComponent&lt;FocusWatchDirector&gt;()</c>)는 유휴 수급 전용이었고 같은 라운드에
+        /// 사라졌다 — 이제 의존 방향은 <b>이쪽 한 방향뿐</b>이다.</para></summary>
         private CharacterProgressionDirector _progression;
 
         public bool IsSessionActive { get; private set; }
@@ -296,7 +299,10 @@ namespace StickMate.Interaction
         public void StopFocusSession()
         {
             if (!IsSessionActive) return;
-            PayCancelCoins("중도 취소");
+            // ★ 2026-09-29 — 여기 있던 `PayCancelCoins("중도 취소");`를 뗐다(DLC·재화 폐지 R5).
+            //   ★★ 그 함수가 내던 «1분 미만이라 0» 로그는 사라지지 않았다 —
+            //   CharacterProgressionDirector.GrantFocusCancelXp로 <b>옮겼다</b>(그쪽 문서 참고).
+            //   그 이동이 없으면 짧은 취소가 아무 기록도 남기지 않고 끝난다.
             PayCancelXp();
             IsSessionActive = false;
             if (!TryTriggerPoseState(StickmanStateId.FocusCancelled))
@@ -317,12 +323,13 @@ namespace StickMate.Interaction
         /// <b>통째로 없고 흔적도 없었다</b>.</para>
         ///
         /// <para>★ 지급을 <b>먼저</b> 끝내는 순서는 그대로다(DS-5′ 인계 조건). 포즈는 지급·타이머와
-        /// 무관하게 실패할 수 있고, 실패해도 동전과 XP는 이미 나가 있다 — 그래서 아래 재시도는
+        /// 무관하게 실패할 수 있고, 실패해도 XP는 이미 나가 있다 — 그래서 아래 재시도는
         /// <b>연출의 유무</b>만 가른다.</para>
         /// </summary>
         private void CompleteSession()
         {
-            PayCompletionCoins();
+            // ★ 2026-09-29 — 여기 있던 `PayCompletionCoins();`를 뗐다(DLC·재화 폐지 R5).
+            //   순서 규약은 그대로다: 지급(XP)은 IsSessionActive = false <b>앞</b>이다.
             PayCompletionXp();
             IsSessionActive = false;
 
@@ -341,82 +348,43 @@ namespace StickMate.Interaction
         }
 
         // ====================================================================
-        // ★★ 재화 지급 — 이 파일에서 동전이 생기는 자리는 아래 둘뿐이다
+        // ★★ 세션 보상 — 이 파일에서 보상이 나가는 자리는 아래 둘뿐이다(XP)
         // ====================================================================
+        //
+        // ★★★ 2026-09-29 DLC·재화 폐지 R5 — <b>동전 지급 두 함수를 지웠다</b>
+        //   (<c>PayCompletionCoins()</c> · <c>PayCancelCoins(string)</c>, 그리고 세 경로의 그 호출).
+        //   남은 것은 XP 둘(<see cref="PayCompletionXp"/> · <see cref="PayCancelXp"/>)이다.
         //
         // ★ <b>세션이 끝나는 길은 셋인데 지급은 둘이다.</b> 완주(<see cref="CompleteSession"/>) ·
         //   중도 취소(<see cref="StopFocusSession"/>) · 긴급정지(<see cref="OnEmergencyStop"/>)가 있고,
         //   <b>긴급정지도 사용자 입장에서는 중도 취소</b>다(18절이 그것을 "탈출구"로 정의한다).
         //   그래서 셋 다 아래 두 함수 중 하나를 지난다. ⚠ <b>네 번째 종료 경로를 만들지 마라</b> —
-        //   만들면 그 길로 끝낸 사용자만 그날 번 동전을 통째로 잃고, 그 실패는 화면에 아무 흔적도
+        //   만들면 그 길로 끝낸 사용자만 그 세션의 보상을 통째로 잃고, 그 실패는 화면에 아무 흔적도
         //   남기지 않는다(GAME_ARCHITECTURE_REVIEW §3421이 적은 «중도 취소 경로에서만 어긋난다»가
         //   정확히 이 형태다). <c>IsSessionActive = false</c>를 쓰는 자리를 늘리기 전에 여기를 봐라.
         //
         // ★★ 2026-09-07 — <b>3구간도 이 세 경로에서 함께 닫힌다</b>. 다만 닫을 필드가 따로 없다:
         //   <see cref="CurrentPhase"/>가 <c>IsSessionActive</c>에서 <b>파생</b>되므로 세 경로 전부가
-        //   이미 쓰고 있는 그 한 줄로 자동으로 None이 된다. 위 재화 지급이 «세 번째 경로를 빠뜨렸다»에
+        //   이미 쓰고 있는 그 한 줄로 자동으로 None이 된다. 옛 재화 지급이 «세 번째 경로를 빠뜨렸다»에
         //   당한 자리라, 구간은 <b>애초에 빠뜨릴 필드를 만들지 않는</b> 형태로 넣었다.
         //
         // ★ <b>반드시 <c>IsSessionActive = false</c> 「앞」에서 부른다</b>(DS-5′ 인계 조건). 두 함수 모두
-        //   <c>IsSessionActive</c>를 재진입 방지 관문으로 쓰기 때문에, 뒤에서 부르면 <b>조용히 0원</b>이 된다.
+        //   <c>IsSessionActive</c>를 재진입 방지 관문으로 쓰기 때문에, 뒤에서 부르면 <b>조용히 0</b>이 된다.
         //
-        // ★ 산식은 여기 없다 — <c>Core/CurrencyRules.FocusCompletionCoins/FocusCancelCoins</c> 한 곳뿐이고
-        //   이 파일은 <b>어느 초를 넘길지</b>만 정한다. 요율(24/20)을 이 파일에 적지 마라.
-        //
-        // ★★ 2026-09-07 — <b>XP도 같은 세 자리에서 나란히 나간다</b>(design-systems §15,
-        //   PayCompletionXp/PayCancelXp, 바로 아래). <b>코인과 완전히 독립적</b>이다 — 코인은
-        //   §22-13대로 일일 상한 밖이고, XP는 새 일일 상한(CurrencyRules.FocusXpDailyCap)이 있다.
-        //   그래서 두 지급은 서로 다른 카운터(CurrencyModel.TodayGrantedCoins/ArcheryCoinsToday와
-        //   FocusXpToday)를 갉고, 한쪽이 상한에 걸려도 다른 쪽은 영향받지 않는다. XP 산식도 여기
-        //   없다 — <c>CurrencyRules.FocusCompletionXp/FocusCancelXp</c> 한 곳뿐이고, 상한 클램프는
-        //   <c>CurrencyModel</c>이, 레벨 적용(+로그·즉시 저장)은 <c>CharacterProgressionDirector.Grant</c>가
-        //   맡는다 — 이 파일은 여전히 <b>어느 초를 넘길지</b>만 정한다.
+        // ★ 산식은 여기 없다 — <c>Core/CurrencyRules.FocusCompletionXp/FocusCancelXp</c> 한 곳뿐이고,
+        //   상한 클램프는 <c>CurrencyModel</c>이, 레벨 적용(+로그·즉시 저장)은
+        //   <c>CharacterProgressionDirector.Grant</c>가 맡는다 — 이 파일은 <b>어느 초를 넘길지</b>만 정한다.
+        //   요율(6/5)을 이 파일에 적지 마라.
 
         /// <summary>
-        /// 완주 지급. ★ <b>명목 세션 길이</b>(<see cref="SessionDurationSeconds"/>)를 넘긴다 —
-        /// 계측 누적값이 아니다. <see cref="RemainingSeconds"/>는 완주 시점에 <b>0 이하로 넘어간</b>
-        /// 값(마지막 프레임의 <c>dt</c>만큼 음수)이라, 그걸로 경과를 재면 세션 길이보다 <b>길게</b>
-        /// 나와 프레임률에 따라 지급액이 흔들린다. 명목값은 프레임률과 무관하게 항상 같다.
-        /// </summary>
-        private void PayCompletionCoins()
-        {
-            if (!IsSessionActive) return;
-
-            double durationSeconds = SessionDurationSeconds;
-            int coins = CurrencyModel.PayFocusCompletionCoins(durationSeconds);
-            Debug.Log($"[포모도로][재화] 지급 {coins}동전, 사유=완주, 경과={durationSeconds:F1}초" +
-                $"(명목 세션 길이). 잔액 {CurrencyModel.CoinBalance}동전. " +
-                "집중 지급은 일일 상한 밖이라(§22-13) 오늘 유휴 상한에 걸려 있어도 전액 지급됩니다.");
-        }
-
-        /// <summary>
-        /// 중도 취소 지급. 경과는 <c>명목 − 잔여</c>다.
-        /// <para>★ <b>0동전일 때도 로그를 남긴다.</b> 1분 미만 취소가 0인 것은
-        /// <c>floor(경과/60) = 0</c>에서 저절로 나오는 <b>의도된 결과</b>인데(§22-12 — 그래서 최소 보상
-        /// 하한을 넣지 않았다), 아무 기록도 없으면 "지급이 고장났다"는 오진이 올라온다.
-        /// 실제로 이 저장소는 같은 형태의 오진을 반복해서 받았다.</para>
-        /// </summary>
-        private void PayCancelCoins(string reason)
-        {
-            if (!IsSessionActive) return;
-
-            double elapsedSeconds = SessionDurationSeconds - RemainingSeconds;
-            int coins = CurrencyModel.PayFocusCancelCoins(elapsedSeconds);
-            Debug.Log($"[포모도로][재화] 지급 {coins}동전, 사유={reason}, 경과={elapsedSeconds:F1}초" +
-                $"(완주 {SessionDurationSeconds:F0}초 중 {RemainingSeconds:F0}초 남김). " +
-                $"잔액 {CurrencyModel.CoinBalance}동전. " +
-                (coins > 0
-                    ? "취소는 「분을 먼저 내림」이라 채운 분까지만 지급됩니다(§22-12)."
-                    : "★ 1분을 채우지 못해 0동전입니다 — 고장이 아니라 의도된 계단입니다(§22-12). " +
-                      "패널티가 아니라 「아직 안 쌓였다」이고, 다음 1분을 채우면 그때부터 붙습니다."));
-        }
-
-        /// <summary>
-        /// 완주 XP — 코인의 <see cref="PayCompletionCoins"/>와 <b>같은 초</b>(명목 세션 길이)를
-        /// 넘기지만 <b>완전히 독립적으로</b> 상한 체크된다(design-systems §15-4). 실제 지급/레벨업
-        /// 처리는 <see cref="CharacterProgressionDirector.GrantFocusCompletionXp"/>가 맡는다 —
-        /// 그 안에서 <c>CurrencyModel.FocusXpToday</c>가 상한에 얼마나 가까운지 판정하고,
-        /// 필요한 로그도 그쪽에서 남긴다(같은 사실을 두 파일이 각자 말하지 않는다).
+        /// 완주 XP — <b>명목 세션 길이</b>(<see cref="SessionDurationSeconds"/>)를 넘긴다.
+        /// <para>★ 계측 누적값을 쓰지 않는 이유: <see cref="RemainingSeconds"/>는 완주 시점에
+        /// <b>0 이하로 넘어간</b> 값(마지막 프레임의 <c>dt</c>만큼 음수)이라, 그걸로 경과를 재면 세션
+        /// 길이보다 <b>길게</b> 나와 프레임률에 따라 지급액이 흔들린다. 명목값은 프레임률과 무관하게
+        /// 항상 같다(폐지된 코인 쪽에도 똑같이 걸려 있던 계약이다).</para>
+        /// <para>실제 지급/레벨업 처리와 상한 판정은
+        /// <see cref="CharacterProgressionDirector.GrantFocusCompletionXp"/>가 맡는다 —
+        /// 필요한 로그도 그쪽에서 남긴다(같은 사실을 두 파일이 각자 말하지 않는다).</para>
         /// </summary>
         private void PayCompletionXp()
         {
@@ -424,15 +392,16 @@ namespace StickMate.Interaction
             if (_progression == null)
             {
                 Debug.LogWarning("[포모도로] 같은 GameObject에서 CharacterProgressionDirector를 찾지 못해 " +
-                    "집중 모드 완주 XP를 지급하지 못했습니다 — 코인은 정상 지급됐습니다.");
+                    "집중 모드 완주 XP를 지급하지 못했습니다 — 이 세션의 보상이 통째로 사라집니다" +
+                    "(2026-09-29 재화 폐지 이후 XP가 유일한 세션 보상입니다).");
                 return;
             }
             _progression.GrantFocusCompletionXp(SessionDurationSeconds);
         }
 
-        /// <summary>중도 취소 XP — 코인의 <see cref="PayCancelCoins"/>와 같은 경과(명목 − 잔여)를
-        /// 넘긴다. 나머지는 <see cref="PayCompletionXp"/>와 같은 이유로 <see cref="CharacterProgressionDirector"/>에
-        /// 위임한다.</summary>
+        /// <summary>중도 취소 XP — 경과는 <c>명목 − 잔여</c>다.
+        /// 나머지는 <see cref="PayCompletionXp"/>와 같은 이유로 <see cref="CharacterProgressionDirector"/>에
+        /// 위임한다(1분 미만이라 0인 경우의 로그도 그쪽에 있다).</summary>
         private void PayCancelXp()
         {
             if (!IsSessionActive) return;
@@ -441,7 +410,8 @@ namespace StickMate.Interaction
                 // ★ 완주 경로와 <b>독립적으로</b> 경고한다 — 취소로 끝난 세션은 완주 경로를 한 번도
                 //   안 지나므로, 여기서 안 찍으면 이 조립 사고가 화면·로그 어디에도 안 남는다.
                 Debug.LogWarning("[포모도로] 같은 GameObject에서 CharacterProgressionDirector를 찾지 못해 " +
-                    "집중 모드 중도 취소 XP를 지급하지 못했습니다 — 코인은 정상 지급됐습니다.");
+                    "집중 모드 중도 취소 XP를 지급하지 못했습니다 — 이 취소의 보상이 통째로 사라집니다" +
+                    "(2026-09-29 재화 폐지 이후 XP가 유일한 세션 보상입니다).");
                 return;
             }
 
@@ -716,11 +686,11 @@ namespace StickMate.Interaction
             if (SpectacleEventLock.IsActive && SpectacleEventLock.CurrentOwner != (object)this) return;
 
             // ★ 긴급정지도 사용자 입장에서는 「중도 취소」다 — 18절이 이것을 포모도로의 탈출구로
-            //   명시한다. 여기서 지급을 빼면 «탈출구로 나간 사용자만 그때까지 번 동전을 통째로 잃는»
+            //   명시한다. 여기서 지급을 빼면 «탈출구로 나간 사용자만 그때까지 쌓은 것을 통째로 잃는»
             //   경로가 되고, 그건 패널티를 안 주기로 한 18절 톤과도 정면으로 어긋난다.
             //   ⚠ 포즈/락 처리는 아래 그대로 둔다(FocusCancelled 포즈를 띄우지 않고 즉시 유휴로
-            //   보내는 것이 긴급정지의 정의다) — 이 두 줄은 <b>재화·XP만</b> 얹는다.
-            PayCancelCoins("긴급정지");
+            //   보내는 것이 긴급정지의 정의다) — 이 줄은 <b>XP만</b> 얹는다.
+            // ★ 2026-09-29 — 여기 있던 `PayCancelCoins("긴급정지");`를 뗐다(DLC·재화 폐지 R5).
             PayCancelXp();
             IsSessionActive = false;
             ReleaseOwnedLock(forceIdle: true);

@@ -777,19 +777,6 @@ namespace StickMate.Tests.EditMode
                 },
                 new IgnoreEntry
                 {
-                    File = "SteamEntitlementAdapterAuditTests.cs",
-                    Method = "스팀_어댑터는_정확히_한_파일이고_승인된_심볼만_쓴다",
-                    Kind = RatchetKind.자동,
-                    Why = "2026-09-05 결재-1(리더) — Steam 계열 식별자를 쓰는 프로덕션 파일이 0개면 " +
-                          "Ignore한다(니들 예외가 아직 배선 전이거나 되돌려진 상태). <b>오늘은 정상 실행이다</b> " +
-                          "— SteamPackEntitlementSource.cs가 있어 이 조건은 거짓이고 실제 닫힌 세계 " +
-                          "검사(허용 심볼 5개·멤버 접근·using 횟수 등)가 매 실행 돈다. 역방향 장치는 " +
-                          "이 메서드 자신이다 — 예외가 완전히 롤백되면(파일 삭제) 같은 메서드가 " +
-                          "Ignore로 돌아가 러너에 '건너뜀'으로 계속 보인다(2026-08-30 SetWindowPos " +
-                          "처리와 같은 절차, 조용한 소멸이 아니다).",
-                },
-                new IgnoreEntry
-                {
                     File = "FacingFlipBodySplitTests.cs",
                     Method = "무릎앉아_착지는_실기_미재현이라_보류한다",
                     Kind = RatchetKind.동반,

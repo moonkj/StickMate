@@ -36,8 +36,9 @@ namespace StickMate.Core
         /// <para><b>값의 정의는 새로 만들지 않았다</b>: <see cref="CurrencyRules.LocalDayIndex"/>가 내는
         /// <b>바로 그 정수</b>이고, 화면의 "오늘"은 <see cref="CurrencyModel.DayIndex"/> 하나에서만 온다
         /// (docs/UX_WIDGETS.md UW-6-2 "시계 단일성"). 이 파일은 <c>DateTime.Now</c>를 읽지 않는다 —
-        /// 벽시계를 두 벌 만들면 하루 1회 동전(<see cref="CurrencyModel.TryPayTodoDailyCoins"/>)과
-        /// 화면의 «오늘»이 서로 다른 순간에 넘어간다(persona-stress R-8).</para>
+        /// 벽시계를 두 벌 만들면 같은 하루를 세는 두 계기가 <b>서로 다른 순간에</b> 넘어간다
+        /// (persona-stress R-8. 원래 예시였던 «하루 1회 동전»은 2026-09-29에 폐지됐지만,
+        /// <see cref="CurrencyModel.DayIndex"/>를 읽는 계기는 남아 있고 규칙도 그대로다).</para>
         ///
         /// <para><b>기본값은 <see cref="UnknownPlannedDay"/>(0) = 「날짜 미상」</b>이다. 그 문단을 반드시
         /// 읽어라 — 0은 날짜가 아니다.</para>
@@ -81,11 +82,10 @@ namespace StickMate.Core
     /// TodoPostItWidget.cs(포스트잇 카드 UI — 이 위젯의 체크박스 클릭은 이 모델을 직접 호출할 뿐,
     /// SpectacleEventLock/Platform.ILocalClickCaptureService와는 완전히 무관하다).
     ///
-    /// <para>★ <b>2026-09-06 — 이 모델이 재화를 건드리는 자리가 하나 생겼다</b>:
-    /// <see cref="ToggleComplete"/>가 «미완료 → 완료» 전이에서 [오늘 할일] 하루 1회 보상을 지급한다
-    /// (<see cref="CurrencyModel.TryPayTodoDailyCoins"/>). 모델에 지급을 둔 것은 <b>완료 전이가
-    /// 일어나는 자리가 여기 하나뿐</b>이기 때문이다 — 부르는 UI는 둘이고 앞으로 더 늘 수 있다.
-    /// 금액·하루 1회·리셋은 전부 재화 쪽에 있고 이 파일에는 숫자가 없다.</para>
+    /// <para>★★★ <b>2026-09-29 — 이 모델이 재화를 건드리는 자리가 다시 0개가 됐다</b>(DLC·재화 폐지 R5).
+    /// 2026-09-06에 <see cref="ToggleComplete"/>가 «미완료 → 완료» 전이에서 하루 1회 동전 300을
+    /// 지급하도록 붙었던 한 줄을 뗐다. <b>이 파일이 지금 재화 쪽에서 읽는 것은
+    /// <see cref="CurrencyModel.DayIndex"/> 하나</b>이고 그건 동전이 아니라 「오늘」이다.</para>
     /// </summary>
     public static class TodoListModel
     {
@@ -170,42 +170,19 @@ namespace StickMate.Core
             item.CompletedAtUnscaledTime = item.Completed ? Time.unscaledTime : 0f;
             IsDirty = true;
 
-            // ★★ 2026-09-06 재화 배선 — [오늘 할일] 하루 1회 보상은 <b>여기</b>에서 나간다.
-            //    ★ <b>왜 UI가 아니라 모델인가.</b> 완료 판정을 부르는 UI는 둘이다
-            //      (Interaction/TodoPostItWidget.cs · Interaction/TodoBoardPopover.cs).
-            //      거기에 지급을 얹으면 «완료했다»의 정의가 두 벌이 되고, 셋째 진입점이 생기는 날
-            //      그 길로 체크한 사용자만 조용히 보상을 못 받는다. 전이가 일어나는 자리는 여기 하나뿐이다.
-            //    ★ 되돌리기(체크 해제)에는 지급하지 않는다 — 그래서 토글 결과가 «완료»일 때만 본다.
-            //      반복 체크로 파밍할 수 없는 이유는 이 조건이 아니라 <c>todoCoinPaidToday</c>다
-            //      (하루 1회, 롤오버가 되돌린다). 두 겹인 것이 의도다.
-            //    ★ RaiseTodoListChanged <b>앞</b>에서 지급한다 — 그 이벤트로 갱신되는 화면이
-            //      잔액을 그린다면 «이미 들어온 잔액»을 봐야 한다(원칙 1: 화면은 확정된 사실에서 파생된다).
-            if (item.Completed) PayTodoDailyCoins();
+            // ★★★ 2026-09-29 DLC·재화 폐지 R5 — 여기 있던 `if (item.Completed) PayTodoDailyCoins();`를
+            //    뗐다(그리고 그 메서드도 삭제). <b>[오늘 할일] 기능 자체는 한 줄도 안 바뀌었다</b> —
+            //    사라진 것은 완료에 붙던 하루 1회 동전 300뿐이고, 목록·완료 전이·날짜축·유예 스윕은
+            //    전부 그대로다. 세이브 필드 <c>todoCoinPaidToday</c>도 스키마에 그대로 남아 왕복만 한다
+            //    (스키마 버전 불변).
+            //
+            //    ★ 지급이 여기(모델)에 있었던 이유는 기록으로 남긴다 — 같은 함정이 다음 기능에서
+            //      되풀이된다: 완료 판정을 부르는 UI는 둘이고
+            //      (Interaction/TodoPostItWidget.cs · Interaction/TodoBoardPopover.cs), 거기에 지급을
+            //      얹으면 «완료했다»의 정의가 두 벌이 되어 셋째 진입점이 생기는 날 그 길로 체크한
+            //      사용자만 조용히 보상을 못 받는다. <b>전이가 일어나는 자리는 여기 하나뿐이다.</b>
 
             StickmanEventBus.RaiseTodoListChanged();
-        }
-
-        /// <summary>
-        /// [오늘 할일] 하루 1회 정액 보상. 지급 여부·금액·리셋은 전부
-        /// <see cref="CurrencyModel.TryPayTodoDailyCoins"/>와 <see cref="CurrencyRules.TodoDailyCoins"/>
-        /// 안에 있고, 이 파일은 <b>언제 물어볼지</b>만 안다(금액을 여기 적으면 같은 사실이 두 곳에 산다).
-        ///
-        /// <para>★ <b>0동전일 때는 조용히 지나간다.</b> 오늘 두 번째 완료가 0인 것은 고장이 아니라
-        /// 설계(하루 1회)이고, 할일을 여러 개 체크하는 것은 <b>흔한 정상 경로</b>라 매번 로그를 남기면
-        /// 소음이 된다. 반대로 «오늘 첫 완료»는 하루 한 번뿐이라 한 줄이 값을 한다.</para>
-        ///
-        /// <para>★ <b>저장을 강제하지 않는다.</b> 지급이 <c>CurrencyModel.IsDirty</c>를 세우고
-        /// <c>Interaction/CharacterProgressionDirector</c>의 주기/종료 저장이 싣는다 —
-        /// 이 모델도 같은 파일에 실리므로 별도 경로를 만들면 두 컴포넌트가 같은 파일을 번갈아 쓴다.</para>
-        /// </summary>
-        private static void PayTodoDailyCoins()
-        {
-            int coins = CurrencyModel.TryPayTodoDailyCoins();
-            if (coins <= 0) return;
-
-            Debug.Log($"[재화] [오늘 할일] 오늘 첫 완료 +{coins}동전 — " +
-                $"잔액 {CurrencyModel.CoinBalance}동전. 하루 1회이고 날짜가 바뀌면 다시 열립니다. " +
-                "저장은 다음 주기/종료 저장에 실립니다.");
         }
 
         /// <summary>완료 유예 시간(todoCompletedLingerSeconds)이 지난 항목을 활성 목록에서 걷어내

@@ -32945,3 +32945,31 @@ EditMode 3219(−19, 지운 수와 정확히 일치) 전부 통과. PlayMode에�
 
 - **Windows 영향: 함께 수정함** — 애셋·테스트만 삭제, 플랫폼 분기 0. 크로스 컴파일 5/5 errors=0.
 - **macOS 영향: 함께 수정함** — 동일, 세이브 완화 코드도 플랫폼 중립.
+
+---
+
+# R2+R5+R8+R10 커밋 (2026-09-29, 사용자 지시 「남은것 바로 병렬로 진행해줘」)
+
+## 실행 — 4갈래 동시 파견(파일 비겹침)
+1. **R2(`coder-ui`) 상점·DLC 화면 삭제** — `.Shop.cs`(913줄)·`.Dlc.cs`(836줄) 삭제, 3탭(장비/외형/보관함)으로 축소, 헤더 동전 칩 제거 + `OwnedChipInset`/`ChipBlockWidth` −124pt(4/4 재유도 검산 일치). `ShopTabSurfaceTests`·`ShopPurchaseFlowTests` 삭제.
+2. **R5(`coder-systems`) 재화 백엔드 철거** — 유휴·투두코인·시드·집중취소코인·활쏘기코인 지급 제거. **세이브 스키마 무변경**(`CurrentVersion=13`, `CurrencySaveState`/`CaptureSaveState`/`RestoreFromSave` HEAD와 차분 0). 활쏘기 XP 보안 관문은 삭제 대신 개명(`TryClaimArcheryAward`)해 보존. `FocusSessionPayoutTests` 삭제(항목별 대조로 무손실 확인).
+3. **R8(`security`) 니들 예외(I-3) 폐지 집행** — 어댑터 삭제 → 빌드 게이트 반전(스팀 배선 감지 시 중단) → 감사 8조합 방향 반전 → `SteamEntitlementAdapterAuditTests` 삭제. `SECURITY_MODEL.md` X-2에 N0~N5 신설(「도입 전」과 「폐지 후」가 같은 비트 패턴이라 문서가 갈라야 함을 명시).
+4. **R10(`product-strategy`) 전략 문서 as-of** — `docs/strategy/*.md` 6개+`GAME_ARCHITECTURE_REVIEW.md`+`MILESTONES.md`, 글자 삭제 0. `MILESTONES.md`의 사용자 2026-09-02 확정 2건(DLC 1.0 포함·F2P)을 원문 보존한 채 취소선+재확정.
+
+## 리더 접합(3건) + 접합 실수 자기 발견 2건
+경계 접합: `CurrencyRules.cs` 주석의 죽은 `ShopPurchaseFlowTests` 인용 as-of, `TestClaimExpiryAuditTests`의 죽은 `IgnoreEntry`(SteamEntitlementAdapterAuditTests) 제거, `SessionEndShutdownTests`의 죽은 `QuitHookLedger` 항목(SteamPackEntitlementSource) 제거.
+1차 EditMode 회귀가 접합 실수 2건을 바로 잡아냈다 — ⑴ 내 as-of가 낱말형 인용을 과거형 문장 안에 그대로 남겨 `CommentReferenceAuditTests` 재발(프로즈로 재작성해 해결). ⑵ `CurrencyDayRolloverTests`의 양성 대조 앵커가 R5가 지운 `PayFocusCompletionCoins`였음 — R5는 자매 테스트에서 같은 결함을 잡았지만 이 파일은 놓쳤다(앵커를 `TryGrantFocusCompletionXp`로 이동). 재실행 EditMode 3171 전부 초록.
+
+## ★★ PlayMode 빨강 3건 — 격리 ×3, 이 번들과 무관으로 판정
+- `AccessoryFillRenderingTests.왕관은_채워지되_얹는_물건으로_남는다` — 격리 3/3 결정론적 빨강. 관련 4파일(테스트·왕관 애셋·렌더러·게이트) 전부 이 번들 diff에 0건. 왕관 애셋이 `wornShapes: []`(순수 스프라이트)인데 테스트는 2026-09-06부터 v1/v2 9조각 중 하나를 기대 — 인계본 9조각이 애초에 구현된 적이 없는 것으로 보이는 **기존 결함**. 다음 배정: coder-ui/design-equipment.
+- `CostumeFocusPropLifecycleTests.몰입기_도중_취소해도_프롭이_화면에_남지_않는다` — 격리 3/3 결정론적 빨강. `FocusWatchDirector.cs`의 R5 편집분을 직접 대조해 XP 경로·호출 순서 무변경 확인, 코스튬 프롭 관련 파일도 diff 0건. **기존 결함**, 다음 배정: coder.
+- `LandingCrouchTests.DockStepDropNeverLooksLikeKneelingAtAnySelectableScale` — 전량 배치에서만 빨강(0.35 배율, 0.48%p 초과), 격리 3/3 전부 초록 → `GetupFloorClearanceTests`와 같은 배치모드 순서 의존 플레이크로 분류, 수정 없음.
+
+## 회귀 최종
+EditMode 3171(−67, R2·R5·R8 삭제분과 일치) 전부 통과. PlayMode 822 중 위 3건 제외 전부 통과, 3건 전부 분류·설명 완료(기존 결함 2 + 플레이크 1). 크로스 컴파일 osx·win 5/5 units errors=0(통합 재확인).
+
+## 다음 배정 후보(신규)
+왕관 인계본 9조각 미구현(coder-ui/design-equipment) · 코스튬 프롭 취소 시점 미해제(coder) · 위 두 건 모두 DLC 폐지와 무관하게 이번 회귀에서 처음 표면화됨(원인 시점 미조사).
+
+- **Windows 영향: 함께 수정함** — R2 헤더·탭, R8 게이트가 양 빌드 진입점 동시 적용. 크로스 컴파일 win 5/5 errors=0.
+- **macOS 영향: 함께 수정함** — 동일 파일 공용. 크로스 컴파일 osx 5/5 errors=0.

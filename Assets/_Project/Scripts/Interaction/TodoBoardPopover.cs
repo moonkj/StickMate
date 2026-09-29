@@ -20,10 +20,12 @@ namespace StickMate.Interaction
     /// ============================================================================
     /// 「오늘」은 <see cref="CurrencyModel.DayIndex"/> 하나에서만 온다 (UW-6-2 시계 단일성)
     /// ============================================================================
-    /// 이 파일에는 <c>DateTime.Now</c>가 없다. 이유는 정확성이 아니라 <b>일치</b>다 — 하루 1회
-    /// 동전(<see cref="CurrencyModel.TryPayTodoDailyCoins"/>)과 화면의 "오늘"이 같은 순간에
-    /// 넘어가야 한다. 두 시계는 두 진실이 된다. 대가는 최대 60초 지연
-    /// (<c>CurrencyDayRolloverTicker.CheckIntervalSeconds</c>)이고 받아들였다.
+    /// 이 파일에는 <c>DateTime.Now</c>가 없다. 이유는 정확성이 아니라 <b>일치</b>다 — 하루를 세는
+    /// 모든 계기와 화면의 "오늘"이 같은 순간에 넘어가야 한다. 두 시계는 두 진실이 된다.
+    /// 대가는 최대 60초 지연(<c>CurrencyDayRolloverTicker.CheckIntervalSeconds</c>)이고 받아들였다.
+    /// <para>★ 2026-09-29 — 원래 이 문단이 들던 예시는 «하루 1회 동전»이었고 그 채널은 폐지됐다.
+    /// 규칙은 그대로다: <b>「오늘」의 출처는 <see cref="CurrencyModel.DayIndex"/> 하나</b>이고,
+    /// 그 값을 전진시키는 롤오버 배선도 그대로 살아 있다.</para>
     /// <para><see cref="System.DateTime"/>을 쓰는 곳은 <see cref="DateOfDayIndex"/> 하나뿐인데,
     /// 그건 <b>시각을 읽는 것이 아니라</b> 이미 확정된 정수를 «몇 월 며칠 무슨 요일»로 환산하는
     /// 순수 함수다(에폭은 <see cref="CurrencyRules.LocalDayIndex"/>가 쓰는 바로 그 1970-01-01).</para>

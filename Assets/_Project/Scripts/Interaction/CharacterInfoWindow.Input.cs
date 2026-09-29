@@ -26,7 +26,8 @@ namespace StickMate.Interaction
 
             // 드래그 중에만 폴링 간격을 없앤다 — 20Hz로 창을 끌면 커서에서 창이 뚝뚝 끊겨 떨어진다.
             // 평소에는 예전 그대로 ClickPollInterval(0.05초)로 눌러 둔다(하루 종일 켜져 있는 앱이다).
-            if (!_draggingPanel && !_gridGrabbed && !_col2Grabbed && !_shopGrabbed)
+            // ★ 2026-09-29 DLC 폐지 R2 — 뒤에 있던 !_shopGrabbed를 지웠다([상점] 격자 삭제).
+            if (!_draggingPanel && !_gridGrabbed && !_col2Grabbed)
             {
                 _clickPollTimer += Time.unscaledDeltaTime;
                 if (_clickPollTimer < ClickPollInterval) return;
@@ -65,7 +66,8 @@ namespace StickMate.Interaction
         private void TickFramePacingHold(bool hasCursor, Vector2 cursor)
         {
             // 커서가 창 밖으로 나가도 계속되는 조작들 — 이것들은 사각형 판정으로 잡을 수 없다.
-            bool manipulating = _draggingPanel || _gridGrabbed || _col2Grabbed || _shopGrabbed || _editingName;
+            // ★ 2026-09-29 DLC 폐지 R2 — 이 논리합에서 _shopGrabbed를 뺐다([상점] 격자 삭제).
+            bool manipulating = _draggingPanel || _gridGrabbed || _col2Grabbed || _editingName;
             bool cursorOver = hasCursor && RectContainsScreenPoint(_panel, cursor);
             if (manipulating || cursorOver) _lastSurfaceTouchTime = Time.unscaledTime;
 
@@ -103,8 +105,7 @@ namespace StickMate.Interaction
                 //   서로 겹치지 않으므로 둘 중 하나만 잡힌다 — 잡기 판정이 각자 자기 뷰포트를 본다.
                 ArmGridDrag(cursor);
                 ArmCol2Drag(cursor);
-                ArmShopDrag(cursor);   // [상점] 격자도 밀린다 — 네 뷰포트는 서로 겹치지 않는다.
-                ArmDlcDrag(cursor);    // [DLC] 격자도 같은 규칙(탭이 다르면 한쪽은 꺼져 있다).
+                // ★ 2026-09-29 DLC 폐지 R2 — ArmShopDrag/ArmDlcDrag 두 줄을 지웠다(그 격자 삭제).
                 bool routed = FeedClick(cursor);
 
                 // ★★ 2026-09-08 (사용자 신고 "각 메뉴들의 창을 마우스로 끌어서 움직일수있게
@@ -118,10 +119,11 @@ namespace StickMate.Interaction
                 //   클릭 라우팅 <b>정본</b>이고, 새 컨트롤이 늘어도 판정이 자동으로 따라온다
                 //   (CLAUDE.md — 기준과 대상이 갈라지면 아무도 모른다).
                 //
-                //   ★ 격자 3종은 <b>따로 뺀다</b>: 그쪽은 «잡아만 두고 누름을 삼키지 않는» 규칙이라
+                //   ★ 격자 <b>2종</b>은 <b>따로 뺀다</b>: 그쪽은 «잡아만 두고 누름을 삼키지 않는» 규칙이라
                 //   FeedClick이 false를 돌려줄 수 있는데, 그 자리는 손잡이가 아니라 <b>스크롤</b>이다.
                 //   플래그를 보는 이유가 이것이다(Arm*가 세운다).
-                if (!routed && !_gridGrabbed && !_col2Grabbed && !_shopGrabbed && !_dlcGrabbed)
+                //   ★ 2026-09-29 DLC 폐지 R2 — 「3종」이었다. _shopGrabbed·_dlcGrabbed가 사라져 2종이다.
+                if (!routed && !_gridGrabbed && !_col2Grabbed)
                 {
                     TryBeginPanelDragFromBody(cursor);
                 }
@@ -131,18 +133,17 @@ namespace StickMate.Interaction
             {
                 if (!hasCursor) return;
                 if (_draggingPanel) DragPanelTo(cursor);
-                else { DragGridTo(cursor); DragCol2To(cursor); DragShopTo(cursor); DragDlcTo(cursor); }
+                // ★ 2026-09-29 DLC 폐지 R2 — 뒤에 있던 DragShopTo/DragDlcTo 두 호출을 지웠다.
+                else { DragGridTo(cursor); DragCol2To(cursor); }
                 return;
             }
             if (!buttonDown && prev)
             {
                 ResolvePendingEquip(cursor, hasCursor);
-                ResolvePendingShopBuy(cursor, hasCursor);
-                ResolvePendingDlcEquip(cursor, hasCursor);
+                // ★ 2026-09-29 DLC 폐지 R2 — ResolvePendingShopBuy/ResolvePendingDlcEquip과
+                //   EndShopDrag/EndDlcDrag 넷을 지웠다.
                 EndGridDrag();
                 EndCol2Drag();
-                EndShopDrag();
-                EndDlcDrag();
                 EndPanelDrag();
             }
         }
@@ -255,7 +256,7 @@ namespace StickMate.Interaction
             if (RectContainsScreenPoint(_closeRect, cursor)) return false;   // [✕]는 버튼이지 손잡이가 아니다.
             if (RectContainsScreenPoint(_settingsRect, cursor)) return false; // [설정]도 마찬가지.
             if (RectContainsScreenPoint(_ownedChipRect, cursor)) return false;
-            if (RectContainsScreenPoint(_coinChipRect, cursor)) return false;
+            // ★ 2026-09-29 DLC 폐지 R2 — 동전 칩 제외 한 줄을 지웠다(그 칩이 화면에서 사라졌다).
             for (int i = 0; i < _tabRects.Length; i++)
             {
                 if (RectContainsScreenPoint(_tabRects[i], cursor)) return false;
@@ -411,21 +412,8 @@ namespace StickMate.Interaction
                 return true;
             }
 
-            if (page == TabPage.Dlc)
-            {
-                // [상점]과 같은 형태 — 누름은 보류하고 <b>뗄 때</b> 확정한다(미는 손짓이 착용이 되면 안 된다).
-                FeedDlcClick(cursor);
-                return true;
-            }
-
-            if (page == TabPage.Shop)
-            {
-                // ★ 두 경로가 <b>같은 핸들러</b>를 부른다(Button.onClick + 이 폴링). 한쪽만 가드하면
-                //   다른 쪽이 그대로 뚫린다 — 그래서 살 수 있는가의 판정은 칩의 interactable이 아니라
-                //   OnShopBuyClicked 안에 있다(45-9-b ④와 같은 규칙).
-                FeedShopClick(cursor);
-                return true;
-            }
+            // ★ 2026-09-29 DLC 폐지 R2 — 여기 있던 [DLC]·[상점] 두 분기(FeedDlcClick / FeedShopClick)를
+            //   지웠다. 남은 페이지 종류는 카드·보관함 둘이고, 아래 분기가 그 둘을 모두 덮는다.
 
             // 카드가 없는 탭은 여기서 끝이다. 아래 카드 루프는 숨겨진 카드를 activeInHierarchy로
             // 걸러 내지만, 그건 <b>우연한 방어</b>다 — 어떤 탭이 카드를 갖는지는 표가 정한다.

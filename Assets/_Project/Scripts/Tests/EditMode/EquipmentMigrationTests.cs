@@ -887,9 +887,20 @@ namespace StickMate.Tests.EditMode
         public void v10_왕복은_동전과_구매이력과_등급해금과_장착한_춤을_보존한다()
         {
             CurrencyModel.ResetForTesting();
-            Assert.IsTrue(CurrencyModel.TryPayTodoDailyCoins() > 0, "전제 — 할일 보상이 지급돼야 한다.");
-            Assert.IsTrue(CurrencyModel.TryPurchaseItem("equip.head.crown", CurrencyRules.TodoDailyCoins / 2),
-                "전제 — 구매가 성공해야 한다.");
+
+            // ★★ 2026-09-29 DLC·재화 폐지 R5 — 전제를 만드는 방법만 바뀌었다(재는 것은 그대로다).
+            //    옛 전제는 지급 API(<c>TryPayTodoDailyCoins</c> · 가격 인자를 받는 <c>TryPurchaseItem</c>)로
+            //    값을 만들었는데 그 API가 폐지됐다. 지금은 <b>파일에서 읽은 값</b>을 직접 세운다 —
+            //    이 테스트가 재는 것은 「지급되는가」가 아니라 「담고 다시 쓰는가」이므로, 폐기된 축을
+            //    왕복시키는 계약을 오히려 더 정확하게 겨눈다.
+            //    ⚠ 숫자 2200은 프로덕션 상수가 아니라 <b>이 테스트가 고른 파일 값</b>이다(아래 왕복
+            //    단언이 같은 지역 변수를 쓰므로 값이 무엇이든 관계없다).
+            CurrencyModel.RestoreFromSave(new CurrencySaveState
+            {
+                CoinBalance = 2200,
+                PurchasedItemIds = new[] { "equip.head.crown" },
+                TodoCoinPaidToday = true,
+            });
             Assert.IsTrue(CurrencyModel.RaiseStatTier(1, CurrencyRules.MaxStatTier), "전제 — 등급이 올라야 한다.");
             CurrencyModel.SetEquippedDanceIds(new[] { DanceIds.StarJump }, null);
 

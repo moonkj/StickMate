@@ -61,6 +61,26 @@ namespace StickMate.Tests.EditMode
     /// ============================================================================
     /// <see cref="IncomeTimeSourceAuditTests"/>가 <b>"어느 시계를 읽는가"</b>를 맡는다.
     /// 이 파일은 <b>"읽은 값을 어디에 넣는가"</b>와 <b>"저장 스키마가 어떻게 생겼는가"</b>다.
+    ///
+    /// ============================================================================
+    /// ★★★ 2026-09-29 DLC·재화 폐지 R5 — <b>위 서술 중 인용의 출처 두 개가 삭제됐다</b>
+    /// ============================================================================
+    /// 위 문단들이 인용하는 <c>CurrencyRules.IdleTick</c>·<c>CurrencyRules.FocusCancelCoins</c>는
+    /// 2026-09-29에 <b>삭제됐다</b>(재화 폐지). 그 인용문은 <b>당시 참이었던 기록</b>으로 남기고,
+    /// 지금 이 파일이 실제로 재는 것은 아래처럼 바뀌었다:
+    /// <list type="bullet">
+    ///   <item><b>1군(부재)</b> — 그대로. 상한을 뜻하는 필드가 스키마에 생기면 빨개진다(T-D-9).</item>
+    ///   <item><b>2군(존재: 로드 클램프)</b> — <b>그대로</b>. 재화가 폐지됐어도
+    ///     <c>potionsUsedToday</c>·<c>todayGrantedCoins</c>·<c>idleWindowUsedSeconds</c> 세 필드는
+    ///     <b>스키마에 남아 왕복만 한다</b>(버전 불변). 남긴 필드는 손상 값 위생을 지나야 하므로
+    ///     클램프도 남았고, 이 군이 그 실재를 계속 잰다.</item>
+    ///   <item><b>3군(호출부 책임)</b> — 진입점 표에서 <c>IdleTick</c>·<c>TickIdleIncome</c>이 빠지고
+    ///     <c>TryAwardArcheryCoins</c>가 <c>TryClaimArcheryAward</c>로 개명됐다. 남은 것 중
+    ///     활쏘기 쿨다운은 이제 <b>동전이 아니라 XP</b>의 방어선이다.</item>
+    ///   <item><b>유휴 배선 테스트</b> — 「호출부 정확히 1건」에서 <b>「0건」(부재 단언 + 양성 대조)</b>으로
+    ///     방향이 뒤집혔다. 이 테스트는 이 저장소에서 세 번 방향을 바꿨고, 매번 <b>지우지 않고</b>
+    ///     바꿔 썼다(그 이력이 다음 사람에게 계약을 알려 준다).</item>
+    /// </list>
     /// </summary>
     public sealed class DailyLimitClampAuditTests
     {
@@ -177,16 +197,20 @@ namespace StickMate.Tests.EditMode
 
         /// <summary>
         /// <b>단조 시계에서 온 값만</b> 받기로 문서에 적힌 진입점들.
-        /// <para><c>PayFocusCompletionCoins</c>/<c>PayFocusCancelCoins</c>는 <b>없다</b> —
+        /// <para><c>PayFocusCompletionCoins</c>는 <b>없다</b> —
         /// 그건 시각이 아니라 <b>세션 길이</b>를 받는 함수다(클래스 문서 「사거리」 절).</para>
+        /// <para>★★ <b>2026-09-29 DLC·재화 폐지 R5</b> — 두 줄을 뺐고 한 줄은 이름이 바뀌었다:
+        /// <c>IdleTick</c>·<c>TickIdleIncome</c>은 <b>삭제됐다</b>(유휴 수급 폐지. 니들을 남겨 두면
+        /// 「진입점 표에는 있는데 실물은 없는」 죽은 항목이 된다), <c>TryAwardArcheryCoins</c>는
+        /// <see cref="CurrencyModel.TryClaimArcheryAward"/>로 개명됐다(동전을 안 내고 판정만 한다).</para>
         /// </summary>
         private static readonly (string Name, string Why)[] MonotonicEntryPoints =
         {
-            ("IdleTick",             "인자 deltaSeconds는 단조 시계 델타여야 한다(문서 원문)."),
-            ("TickIdleIncome",       "위 함수를 그대로 통과시키는 모델 쪽 진입점."),
             ("TickDayRollover",      "nowMonotonic — 리필 최소 간격(T-14-3-a)을 재는 시계."),
-            ("TryAwardArcheryCoins", "nowMonotonic — 상금 쿨다운. 벽시계 유닉스 초를 쓰던 옛 설계는 " +
-                                     "시계를 600초 되감으면 즉시 재지급됐다(§20-3)."),
+            ("TryClaimArcheryAward", "nowMonotonic — 보상 쿨다운. 벽시계 유닉스 초를 쓰던 옛 설계는 " +
+                                     "시계를 600초 되감으면 즉시 재지급됐다(§20-3). " +
+                                     "★ 2026-09-29 이후 이 쿨다운이 막는 것은 동전이 아니라 XP다 — " +
+                                     "벽시계가 들어오면 XP 무한 파밍이 열린다."),
             ("TickIfDue",            "주기 게이트. 이름이 트리에서 유일하도록 지은 것이 계약의 일부다."),
             ("CheckNow",             "주기를 무시하는 즉시 판정. 같은 시계를 받는다."),
         };
@@ -209,16 +233,16 @@ namespace StickMate.Tests.EditMode
 
         /// <summary>호출부가 몇 개는 잡혀야 스캔이 공허하지 않은가.
         /// 2026-09-06 실측 5건(<c>IdleTick</c> 1 · <c>TickDayRollover</c> 1 · <c>CheckNow</c> 2 ·
-        /// <c>TickIfDue</c> 1). <c>TickIdleIncome</c>·<c>TryAwardArcheryCoins</c>는 아직 0건이다.
-        /// <para>★ 2026-09-06(2차 배선) 정정 — <c>TryAwardArcheryCoins</c>가 <b>1건이 됐다</b>
-        /// (<c>Interaction/CharacterProgressionDirector.cs</c>의 정중앙 명중 훅). 그래서 실측은 6건이다.
-        /// 바닥값은 <b>일부러 올리지 않는다</b> — 이 상수의 목적은 «스캐너가 죽었는가»를 잡는 것이지
+        /// <c>TickIfDue</c> 1)에서 시작해 두 차례 배선으로 7건까지 갔다.
+        /// <para>★★ <b>2026-09-29 DLC·재화 폐지 R5 재실측</b>: <c>IdleTick</c>·<c>TickIdleIncome</c>이
+        /// 삭제돼 표에서 빠졌다. 남은 실측은 <b>4건</b>이다 —
+        /// <c>TickDayRollover</c> 1(<c>Core/CurrencyDayRolloverTicker.cs</c>) · <c>CheckNow</c> 2 ·
+        /// <c>TickIfDue</c> 1 · <c>TryClaimArcheryAward</c> 1 중 «선언이 아닌 호출»로 잡히는 것들.
+        /// 바닥값은 <b>내리지도 올리지도 않는다</b> — 이 상수의 목적은 «스캐너가 죽었는가»를 잡는 것이지
         /// 배선 개수를 못박는 것이 아니고, 배선 실재는 전용 테스트
         /// (<c>Tests/EditMode/CurrencySeedAndArcheryWiringTests</c>)가 잰다.
-        /// ★★ 그 뒤 같은 날 3차 배선으로 <c>TickIdleIncome</c>도 <b>1건이 됐다</b>
-        /// (<c>Interaction/CharacterProgressionDirector.Update</c>). ⇒ 실측 7건.
-        /// 바닥값은 여전히 올리지 않는다 — 이 상수는 «배선 개수»가 아니라 «스캐너 생존»을 잰다.
-        /// 유휴 배선의 계약은 아래 <see cref="유휴_수급_배선이_단조_델타와_집중세션_분기를_지킨다"/>가 잠근다.</para></summary>
+        /// ⚠ 이 값이 지금 실측과 <b>가까워졌다</b>(여유가 거의 없다). 다음에 진입점을 하나 더 지우는
+        /// 라운드는 이 상수도 함께 판단해야 한다 — 그냥 내리면 «스캐너 생존» 가드가 약해진다.</para></summary>
         private const int MinProductionCallSites = 4;
 
         // ====================================================================
@@ -700,70 +724,58 @@ namespace StickMate.Tests.EditMode
 
         /// <summary>
         /// ★ SECURITY_MODEL T-11의 장치 그대로 — <b>배선 라운드가 이 테스트를 켜는 것을 잊을 수 없게</b>
-        /// 하는 자리였다. 유휴 수급 진입점에 프로덕션 호출부가 생기는 순간 빨개지고, 그때 사람이
-        /// 이 문단을 읽는다.
+        /// 하는 자리였다. 이 테스트는 이 저장소에서 <b>세 번 방향을 바꿨다</b>:
+        /// <list type="number">
+        ///   <item><c>유휴_수급_배선은_아직_0줄이다</c>(호출부 0건 + <c>Assert.Ignore</c>) — 배선 전.</item>
+        ///   <item><c>유휴_수급_배선이_단조_델타와_집중세션_분기를_지킨다</c>(호출부 정확히 1건) —
+        ///     2026-09-06 배선 뒤. 첫 번째 형태의 실패 메시지가 «지우지 말고 바꿔 쓰세요»라고
+        ///     적어 둔 대로 옮긴 것이다(장치가 설계대로 작동한 사례).</item>
+        ///   <item><b>지금</b> — <c>유휴_수급_배선이_폐지된_채로_있다</c>(호출부 0건이 기대값).
+        ///     2026-09-29 DLC·재화 폐지 R5. <b>같은 이유로 이번에도 지우지 않았다</b>:
+        ///     되살아나는 것을 막는 잠금으로 계속 쓸 수 있다.</item>
+        /// </list>
         ///
-        /// <para>★★ <b>2026-09-06 — 실제로 그 일이 일어났고, 이 테스트가 시킨 대로 바꿔 썼다.</b>
-        /// 옛 이름은 <c>유휴_수급_배선은_아직_0줄이다</c>였고 본문은 «호출부 0건 + <c>Assert.Ignore</c>»였다.
-        /// 그 실패 메시지가 <i>"이 테스트를 «배선됨»을 검증하는 형태로 바꿔 쓰세요(지우지 마세요)"</i>라고
-        /// 적어 두었으므로, <b>지우지 않고</b> 그 형태로 옮겼다. 장치가 설계대로 작동한 사례라 기록으로 남긴다.</para>
+        /// <para>★★ 부재 단언이라 <b>같은 실행·같은 스캐너</b>로 양성 대조를 잡는다:
+        /// 살아 있는 진입점(<c>TickDayRollover</c>)의 호출부 인자를 실제로 뽑아낸다.
+        /// 그것이 0이면 <c>CallArguments</c>가 죽은 것이고, 이 «0건»은 측정이 아니라 침묵이다.</para>
         ///
-        /// <para>이제 잠그는 것은 그 문단이 «그때 할 일»로 적어 둔 둘이다:
-        /// ① 인자가 <b>단조 시계 두 시점의 차</b>인가(누적 프레임 델타가 아닌가)
-        /// ② <c>isIdleEarning</c>이 <b>집중 세션 중 false</b>인가.
-        /// ②는 인자 텍스트만 봐서는 알 수 없으므로(지역 변수로 넘어온다) <b>호출부가 사는 파일이
-        /// 집중 세션 판정을 실제로 읽는가</b>로 잰다. 더 깊은 구조 단언(기산점 전진 순서)은
-        /// <c>Tests/EditMode/CurrencyIdleTodoTierWiringTests</c>가, 실제 거동은
-        /// <c>Tests/PlayMode/CurrencyWiringRuntimeTests</c>가 맡는다 — 셋이 서로 다른 자다.</para>
+        /// <para>★ 옛 형태가 잠그던 계약 둘은 <b>사라진 것이 아니라 대상이 없어진 것</b>이다 —
+        /// ① 인자가 단조 시계 두 시점의 차인가 ② <c>isIdleEarning</c>이 집중 세션 중 false인가.
+        /// 두 번째 적립 축을 만드는 라운드는 이 문단을 읽고 그 둘을 함께 복원하라.</para>
         /// </summary>
         [Test]
-        public void 유휴_수급_배선이_단조_델타와_집중세션_분기를_지킨다()
+        public void 유휴_수급_배선이_폐지된_채로_있다()
         {
-            int callSites = 0;
+            const string RetiredEntry = "TickIdleIncome";
             var found = new List<string>();
-            var offenders = new List<string>();
-            var callerFiles = new List<(string Path, string Stripped)>();
+            int liveArguments = 0;
 
             foreach ((string path, string stripped) in AllProduction())
             {
-                foreach (string argument in CallArguments(stripped, "TickIdleIncome"))
-                {
-                    callSites++;
-                    found.Add($"{Rel(path)} :: TickIdleIncome({Compact(argument)})");
-                    callerFiles.Add((path, stripped));
+                // ── 양성 대조: 같은 추출기가 살아 있는 진입점의 인자를 실제로 뽑아내는가.
+                foreach (string _ in CallArguments(stripped, "TickDayRollover")) liveArguments++;
 
-                    foreach ((string token, string why) in ForbiddenArgumentTokens)
-                    {
-                        if (!EntitlementAuditSource.ContainsIdentifier(argument, token)) continue;
-                        offenders.Add($"{Rel(path)} :: TickIdleIncome({Compact(argument)}) — '{token}'\n      {why}");
-                    }
+                foreach (string argument in CallArguments(stripped, RetiredEntry))
+                {
+                    found.Add($"{Rel(path)} :: {RetiredEntry}({Compact(argument)})");
                 }
             }
 
-            Assert.AreEqual(1, callSites,
-                $"{LogPrefix} 유휴 수급 프로덕션 호출부가 {callSites}건입니다(1이어야 합니다):\n  " +
+            Assert.Greater(liveArguments, 0,
+                $"{LogPrefix} 양성 대조 실패 — 같은 추출기가 살아 있는 진입점(TickDayRollover)의 호출부를 " +
+                "하나도 못 뽑았습니다. 스캐너가 죽었으므로 아래 «0건»은 측정이 아닙니다.");
+
+            Assert.IsEmpty(found,
+                $"{LogPrefix} 폐지된 유휴 수급 진입점(「{RetiredEntry}」)이 되살아났습니다({found.Count}건):\n  " +
                 string.Join("\n  ", found) + "\n\n" +
-                "0이면 배선이 사라진 것이고(하루 종일 켜 둬도 동전이 안 는다), 2 이상이면 " +
-                "<b>같은 1초가 두 번</b> 지급됩니다 — 호출부마다 자기 기산점을 들고 있기 때문입니다.");
+                "사용자가 닫은 문(재화)을 다시 여는 변경입니다. 정말 되살리는 라운드라면 " +
+                "<b>이 테스트를 지우지 말고</b> 「호출부 정확히 1건 + 단조 델타 + 집중 세션 분기」 형태로 " +
+                "다시 바꿔 쓰십시오 — 그 형태가 이 파일의 git 이력에 그대로 있습니다. " +
+                "특히 ② <c>isIdleEarning</c>이 집중 세션에서 파생되는가를 빠뜨리면 " +
+                "<b>같은 1초가 두 축에서 보상</b>되고(I-7′), 그 파손은 화면에도 로그에도 흔적이 없습니다.");
 
-            Assert.IsEmpty(offenders,
-                $"{LogPrefix} 유휴 수급 인자에 <b>벽시계·프레임 델타</b>가 들어갔습니다:\n  " +
-                string.Join("\n  ", offenders) + "\n\n" +
-                "Time.realtimeSinceStartupAsDouble의 <b>차</b>를 넘기세요.");
-
-            // ② isIdleEarning이 «집중 세션»에서 파생되는가 — 인자가 지역 변수라 파일 수준으로 잰다.
-            //    ★ 부재가 아니라 <b>존재</b> 단언이다: 이 니들이 썩으면 조용히 초록이 아니라 빨강이 된다.
-            const string FocusSessionFlag = "IsSessionActive";
-            foreach ((string path, string stripped) in callerFiles)
-            {
-                Assert.IsTrue(EntitlementAuditSource.ContainsIdentifier(stripped, FocusSessionFlag),
-                    $"{LogPrefix} {Rel(path)}가 유휴 수급을 부르면서 「{FocusSessionFlag}」를 읽지 않습니다. " +
-                    "그러면 isIdleEarning이 <b>집중 세션과 무관한 그림자 상태</b>에서 왔다는 뜻이고, " +
-                    "그 둘이 갈라지는 날 같은 1초가 집중과 유휴 양쪽에서 지급됩니다(I-7′). " +
-                    "CurrencyModel.TickIdleIncome 문서가 «그림자 상태를 따로 만들지 마라»라고 못박은 자리입니다.");
-            }
-
-            TestContext.WriteLine($"{LogPrefix} 유휴 호출부 {callSites}건 — " + string.Join(" / ", found));
+            TestContext.WriteLine($"{LogPrefix} 유휴 배선 폐지 확인 — 0건. " +
+                $"양성 대조(TickDayRollover 인자) {liveArguments}건.");
         }
 
         private static string Compact(string text)

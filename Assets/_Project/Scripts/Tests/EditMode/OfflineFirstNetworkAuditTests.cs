@@ -32,6 +32,10 @@ namespace StickMate.Tests.EditMode
     ///     예외 1건이 승인되면서 "0건"에서 "승인된 목록과 정확히 같다"로 판정을 개작했다 —
     ///     <c>NeedleKind</c>를 바꿔 조용히 초록을 유지하는 길은 기각했다(지표를 원하는 답으로 고치는
     ///     형태이고, 이 저장소가 반복해서 당한 패턴이다).
+    ///     ★★ <b>2026-09-28 사용자 결정(DLC 폐지)으로 그 예외 1건을 닫았다 — 전송 계열은 다시 0건이다.</b>
+    ///     판정 형태(「명부와 정확히 같다」)는 그대로 두고 <b>기대값만 빈 배열</b>로 되돌렸다.
+    ///     형태까지 옛 「0건이어야 초록」으로 되돌리지 않은 이유: 그러면 두 번째 전송 예외가 들어오는 날
+    ///     명부라는 리뷰 게이트가 없어진다. 「승인된 목록 = 빈 배열」이 그 게이트를 유지하면서 0건을 말하는 형태다.
     ///  3. <b>네거티브 컨트롤</b>: 스캔 로직이 무력화된 채 "위반 0건"으로 허위 통과하는 것을 막기 위해,
     ///     일부러 금지 API를 쓰는 가짜 소스 문자열을 <b>실제 프로덕션 스캔과 완전히 동일한 함수</b>
     ///     (<see cref="ScanSource"/>)에 흘려서 정말 잡아내는지 확인한다.
@@ -277,6 +281,19 @@ namespace StickMate.Tests.EditMode
         //    2026-09-05 결재-1로 스팀 DLC 엔타이틀먼트 예외 1건이 승인됐다(아래 목록 마지막 항목).
         //    승인된 목록과 정확히 같은지는 별도 테스트로 고정되어 있다 →
         //    전송계열_화이트리스트는_승인된_예외_1건과_정확히_같다()
+        //
+        // ★★ 2026-09-28 사용자 결정(DLC 폐지) — 그 예외 1건을 <b>닫았다</b>. 전송 계열은 다시 0건이다.
+        //    승인 근거는 「6팩을 팔 수 없다 = 출시 자체가 없다」였고(STEAMWORKS_ENTITLEMENT_EXCEPTION.md :491),
+        //    팔 6팩이 없어지면서 그 근거가 소멸했다. 어댑터 파일
+        //    Assets/_Project/Scripts/Store/SteamPackEntitlementSource.cs도 같은 커밋에서 지웠다 —
+        //    화이트리스트만 남기면 「이 파일은 원래 네트워크를 쓰는 파일」이라는 오해가 남고,
+        //    그걸 아래 화이트리스트_항목은_죽은_예외가_아니다 가 먼저 빨갛게 잡는다.
+        //    ★ 되돌릴 수 없는 것으로 지목됐던 DLC appid 문자열은 <b>한 번도 등록된 적이 없다</b>
+        //    (X-1 실측: 공개 빌드 전량에서 Steamworks 흔적 0). 그래서 이 닫기는 비용 0이다.
+        //    아래 테스트 이름의 「1건」은 <b>as-of 2026-09-05~2026-09-28</b>이다 — 이름을 되돌리지 않은 이유는
+        //    그 이름이 문서 5곳(SECURITY_MODEL.md · CHANNEL_PRICING_DECISIONS.md ·
+        //    PROMISED_TEST_EXISTENCE_SCAN.md · BASELINE.md · Tasklist.md)에서 인용되고 있어서다.
+        //    기대값(빈 배열)이 정본이고 이름은 이력이다.
         private static readonly List<NetworkWhitelistEntry> Whitelist = new List<NetworkWhitelistEntry>
         {
             new NetworkWhitelistEntry
@@ -296,27 +313,9 @@ namespace StickMate.Tests.EditMode
                     && !line.Contains("HttpClient")
                     && !line.Contains("System.Net"),
             },
-            // ★ 2026-09-05 결재-1(리더) — 유료 6팩 DLC 엔타이틀먼트 조회(BIsDlcInstalled).
-            //   R-5-min(스팀 출시 지배항). 허용 심볼 5개(Steamworks/SteamAPI.Init·Shutdown/
-            //   SteamApps.BIsDlcInstalled/AppId_t)는 docs/security/STEAMWORKS_ENTITLEMENT_EXCEPTION.md
-            //   §4가 닫힌 세계로 규정하고, 라인 단위 재검증은 SteamEntitlementAdapterAuditTests가 맡는다
-            //   (이 화이트리스트는 "그 파일에 Steamworks가 있어도 된다"만 보장한다 — 안의 형태는
-            //   그 전용 감사가 본다). 이 항목은 전송(Transmission) 계열이라 아래
-            //   전송계열_화이트리스트는_승인된_예외_1건과_정확히_같다 가 이 존재를 전제로 통과한다.
-            new NetworkWhitelistEntry
-            {
-                FileName = "SteamPackEntitlementSource.cs",
-                Reason = "유료 6팩 DLC 엔타이틀먼트 조회(BIsDlcInstalled) — R-5-min 스팀 출시 지배항. " +
-                    "네트워크 소켓을 직접 열지 않는다(steam_api64.dll 내부는 우리 스캐너가 볼 수 없다는 " +
-                    "한계는 정직하게 기록됨, STEAMWORKS_ENTITLEMENT_EXCEPTION.md §7-6). " +
-                    "리더 결재-1 승인(2026-09-05).",
-                AllowedNeedles = new[] { "Steamworks" },
-                RequiresConsentGate = false,
-                ConsentGateNeedle = null,
-                // 허용 형태는 오직 "using Steamworks;" 그 한 줄뿐 — 완전 일치(정규화 우회 차단은
-                // SteamEntitlementAdapterAuditTests가 낱말 카운트로 더 엄밀히 잠근다).
-                LineVerifier = line => line.Trim() == "using Steamworks;",
-            },
+            // ★ 2026-09-05 결재-1(리더)로 여기 있었던 스팀 엔타이틀먼트 예외 1건은
+            //   2026-09-28 사용자 결정(DLC 폐지)으로 <b>제거됐다</b>. 위 머리 주석에 사유가 있다.
+            //   전송 계열은 다시 0건이고, 그 사실은 아래 명부 테스트가 빈 배열로 잠근다.
         };
 
         // =====================================================================
@@ -525,19 +524,58 @@ namespace StickMate.Tests.EditMode
         /// 여전히 네트워크 API 0건이지만, <b>링크하는 네이티브 모듈이 하나 늘고 그 내부는 우리
         /// 스캐너가 못 본다</b>(steam_api64.dll). 그래서 "0건"이 아니라 "승인된 목록과 정확히 같다"로
         /// 판정을 좁힌다 — 두 번째 전송 예외가 들어오는 날 이 테스트가 여전히 한 줄로 빨개진다.
+        ///
+        /// <para>★★ <b>2026-09-28 사용자 결정(DLC 폐지) — 명부가 다시 빈 배열이 됐다.</b>
+        /// 승인 근거였던 「6팩을 팔 수 없다 = 출시 자체가 없다」가 소멸했고, 어댑터 파일도 같은 커밋에서
+        /// 지웠다. <b>메서드 이름의 「1건」은 as-of 2026-09-05~2026-09-28이다</b> — 이름을 바꾸지 않은 이유는
+        /// 이 이름이 저장소 문서 5곳에서 인용되고 있어서이고(<c>SECURITY_MODEL.md</c> ·
+        /// <c>docs/strategy/CHANNEL_PRICING_DECISIONS.md</c> · <c>docs/verify/PROMISED_TEST_EXISTENCE_SCAN.md</c> ·
+        /// <c>docs/verify/BASELINE.md</c> · <c>Tasklist.md</c>), 이름을 되돌리면 그 다섯 곳이 한꺼번에 낡는다.
+        /// <b>정본은 아래 기대값이고 이름은 이력이다.</b></para>
+        ///
+        /// <para>★ <b>빈 기대값에는 비공허성 잠금을 붙인다</b>(거짓 통과 #5: 빈 목록은 아무것도 재지 않는다).
+        /// 아래 두 대조가 «0건»이 «없다»인지 «판별기가 눈이 멀었다»인지 가른다 —
+        /// 합성 전송 항목은 반드시 걸리고, 합성 상태조회 항목은 반드시 안 걸려야 한다.</para>
         /// </summary>
         [Test]
         public void 전송계열_화이트리스트는_승인된_예외_1건과_정확히_같다()
         {
+            // ---- 판별기 교정(양성·음성) — 이게 없으면 아래 빈 배열은 능력을 증명하지 못한 0건이다 ----
+            var syntheticTransmission = new NetworkWhitelistEntry
+            {
+                FileName = "합성_전송.cs",
+                Reason = "판별기 양성 대조용 합성 항목입니다(프로덕션 파일이 아닙니다).",
+                AllowedNeedles = new[] { "Steamworks" },
+            };
+            var syntheticStatusOnly = new NetworkWhitelistEntry
+            {
+                FileName = "합성_상태조회.cs",
+                Reason = "판별기 음성 대조용 합성 항목입니다(프로덕션 파일이 아닙니다).",
+                AllowedNeedles = new[] { "NetworkReachability" },
+            };
+            Assert.IsTrue(TransmissionWhitelistPredicate(syntheticTransmission),
+                $"{LogPrefix} 전송 판별기가 명백한 전송 니들('Steamworks')을 못 알아봅니다 — " +
+                "아래 '0건'은 '없다'가 아니라 '못 본다'입니다.");
+            Assert.IsFalse(TransmissionWhitelistPredicate(syntheticStatusOnly),
+                $"{LogPrefix} 전송 판별기가 상태 조회 니들까지 전송으로 셉니다 — " +
+                "그러면 하드웨어 리액션 예외가 전송으로 잡혀 이 명부가 영원히 빨갛습니다.");
+            Assert.IsNotEmpty(Whitelist,
+                $"{LogPrefix} 화이트리스트가 통째로 비었습니다 — 판별기에 먹일 대상이 없어 이 판정이 공허해집니다" +
+                "(상태 조회 예외 1건은 남아 있어야 합니다).");
+
             var transmissionEntries = Whitelist.Where(TransmissionWhitelistPredicate)
                 .Select(e => e.FileName).ToList();
-            var approved = new[] { "SteamPackEntitlementSource.cs" };
+            // ★ 2026-09-28 — 승인된 전송 예외는 0건이다(DLC 폐지로 결재-1이 닫혔다). 빈 배열이 기대값이다.
+            var approved = new string[0];
 
             Assert.That(transmissionEntries, Is.EquivalentTo(approved),
                 $"{LogPrefix} 전송(Transmission) 계열 네트워크 API의 화이트리스트가 승인된 목록과 " +
-                $"다릅니다(기대: {string.Join(", ", approved)}). 자동 업데이트(5-1-2) / 옵트인 크래시 " +
+                $"다릅니다(기대: {(approved.Length == 0 ? "0건 — 승인된 전송 예외 없음" : string.Join(", ", approved))}). " +
+                "자동 업데이트(5-1-2) / 옵트인 크래시 " +
                 "리포트(5-1-9) / Steam Cloud(5-1-10)는 여전히 '1차 출시 이후 · 조건부'로 미뤄진 " +
                 "항목입니다 — 새 전송 예외는 리더 승인 + 이 명부의 명시적 갱신을 함께 거쳐야 합니다.\n" +
+                "★ 2026-09-05 결재-1(스팀 엔타이틀먼트)은 2026-09-28 사용자 결정(DLC 폐지)으로 닫혔습니다 — " +
+                "되살리려면 그 결정을 뒤집는 사용자 판단이 먼저입니다.\n" +
                 string.Join("\n", Whitelist.Where(TransmissionWhitelistPredicate)
                     .Select(e => $"  - {e.FileName}: {e.Reason}")));
         }
@@ -665,8 +703,11 @@ namespace StickMate.Tests.EditMode
         /// <c>"com.rlabrecque.steamworks.net"</c> — <b>전부 소문자</b>다. 대소문자 구분 검사는
         /// 이 이름을 영원히 못 본다(있어도 "없다"로 읽는다). 아래 두 테스트가 그 구멍을 막는다:
         /// (1) "Unity.Networking"류는 기존처럼 감시하되 대소문자 무시로 바꾸고,
-        /// (2) "steam"은 <see cref="RuntimeAsmdefFileName"/> 자신은 면제(승인된 유일한 참조처)하고
-        /// 그 밖 모든 asmdef에서 금지한다 — 새 패키지가 엉뚱한 곳에 asmdef를 흩뿌리는 경로를 막는다.</summary>
+        /// (2) "steam"은 ~~<see cref="RuntimeAsmdefFileName"/> 자신은 면제(승인된 유일한 참조처)하고
+        /// 그 밖 모든 asmdef에서 금지한다~~ — 새 패키지가 엉뚱한 곳에 asmdef를 흩뿌리는 경로를 막는다.
+        /// <para>★★ 2026-09-28 사용자 결정(DLC 폐지) — 위 (2)의 <b>면제를 닫았다</b>.
+        /// 면제의 대상이던 어댑터 파일이 같은 커밋에서 삭제됐고, 지금 asmdef 3개 전부에 "steam"이 0건이다(실측).
+        /// 이제 <b>모든 asmdef에서 금지</b>다 — 승인된 참조처가 0곳이다.</para></summary>
         [Test]
         public void 어셈블리_정의가_네트워크_어셈블리를_참조하지_않는다()
         {
@@ -688,13 +729,16 @@ namespace StickMate.Tests.EditMode
                         problems.Add($"{fileName}: 네트워크 어셈블리 '{b}' 참조");
                 }
 
-                // ★ "steam"은 승인된 어댑터의 유일한 참조처(StickMate.Runtime.asmdef)만 면제한다 —
-                //   그 파일도 참조를 통째로 면제하는 게 아니라 "steam" 낱말 하나만 면제한다.
-                if (fileName != RuntimeAsmdefFileName
-                    && text.IndexOf("steam", StringComparison.OrdinalIgnoreCase) >= 0)
+                // ★ 2026-09-05~2026-09-28: "steam"은 승인된 어댑터의 유일한 참조처
+                //   (StickMate.Runtime.asmdef)만 면제했다. 그 면제의 대상이 어댑터였고
+                //   2026-09-28 사용자 결정(DLC 폐지)으로 어댑터가 사라졌으므로 면제도 함께 닫는다 —
+                //   지금 이 저장소의 asmdef 3개 전부에 "steam"이 0건이라(실측) 닫는 비용이 0이고,
+                //   남겨 두면 «승인된 어댑터가 아직 있다»는 뜻의 빈 구멍만 남는다
+                //   (아래 NegativeControl_asmdef_스캐너는_소문자_이름을_실제로_찾아낸다 가 탐지력을 매 실행 교정한다).
+                if (text.IndexOf("steam", StringComparison.OrdinalIgnoreCase) >= 0)
                 {
-                    problems.Add($"{fileName}: 승인되지 않은 위치에서 스팀 관련 어셈블리 참조 " +
-                        $"— 허용된 참조처는 {RuntimeAsmdefFileName} 하나뿐입니다.");
+                    problems.Add($"{fileName}: 스팀 관련 어셈블리 참조 — 승인된 참조처가 0곳입니다" +
+                        "(2026-09-28 DLC 폐지로 결재-1이 닫혔습니다). 다시 필요하면 사용자 결정부터입니다.");
                 }
             }
 
@@ -734,7 +778,9 @@ namespace StickMate.Tests.EditMode
                 "이름 형태로 저장하세요(GUID면 이 감사가 참조 목록을 못 읽습니다).");
 
             // Steamworks.NET 패키지가 아직 이 저장소에 설치되지 않았다(2026-09-05 기준) —
-            // 설치되면 이 목록에 "com.rlabrecque.steamworks.net"을 추가하세요.
+            // ~~설치되면 이 목록에 "com.rlabrecque.steamworks.net"을 추가하세요.~~
+            // ★ 2026-09-28 사용자 결정(DLC 폐지) — 설치 계획 자체가 없어졌다. 이 목록에 스팀 패키지를
+            //   더하려면 바로 위 어셈블리 정의 감사가 먼저 빨개진다(면제 0곳). 그게 의도한 순서다.
             var known = new[] { "Kirurobo.UniWindowController" };
             foreach (string k in known)
             {

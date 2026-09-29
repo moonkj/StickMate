@@ -39,6 +39,19 @@ namespace StickMate.Tests.EditMode
     /// 승인됐고 축 B의 이름과 판정이 그 예외를 반영하도록 개작됐다(위 절 참고).
     /// <c>OfflineFirstNetworkAuditTests</c> 에도 같은 diff에서 화이트리스트 1건이 등록됐다.</para>
     ///
+    /// <para>★★★ <b>2026-09-28 사용자 결정(DLC 폐지) — 그 예외가 전부 닫혔다.</b> 승인 근거
+    /// 「6팩을 팔 수 없다 = 출시 자체가 없다」가 소멸했고, 같은 커밋에서
+    /// ⑴ 어댑터 파일 삭제 → ⑵ <c>OfflineFirstNetworkAuditTests</c> 전송 계열 명부를 빈 배열로 →
+    /// ⑶ <b>축 B의 승인 표를 비워 원형(어디서든 하나라도 나오면 빨강)으로 복원</b> →
+    /// ⑷ <c>SteamEntitlementAdapterAuditTests</c>(닫힌 세계 감사) 삭제 순서로 처리했다.
+    /// <b>순서가 본체다</b> — ⑷를 ⑶보다 먼저 하면 그 사이에
+    /// <c>SteamRemoteStorage</c>·<c>SteamInventory</c>·<c>SteamUser</c>를 지키는 것이 하나도 없다.</para>
+    ///
+    /// <para>★ <b>C층 자체는 여전히 코드에 있다</b>(<c>Core/PackEntitlement.cs</c>의
+    /// <c>PackEntitlementState</c>·<c>IPackEntitlementSource</c>·<c>PackEntitlements</c>). 없어진 것은
+    /// <b>그 출처를 채우는 스토어 어댑터</b>이고, 그래서 지금 모든 팩 조회는 <c>Unknown</c>이다.
+    /// 즉 축 A(3상태 계약)는 계속 실검사로 돌고, 축 B가 다시 「0건」을 잠근다.</para>
+    ///
     /// <para><b>남은 Ignore 분기는 지우지 않는다.</b> C층 타입이 사라지면(리팩터링·롤백) 이 파일은
     /// 다시 「검사할 대상이 없음」이 되고, 그때 조용히 초록이 되는 대신 <b>건너뜀으로 러너에 보여야</b> 한다.
     /// <c>TestClaimExpiryAuditTests</c> 의 명부 항목도 같은 이유로 유효하다.</para>
@@ -63,7 +76,11 @@ namespace StickMate.Tests.EditMode
     ///    ★ 2026-09-05 결재-1(리더)로 <c>SteamPackEntitlementSource.cs</c> 1개 파일의 승인된
     ///    심볼만 예외가 됐다 — 그 파일 안에서도 승인 안 된 멤버(RestartAppIfNecessary 등)나
     ///    그 파일 밖의 사용은 여전히 이 경보를 울린다(더 엄밀한 재검증은
-    ///    <c>SteamEntitlementAdapterAuditTests</c>).</item>
+    ///    ~~<c>SteamEntitlementAdapterAuditTests</c>~~).
+    ///    ★★ <b>as-of 2026-09-05~2026-09-28.</b> 2026-09-28 사용자 결정(DLC 폐지)으로 그 예외 파일과
+    ///    라인 단위 재검증 감사가 <b>둘 다 삭제됐다</b>. 지금 승인된 자리는 <b>0곳</b>이고, 이 경보는
+    ///    「프로덕션 어디에든 하나라도 나오면 빨강」 원형이다 — 재검증 감사가 없어졌으므로
+    ///    <b>이 경보가 유일한 문지기</b>다.</item>
     /// </list>
     ///
     /// <para>★ 오늘 <b>보류 분기가 실제로 도는 코드인지</b>는 아래 네거티브 컨트롤들이 증명한다 —
@@ -356,8 +373,9 @@ namespace StickMate.Tests.EditMode
                     "생기는 순간, 이 테스트는 보류를 지나 실검사(§E-1 3상태 · §E-1-a bool 금지 · " +
                     "§E-1-b default 금지)로 돕니다. 아무도 켤 필요가 없습니다.\n" +
                     "  ② 축 B(동반): 같은 파일의 [스토어_SDK는_승인된_어댑터_한_파일에서_승인된_심볼만_쓴다]가 " +
-                    "항상 실행되며, Steamworks/BIsDlcInstalled 같은 식별자가 승인된 어댑터 파일 밖에 " +
-                    "나타나면 빨개집니다. 축 A가 이름을 못 알아봐도 축 B가 대신 알립니다.\n" +
+                    "항상 실행되며, Steamworks/BIsDlcInstalled 같은 식별자가 프로덕션 어디에든 " +
+                    "나타나면 빨개집니다(2026-09-28 DLC 폐지로 승인된 자리가 0곳이 되어 원형으로 복원). " +
+                    "축 A가 이름을 못 알아봐도 축 B가 대신 알립니다.\n" +
                     "C층 배선 라운드는 이 두 축 중 하나를 반드시 건드리게 됩니다.");
             }
 
@@ -375,16 +393,37 @@ namespace StickMate.Tests.EditMode
                 "Unknown에서는 이미 착용 중인 것을 <b>회수하지 않습니다</b>(§E-2).");
         }
 
-        /// <summary>승인된 예외(결재-1, 2026-09-05) — 파일+식별자 단위. 이보다 엄밀한 재검증
+        /// <summary>승인된 예외(결재-1, 2026-09-05) — 파일+식별자 단위. ~~이보다 엄밀한 재검증
         /// (멤버 접근·using 횟수·팩 이름 하드코딩 등)은 <c>SteamEntitlementAdapterAuditTests</c>가
-        /// 별도 축으로 다시 잠근다 — 두 검사가 같은 실수를 공유하지 않게 일부러 중복한다.</summary>
+        /// 별도 축으로 다시 잠근다 — 두 검사가 같은 실수를 공유하지 않게 일부러 중복한다.~~
+        ///
+        /// <para>★★ <b>2026-09-28 사용자 결정(DLC 폐지) — 이 표를 비웠다. 경보가 원형(어디서든 하나라도
+        /// 나오면 빨강)으로 돌아왔다.</b> 결재-1의 승인 근거는 「6팩을 팔 수 없다 = 출시 자체가 없다」였고
+        /// (<c>docs/security/STEAMWORKS_ENTITLEMENT_EXCEPTION.md</c> :491), 팔 6팩이 없어지면서 소멸했다.
+        /// 어댑터 파일과 그 전용 감사(<c>SteamEntitlementAdapterAuditTests</c>)도 같은 커밋에서 지웠고,
+        /// <b>순서는 이 표를 먼저 비운 뒤 그 감사를 지우는 것이었다</b> — 뒤집으면 한 라운드 동안
+        /// <c>SteamRemoteStorage</c>·<c>SteamInventory</c>·<c>SteamUser</c>를 지키는 것이 하나도 없다.</para>
+        ///
+        /// <para>★ <b>빈 표는 이 검사를 느슨하게 하지 않고 조인다</b>(면제가 0이므로 모든 히트가 위반이다).
+        /// 그래도 「빈 목록을 기대값으로 명시」 규칙(거짓 통과 #5)에 따라 아래 본문이 그 0을 단언하고,
+        /// <see cref="NegativeControl_승인_판정기는_표가_비어도_살아_있다"/>가 <b>승인 판정기 자체</b>를
+        /// 합성 표로 교정한다 — 표가 비었다는 이유로 판정기가 죽은 코드가 되지 않게.</para></summary>
         private static readonly (string File, string Identifier)[] ApprovedStoreSdkExceptions =
+            new (string File, string Identifier)[0];
+
+        /// <summary>히트 하나가 승인 표에 있는가. <b>표를 인자로 받는다</b> — 실제 표가 비어 있어도
+        /// 이 판정기를 합성 표로 교정할 수 있게 하기 위한 형태다(그러지 않으면 표가 빈 동안
+        /// 판정기가 한 번도 실행되지 않은 코드가 된다).</summary>
+        private static bool IsApproved(string file, string identifier,
+            (string File, string Identifier)[] table)
         {
-            ("SteamPackEntitlementSource.cs", "Steamworks"),
-            ("SteamPackEntitlementSource.cs", "SteamAPI"),
-            ("SteamPackEntitlementSource.cs", "SteamApps"),
-            ("SteamPackEntitlementSource.cs", "BIsDlcInstalled"),
-        };
+            if (table == null) return false;
+            foreach ((string approvedFile, string approvedIdentifier) in table)
+            {
+                if (approvedFile == file && approvedIdentifier == identifier) return true;
+            }
+            return false;
+        }
 
         /// <summary>
         /// ★ 위 보류의 <b>역방향 장치(축 B)</b>. 항상 실행되며 보류하지 않는다.
@@ -394,6 +433,15 @@ namespace StickMate.Tests.EditMode
         /// ★ 2026-09-05 결재-1 전에는 "어디서든 하나라도 나오면 빨강"이었다 — 이제 "승인된 자리 밖에서
         /// 나오면 빨강"으로 좁혔다. 좁힌 것이지 껐다 <b>것은 아니다</b>: 예외 목록을 벗어난 모든 확장은
         /// 여전히 이 경보를 울린다.</para>
+        ///
+        /// <para>★★ <b>2026-09-28 사용자 결정(DLC 폐지) — 승인 표를 비워 「어디서든 하나라도 나오면 빨강」
+        /// 원형으로 돌아왔다.</b> 판정 강도는 2026-09-05 이전과 같다.
+        /// <b>메서드 이름은 바꾸지 않았다</b> — 이름이 <c>TestClaimExpiryAuditTests</c>의 <c>Companion</c>과
+        /// <c>docs/verify/BASELINE.md</c>의 개명 대장에 인용돼 있어, 이름을 되돌리면 내 범위 밖 파일
+        /// 둘이 같은 커밋을 요구한다. 지금 이름은 <b>빈 승인 집합에 대해 공허하게 참</b>이고(히트가 0이면
+        /// 「승인된 자리에서만 쓴다」는 자동으로 참이다) <b>검사는 이름이 약속한 것보다 엄격하다</b> —
+        /// 위험한 방향은 「이름이 검사보다 많이 약속하는 것」이고 이건 반대 방향이다.
+        /// 개명 제안은 리더에게 인계했다(세 파일 동시 수정 필요).</para>
         ///
         /// <para>이 테스트가 사라지면 <c>TestClaimExpiryAuditTests</c>의 Ignore 명부가 먼저 실패한다
         /// (명부가 동반 테스트의 <b>메서드 선언</b> 실재를 매 실행 확인한다). 즉 이 장치를 조용히
@@ -409,30 +457,62 @@ namespace StickMate.Tests.EditMode
             Assert.IsNotEmpty(StoreSdkIdentifiers,
                 $"{LogPrefix} 감시 식별자 목록이 비었습니다(거짓 통과 #5: 빈 목록은 아무것도 재지 않습니다).");
 
+            // ★ 승인 표의 기대값을 <b>명시</b>한다(거짓 통과 #5의 반대 방향 적용 — 여기서 빈 표는
+            //   느슨함이 아니라 엄격함이고, 누군가 조용히 항목을 되살리면 이 줄이 먼저 빨개진다).
+            Assert.IsEmpty(ApprovedStoreSdkExceptions,
+                $"{LogPrefix} 승인된 스토어 SDK 예외가 {ApprovedStoreSdkExceptions.Length}건 있습니다 " +
+                "(기대: 0건 — 2026-09-28 사용자 결정으로 DLC가 폐지되고 결재-1이 닫혔습니다). " +
+                "예외를 다시 열려면 사용자 결정이 먼저이고, 그다음이 리더 결재입니다.");
+
             List<Surface> hits = DetectStoreSdk(sources);
             var violations = new List<Surface>();
             foreach (Surface s in hits)
             {
-                bool approved = false;
-                foreach ((string file, string identifier) in ApprovedStoreSdkExceptions)
-                {
-                    if (file == s.File && identifier == s.Detail) { approved = true; break; }
-                }
-                if (!approved) violations.Add(s);
+                if (!IsApproved(s.File, s.Detail, ApprovedStoreSdkExceptions)) violations.Add(s);
             }
 
             var lines = new List<string>();
             foreach (Surface s in violations) lines.Add($"  · {s.File} → {s.Detail}");
 
             Assert.IsEmpty(lines,
-                $"{LogPrefix} <b>승인 범위 밖에서 스토어 SDK가 발견됐습니다</b>({lines.Count}건):\n" +
+                $"{LogPrefix} <b>스토어 SDK가 프로덕션에 있습니다</b>({lines.Count}건):\n" +
                 string.Join("\n", lines) + "\n\n" +
-                "docs/security/STEAMWORKS_ENTITLEMENT_EXCEPTION.md §4의 허용 파일·심볼 목록을 " +
-                "벗어났습니다. 정말 확장이 필요하면:\n" +
-                "  ① 그 문서를 갱신하고 리더 재결재를 받으세요(니들 예외를 조용히 넓히지 마세요).\n" +
-                "  ② ApprovedStoreSdkExceptions에 근거와 함께 항목을 추가하세요.\n" +
-                "  ③ SteamEntitlementAdapterAuditTests의 화이트리스트도 같은 diff에서 갱신하세요 " +
-                "— 두 축이 따로 놀면 한쪽만 넓어진 채 다른 쪽이 계속 빨개집니다.");
+                "★ 2026-09-28 사용자 결정으로 DLC가 폐지되어 <b>승인된 자리가 0곳</b>입니다 " +
+                "(docs/security/STEAMWORKS_ENTITLEMENT_EXCEPTION.md 머리의 예외 폐지 배너). 지금 할 일:\n" +
+                "  ① 이 빨강을 오탐으로 보고 니들을 지우지 마세요 — 그게 이 클래스 문서가 이름으로 " +
+                "경고하는 형태입니다(니들만 지우고 열면 SteamRemoteStorage·SteamInventory·SteamUser가 " +
+                "아무 저항 없이 들어옵니다).\n" +
+                "  ② 정말 다시 필요하면 <b>사용자 결정</b>부터입니다(DLC 폐지를 뒤집는 결정). " +
+                "그다음 리더 재결재 → 예외 문서 갱신 → ApprovedStoreSdkExceptions에 근거와 함께 추가 " +
+                "→ OfflineFirstNetworkAuditTests의 전송 계열 명부도 같은 diff에서 갱신.\n" +
+                "  ③ 라인 단위 재검증 감사(SteamEntitlementAdapterAuditTests)는 2026-09-28에 " +
+                "함께 삭제됐습니다 — 다시 여는 라운드는 그것도 되살려야 합니다.");
+        }
+
+        /// <summary>
+        /// ★ <b>승인 판정기 교정</b>. 실제 승인 표가 비어 있어서(2026-09-28 DLC 폐지) 위 본문의
+        /// <see cref="IsApproved"/> 호출은 <b>언제나 false</b>를 돈다 — 즉 판정기의 「참」 쪽 분기가
+        /// 한 번도 실행되지 않는다. 그 상태를 그대로 두면 나중에 예외를 되살리는 라운드가
+        /// <b>한 번도 검증되지 않은 코드</b>에 매출 경계를 맡기게 된다. 합성 표로 양쪽 분기를 매 실행 돈다.
+        /// </summary>
+        [Test]
+        public void NegativeControl_승인_판정기는_표가_비어도_살아_있다()
+        {
+            var synthetic = new[] { ("합성_어댑터.cs", "Steamworks") };
+
+            Assert.IsTrue(IsApproved("합성_어댑터.cs", "Steamworks", synthetic),
+                $"{LogPrefix} 승인 판정기가 정확히 일치하는 항목을 못 알아봅니다 — 예외를 되살리는 날 " +
+                "승인된 파일까지 위반으로 잡혀, 그때 사람이 하는 일은 이 검사를 지우는 것입니다.");
+            Assert.IsFalse(IsApproved("다른파일.cs", "Steamworks", synthetic),
+                $"{LogPrefix} 파일이 달라도 승인으로 셉니다 — 예외가 파일 경계를 넘어 번집니다.");
+            Assert.IsFalse(IsApproved("합성_어댑터.cs", "SteamRemoteStorage", synthetic),
+                $"{LogPrefix} 식별자가 달라도 승인으로 셉니다 — 파일 통행권이 되어 " +
+                "SteamRemoteStorage·SteamInventory가 같은 파일에서 통과합니다.");
+            Assert.IsFalse(IsApproved("합성_어댑터.cs", "Steamworks", ApprovedStoreSdkExceptions),
+                $"{LogPrefix} 지금의 빈 승인 표가 무언가를 승인합니다 — 표가 비었다는 사실이 " +
+                "판정에 반영되지 않고 있습니다.");
+            Assert.IsFalse(IsApproved("합성_어댑터.cs", "Steamworks", null),
+                $"{LogPrefix} null 표에 대해 승인을 냅니다.");
         }
 
         // ====================================================================
