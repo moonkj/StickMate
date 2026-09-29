@@ -364,6 +364,22 @@ namespace StickMate.Interaction
             ItemCatalogEntry entry)
         {
             ClearSlotIcon(row);
+            BuildSlotIconArt(row.IconRoot, slot, itemIndex, entry);
+            row.HasIcon = true;
+        }
+
+        /// <summary>슬롯 행 아이콘의 <b>그림만</b> — 부모를 비우는 것도, <c>HasIcon</c>을 세우는 것도
+        /// 부르는 쪽 몫이다.
+        ///
+        /// <para>★ <b>왜 갈라 놓았나</b>(2026-09-29): 이 그림이 <see cref="SlotIconSize"/> 칸을 넘으면
+        /// 바로 오른쪽 글자 칸(<see cref="SlotTextX"/>)을 덮는다 — 사용자 신고 「이미지와 폰트가 겹치는
+        /// 문제」의 두 번째 가능한 경로다(첫 번째는 칸 자체의 오배치였고 고쳤다). 그걸 재려면
+        /// 테스트가 <b>이 갈래 그대로</b> 그림을 만들어 폭을 잴 수 있어야 한다. 갈래를 테스트에 베껴
+        /// 적으면 그 순간부터 두 벌이 되고, 비트맵 가지가 늘어나는 날 감사가 눈이 먼다.
+        /// 잠금: <c>Tests/EditMode/InfoWindowSlotRowIconTextGapTests.cs</c>.</para></summary>
+        internal static void BuildSlotIconArt(RectTransform iconRoot, EquipmentSlot slot, int itemIndex,
+            ItemCatalogEntry entry)
+        {
             // ★ 2026-09-08 — 카드(BuildCardArt)와 같은 갈래를 여기서도 먼저 묻는다. 안 물으면
             //   같은 창 안에서 [장비] 탭 카드는 비트맵인데 바로 위 착용 슬롯 요약 줄은 옛 벡터로
             //   남아, 사용자가 지적한 "장비창과 실제 이미지가 다르다"가 이 자리에도 그대로 걸린다
@@ -371,14 +387,13 @@ namespace StickMate.Interaction
             Sprite bitmap = ItemCatalog.CardSprite(slot, itemIndex);
             if (bitmap != null)
             {
-                BuildBitmapCardArt(row.IconRoot, bitmap, SlotIconSize);
+                BuildBitmapCardArt(iconRoot, bitmap, SlotIconSize);
             }
-            else if (!AccessoryCardIcon.TryBuild(row.IconRoot, slot, itemIndex, SlotIconSize,
+            else if (!AccessoryCardIcon.TryBuild(iconRoot, slot, itemIndex, SlotIconSize,
                     IconStroke * (SlotIconSize / IconSize), entry.PrimaryColor, entry.SecondaryColor))
             {
-                BuildIcon(row.IconRoot, entry.Icon, SlotIconSize);
+                BuildIcon(iconRoot, entry.Icon, SlotIconSize);
             }
-            row.HasIcon = true;
         }
 
         private static void ClearSlotIcon(SlotRowView row)

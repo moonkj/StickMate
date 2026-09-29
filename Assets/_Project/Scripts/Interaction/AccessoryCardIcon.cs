@@ -503,6 +503,31 @@ namespace StickMate.Interaction
             SetVerticesDirty();
         }
 
+        /// <summary>
+        /// 이 채움이 <b>실제로 그리는</b> 정점들의 사각형(부모 중심 원점, pt). 점이 없으면 false.
+        ///
+        /// <para>★ <b>왜 이 창구가 필요한가</b>(2026-09-29): 이 그래픽은 <c>sizeDelta</c>가 <b>0</b>이고
+        /// 그림은 <see cref="OnPopulateMesh"/>의 정점으로만 존재한다. 그래서 「아이콘이 옆 글자 칸을
+        /// 넘지 않는가」를 <see cref="RectTransform"/>으로 재는 감사는 <b>채움을 조용히 0으로 세고</b>
+        /// 지나간다 — 윤곽선이 없는 조각(<c>NoStroke</c>)이면 그 아이템은 통째로 안 보이는 셈이다.
+        /// 「없음 판정에 양성 대조」(<c>CLAUDE.md</c> 거짓 통과 4번)를 이 자리에서 지키려면 그림의
+        /// 사실을 물어볼 통로가 있어야 한다. 잠금: <c>Tests/EditMode/InfoWindowSlotRowIconTextGapTests.cs</c>.</para></summary>
+        internal bool TryGetPolygonBounds(out Rect bounds)
+        {
+            bounds = default;
+            if (_points == null || _points.Length == 0) return false;
+            float minX = _points[0].x, maxX = minX, minY = _points[0].y, maxY = minY;
+            for (int i = 1; i < _points.Length; i++)
+            {
+                if (_points[i].x < minX) minX = _points[i].x;
+                if (_points[i].x > maxX) maxX = _points[i].x;
+                if (_points[i].y < minY) minY = _points[i].y;
+                if (_points[i].y > maxY) maxY = _points[i].y;
+            }
+            bounds = Rect.MinMaxRect(minX, minY, maxX, maxY);
+            return true;
+        }
+
         protected override void OnPopulateMesh(VertexHelper vh)
         {
             vh.Clear();

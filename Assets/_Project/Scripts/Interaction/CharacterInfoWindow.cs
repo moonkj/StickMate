@@ -207,7 +207,7 @@ namespace StickMate.Interaction
         private const float Col1PadX = 20f;
 
         /// <summary>컬럼 1 콘텐츠 폭 265 = 306 − 20(좌) − 20(우) − 1(구분선). 인계본 무대 폭과 같다.</summary>
-        private const float Col1ContentWidth = Col1Width - Col1PadX * 2f - DividerThickness;   // 265
+        internal const float Col1ContentWidth = Col1Width - Col1PadX * 2f - DividerThickness;   // 265
 
         private const float StageY = -ColPadY;                     // -20
         private const float StageHeight = 238f;
@@ -220,9 +220,50 @@ namespace StickMate.Interaction
 
         /// <summary>착용 슬롯 4행의 첫 줄 위 끝 = 무대 바닥 − <see cref="UiChrome.Space3"/>.</summary>
         private const float SlotRowsTopY = StageY - StageHeight - UiChrome.Space3;   // -270
-        private const float SlotRowHeight = 46f;                   // ≥ MinTargetSizePoints 24 × 1.9
+        internal const float SlotRowHeight = 46f;                  // ≥ MinTargetSizePoints 24 × 1.9
         private const float SlotRowStep = 52f;
-        private const float SlotIconSize = 24f;
+        internal const float SlotIconSize = 24f;
+
+        /// <summary>착용 슬롯 행의 <b>좌우 안쪽 여백</b> — 인계본 DOM <c>padding: 0 12</c>
+        /// (<c>docs/UI_SURFACE_SPEC.md</c> §16.1-b 「착용 슬롯 행」 줄, 시안 원문 128행).
+        /// <para>★ 이 값은 한 행에서 <b>세 자리</b>에 걸린다: 아이콘 칸의 왼쪽 x · 글자 칸의 왼쪽 x
+        /// (<see cref="SlotTextX"/>를 거쳐) · 등급 낱말의 오른쪽 끝. 숫자로 흩어 두면 그중 하나만
+        /// 옮겨져도 아무 증상 없이 칸이 겹친다 — 실제로 그 형태로 깨졌다(아래 <see cref="SlotTextX"/>).</para></summary>
+        internal const float SlotRowPadX = 12f;
+
+        /// <summary>아이콘 칸과 글자 칸 사이 홈 — 인계본 DOM <c>gap: 10</c>.</summary>
+        internal const float SlotIconTextGap = 10f;
+
+        /// <summary>
+        /// 착용 슬롯 행의 <b>글자 칸 왼쪽 x</b> = 아이콘 칸의 오른쪽 끝 + 홈.
+        ///
+        /// <para>★★ <b>2026-09-29 — 여기가 「이미지와 폰트가 겹친다」의 자리였다</b>(사용자 신고,
+        /// 빌드 <c>windows-preview-20260929b</c>: 안경 행의 선글라스 아이콘이 「선글라스」 글자에
+        /// 붙어 잘려 보였다). 원인은 폰트가 아니라 <b>아이콘 칸이 12pt 오른쪽에 놓여 있던 것</b>이다 —
+        /// 아이콘 <see cref="RectTransform"/>의 pivot이 <c>(0, 0.5)</c>(= 왼쪽 변)인데
+        /// <c>anchoredPosition.x</c>에 <b>중심</b> 공식 <c>12 + SlotIconSize * 0.5</c>를 넣어,
+        /// 칸이 선언값 <c>[12, 36]</c>이 아니라 <c>[24, 48]</c>에 앉았다. 글자 칸은 처음부터 46에서
+        /// 시작했으므로 <b>겹침 2pt</b>가 구조적으로 보장돼 있었다. 게다가 그림은 칸의 <b>중심</b>에
+        /// 굽고 도형이 칸보다 넓을 수 있어서, 옛 배치에서 실제 잉크가 닿은 x는 실측으로
+        /// <b>EYES 48.8 · HEAD 49.1 · HAIR 49.3</b>이었다(글자 잉크는 45.0에서 시작한다 —
+        /// 즉 최대 <b>4.3pt</b>가 글자와 겹쳤다). 캡처에서 안경 행만 보인 이유는 나머지 세 행이
+        /// 「비어 있음」(아이콘 없음)이었기 때문이다.</para>
+        ///
+        /// <para><b>폰트 교체(7481c72)는 원인이 아니다 — 실측으로 확인했다.</b> 글자 칸은 왼쪽 정렬
+        /// (<see cref="TextAnchor.MiddleLeft"/>) + <c>HorizontalWrapMode.Overflow</c>라 글자 시작 x가
+        /// 글자 <b>폭</b>에 좌우되지 않고(그래서 그 라운드의 「폭이 전부 좁아졌다」는 이 자리를 한 점도
+        /// 옮기지 않았다), 첫 글자의 <b>좌측 여백</b>도 두 글꼴이 같았다 — 12pt에서
+        /// <c>Apple SD Gothic Neo</c> −1.00pt, <c>LegacyRuntime.ttf</c> −1.00pt(같은 자로 잰 값이고
+        /// 이 자의 분해능은 1pt다). ⇒ <b>겹침은 폰트 교체 전에도 같은 크기로 있었다.</b> 바뀐 것은
+        /// <b>보이는 정도</b>다: 직전까지 이 창의 글자는 합성 볼드로 번져 있었고(사용자 신고 원문
+        /// *"두꺼운 폰트들이 깔끔하게 안보이고 번져보임"*), 획이 선명해지자 같은 겹침이 이제
+        /// <b>겹침으로 읽힌다</b>.</para>
+        ///
+        /// <para>그래서 고침은 <b>폰트와 무관한 형태</b>로 한다 — 아이콘 칸과 글자 칸을 처음부터
+        /// 겹칠 수 없는 두 칸으로 만들고, 글자 칸의 x를 <b>아이콘 칸에서 유도</b>한다. 아이콘 폭이
+        /// 바뀌어도 글자가 따라 밀린다. 잠금: <c>Tests/EditMode/InfoWindowSlotRowIconTextGapTests.cs</c>.</para>
+        /// </summary>
+        internal const float SlotTextX = SlotRowPadX + SlotIconSize + SlotIconTextGap;   // 46
 
         /// <summary>상세 카드 높이(§4-3-1 검산: 실측 143 ≤ 상한 231).</summary>
         private const float DetailCardHeight = 143f;
@@ -1755,26 +1796,48 @@ namespace StickMate.Interaction
             var iconGo = new GameObject("SlotIcon", typeof(RectTransform));
             iconGo.transform.SetParent(rt, false);
             var irt = iconGo.GetComponent<RectTransform>();
-            irt.anchorMin = irt.anchorMax = irt.pivot = new Vector2(0f, 0.5f);
-            irt.sizeDelta = new Vector2(SlotIconSize, SlotIconSize);
-            irt.anchoredPosition = new Vector2(12f + SlotIconSize * 0.5f, 0f);
+            PlaceSlotIconBox(irt);
 
-            float textX = 12f + SlotIconSize + 10f;
+            float textX = SlotTextX;
             float valueWidth = 74f;
-            float textWidth = Col1ContentWidth - textX - valueWidth - 12f;
+            float textWidth = Col1ContentWidth - textX - valueWidth - SlotRowPadX;
 
             Text label = Label(rt, "SlotLabel", UiChrome.FontCaption, TextAnchor.MiddleLeft,
                 UiChrome.TextTertiary, textX, -7f, textWidth, 12f, "—");
             Text name = Label(rt, "SlotName", UiChrome.FontBody, TextAnchor.MiddleLeft,
                 UiChrome.TextPrimary, textX, -24f, textWidth, 16f, "—");
             Text value = Label(rt, "SlotValue", UiChrome.FontLabel, TextAnchor.MiddleRight,
-                UiChrome.Accent, Col1ContentWidth - 12f - valueWidth, -16f, valueWidth, 14f, "—");
+                UiChrome.Accent, Col1ContentWidth - SlotRowPadX - valueWidth, -16f, valueWidth, 14f, "—");
 
             return new SlotRowView
             {
                 Rect = rt, Surface = surface, Outline = outline, IconRoot = irt,
                 Label = label, Name = name, Value = value,
             };
+        }
+
+        /// <summary>
+        /// 착용 슬롯 행의 <b>아이콘 칸</b>을 행 안에 앉힌다 — 폭 <see cref="SlotIconSize"/>,
+        /// 왼쪽 x <see cref="SlotRowPadX"/>, 세로 가운데. 그림은 이 칸의 <b>중심</b>에 굽힌다
+        /// (<see cref="BuildSlotIconArt"/>).
+        ///
+        /// <para>★ <b>pivot을 왼쪽 변(0, 0.5)으로 두는 것이 이 함수의 전부다</b>: 그러면
+        /// <c>anchoredPosition.x</c>가 곧 <b>칸의 왼쪽 x</b>이고, 글자 칸의 왼쪽 x
+        /// (<see cref="SlotTextX"/>)와 <b>같은 뜻의 값</b>이 된다. 2026-09-29까지 이 자리는 pivot은
+        /// 왼쪽 변인데 x에는 <b>중심</b> 공식(<c>12 + SlotIconSize * 0.5</c>)이 들어가 있어서 칸이
+        /// 12pt 오른쪽에 앉았고, 글자 칸 46을 2pt 덮었다 — 사용자 신고 「이미지와 폰트가 겹치는 문제」.</para>
+        ///
+        /// <para><b>왜 함수로 뽑았나</b>: 호출부가 하나뿐인데도 가르는 이유는 <b>이 배치를 그대로
+        /// 재는 테스트</b>가 필요하기 때문이다. pivot과 x의 뜻이 어긋나는 실수는 상수 산술로는
+        /// 잡히지 않고 <see cref="RectTransform"/>이 실제로 앉은 자리를 재야 보인다. 테스트가 그
+        /// 세 줄을 베껴 적으면 다음 사람이 여기만 고쳤을 때 <b>감사가 옛 값을 초록으로 통과시킨다</b>
+        /// (이 저장소가 반복해 당한 「기준과 대상이 갈라졌는데 아무도 모른다」).
+        /// 잠금: <c>Tests/EditMode/InfoWindowSlotRowIconTextGapTests.cs</c>.</para></summary>
+        internal static void PlaceSlotIconBox(RectTransform irt)
+        {
+            irt.anchorMin = irt.anchorMax = irt.pivot = new Vector2(0f, 0.5f);
+            irt.sizeDelta = new Vector2(SlotIconSize, SlotIconSize);
+            irt.anchoredPosition = new Vector2(SlotRowPadX, 0f);
         }
 
         // -------------------- 컬럼 2 — 능력치 / 기록 / 표시 / 테마 세트 --------------------
