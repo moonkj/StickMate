@@ -219,9 +219,11 @@ namespace StickMate.Tests.EditMode
             g.Mask = RasterOf(g.Cores);
 
             int cells = 0, minI = int.MaxValue, maxI = int.MinValue, minJ = int.MaxValue, maxJ = int.MinValue;
+            double sumX = 0d, sumY = 0d;
             for (int j = 0; j < RasterN; j++)
             {
                 int row = j * RasterN;
+                float cellY = CellCenter(j);
                 for (int i = 0; i < RasterN; i++)
                 {
                     if (!g.Mask[row + i]) continue;
@@ -230,6 +232,8 @@ namespace StickMate.Tests.EditMode
                     if (i > maxI) maxI = i;
                     if (j < minJ) minJ = j;
                     if (j > maxJ) maxJ = j;
+                    sumX += CellCenter(i);
+                    sumY += cellY;
                 }
             }
 
@@ -242,6 +246,12 @@ namespace StickMate.Tests.EditMode
             g.InkHeight = (maxJ - minJ) * cell;
             g.InkDiagonal = Mathf.Sqrt(g.InkWidth * g.InkWidth + g.InkHeight * g.InkHeight);
             g.InkPercent = g.InkAreaPoints / (SymbolBoxPoints * SymbolBoxPoints) * 100f;
+
+            // ★ 계측만 — 문턱은 조형 소관이다(Glyph.InkCenterX 문서).
+            g.InkCenterX = (CellCenter(minI) + CellCenter(maxI)) * 0.5f;
+            g.InkCenterY = (CellCenter(minJ) + CellCenter(maxJ)) * 0.5f;
+            g.InkCentroidX = (float)(sumX / cells);
+            g.InkCentroidY = (float)(sumY / cells);
 
             g.RMax = 0f;
             foreach (InkCore c in g.Cores) g.RMax = Mathf.Max(g.RMax, CoreMaxRadius(c));

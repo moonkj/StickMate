@@ -94,6 +94,21 @@ namespace StickMate.Tests.EditMode
             public int InkCells;
             public float InkAreaPoints, InkPercent, InkWidth, InkHeight, InkDiagonal, RMax;
 
+            /// <summary>잉크 <b>외접 상자의 중심</b>(심볼 상자 중심 = 원점). 0이면 그 축으로 가운데다.
+            /// <para>★ <b>계측만 한다 — 게이트가 아니다</b>(2026-09-29 사용자 신고 「부채꼴 아이콘이
+            /// 중앙에 안 맞아 보인다」로 추가). 「가운데로 읽히는가」의 기준이 외접 상자인지
+            /// 무게중심인지 <b>지배 형태</b>(① 스톱워치의 링처럼)인지는 조형 판단이라
+            /// <c>design-iconography</c>/<c>design-art</c> 소관이고, 구현이 문턱을 정할 수 없다.
+            /// 그래서 이 값은 <see cref="GearFanGlyphGateTests.프로덕션_빌더를_실제로_돌려_글리프를_되읽는다"/>의
+            /// 표에 <b>매 실행 찍히기만</b> 한다 — 판정할 사람이 다시 계측 도구를 짜지 않도록.</para>
+            /// <para>★ <b>지금 통과하는 값을 얼려 단언하지 마라</b> — 이 파일의 클래스 문서가 금지한
+            /// 스냅샷 비교가 정확히 그것이다. 문턱이 정해지면 그때 <b>결함별로</b> 겨눈 테스트를 만든다.</para></summary>
+            public float InkCenterX, InkCenterY;
+
+            /// <summary>잉크 <b>무게중심</b>(면적 가중). 외접 상자 중심과 갈리는 정도가
+            /// 「한쪽에 잉크가 몰렸는가」를 말한다.</summary>
+            public float InkCentroidX, InkCentroidY;
+
             public override string ToString() => $"{Slot}·{Label}";
         }
 

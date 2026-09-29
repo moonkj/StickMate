@@ -189,16 +189,21 @@ namespace StickMate.Tests.EditMode
               .Append(" g2=").Append(SymbolStrokeHeavy.ToString("0.##"))
               .Append(" 상자=").Append(SymbolBoxPoints.ToString("0.##"))
               .Append(" 필드 r≤").Append(SymbolFieldRadiusPoints.ToString("0.##")).Append('\n');
-            sb.Append("칸                조각 Image 덩어리  최소간극  r_max  잉크%   대각\n");
+            sb.Append("칸                조각 Image 덩어리  최소간극  r_max  잉크%   대각")
+              .Append("    상자중심(x,y)     무게중심(x,y)\n");
             foreach (Glyph g in _glyphs)
             {
                 float gap = WorstCrossBlobGap(g.Cores, out _, out _);
                 sb.Append($"{g,-18}{g.PieceNames.Count,4}{g.Cores.Count,6}{BlobCount(g.Cores),7}")
                   .Append(float.IsPositiveInfinity(gap) ? "        —" : $"{gap,9:F2}")
                   .Append($"{g.RMax,8:F2}{g.InkPercent,7:F1}{g.InkDiagonal,7:F2}")
+                  // ★ 계측만 — 문턱은 design-iconography 소관(Glyph.InkCenterX 문서).
+                  .Append($"  ({g.InkCenterX,6:F2},{g.InkCenterY,6:F2})  ({g.InkCentroidX,6:F2},{g.InkCentroidY,6:F2})")
                   .Append(g.InactiveImages.Count == 0 ? "" : $"   (꺼진 조각 제외: {string.Join(", ", g.InactiveImages)})")
                   .Append('\n');
             }
+            sb.Append("★ 상자중심·무게중심은 계측만이다(게이트 없음) — 「가운데로 읽히는가」의 문턱은 ")
+              .Append("조형 소관이다. 2026-09-29 사용자 신고(부채꼴 아이콘 중앙 정렬) 실측치가 이 두 칸이다.\n");
             Debug.Log(sb.ToString());
         }
 

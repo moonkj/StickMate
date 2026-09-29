@@ -2358,6 +2358,42 @@ namespace StickMate.Interaction
         /// 하는 일은 <b>메시 정점을 물리 픽셀 격자에 맞추는 것</b> 하나이고, 레이아웃 값
         /// (<c>anchoredPosition</c>/<c>rect</c>/<c>preferredWidth</c>)은 건드리지 않는다.
         /// 기전과 대가는 <see cref="StickMate.Platform.GlyphPixelSnapPolicy"/> 문서에 있다.</para>
+        ///
+        /// <para>★★★ <b>2026-09-29 — <see cref="Text.alignByGeometry"/>를 켠다(사용자 신고
+        /// "상자 안 정렬이 안 되어 있다", 정보창 탭바 캡처).</b>
+        /// uGUI의 중앙 정렬은 <b>폰트 수치</b>(ascent / lineHeight)로 줄 상자를 세워 rect에 맞추는데,
+        /// 그 수치와 <b>한글 글리프의 실제 잉크</b>가 페이스마다 다르게 어긋난다. 그래서 글꼴을
+        /// 갈아타는 순간 <b>모든 「상자 안 가운데 글자」가 통째로 위아래로 밀린다</b> —
+        /// 이 스위치는 정렬 기준을 수치에서 <b>글리프 기하</b>로 바꿔 그 의존을 끊는다.</para>
+        ///
+        /// <para><b>실측</b>(EditMode 배치모드 2026-09-29, 정보창 탭 칩 52×28pt · 「장비」 ·
+        /// <see cref="FontTitle"/> 14pt. 값은 라벨 rect 중심을 0으로 둔 <c>TextGenerator</c> 정점
+        /// 잉크 상자다. 프로덕션 빌더 <c>CharacterInfoWindow.BuildTabs</c>를 그대로 돌려 쟀다):
+        /// <code>
+        ///                              잉크 y        중심     위/아래 여백
+        ///  옛 글꼴 LegacyRuntime  끔   [−7, +8]      +0.50    6 / 7
+        ///  출하 Apple SD Gothic   끔   [−9, +6]      −1.50    8 / 5   ← 신고된 상태
+        ///  출하 Apple SD Gothic   켬   [−8, +7]      −0.50    7 / 6
+        ///  옛 글꼴 LegacyRuntime  켬   [−8, +7]      −0.50    7 / 6
+        /// </code>
+        /// ⇒ 글꼴 교체가 가운데 글자를 <b>2.0pt 내려앉혔고</b>, 이 스위치를 켜면 <b>두 글꼴이 같은
+        /// 값</b>이 된다. 남는 0.5pt는 잉크 높이가 15pt(홀수)인데 글리프가 정수 pt에만 앉으므로
+        /// <b>구조적 하한</b>이다 — 0으로 만들 방법이 없다.</para>
+        ///
+        /// <para><b>무엇이 함께 움직이는가</b>(같은 실측에서): 왼쪽 정렬 라벨은 잉크가 상자 왼쪽 변에
+        /// <b>딱 붙어</b> 1.0pt 오른쪽으로 간다(전에는 글리프 좌측 베어링 −1pt만큼 상자 밖으로
+        /// 나가 있었다). 위쪽 정렬의 세로는 <b>변하지 않는다</b>(잉크 위끝이 이미 상자 위 변이었다).
+        /// 그리고 <c>preferredWidth</c>는 <b>한 톨도 바뀌지 않는다</b> — 정렬만 바꾸는 스위치이므로
+        /// 폭 예산(<c>SettingsControls.MeasuredWidth</c> · <c>Ellipsize</c> · 탭 상자 폭)은 전부
+        /// 그대로다.</para>
+        ///
+        /// <para><b>대가</b>: 기준이 글리프 기하라 <b>내용이 바뀌면 정렬도 다시 잡힌다</b>. 한 라벨의
+        /// 글자가 「받침 있는 한글」 ↔ 「숫자만」처럼 잉크 높이가 다른 부류로 오가면 세로가 최대 1pt
+        /// 흔들린다. 그 대안은 「모든 글꼴에서 영구히 어긋난 채로 둔다」였다.</para>
+        ///
+        /// <para>★ 말풍선은 이 문을 쓰지 않는다(<c>DialogueBubbleRenderer</c>가 직접 만든다) —
+        /// 그쪽도 <see cref="TextAnchor.MiddleCenter"/>이므로 같은 어긋남이 있을 수 있으나, 기울기·
+        /// 외곽선이 얹힌 연출 표면이라 <b>이 라운드 범위 밖</b>이다(리더에게 보고).</para>
         /// </summary>
         public static Text AddText(Transform parent, string name, int fontSize, TextAnchor anchor,
             Color color, bool bold = false, bool wrap = false)
@@ -2367,6 +2403,8 @@ namespace StickMate.Interaction
             var text = go.GetComponent<CrispText>();
             text.fontSize = fontSize;
             text.alignment = anchor;
+            // 정렬 기준을 폰트 수치 → 글리프 기하로. 근거와 실측표는 위 문서의 alignByGeometry 절.
+            text.alignByGeometry = true;
             WarnIfNonTextInk(name, color);
             text.color = color;
             ApplyBold(text, bold);                          // font + fontStyle을 한 쌍으로 — 위 P2-12 블록 참고.
