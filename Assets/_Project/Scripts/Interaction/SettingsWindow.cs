@@ -201,6 +201,72 @@ namespace StickMate.Interaction
         /// <summary>[▲][▼] 한 번에 넘기는 양. 화면 높이에서 한 행쯤 겹쳐 남겨 맥락이 끊기지 않게 한다.</summary>
         private const float PageStep = ContentHeight - SettingsControls.RowHeight;
 
+        // ==================== 창을 열 때 «어느 자리를 목표로 삼았는가» ====================
+
+        /// <summary>
+        /// ★★ 2026-09-30 사용자 확정 — <i>"설정창은 현재 열려있는 창(=정보창)의 위치에서 열려야 한다"</i>.
+        ///
+        /// <para>진입점이 <b>부른 창의 자리를 물려주는가</b>로 갈린다. 그 갈림을 <c>bool</c>이나
+        /// <c>source</c> 문자열로 두지 않는 이유는 이 파일이 이미 한 번 배운 것이다
+        /// (<see cref="RestoreInfoWindowIfNeeded"/>: "문자열 <c>source</c>로 분기하면 새 진입점이
+        /// 생길 때마다 조용히 어긋난다"). 여기서는 <b>값이 있는가</b>가 갈림이고, 그 결과를 이
+        /// 이름들로 기록해 회귀 테스트가 «어느 가지를 탔는가»를 직접 읽는다.</para>
+        ///
+        /// <para>★ 왜 관측 창구가 필요한가: 배치 화면(640×480)은 이 창(720×560)보다 작아
+        /// <see cref="ClampPanelPosition"/>이 <b>모든 희망값을 한 자리로 못박는다</b>. 그 화면에서
+        /// 최종 <see cref="PanelOffsetPoints"/>만 보면 «물려받았다»와 «아무 일도 안 일어났다»가
+        /// <b>똑같이 생긴다</b>(WindowDragPersistenceTests가 같은 함정을 문서로 남겨 두었다).
+        /// 그래서 <b>클램프 전 희망값과 가지 이름</b>을 따로 내준다.</para>
+        /// </summary>
+        public enum OpenPlacement
+        {
+            /// <summary>옮긴 적도 없고 물려받은 자리도 없다 — 화면 중앙(<c>Vector2.zero</c>,
+            /// 클램프를 태우지 않아 예전과 <b>비트 동일</b>).</summary>
+            ScreenCenter = 0,
+
+            /// <summary>이 창을 직접 옮겨 둔 자리(창별 위치 기억, 2026-09-07 <c>da71068</c>).</summary>
+            OwnSavedCenter = 1,
+
+            /// <summary>부른 창의 중심을 물려받았다 — 정보창 헤더 [설정] 경로.</summary>
+            CallerCenter = 2,
+        }
+
+        /// <summary>
+        /// ★ 열 때의 목표 자리를 고르는 <b>순수 함수</b>. 화면 크기도 예약 띠도 보지 않는다 —
+        /// 그 둘은 호출부의 <see cref="ClampPanelPosition"/>이 본다.
+        ///
+        /// <para><paramref name="clampRequired"/>를 따로 내주는 이유: «옮긴 적 없음»만은 클램프를
+        /// 태우지 않는 것이 <b>기존 동작</b>이다(720×560 고정 창이라 좁은 화면에서 클램프가 없던
+        /// 이동을 만든다). 그 한 가지 예외를 호출부의 <c>if</c>로 다시 적으면 두 벌이 되고, 다음
+        /// 라운드에 한쪽만 고쳐진다.</para>
+        ///
+        /// <para><b>물려받은 자리는 반드시 클램프를 태운다</b> — 두 창의 크기가 다르므로
+        /// (정보창 1042×802 / 이 창 720×560) 중심이 같아도 한쪽만 화면을 벗어날 수 있다. 창 밖
+        /// 클릭이 닫지 않는 이 앱에서 화면 밖 창은 <b>닫을 수 없는 창</b>이다.</para>
+        /// </summary>
+        public static Vector2 ResolveOpenCenterPoints(Vector2? callerCenterPoints,
+            bool hasSavedCenter, Vector2 savedCenterPoints,
+            out OpenPlacement placement, out bool clampRequired)
+        {
+            if (callerCenterPoints.HasValue)
+            {
+                placement = OpenPlacement.CallerCenter;
+                clampRequired = true;
+                return callerCenterPoints.Value;
+            }
+
+            if (!hasSavedCenter)
+            {
+                placement = OpenPlacement.ScreenCenter;
+                clampRequired = false;
+                return Vector2.zero;
+            }
+
+            placement = OpenPlacement.OwnSavedCenter;
+            clampRequired = true;
+            return savedCenterPoints;
+        }
+
         // ==================== 탭 ====================
 
         public enum Tab { General = 0, Character = 1, Event = 2, Accessibility = 3, Data = 4 }
@@ -337,6 +403,12 @@ namespace StickMate.Interaction
         /// <summary>창을 손으로 옮기는 기구(정보창·집중 팝오버와 <b>같은 한 벌</b>).</summary>
         private readonly UiWindowDrag _windowDrag = new UiWindowDrag(UiWindowId.Settings);
 
+        /// <summary>마지막으로 열 때 고른 가지(<see cref="OpenPlacement"/>) — 진단·회귀 관측용.</summary>
+        private OpenPlacement _lastOpenPlacement = OpenPlacement.ScreenCenter;
+
+        /// <summary>마지막으로 열 때의 <b>클램프 전</b> 희망 중심(화면 중앙 원점, OS 포인트).</summary>
+        private Vector2 _lastOpenDesiredCenterPoints;
+
         private readonly RectTransform[] _tabRects = new RectTransform[TabCount];
         private readonly Text[] _tabLabels = new Text[TabCount];
         private readonly Image[] _tabUnderlines = new Image[TabCount];
@@ -447,6 +519,16 @@ namespace StickMate.Interaction
 
         /// <summary>창의 현재 위치(화면 중앙 원점, 캔버스 포인트) — 정보창의 같은 이름 창구와 같은 계다.</summary>
         public Vector2 PanelOffsetPoints => _panel != null ? _panel.anchoredPosition : Vector2.zero;
+
+        /// <summary>마지막 <see cref="Open(string)"/>이 고른 가지. <b>클램프가 모든 값을 한 자리로
+        /// 못박는 화면에서도</b> «부른 창의 자리를 물려받았는가»를 가를 수 있는 유일한 창구다
+        /// (사유 전문은 <see cref="OpenPlacement"/>).</summary>
+        public OpenPlacement LastOpenPlacement => _lastOpenPlacement;
+
+        /// <summary>마지막 <see cref="Open(string)"/>이 목표로 삼은 <b>클램프 전</b> 중심.
+        /// <see cref="PanelOffsetPoints"/>와 다르면 그 차이가 곧 <see cref="ClampPanelPosition"/>이
+        /// 실제로 개입한 양이다.</summary>
+        public Vector2 LastOpenDesiredCenterPoints => _lastOpenDesiredCenterPoints;
 
         /// <summary>드래그 손잡이(<b>헤더</b>)의 화면 사각형. 실제로 끌리는 자리는 여기서 [✕]를 뺀
         /// 나머지이고, 그 판정은 <see cref="TryBeginWindowDrag"/> 한 곳에 있다.</summary>
@@ -639,7 +721,29 @@ namespace StickMate.Interaction
             else Open(source);
         }
 
+        /// <summary>
+        /// 부른 창이 <b>없는</b> 진입점 — 전역 단축키(⌃⌥⌘P) · 트레이 메뉴 · 자동 복귀.
+        /// 자리는 <b>이 창 자신의 기억</b>(옮겼으면 그 자리, 아니면 화면 중앙)이고
+        /// 2026-09-30 라운드는 이 가지를 한 비트도 건드리지 않았다.
+        /// </summary>
         public void Open(string source) => Open(source, userInitiated: true);
+
+        /// <summary>
+        /// ★★ 2026-09-30 사용자 확정 — <i>"설정창은 현재 열려있는 창(=정보창)의 위치에서 열려야 한다"</i>.
+        ///
+        /// <para>부른 창이 <b>있는</b> 진입점(정보창 헤더 [설정])이 쓰는 문이다.
+        /// <paramref name="callerCenterPoints"/>는 부른 창의 <c>anchoredPosition</c>을 그대로
+        /// 넘긴 값이다 — 두 창의 <c>_panel</c>이 모두 anchor·pivot 0.5라 <b>좌표계가 같고</b>
+        /// 변환이 없다(그래서 "같은 위치"의 정의가 <b>패널 중심 일치</b>다. 크기는 다르다 —
+        /// 정보창 1042×802 / 이 창 <see cref="PanelWidth"/>×<see cref="PanelHeight"/>).</para>
+        ///
+        /// <para><b>이 문으로 열어도 이 창의 저장 슬롯(<see cref="UiWindowId.Settings"/>)은
+        /// 건드리지 않는다</b> — 물려받은 자리를 저장하면 그 다음부터는 단축키로 열어도 정보창이
+        /// 있던 자리에서 열려, 사용자가 만들지 않은 «옮긴 적 있음»이 디스크에 앉는다.
+        /// 저장은 여전히 <see cref="EndWindowDrag"/>(사용자가 직접 끈 경우)만 한다.</para>
+        /// </summary>
+        public void Open(string source, Vector2 callerCenterPoints)
+            => Open(source, userInitiated: true, callerCenterPoints: callerCenterPoints);
 
         /// <summary>
         /// ★★★ 2026-09-03 — <c>userInitiated</c>가 갈라 놓는 것은 <b>등급 1 탈출구의 허가</b> 하나다.
@@ -654,7 +758,7 @@ namespace StickMate.Interaction
         /// <c>!ArePanelsSuppressed</c>일 때만 실행되므로 허가가 필요하지도 않다 — 여기서 허가를 내면
         /// "우리가 스스로에게 발급하는 면제"가 되어 원칙 2의 구멍이 열린다.</para>
         /// </summary>
-        private void Open(string source, bool userInitiated)
+        private void Open(string source, bool userInitiated, Vector2? callerCenterPoints = null)
         {
             if (_open) return;
 
@@ -669,14 +773,20 @@ namespace StickMate.Interaction
             _lastSurfaceTouchTime = Time.unscaledTime;
             _dragIndex = -1;
             // ★ 2026-09-07 — 옮긴 적이 있으면 그 자리에서, 없으면 예전 그대로 화면 중앙에서 연다.
-            RestorePanelPosition();
+            // ★ 2026-09-30 — 부른 창이 자리를 물려주면 그것이 앞선다(OpenPlacement).
+            //   자리를 <b>CloseOverlappingSurfaces보다 먼저</b> 정한다는 순서에는 뜻이 없다 —
+            //   물려받는 값은 이미 호출부가 읽어서 넘겨준 것이라, 여기서 정보창이 닫혀도 안 흔들린다.
+            RestorePanelPosition(callerCenterPoints);
             DisarmQuit();
             CloseOverlappingSurfaces($"설정창 열림({source})");
             if (_canvas != null) _canvas.gameObject.SetActive(true);
             if (_clickBlocker != null) _clickBlocker.enabled = true;
             RefreshAll();
             Debug.Log($"[설정창] 열림({source}) — 탭=[{TabNames[(int)_tab]}]. " +
-                "[✕]로 닫힙니다(창 밖 클릭·ESC는 닫지 않습니다).");
+                "[✕]로 닫힙니다(창 밖 클릭·ESC는 닫지 않습니다). " +
+                $"자리={PlacementLogWord(_lastOpenPlacement)}" +
+                $"(희망 {_lastOpenDesiredCenterPoints.x:F0}, {_lastOpenDesiredCenterPoints.y:F0} → " +
+                $"실제 {PanelOffsetPoints.x:F0}, {PanelOffsetPoints.y:F0})pt.");
         }
 
         public void Close(string source)
@@ -996,25 +1106,44 @@ namespace StickMate.Interaction
         }
 
         /// <summary>
-        /// ★ 창을 열 때의 자리 — <b>옮긴 적이 있으면 그 자리, 없으면 화면 중앙</b>.
-        /// <para>옮긴 적이 없는 사용자에게는 <c>anchoredPosition = Vector2.zero</c>가 되어
-        /// <b>예전과 결과가 같다</b>(이 창은 지금까지 빌드 시점의 0에서 한 번도 움직이지 않았다).</para>
+        /// ★ 창을 열 때의 자리 — <b>부른 창이 물려줬으면 그 자리, 옮긴 적이 있으면 그 자리,
+        /// 없으면 화면 중앙</b>.
+        /// <para>옮긴 적이 없고 물려받지도 않은 사용자에게는 <c>anchoredPosition = Vector2.zero</c>가
+        /// 되어 <b>예전과 결과가 같다</b>(클램프도 태우지 않는다 — 위 ApplyCanvasScaleFactor의 가드와
+        /// 같은 이유로, 720×560 고정 창이라 좁은 화면에서 클램프가 없던 이동을 만든다).</para>
         /// <para>클램프를 함께 하는 이유는 정보창과 같다 — 저장된 자리는 <b>다른 화면 크기에서 만든
-        /// 값</b>일 수 있고, 창 밖 클릭이 닫지 않는 이 앱에서 화면 밖 창은 <b>닫을 수 없는 창</b>이다.</para>
+        /// 값</b>일 수 있고, 창 밖 클릭이 닫지 않는 이 앱에서 화면 밖 창은 <b>닫을 수 없는 창</b>이다.
+        /// 물려받은 자리도 같은 문을 지난다(두 창의 크기가 달라 중심이 같아도 한쪽만 넘칠 수 있다).</para>
+        /// <para><b>세 가지를 여기서 다시 <c>if</c>로 적지 않는다</b> — 판정은
+        /// <see cref="ResolveOpenCenterPoints"/> 한 곳이고 이 함수는 그 답을 적용만 한다.</para>
         /// </summary>
-        private void RestorePanelPosition()
+        /// <param name="callerCenterPoints">부른 창의 패널 중심(없으면 <c>null</c>).</param>
+        private void RestorePanelPosition(Vector2? callerCenterPoints)
         {
             _windowDrag.Cancel();
             if (_panel == null) return;
 
-            // 옮긴 적이 없으면 <b>클램프도 태우지 않는다</b> — 위 ApplyCanvasScaleFactor의 가드와
-            // 같은 이유다(720×560 고정 창이라 좁은 화면에서 클램프가 이동을 만든다).
-            if (!_windowDrag.TryGetSavedCenter(out Vector2 saved))
+            bool hasSaved = _windowDrag.TryGetSavedCenter(out Vector2 saved);
+            Vector2 desired = ResolveOpenCenterPoints(callerCenterPoints, hasSaved, saved,
+                out OpenPlacement placement, out bool clampRequired);
+
+            _lastOpenPlacement = placement;
+            _lastOpenDesiredCenterPoints = desired;
+            _panel.anchoredPosition = clampRequired ? ClampPanelPosition(desired) : desired;
+        }
+
+        /// <summary>로그에 찍는 가지 이름. <c>default:</c>는 <b>정상값이 오지 않는 자리</b>다 —
+        /// <see cref="OpenPlacement"/>에 항목이 늘면 여기서 시끄럽게 드러나야 한다
+        /// (조용히 흘려보내면 새 가지가 «알 수 없는» 채로 출하된다).</summary>
+        private static string PlacementLogWord(OpenPlacement placement)
+        {
+            switch (placement)
             {
-                _panel.anchoredPosition = Vector2.zero;   // 예전과 비트 동일.
-                return;
+                case OpenPlacement.ScreenCenter: return "화면 중앙";
+                case OpenPlacement.OwnSavedCenter: return "이 창을 옮겨 둔 자리";
+                case OpenPlacement.CallerCenter: return "부른 창(정보창)의 자리";
+                default: return $"알 수 없음({(int)placement}) — SettingsWindow.PlacementLogWord에 가지를 추가하세요";
             }
-            _panel.anchoredPosition = ClampPanelPosition(saved);
         }
 
         /// <summary>창 전체가 화면(과 OS 예약 띠) 안에 남는 자리로 자른다 — 규칙은 정보창·팝오버와
@@ -2288,7 +2417,18 @@ namespace StickMate.Interaction
             //   그건 그 자체로는 옳지만 <b>이 라운드가 요청받은 변경이 아니다</b>(배치모드 480px
             //   화면에서 설정창 전체가 56pt 위로 올라간다 = 아무도 부탁하지 않은 이동).
             //   그래서 «사용자가 실제로 옮긴 창»에만 적용한다 — 그 집합 밖에서는 한 픽셀도 안 바뀐다.
-            if (_panel == null || !UiLayoutModel.HasWindowOffset(UiWindowId.Settings)) return;
+            //
+            // ★★ 2026-09-30 — 가드에 <b>부른 창에서 물려받은 자리</b>를 더했다
+            //   (<see cref="OpenPlacement.CallerCenter"/>). 가드의 «아무도 부탁하지 않은 이동은 하지
+            //   않는다»는 뜻은 그대로다 — 물려받은 자리는 <b>사용자가 그 창을 그 자리에 둔 결과</b>라
+            //   «부탁받은 자리»에 든다. 그리고 이 창은 여는 순간 한 번만 클램프하므로, 그 뒤 화면이
+            //   작아지면(외장 모니터를 뽑거나 배율을 바꾸면) 되끌어올 사람이 없어져
+            //   <b>[✕]가 화면 밖에 있는 닫을 수 없는 창</b>이 만들어진다.
+            //   ★ <b>ScreenCenter 가지는 한 비트도 안 바뀐다</b> — 옮긴 적 없고 물려받지도 않은
+            //     사용자(= 단축키·트레이로만 여는 사용자)에게는 이 줄이 예전과 똑같이 즉시 반환한다.
+            if (_panel == null) return;
+            if (!UiLayoutModel.HasWindowOffset(UiWindowId.Settings)
+                && _lastOpenPlacement != OpenPlacement.CallerCenter) return;
             Vector2 clamped = ClampPanelPosition(_panel.anchoredPosition);
             if (clamped != _panel.anchoredPosition) _panel.anchoredPosition = clamped;
         }

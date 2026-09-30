@@ -1683,9 +1683,24 @@ namespace StickMate.Interaction
         }
 
         /// <summary>
-        /// 설정창을 연다. <b>이 창을 여기서 닫지 않는다</b> — 배타 규칙의 집행은 <see cref="SettingsWindow.Open"/>
+        /// 설정창을 연다. <b>이 창을 여기서 닫지 않는다</b> — 배타 규칙의 집행은 <see cref="SettingsWindow.Open(string)"/>
         /// 한 곳에 있다(진입점마다 정리 코드를 흩뿌리면 네 번째 진입점에서 반드시 샌다는, 이 파일이
         /// 이미 한 번 배운 교훈).
+        ///
+        /// <para>★★ 2026-09-30 사용자 확정 — <i>"설정창은 현재 열려있는 창(=정보창)의 위치에서 열려야
+        /// 한다"</i>. 그래서 <b>지금 이 창의 중심</b>을 그 창에 넘긴다
+        /// (<see cref="SettingsWindow.Open(string, Vector2)"/>). 두 창의 <c>_panel</c>이 모두
+        /// anchor·pivot 0.5라 <c>anchoredPosition</c>의 좌표계가 같고 <b>변환이 없다</b> —
+        /// 넘기는 값은 그대로 그 창의 희망 중심이 된다(화면 안 고정은 그쪽 <c>ClampPanelPosition</c>).</para>
+        ///
+        /// <para><b>여기서 «중심»을 다시 계산하지 않는다.</b> 두 창의 크기는 다르지만
+        /// (1042×802 대 720×560) 물려주는 것은 <b>중심 한 점</b>이라 크기가 식에 들어오지 않는다.
+        /// 모서리를 맞추려 들면 이 파일이 저쪽 창의 치수를 알아야 하고, 그 치수가 바뀌는 날
+        /// 조용히 어긋난다.</para>
+        ///
+        /// <para>★ <c>_panel</c>이 없을 때만 예전 문(<see cref="SettingsWindow.Open(string)"/>)으로
+        /// 떨어진다 — 물려줄 자리가 물리적으로 없는 경우이고, 그때는 그 창이 자기 기억을 쓰는 것이
+        /// 맞다(0을 대신 넘기면 «화면 중앙으로 옮겨 달라»는 <b>거짓 지시</b>가 된다).</para>
         /// </summary>
         private void OpenSettings(string source)
         {
@@ -1697,7 +1712,37 @@ namespace StickMate.Interaction
                     "프리팹에 붙이는지 확인하세요(33-9 #10 / 34-9 #10과 같은 함정).");
                 return;
             }
-            settings.Open(source);
+
+            if (_panel == null)
+            {
+                settings.Open(source);
+                return;
+            }
+            settings.Open(source, _panel.anchoredPosition);
+        }
+
+        /// <summary>
+        /// ★ 테스트 전용 — 헤더 [설정] 칩의 <b>핸들러 자체</b>를 부른다(위 <c>OpenSettings</c>).
+        ///
+        /// <para><b>왜 필요한가</b>: 1순위 경로는 언제나 좌표 클릭
+        /// (<c>FeedClickForTests(SettingsChipScreenRect.center)</c>)이다. 그런데 좁은 게임 뷰에서는
+        /// 이 칩이 <b>접힌다</b>(<c>SyncHeaderChips</c> — 탭 스트립을 침범하면 꺼진다) — 사각형이
+        /// 비어 누를 자리가 사라지고, 그 환경에서 «칩을 누르면 무슨 일이 일어나는가»를 재는 방법이
+        /// 통째로 없어진다. 실제로 그 구멍 때문에 세 스위트가 <c>settings.Open(source)</c>를
+        /// <b>손으로 대신 적었고</b>, 2026-09-30에 이 핸들러가 부른 창의 자리까지 넘기게 되면서
+        /// 그 대체가 «같은 호출»이 아니게 됐다. 손으로 베낀 대체는 반드시 이렇게 낡는다.</para>
+        ///
+        /// <para><b>이 문이 재는 것과 안 재는 것</b>: 재는 것은 «핸들러가 무엇을 하는가»뿐이다.
+        /// 히트테스트와 클릭 중복 방지(<c>TryClaimAction</c>)는 <b>재지 않는다</b> — 그 둘은
+        /// 좌표 클릭 경로를 쓰는 테스트가 잰다. 창이 닫혀 있으면 아무 일도 하지 않는다(칩이
+        /// 물리적으로 없는 상태라 핸들러가 도달할 수 없는 것과 같다).</para>
+        /// </summary>
+        /// <returns>핸들러가 실제로 불렸는가(창이 닫혀 있었으면 false).</returns>
+        public bool OpenSettingsForTests(string source)
+        {
+            if (!_open) return false;
+            OpenSettings(source);
+            return true;
         }
 
         // -------------------- 컬럼 1 — 프리뷰 무대 / 착용 슬롯 / 상세 카드 --------------------
