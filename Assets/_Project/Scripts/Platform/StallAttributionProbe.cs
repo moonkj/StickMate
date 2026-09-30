@@ -152,6 +152,7 @@ namespace StickMate.Platform
         private void Update()
         {
             FreezeWatchdog.PublishMainFrame(Time.realtimeSinceStartupAsDouble);
+            PublishRenderStateThrottled();
             StallAttribution.BeginFrame();
         }
 
@@ -159,6 +160,37 @@ namespace StickMate.Platform
         {
             FreezeWatchdog.PublishPhase(MainThreadPhase.LateUpdate);
             StallAttribution.BeginLatePhase();
+        }
+
+        /// <summary>다음 렌더 계기 발행 시각(<c>Time.unscaledTime</c> 기준). 0 = 아직 한 번도 발행 안 함(첫 프레임에 곧바로 1회).</summary>
+        private float _nextRenderPublishTime;
+
+        /// <summary>
+        /// ★ 2026-09-30 — 렌더 계기를 워치독에 발행한다(<see cref="FreezeWatchdog.PublishRenderState"/>).
+        /// <b>양 플랫폼 공용</b>이다 — 이 탐침에는 플랫폼 분기가 없다.
+        ///
+        /// <para><b>왜 벽시계로 누르는가</b>: 네 값 중 <c>FramePacing.EffectiveRenderFrameInterval</c>만
+        /// 네이티브 속성 읽기이고 나머지 셋은 순수 관리 코드 읽기다. 24시간 상주 앱에서 매 프레임 네이티브
+        /// 호출을 늘리지 않는 것이 이 저장소의 관례이고, 워치독은 <see cref="FreezeForensicsPolicy.WatchdogPollSeconds"/>
+        /// 주기로만 이 값을 읽으므로 그보다 잦게 재도 <b>얻는 것이 없다</b>.
+        /// 프레임 수 기반 카운터를 쓰지 않는 이유는 이 저장소 규칙 그대로다(배치모드는 2,000fps 이상으로 돈다).</para>
+        ///
+        /// <para>발행 값에 <b>표본 프레임 번호</b>를 실어, 원장 줄의 <c>frame=</c>과 다를 수 있다는 사실이
+        /// 줄 안에 드러나게 한다 — 「눌렀다」를 숨기고 최신값인 척하지 않는다.</para>
+        /// </summary>
+        private void PublishRenderStateThrottled()
+        {
+            float now = Time.unscaledTime;
+            if (now < _nextRenderPublishTime) return;
+            _nextRenderPublishTime = now + (float)FreezeForensicsPolicy.WatchdogPollSeconds;
+
+            FreezeWatchdog.PublishRenderState(
+                Time.frameCount,
+                RenderDiagnostics.ActualRenderedFrameCount,
+                FramePacing.EffectiveRenderFrameInterval,
+                RenderDiagnostics.IsRenderCounterArmed,
+                DisplayChangeHoldStatus.IsActive,
+                DisplayChangeHoldStatus.EpisodeNumber);
         }
     }
 

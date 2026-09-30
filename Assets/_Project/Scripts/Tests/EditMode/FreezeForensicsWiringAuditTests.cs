@@ -184,6 +184,76 @@ namespace StickMate.Tests.EditMode
                 $"{platform}: 중복 억제가 중립 규칙을 거치지 않는다 — 사유가 붙으면 0.25초마다 같은 줄을 다시 찍던 결함.");
         }
 
+        // ------------------------------------------------------------------ 유예 해제 직후 사후확인 (2026-09-30)
+
+        /// <summary>
+        /// ★ 2026-09-30 — <b>유예 해제 직후의 읽기 전용 사후확인</b>이 정말로 «읽기 전용»인가(Windows).
+        ///
+        /// <para><b>왜 이 검사가 이 라운드의 핵심 안전장치인가</b>: 직전 조사가 재적용 루프 부활을
+        /// <b>명시적으로 기각</b>했다 — 드라이버가 회복 중인 순간에 <c>SetBorderless</c> →
+        /// <c>SetWindowPos</c> 4회 → 스왑체인 재생성을 또 하면 <b>새 P0</b>가 된다. 그런데 이 사후확인은
+        /// 하필 그 «회복 중인 순간」에 돌고, 기하를 읽는 코드와 기하를 쓰는 코드는 <b>한 글자 차이</b>다
+        /// (<c>windowSize</c> 읽기 vs <c>windowSize =</c> 쓰기). 그래서 형태를 줄 단위로 잠근다.</para>
+        ///
+        /// <para>★ <b><c>TryGetTargetMonitorRect</c>가 특히 위험하다</b> — 이름이 조회처럼 생겼는데
+        /// 그 안의 <c>TryResolveChosenMonitorRect</c>가 선택이 바뀌면 <c>ReArmFullScreenFitForNewTarget</c>를
+        /// 부르는 <b>쓰기 경로</b>다. 사후확인은 그 함수를 부르지 않고 직전에 고른 인덱스만 그대로 읽는다.</para>
+        ///
+        /// <para>부재 단언이므로 각 니들이 <b>파일 다른 곳에는 실재함</b>을 대조로 붙인다
+        /// (CLAUDE.md: 부재용 니들은 썩으면 조용히 초록이 된다).</para>
+        /// </summary>
+        [Test]
+        public void 유예_해제_직후_사후확인은_쓰기가_한_줄도_없다()
+        {
+            string path = EnforcerPath("Windows");
+            string code = ReadCode(path);
+
+            const string signature = "private void LogPostHoldFactsOnce(";
+            string body = Body(code, signature);
+
+            // 양성 대조 — 본문을 제대로 잘랐는가. 자르기가 실패하면 아래 부재 검사가 전부 공허하다.
+            StringAssert.Contains(EventNeedle(FreezeForensicsEvent.RenderHoldReleaseProbe), body,
+                "사후확인 본문을 잘못 잘랐거나 원장 기록이 사라졌습니다 — 아래 부재 검사가 공허합니다.");
+            StringAssert.Contains("TryReadCloakedAttribute(", body,
+                "DWM 클로킹 조회가 없습니다 — 「렌더는 나갔는데 화면이 비었다」의 1순위 후보를 여전히 안 잽니다.");
+
+            foreach ((string forbidden, string contrast) in new[]
+                     {
+                         ("Screen.SetResolution(", "Screen.SetResolution"),
+                         ("MarkDirty()", "MarkDirty"),
+                         ("ReArmFullScreenFit", "ReArmFullScreenFit"),
+                         ("TryGetTargetMonitorRect(", "TryGetTargetMonitorRect"),
+                         ("windowSize =", "windowSize"),
+                         ("windowPosition =", "windowPosition"),
+                         ("isTransparent =", "isTransparent"),
+                         ("isTopmost =", "isTopmost"),
+                         ("isClickThrough =", "isClickThrough"),
+                         ("backgroundColor =", "backgroundColor"),
+                         ("Screen.fullScreen =", "Screen.fullScreen"),
+                     })
+            {
+                StringAssert.Contains(contrast, code,
+                    $"대조 니들 '{contrast}'이 이 파일 어디에도 없습니다 — 부재 단언이 무의미해졌습니다" +
+                    "(이름이 바뀌었다면 이 감사를 함께 갱신하세요).");
+                StringAssert.DoesNotContain(forbidden, body,
+                    $"★ 유예 해제 직후 사후확인이 쓰기('{forbidden}')를 합니다. 이 자리는 드라이버가 " +
+                    "회복 중인 순간이고, 직전 조사가 그 순간의 재적용을 «새 P0를 만든다»고 기각했습니다. " +
+                    "이 함수는 사실을 로그로 남기는 것만 합니다.");
+            }
+
+            // 가장자리 검출이 유예 틱 안, 그리고 구동기 Tick <b>뒤</b>에 있는가(해제는 그 Tick 안에서만 일어난다).
+            string holdTick = Body(code, "private void TickDisplayChangeHold()");
+            int driverTick = holdTick.IndexOf("." + nameof(DisplayChangeHoldDriver.Tick) + "(", StringComparison.Ordinal);
+            int probeCall = holdTick.IndexOf("LogPostHoldFactsOnce(", StringComparison.Ordinal);
+            Assert.GreaterOrEqual(driverTick, 0, "유예 틱에서 구동기 Tick 호출을 찾지 못했습니다(니들이 썩었다).");
+            Assert.GreaterOrEqual(probeCall, 0,
+                "유예 해제 가장자리 검출이 유예 틱 안에 없습니다 — 해제는 구동기 Tick 안에서만 일어나므로 " +
+                "다른 자리에서는 그 프레임을 잡을 수 없습니다.");
+            Assert.Less(driverTick, probeCall,
+                "가장자리 검출이 구동기 Tick <b>앞</b>에 있습니다 — 그러면 해제가 일어난 프레임을 " +
+                "한 프레임 늦게(또는 영원히) 보게 됩니다.");
+        }
+
         [Test]
         public void 감사가_읽는_Enforcer가_실제로_토폴로지_감시기를_가진_파일이다()
         {

@@ -1680,6 +1680,15 @@ namespace StickMate.Platform
         /// <summary>실제 렌더 콜백이 온 **프레임 수**(누적). 요약 로그가 구간 차분으로 쓴다.</summary>
         internal static int ActualRenderedFrameCount => _actualRenderedFrames;
 
+        /// <summary>
+        /// ★ 2026-09-30 — <see cref="ActualRenderedFrameCount"/>의 계수기가 <b>실제로 장착돼 있는가</b>(읽기 전용).
+        ///
+        /// <para>이 값 없이 누적 0을 보면 「렌더가 한 장도 안 나갔다」와 「아직 세기 시작하지 않았다」가
+        /// <b>똑같이 생긴다</b>. 구독은 <see cref="Tick"/>의 첫 호출에서 걸리고 그 호출자는 두 플랫폼 Enforcer뿐이라,
+        /// 기동 초반·에디터에는 구조적으로 미장착 구간이 존재한다. 동결 워치독 줄이 이 값을 함께 싣는다.</para>
+        /// </summary>
+        internal static bool IsRenderCounterArmed => _renderCallbackHooked;
+
         private const int OngoingGpuSampleStride = 8;
         private static int _ongoingStride;
         private static double _ongoingGpuSumMs;

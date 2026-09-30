@@ -690,6 +690,9 @@ namespace StickMate.Platform.Windows
                         $"대상 모니터={monitor}, 누적 {_setResolutionCalls}/{MaxSetResolutionCalls}, 시도 {_fullScreenApplyAttempts}/{MaxFullScreenApplyAttempts}");
                 }
                 Screen.SetResolution(targetPixelW, targetPixelH, FullScreenMode.Windowed);
+                // ★ 2026-09-30 — 방금 쓴 것이 <b>마지막 한 장</b>이었으면 사용자에게 한 번 알린다.
+                //   창 상태를 되돌리는 시도가 아니다(아래 메서드 문서) — 상한 자체는 그대로 둔다.
+                NoticeSetResolutionCapIfReached();
             }
 
             // 크기/위치도 같은 불감대를 쓴다. **이미 목표 안에 들어와 있으면 대입 자체를 하지 않는다** —
@@ -793,6 +796,65 @@ namespace StickMate.Platform.Windows
                 //   원인을 가른다. 이전 로그에는 이 값이 없어서 실기 확인이 불가능했다.
                 $"fullScreenMode={Screen.fullScreenMode}(직전 불일치: 해상도={resolutionMismatch}, 모드={modeMismatch}), " +
                 $"결과={(ok ? "성공(오차 1px 이내)" : "미달 — 다음 시도에서 재적용")}.");
+        }
+
+        /// <summary>이 프로세스에서 상한 도달 알림을 이미 냈는가(프로세스당 1회 — 아래 문서).</summary>
+        private bool _setResolutionCapNoticed;
+
+        /// <summary>
+        /// ★ 2026-09-30 — <b><c>Screen.SetResolution</c> 수명 상한에 닿았음을 사용자에게 한 번 알린다.</b>
+        ///
+        /// ============================================================================
+        /// 왜 필요한가 — 상한은 정당한데 «닿은 뒤»에 사용자가 알 방법이 없었다
+        /// ============================================================================
+        /// <see cref="MaxSetResolutionCalls"/>는 진동 루프(= 몇 초마다 수백 ms 정지)를 막는 안전장치이고
+        /// <b>여기서 올리지도 없애지도 않는다</b>. 그런데 이 카운터는 <b>프로세스 수명 동안 한 번도
+        /// 초기화되지 않는다</b> — 재무장 메서드 셋이 모두 「절대 되돌리지 않는다」고 못박고 있다
+        /// (<see cref="ReArmFullScreenFitForNewTarget"/> · <see cref="ReArmFullScreenFitAfterNativeWindowMove"/> ·
+        /// <see cref="TickDisplayTopology"/>). 그래서 외장 모니터를 몇 번 뺐다 꽂으면 넷을 다 쓰고,
+        /// 그 뒤로는 <b>그 세션 안에서 창을 다시 맞출 수 없으며 재시작 말고 복구 경로가 없다.</b>
+        ///
+        /// <para>그때까지 남는 것은 아래 전체화면 확장 로그의 「★상한 도달」한 줄뿐이었다. 사용자는
+        /// <c>Player.log</c>를 읽지 않으므로 실제로는 <b>「창이 화면에 안 맞는데 이유를 모르는 상태」</b>가 된다.</para>
+        ///
+        /// ============================================================================
+        /// ★ 이것은 <b>복구 시도가 아니다</b>
+        /// ============================================================================
+        /// 창 위치·크기·스타일·스왑체인을 <b>한 비트도</b> 건드리지 않는다. 직전 조사가 재적용 루프 부활을
+        /// 명시적으로 기각했다 — 드라이버가 회복 중인 순간에 <c>SetBorderless</c> → <c>SetWindowPos</c> 4회 →
+        /// 스왑체인 재생성을 또 하면 새 P0를 만든다. 여기서 하는 일은 <b>상황과 해법(재시작)을 알리는 것</b> 하나다.
+        ///
+        /// <para><b>판정은 플랫폼 중립</b>
+        /// (<see cref="OverlayBoundsFitPolicy.ShouldNoticeSetResolutionCapReached"/>)이고 <b>문안도 중립</b>
+        /// (<see cref="SystemTrayPresencePolicy.RefitCapNoticeBody"/>)이다 — macOS Enforcer도 같은 상한을
+        /// 같은 방식으로 쓰므로, 그쪽에 알림 창구가 생기면 이 두 개를 그대로 부른다
+        /// (<c>FullscreenSuspendPolicy</c> 사고 재발 방지).</para>
+        ///
+        /// <para><b>트레이가 없으면</b>(옵트아웃 · 설치 실패 · 셸 트레이 부재) 알림은 못 뜨지만 <b>경고 로그는
+        /// 반드시 남는다</b> — 못 띄운 것이 사건이 없었다는 뜻이 아니다. macOS에는 트레이 대응물 자체가 없다
+        /// (<see cref="SystemTrayPresencePolicy.MacOsGapReason"/>).</para>
+        ///
+        /// <para><b>실기 미확인</b>: 이 머신에 Windows가 없어 풍선이 실제로 뜨는지 확인하지 못했다.</para>
+        /// </summary>
+        private void NoticeSetResolutionCapIfReached()
+        {
+            if (!OverlayBoundsFitPolicy.ShouldNoticeSetResolutionCapReached(
+                    _setResolutionCalls, MaxSetResolutionCalls, _setResolutionCapNoticed))
+            {
+                return;
+            }
+            _setResolutionCapNoticed = true;
+
+            bool shown = WindowsSystemTrayIcon.TryShowNotice(
+                SystemTrayPresencePolicy.RefitCapNoticeTitle,
+                SystemTrayPresencePolicy.RefitCapNoticeBody);
+
+            Debug.LogWarning("[WindowsOverlayStateEnforcer] ★ Screen.SetResolution 수명 상한 " +
+                $"{_setResolutionCalls}/{MaxSetResolutionCalls} 도달 — 이 세션에서는 창 해상도를 다시 맞추지 " +
+                "않습니다(진동 루프 방지 장치이며 여기서 풀지 않습니다). 사용자 알림: " +
+                $"\"{SystemTrayPresencePolicy.RefitCapNoticeBody}\" / 트레이 풍선=" +
+                (shown ? "띄웠습니다" : "띄우지 못했습니다(트레이 아이콘 없음 — 옵트아웃/설치 실패/셸 트레이 부재)") +
+                ". 창 위치·크기·스타일·스왑체인은 한 비트도 건드리지 않았습니다.");
         }
 
         /// <summary>
@@ -1015,6 +1077,129 @@ namespace StickMate.Platform.Windows
                 _holdSubscribedController = _controller;
             }
             hold.Tick(Time.unscaledTimeAsDouble, Time.frameCount);
+            // ★ 2026-09-30 — 유예가 <b>방금 해제된</b> 프레임을 잡는다. 해제는 위 Tick 안에서만 일어나므로
+            //   (상태기계의 Release 호출자가 Tick 하나다) 이 자리가 해제 직후의 유일하고 확실한 지점이다.
+            //   여기서 하는 일은 «읽기 전용 사실 한 줄»뿐이다 — 판정도, 재적용도, 쓰기도 없다.
+            bool holdingNow = hold.IsHolding;
+            if (_displayChangeHoldWasHolding && !holdingNow) LogPostHoldFactsOnce(hold);
+            _displayChangeHoldWasHolding = holdingNow;
+        }
+
+        /// <summary>직전 프레임에 유예가 걸려 있었는가(해제 가장자리 검출용 — 상태를 바꾸지 않는다).</summary>
+        private bool _displayChangeHoldWasHolding;
+
+        /// <summary>유예 해제 직후 사실 줄을 몇 번 남겼는가. 아래 상한까지만 남긴다.</summary>
+        private int _postHoldFactLines;
+
+        /// <summary>
+        /// 유예 해제 직후 사실 줄의 <b>프로세스 수명 상한</b>. 24시간 상주 앱이라 진단이 무제한으로
+        /// 디스크·로그를 먹는 경로를 원천 차단한다(<c>WindowsTopmostWatchdog.MaxDetailLogs</c>와 같은 관례).
+        /// 모니터 착탈은 세션당 몇 번이라 8이면 신고 재현 구간을 충분히 덮는다.
+        /// </summary>
+        private const int MaxPostHoldFactLines = 8;
+
+        /// <summary>
+        /// ★ 2026-09-30 — <b>화면 변경 유예 해제 직후의 읽기 전용 기하·합성 사실 한 줄.</b>
+        ///
+        /// ============================================================================
+        /// 왜 필요한가 — 확정이 서면 기하 확인이 <b>영구히</b> 멈춘다
+        /// ============================================================================
+        /// <see cref="TickFullScreenBounds"/>는 첫 줄에서 <c>_fullScreenBoundsApplied</c>면 즉시 반환한다.
+        /// 즉 확정 이후에는 창 기하를 <b>한 번도 다시 읽지 않는다</b>(그것이 래칫을 막는 옳은 설계다).
+        /// 대가는 진단 쪽이다: 유예가 끝난 뒤 기하가 틀어져 있어도 <b>기록이 남지 않는다.</b>
+        /// 외장 모니터 분리 뒤 흰 화면 신고에서 정확히 그 구간이 비어 있었다.
+        ///
+        /// ============================================================================
+        /// ★ 이 메서드가 <b>하지 않는 것</b> (직전 조사의 명시적 기각 사항)
+        /// ============================================================================
+        /// <list type="bullet">
+        ///   <item><b>재적용을 하지 않는다.</b> <c>MarkDirty()</c>·<c>ReArm*</c>·<c>Screen.SetResolution</c>·
+        ///     창 크기/위치 대입이 한 줄도 없다. 드라이버가 회복 중인 순간에 <c>SetBorderless</c> →
+        ///     <c>SetWindowPos</c> 4회 → 스왑체인 재생성을 또 하는 것이 새 P0를 만드는 경로다.</item>
+        ///   <item><b>판정을 하지 않는다.</b> 「기하가 틀렸다/맞았다」를 쓰지 않는다 — 가설(프리멀티플라이드 워시)이
+        ///     아직 실기 로그로 확정되지 않았고, 확정 전에 판정을 코드에 박으면 반대 방향 사고를 만든다.</item>
+        ///   <item><b>목표 모니터를 다시 고르지 않는다.</b> <see cref="TryGetTargetMonitorRect"/>는 선택이 바뀌면
+        ///     <see cref="ReArmFullScreenFitForNewTarget"/>를 부르는 <b>쓰기 경로</b>다. 여기서는 직전에 고른
+        ///     인덱스의 사각형만 그대로 읽고, 그 사실을 줄에 적는다(재판정 없음).</item>
+        /// </list>
+        ///
+        /// <para><b>무엇을 읽는가</b>: 우리 창의 OS 실측 사각형(<c>GetWindowRect</c>) · 확장 스타일
+        /// (<c>GWL_EXSTYLE</c>) · 창 스타일(<c>GWL_STYLE</c>) · <b>DWM 클로킹</b>(<c>DWMWA_CLOAKED</c>) ·
+        /// 카메라 배경 RGBA · <c>Screen.fullScreenMode</c>와 해상도 · 적합 상한 소모 상태 · 라이브러리가
+        /// 주장하는 창 기하. 전부 조회이며, 실패는 「모름」으로 적는다(0으로 접지 않는다).</para>
+        ///
+        /// <para>★ <b>DWM 클로킹이 이 줄의 핵심</b>이다. 클로킹된 창은 <c>IsWindowVisible</c>이 true인데도
+        /// 화면에 그려지지 않는다 — 워치독 하트비트가 「렌더는 나갔다」를 말하는데 화면이 비어 있는 경우의
+        /// 1순위 후보이면서, 지금까지 <b>남의 창 판정에만</b> 쓰이고 우리 창에는 한 번도 물어본 적이 없다.</para>
+        ///
+        /// <para><b>실기 미확인</b>: 이 머신에 Windows가 없어 실행으로 확인하지 못했다. 세 조회 모두
+        /// <c>WindowsTopmostWatchdog</c>의 기존 조회 전용 P/Invoke를 그대로 쓴다(새 extern 0개).</para>
+        /// </summary>
+        private void LogPostHoldFactsOnce(DisplayChangeHoldDriver hold)
+        {
+            if (_postHoldFactLines >= MaxPostHoldFactLines) return;
+            _postHoldFactLines++;
+            bool last = _postHoldFactLines >= MaxPostHoldFactLines;
+
+            IntPtr probeHandle = UniWinCNativeHandle.TryGetNative();
+            bool handleIsNative = probeHandle != IntPtr.Zero;
+            if (!handleIsNative) probeHandle = OverlayHandle;
+
+            string osRect = WindowsTopmostWatchdog.TryReadWindowRectangle(probeHandle,
+                    out int l, out int t, out int r, out int b)
+                ? $"({l},{t})-({r},{b}) = {r - l}x{b - t}"
+                : "모름(조회 실패/핸들 없음)";
+            string exStyle = WindowsTopmostWatchdog.TryReadExStyle(probeHandle, out long ex)
+                ? $"0x{ex:X}"
+                : "모름";
+            string style = WindowsWindowStyleProbe.TryReadStyle(probeHandle, out long st)
+                ? $"0x{st:X}"
+                : "모름";
+            string cloaked = WindowsTopmostWatchdog.TryReadCloakedAttribute(probeHandle, out int cloakBits)
+                ? (cloakBits == 0 ? "아님(0)" : $"★클로킹됨(0x{cloakBits:X}) — IsWindowVisible이 true여도 화면에 안 그려진다")
+                : "모름(DwmGetWindowAttribute 실패)";
+
+            Camera cam = ResolveHoldCamera();
+            string background = cam != null
+                ? $"({cam.backgroundColor.r:F3},{cam.backgroundColor.g:F3},{cam.backgroundColor.b:F3},{cam.backgroundColor.a:F3})"
+                : "카메라 없음";
+
+            // ★ 직전에 고른 모니터의 사각형만 그대로 읽는다 — 목표를 다시 고르지 않는다(위 문서 3항).
+            int monitorCount = UniWindowController.GetMonitorCount();
+            string targetRect = _lastMonitorIndex >= 0 && _lastMonitorIndex < monitorCount
+                ? UniWindowController.GetMonitorRect(_lastMonitorIndex).ToString()
+                : "모름(직전 선택 없음/범위 밖)";
+
+            string libraryRect = _controller != null
+                ? $"{_controller.windowPosition} {_controller.windowSize} client={_controller.clientSize}"
+                : "컨트롤러 없음";
+
+            // ★ 항목 순서가 계약이다 — 원장 줄은 FreezeForensicsPolicy.MaxDetailChars(600자)에서 <b>뒤가 잘린다</b>
+            //   (Player.log 쪽은 잘리지 않는다). 이 줄은 해상도·모니터 사각형이 들어가 길어질 수 있으므로
+            //   <b>값이 큰 항목을 앞에</b> 둔다: DWM 클로킹 → 카메라 배경 → 화면 모드 → 적합 상한 → 창 기하 →
+            //   스타일 → 모니터. 뒤에서 잘려도 신고를 가르는 세 값(클로킹·배경·상한)은 남는다.
+            string detail =
+                $"Windows 유예 #{hold.State.EpisodeNumber} 해제 직후 읽기 전용 재확인(쓰기 0·판정 0) " +
+                $"[줄 {_postHoldFactLines}/{MaxPostHoldFactLines}{(last ? " ★상한 — 이후 이 줄은 남기지 않는다" : "")}] " +
+                $"사유={hold.State.LastReleaseReason}" +
+                $" | DWM클로킹={cloaked}" +
+                $" | 카메라배경 RGBA={background}(검정교정={_cameraBackgroundPremultiplyFixed})" +
+                $" | Screen={Screen.width}x{Screen.height} {Screen.fullScreenMode}" +
+                $" | SetResolution {_setResolutionCalls}/{MaxSetResolutionCalls}" +
+                $"{(_setResolutionCalls >= MaxSetResolutionCalls ? "★상한 도달(이 세션에서는 창을 다시 맞출 수 없다 — 재시작 필요)" : "")}" +
+                $", 창리사이즈 {_windowResizeCalls}/{OverlayBoundsFitPolicy.DefaultMaxWindowResizeCalls}" +
+                $", 적합확정={_fullScreenBoundsApplied}(시도 {_fullScreenApplyAttempts}/{MaxFullScreenApplyAttempts})" +
+                $", 진동래치={_boundsOscillation.IsOscillating}" +
+                $" | 창 OS실측 {osRect}" +
+                $" | 라이브러리 {libraryRect}" +
+                $" | GWL_EXSTYLE={exStyle}, GWL_STYLE={style}, 핸들={(handleIsNative ? "네이티브" : ".NET폴백")}" +
+                $" | 직전 선택 모니터[{_lastMonitorIndex}/{monitorCount}] {targetRect}";
+
+            if (FreezeForensics.IsActive)
+            {
+                FreezeForensics.Record(FreezeForensicsEvent.RenderHoldReleaseProbe, monitorCount, detail);
+            }
+            Debug.Log("[화면변경유예/사후확인] " + detail + ".");
         }
 
         private void OnLibraryMonitorChanged()

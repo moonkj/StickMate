@@ -703,6 +703,84 @@ namespace StickMate.Platform.Windows
             return true;
         }
 
+        // ====================================================================
+        // ★ 2026-09-30 — 우리 <b>자신의</b> 창에 대한 읽기 전용 사실 조회 셋 (진단 전용)
+        // ====================================================================
+        //
+        // 왜 여기에 두는가: 세 조회가 쓰는 P/Invoke 선언(DwmGetWindowAttribute · GetWindowLong ·
+        // GetWindowRect)이 이미 이 파일의 «전부 조회 전용» 리전 안에 있다. 새 파일에 선언을 복제하면
+        // 같은 extern이 두 벌이 되고, 위 «쓰기계열을 선언조차 하지 않는다» 감사가 물 대상이 둘로 갈라진다.
+        //
+        // 왜 필요해졌나: 외장 모니터 분리 뒤 흰 화면 신고에서 유예 해제 직후의 사실이 아무 데도 남지
+        // 않았다. 특히 «우리 창이 DWM에게 클로킹돼 있는가»는 지금까지 <b>남의 창 판정</b>에만 쓰였는데
+        // (아래 IsCloaked), 클로킹된 창은 IsWindowVisible이 true인데도 화면에 그려지지 않는다 —
+        // 「렌더는 나갔는데 화면이 비어 있다」의 1순위 후보이면서 아무도 재지 않던 값이다.
+        //
+        // ★ 세 함수 모두 <b>쓰기가 한 줄도 없고</b> 실패를 «모른다»로 정직하게 돌려준다(위 IsCloaked는
+        //   조회 실패를 «클로킹 아님»으로 접어 버리는데, 그 접기는 열거 판정에는 맞고 진단에는 거짓말이 된다).
+
+        /// <summary>
+        /// 우리 창의 <c>DWMWA_CLOAKED</c> <b>원값</b>. 성공하면 true이고
+        /// <paramref name="cloaked"/>는 0(클로킹 아님) 또는 DWM 비트마스크(앱/셸/상속)다.
+        /// <b>조회 실패를 0으로 접지 않는다</b> — 실패와 「클로킹 아님」은 다른 사실이다.
+        /// </summary>
+        internal static bool TryReadCloakedAttribute(IntPtr hWnd, out int cloaked)
+        {
+            cloaked = 0;
+            if (hWnd == IntPtr.Zero) return false;
+            try
+            {
+                if (!IsWindow(hWnd)) return false;
+                return DwmGetWindowAttribute(hWnd, DWMWA_CLOAKED, out cloaked, sizeof(int)) == 0;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        /// <summary>우리 창의 <c>GWL_EXSTYLE</c> 원값. <c>WindowsWindowStyleProbe</c>는 <c>GWL_STYLE</c>을 읽는다 —
+        /// 둘은 다른 워드이고, 클릭 관통·레이어드·툴윈도 비트는 이쪽에 있다.</summary>
+        internal static bool TryReadExStyle(IntPtr hWnd, out long exStyle)
+        {
+            exStyle = 0L;
+            if (hWnd == IntPtr.Zero) return false;
+            try
+            {
+                if (!IsWindow(hWnd)) return false;
+                int raw = GetWindowLong(hWnd, GWL_EXSTYLE);
+                if (raw == 0) return false;   // GetWindowLong 계열은 실패를 0으로 알린다(스타일 프로브와 같은 판정).
+                exStyle = raw;
+                return true;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        /// <summary>우리 창의 OS 실측 사각형(<c>GetWindowRect</c>). 라이브러리 캐시(<c>windowPosition</c>·
+        /// <c>windowSize</c>)와 <b>나란히</b> 찍어 둘이 어긋나는 순간을 로그에 드러내기 위한 것이다.</summary>
+        internal static bool TryReadWindowRectangle(IntPtr hWnd, out int left, out int top, out int right, out int bottom)
+        {
+            left = top = right = bottom = 0;
+            if (hWnd == IntPtr.Zero) return false;
+            try
+            {
+                if (!IsWindow(hWnd)) return false;
+                if (!GetWindowRect(hWnd, out RECT r)) return false;
+                left = r.Left;
+                top = r.Top;
+                right = r.Right;
+                bottom = r.Bottom;
+                return true;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
         /// <summary>
         /// 전이 한 줄. 리더 지시(2026-09-01)대로 <b>다음 신고 때 이 한 줄로 원인이 갈리게</b> 필요한
         /// 사실을 전부 담는다: 우리 WS_EX_TOPMOST 실측, 전경 창 핸들/프로세스/창 상태,

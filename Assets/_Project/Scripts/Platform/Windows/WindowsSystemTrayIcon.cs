@@ -443,6 +443,47 @@ namespace StickMate.Platform.Windows
             _hostWindow = IntPtr.Zero;
         }
 
+        /// <summary>
+        /// ★ 2026-09-30 — <b>이미 서 있는 아이콘</b>에서 풍선 도움말 한 번을 띄운다(<c>NIM_MODIFY</c> + <c>NIF_INFO</c>).
+        ///
+        /// <para><b>무엇을 하지 않나</b>: 아이콘을 추가하지도 지우지도 않고, 메뉴를 열지도 않고,
+        /// 창(우리 것이든 남의 것이든)을 한 비트도 건드리지 않는다. 승인된 예외 API 3종
+        /// (<c>SetForegroundWindow</c>/<c>PostMessage</c>/<c>DestroyWindow</c>)을 새로 부르지 않는다 —
+        /// 그 셋의 등장 줄 수는 그대로 «각 2줄»이고 <c>UserAssetImmutabilityAuditTests</c>·
+        /// <c>SystemTrayPresenceTests</c>가 그 수를 계속 센다.</para>
+        ///
+        /// <para><b>포커스를 빼앗지 않는다</b>: 풍선은 셸이 그리는 표면이고 우리 창은 전면으로 올라오지
+        /// 않는다(원칙 2). 사용자가 게임 중이면 Windows의 집중 지원(Focus Assist)이 셸 단계에서 억제한다 —
+        /// 우리가 그 판정을 흉내내지 않는다.</para>
+        ///
+        /// <para><b>아이콘이 없으면 조용히 false</b>다(옵트아웃 · 설치 실패 · 셸 트레이 부재). 호출자는
+        /// 그 경우에도 <b>로그는 반드시 남겨야 한다</b> — 알림을 못 띄운 것이 곧 사건이 없었다는 뜻이 아니다.</para>
+        ///
+        /// <para><b>실기 미확인</b>: 이 머신에 Windows가 없어 실행으로 확인하지 못했다. 구조는 <c>NIM_ADD</c> 경로와
+        /// 같은 <c>Shell_NotifyIcon</c> 한 호출이고, 문안·클램프 판정은 플랫폼 중립
+        /// <see cref="StickMate.Platform.SystemTrayPresencePolicy"/>가 하므로 EditMode가 그 절반을 잠근다.</para>
+        /// </summary>
+        internal static bool TryShowNotice(string title, string body)
+        {
+            if (!_installed || _hostWindow == IntPtr.Zero) return false;
+
+            try
+            {
+                NOTIFYICONDATA data = BuildIconData(SystemTrayPresencePolicy.NotifyIconFlagInfo);
+                data.szInfoTitle = SystemTrayPresencePolicy.ClampForFixedBuffer(
+                    title, SystemTrayPresencePolicy.MaxInfoTitleLength);
+                data.szInfo = SystemTrayPresencePolicy.ClampForFixedBuffer(
+                    body, SystemTrayPresencePolicy.MaxInfoLength);
+                data.dwInfoFlags = SystemTrayPresencePolicy.NotifyIconInfoFlagWarning;
+                return Shell_NotifyIcon(SystemTrayPresencePolicy.NotifyIconModify, ref data);
+            }
+            catch (Exception)
+            {
+                // 알림 하나 때문에 앱이 죽지 않는다. 호출자가 로그로 같은 사실을 남긴다.
+                return false;
+            }
+        }
+
         private static NOTIFYICONDATA BuildIconData(uint flags)
         {
             string tip = SystemTrayPresencePolicy.Tooltip;

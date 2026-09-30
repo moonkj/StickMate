@@ -111,6 +111,57 @@ namespace StickMate.Platform
         public const uint NotifyIconAddFlags =
             NotifyIconFlagMessage | NotifyIconFlagIcon | NotifyIconFlagTip;
 
+        /// <summary><c>NIF_INFO</c> — 풍선 도움말(<c>szInfo</c>/<c>szInfoTitle</c>/<c>dwInfoFlags</c>)을 쓰겠다.
+        /// <c>NIM_MODIFY</c>와 함께 보내면 <b>이미 서 있는 아이콘</b>에서 풍선만 한 번 띄운다 —
+        /// 아이콘을 다시 추가하지도, 지우지도 않는다.</summary>
+        public const uint NotifyIconFlagInfo = 0x00000010;
+
+        /// <summary><c>NIIF_WARNING</c> — 풍선 왼쪽 글리프. 정보(0x01)가 아니라 경고를 쓰는 이유:
+        /// 이 알림의 내용이 <b>「지금 상태가 정상이 아니다」</b>이고, 사용자가 할 일(재시작)이 있다.</summary>
+        public const uint NotifyIconInfoFlagWarning = 0x00000002;
+
+        /// <summary>Win32 <c>NOTIFYICONDATA.szInfo</c>의 요소 수(널 종단 포함).</summary>
+        public const int MaxInfoLength = 256;
+
+        /// <summary>Win32 <c>NOTIFYICONDATA.szInfoTitle</c>의 요소 수(널 종단 포함).</summary>
+        public const int MaxInfoTitleLength = 64;
+
+        // ====================================================================
+        // ★ 2026-09-30 — 창 재적합 수명 상한 도달 알림 (읽기 전용 통보, 복구 시도 아님)
+        // ====================================================================
+        //
+        // 사용자가 겪은 것: 외장 모니터를 몇 번 뺐다 꽂자 창이 화면에 맞지 않게 됐고 이유를 알 수 없었다.
+        // 원인은 정당한 안전장치(SetResolution 수명 상한 — OverlayBoundsFitPolicy.DefaultMaxSetResolutionCalls)가
+        // 소진된 것이고, 그 카운터는 프로세스 수명 동안 초기화되지 않으므로 <b>재시작 말고 복구 경로가 없다</b>.
+        //
+        // ★ 이 알림은 «상황 통보»뿐이다. 창 위치·크기·스타일·스왑체인을 한 비트도 건드리지 않는다
+        //   (직전 조사가 재적용 루프 부활을 명시적으로 기각했다 — 드라이버가 회복 중인 순간에 그것을
+        //   또 하면 새 P0를 만든다). 판정은 ShouldNoticeSetResolutionCapReached 한 곳이고 프로세스당 1회다.
+        //
+        // ★ 문안은 design-microcopy 후속 조정 대상이다. 지금 기준은 셋뿐이다:
+        //   (1) 무슨 일이 있었는지 (2) 지금 무엇이 이상한지 (3) 사용자가 할 수 있는 일.
+        //   전문 용어(SetResolution·스왑체인·상한)를 쓰지 않는다.
+
+        /// <summary>알림 제목. <see cref="MaxInfoTitleLength"/> 안이어야 한다.</summary>
+        public const string RefitCapNoticeTitle = "StickMate";
+
+        /// <summary>알림 본문. <see cref="MaxInfoLength"/> 안이어야 한다.</summary>
+        public const string RefitCapNoticeBody =
+            "화면 구성이 여러 번 바뀌어 창을 다시 맞출 수 없습니다. StickMate를 재시작하면 정상으로 돌아옵니다.";
+
+        /// <summary>
+        /// Win32 고정 길이 배열에 넣을 수 있게 자른다(널 종단 한 칸을 남긴다).
+        /// <b>마샬러는 넘치면 던진다</b> — 알림 하나 때문에 예외가 나면 안 된다.
+        /// </summary>
+        /// <param name="text">원문(null 허용).</param>
+        /// <param name="maxElements">대상 배열의 요소 수(널 종단 포함).</param>
+        public static string ClampForFixedBuffer(string text, int maxElements)
+        {
+            if (string.IsNullOrEmpty(text)) return string.Empty;
+            if (maxElements <= 1) return string.Empty;
+            return text.Length >= maxElements ? text.Substring(0, maxElements - 1) : text;
+        }
+
         /// <summary>
         /// 셸이 우리에게 보낼 콜백 메시지 ID. <c>WM_APP</c>(0x8000) 위에서 고른다 —
         /// <c>WM_USER</c> 대역은 컨트롤 클래스가 자기 용도로 쓰므로 트레이 콜백에 쓰면 안 된다.

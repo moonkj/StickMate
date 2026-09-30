@@ -259,6 +259,49 @@ namespace StickMate.Platform
             return sb.ToString();
         }
 
+        /// <summary>
+        /// ★ 2026-09-30 — 워치독 줄에 붙일 <b>렌더 계기</b> 한 토막. 순수 함수(문자열 조립만, UnityEngine 의존 0).
+        ///
+        /// <para><b>왜 필요한가.</b> 직전까지 워치독은 「<b>Update가 돌았다</b>」만 알았고
+        /// 「<b>실제로 렌더가 나갔는가</b>」·「<b>합성이 화면에 반영됐는가</b>」는 전혀 몰랐다. 그래서 외장 모니터
+        /// 분리 뒤 흰 화면 신고에서 두 가지를 <b>가를 수 없었다</b>:
+        /// <list type="number">
+        ///   <item><b>루프는 도는데 한 장도 안 나갔다</b> — 하트비트 두 줄 사이 누적 장수가 그대로다.</item>
+        ///   <item><b>렌더는 나갔는데 화면만 죽었다</b>(DWM 합성/프리멀티플라이드 워시) — 누적 장수는 늘어난다.</item>
+        /// </list>
+        /// 판정은 사람이 로그 두 줄을 빼서 한다 — 이 함수는 <b>사실만 적는다</b>.</para>
+        ///
+        /// <para>★ <b>0을 「렌더 안 나감」으로 읽지 못하게</b> 계기 장착 여부를 같은 자리에 적는다.
+        /// 누적 계수기는 <c>Camera.onPostRender</c> 구독이 걸린 뒤부터 오르므로, 구독 전의 0은
+        /// 「아직 세기 시작하지 않았다」다 — 이 저장소가 반복해 당한 <b>「죽은 프로브가 산 프로브와 똑같이 생겼다」</b>의
+        /// 또 다른 자리이고, 그래서 장수 옆에 계기 상태를 붙이는 것이 이 함수의 절반이다.</para>
+        /// </summary>
+        /// <param name="sampleFrame">메인 스레드가 이 값을 발행한 <c>Time.frameCount</c>.
+        /// <b>음수 = 아직 한 번도 발행되지 않았다</b>(그 경우 나머지 인자는 읽지 않는다).
+        /// 발행은 벽시계로 눌려 있으므로 이 값과 줄의 <c>frame=</c>이 다를 수 있다 — 그 차이가 곧 표본의 나이다.</param>
+        /// <param name="renderedFrames">실제 렌더 콜백이 온 <b>누적</b> 프레임 수.</param>
+        /// <param name="renderFrameInterval">지금 실제로 걸린 렌더 간격(1 = 매 프레임, 클수록 억제 중). 0 이하 = 모름.</param>
+        /// <param name="renderCounterArmed">누적 계수기가 실제로 장착돼 있는가.</param>
+        /// <param name="displayChangeHoldActive">모니터 토폴로지 변화로 인한 렌더 유예가 지금 활성인가.</param>
+        /// <param name="displayChangeHoldEpisode">그 유예가 이번 실행에서 몇 번째인가(0 = 아직 없음).</param>
+        public static string DescribeRenderState(long sampleFrame, int renderedFrames, int renderFrameInterval,
+            bool renderCounterArmed, bool displayChangeHoldActive, int displayChangeHoldEpisode)
+        {
+            if (sampleFrame < 0L) return "렌더=미발행";
+
+            var sb = new StringBuilder(112);
+            sb.Append("렌더누적=").Append(renderedFrames.ToString(CultureInfo.InvariantCulture)).Append('장');
+            if (!renderCounterArmed) sb.Append("(계기 미장착 — 0을 「렌더 안 나감」으로 읽지 마라)");
+            sb.Append(" / 렌더간격=");
+            if (renderFrameInterval > 0) sb.Append(renderFrameInterval.ToString(CultureInfo.InvariantCulture));
+            else sb.Append('?');
+            sb.Append(" / 화면변경유예=");
+            if (displayChangeHoldActive) sb.Append("활성#").Append(displayChangeHoldEpisode.ToString(CultureInfo.InvariantCulture));
+            else sb.Append("없음");
+            sb.Append(" / 렌더표본frame=").Append(sampleFrame.ToString(CultureInfo.InvariantCulture));
+            return sb.ToString();
+        }
+
         /// <summary>메인 스레드 단계의 사람이 읽는 이름. 정지 줄에서 "로직 안인가 밖인가"를 가른다.</summary>
         public static string DescribePhase(MainThreadPhase phase)
         {
@@ -315,6 +358,12 @@ namespace StickMate.Platform
         FitDeferred,
         /// <summary>유예의 조용한 구간이 끝나 렌더 억제를 유지한 채 재적합을 허용했다.</summary>
         RenderHoldRefitAllowed,
+        /// <summary>
+        /// ★ 2026-09-30 — 유예 해제 <b>직후</b>의 읽기 전용 사실 한 줄(창 기하·확장 스타일·DWM 클로킹·카메라 배경·
+        /// 적합 상한). <b>판정도 쓰기도 없다</b> — 적합 확정(<c>_fullScreenBoundsApplied</c>)이 서면 기하 확인이
+        /// 영구히 멈추므로, 유예가 끝난 뒤 기하가 틀어져 있어도 기록이 남지 않던 구멍을 메운다.
+        /// </summary>
+        RenderHoldReleaseProbe,
     }
 
     /// <summary>토폴로지 감시기 관측 한 번의 분류.</summary>

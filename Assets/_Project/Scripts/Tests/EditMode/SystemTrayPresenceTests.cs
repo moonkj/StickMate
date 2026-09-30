@@ -92,6 +92,140 @@ namespace StickMate.Tests.EditMode
             Assert.AreEqual("TaskbarCreated", SystemTrayPresencePolicy.ShellRestartMessageName,
                 $"{LogPrefix} 셸 재시작 브로드캐스트 이름이 틀리면 explorer가 죽었다 살아난 뒤 " +
                 "이 앱은 OS 어디에서도 보이지 않게 됩니다(작업표시줄 버튼도 Alt+Tab도 없습니다).");
+
+            // ★ 2026-09-30 — 풍선 도움말(상한 도달 통보)에 쓰는 SDK 사실.
+            Assert.AreEqual(0x10u, SystemTrayPresencePolicy.NotifyIconFlagInfo,
+                $"{LogPrefix} NIF_INFO=0x10입니다. 이 비트가 틀리면 셸이 szInfo를 <조용히 무시>하고 " +
+                "풍선이 뜨지 않습니다 — 사용자는 알림을 못 받는데 로그만 「띄웠습니다」가 됩니다.");
+            Assert.AreEqual(0x02u, SystemTrayPresencePolicy.NotifyIconInfoFlagWarning,
+                $"{LogPrefix} NIIF_WARNING=0x02입니다(NIIF_INFO=0x01과 한 칸 차이).");
+            Assert.AreEqual(256, SystemTrayPresencePolicy.MaxInfoLength,
+                $"{LogPrefix} szInfo는 요소 256개 고정 배열입니다 — 값이 크면 마샬러가 던집니다.");
+            Assert.AreEqual(64, SystemTrayPresencePolicy.MaxInfoTitleLength,
+                $"{LogPrefix} szInfoTitle은 요소 64개 고정 배열입니다.");
+        }
+
+        /// <summary>
+        /// ★ 2026-09-30 — <b>재적합 수명 상한 도달 알림</b>의 문안과 클램프.
+        ///
+        /// <para>이 알림이 왜 있는가: <c>Screen.SetResolution</c> 수명 상한은 프로세스 수명 동안
+        /// 초기화되지 않으므로, 모니터를 몇 번 착탈해 소진하면 그 세션에서 창을 다시 맞출 수 없고
+        /// <b>재시작 말고 복구 경로가 없다</b>. 그때까지 남는 것은 <c>Player.log</c> 한 줄뿐이었다.</para>
+        ///
+        /// <para><b>클램프는 「알려진 값으로 먼저 교정」한다</b>(CLAUDE.md 공통 처방) — 자르는 함수가
+        /// 아무것도 안 해도 실제 문안은 짧아서 통과하므로, 넘치는 표본으로 능력을 먼저 확인한다.</para>
+        /// </summary>
+        [Test]
+        public void A1b_상한_도달_알림_문안이_Win32_버퍼에_들어간다()
+        {
+            // (1) 교정 — 자르는 능력이 실제로 있는가(양성), 짧은 문자열은 그대로 두는가(음성).
+            Assert.AreEqual(9, SystemTrayPresencePolicy.ClampForFixedBuffer(new string('가', 20), 10).Length,
+                $"{LogPrefix} 클램프가 넘치는 문자열을 자르지 못합니다 — 아래 판정 전부가 공허합니다.");
+            Assert.AreEqual("짧다", SystemTrayPresencePolicy.ClampForFixedBuffer("짧다", 10),
+                $"{LogPrefix} 클램프가 들어가는 문자열을 건드립니다.");
+            Assert.AreEqual(string.Empty, SystemTrayPresencePolicy.ClampForFixedBuffer(null, 10),
+                $"{LogPrefix} null이 그대로 나가면 마샬러 경로가 갈립니다.");
+            Assert.AreEqual(string.Empty, SystemTrayPresencePolicy.ClampForFixedBuffer("x", 1),
+                $"{LogPrefix} 널 종단 한 칸을 남기지 않습니다.");
+
+            // (2) 실제 문안이 자르지 않아도 들어가는가 — 잘린 알림은 그 자체로 결함이다.
+            Assert.Less(SystemTrayPresencePolicy.RefitCapNoticeTitle.Length,
+                SystemTrayPresencePolicy.MaxInfoTitleLength,
+                $"{LogPrefix} 알림 제목이 버퍼를 넘습니다(잘려 나갑니다).");
+            Assert.Less(SystemTrayPresencePolicy.RefitCapNoticeBody.Length,
+                SystemTrayPresencePolicy.MaxInfoLength,
+                $"{LogPrefix} 알림 본문이 버퍼를 넘습니다(문장이 중간에서 끊깁니다).");
+            Assert.IsNotEmpty(SystemTrayPresencePolicy.RefitCapNoticeBody,
+                $"{LogPrefix} 본문이 비면 셸이 풍선을 아예 그리지 않습니다.");
+
+            // (3) 사용자가 할 수 있는 일이 문안에 있는가 — 이 알림의 존재 이유가 그것뿐이다.
+            //     (복구 경로는 재시작 하나이고, 앱 이름이 있어야 어느 앱 알림인지 안다.)
+            StringAssert.Contains("재시작", SystemTrayPresencePolicy.RefitCapNoticeBody,
+                $"{LogPrefix} 해법(재시작)이 문안에 없습니다 — 사용자는 상황만 알고 할 일을 모릅니다.");
+            StringAssert.Contains("StickMate", SystemTrayPresencePolicy.RefitCapNoticeBody,
+                $"{LogPrefix} 어느 앱의 알림인지 본문에 없습니다.");
+
+            // (4) 전문 용어를 사용자 문안에 흘리지 않는다(design-microcopy 인계 기준).
+            foreach (string jargon in new[] { "SetResolution", "스왑체인", "상한", "DWM" })
+            {
+                StringAssert.DoesNotContain(jargon, SystemTrayPresencePolicy.RefitCapNoticeBody,
+                    $"{LogPrefix} 사용자 문안에 전문 용어('{jargon}')가 들어갔습니다.");
+            }
+        }
+
+        /// <summary>
+        /// ★ 2026-09-30 — 알림 경로가 <b>«통보»의 경계를 넘지 않는가</b>(소스 텍스트로만 볼 수 있다).
+        ///
+        /// <para>직전 조사가 재적용 루프 부활을 <b>명시적으로 기각</b>했다 — 드라이버가 회복 중인 순간에
+        /// <c>SetBorderless</c> → <c>SetWindowPos</c> 4회 → 스왑체인 재생성을 또 하면 새 P0를 만든다.
+        /// 그래서 이 알림 경로에는 <b>창 상태를 되돌리는 손이 한 줄도 없어야 한다.</b></para>
+        ///
+        /// <para>부재 단언이 섞여 있으므로 <b>같은 니들이 파일 어딘가에는 실재함</b>을 대조로 붙인다
+        /// (CLAUDE.md: 부재용 니들은 썩으면 조용히 초록이 된다).</para>
+        /// </summary>
+        [Test]
+        public void A1c_상한_도달_알림은_창_상태를_되돌리지_않는다()
+        {
+            string tray = StripCommentLines(File.ReadAllText(WinTrayPath));
+            string enforcer = File.ReadAllText(WinEnforcerPath).Replace("\r\n", "\n");
+            string enforcerCode = StripCommentLines(enforcer);
+
+            // (1) 트레이 창구가 NIM_MODIFY + NIF_INFO를 쓰는가(NIM_ADD로 아이콘을 하나 더 만들면 좀비다).
+            StringAssert.Contains(nameof(SystemTrayPresencePolicy.NotifyIconModify), tray,
+                $"{LogPrefix} 알림이 NIM_MODIFY를 쓰지 않습니다 — 아이콘을 다시 추가하면 좀비가 됩니다.");
+            StringAssert.Contains(nameof(SystemTrayPresencePolicy.NotifyIconFlagInfo), tray,
+                $"{LogPrefix} 알림이 NIF_INFO를 쓰지 않습니다 — 셸이 풍선을 그리지 않습니다.");
+
+            // (2) 알림 함수 본문에 창 조작이 없는가. 양성 대조: 같은 니들이 이 파일 안에 실재한다.
+            const string noticeSignature = "internal static bool TryShowNotice(";
+            int at = tray.IndexOf(noticeSignature, StringComparison.Ordinal);
+            Assert.Greater(at, 0, $"{LogPrefix} 알림 창구를 찾지 못했습니다 — 니들이 썩었습니다.");
+            int end = tray.IndexOf("\n        private ", at, StringComparison.Ordinal);
+            string noticeBody = end > at ? tray.Substring(at, end - at) : tray.Substring(at);
+            StringAssert.Contains("Shell_NotifyIcon(", noticeBody,
+                $"{LogPrefix} 알림 본문을 잘못 잘랐습니다(양성 대조 실패) — 아래 부재 검사가 공허합니다.");
+            foreach (string selfWindowApi in new[] { "SetForegroundWindow(", "PostMessage(", "DestroyWindow(" })
+            {
+                StringAssert.Contains(selfWindowApi, tray,
+                    $"{LogPrefix} 대조 니들 '{selfWindowApi}'이 이 파일 어디에도 없습니다 — " +
+                    "부재 단언이 무의미해졌습니다(승인된 예외가 통째로 사라졌거나 니들이 썩었습니다).");
+                StringAssert.DoesNotContain(selfWindowApi, noticeBody,
+                    $"{LogPrefix} 알림 경로가 승인된 예외 API('{selfWindowApi}')를 씁니다 — 알림은 " +
+                    "포커스를 빼앗지도, 창을 정리하지도 않습니다(원칙 2).");
+            }
+
+            // (3) Enforcer의 알림 함수 본문에 창 상태 쓰기가 없는가.
+            const string enforcerSignature = "private void NoticeSetResolutionCapIfReached()";
+            int eAt = enforcerCode.IndexOf(enforcerSignature, StringComparison.Ordinal);
+            Assert.Greater(eAt, 0, $"{LogPrefix} Enforcer의 알림 함수를 찾지 못했습니다 — 니들이 썩었습니다.");
+            // 주석 줄은 위에서 <b>비워졌으므로</b> 경계는 다음 멤버 선언 하나다(주석 니들로 자르면 죽은 프로브가 된다).
+            int eEnd = enforcerCode.IndexOf("\n        private ", eAt + enforcerSignature.Length,
+                StringComparison.Ordinal);
+            string capBody = eEnd > eAt ? enforcerCode.Substring(eAt, eEnd - eAt) : enforcerCode.Substring(eAt);
+            StringAssert.Contains(nameof(SystemTrayPresencePolicy.RefitCapNoticeBody), capBody,
+                $"{LogPrefix} 알림 함수 본문을 잘못 잘랐습니다(양성 대조 실패).");
+
+            // 각 쌍: (금지 형태, 그 이름이 이 파일에 실재함을 보이는 대조 니들).
+            // 대조가 0이면 부재 단언이 조용히 초록이 된다 — CLAUDE.md의 「부재 단언」 처방.
+            foreach ((string forbidden, string contrast) in new[]
+                     {
+                         ("Screen.SetResolution(", "Screen.SetResolution"),
+                         ("MarkDirty()", "MarkDirty"),
+                         ("ReArmFullScreenFit", "ReArmFullScreenFit"),
+                         ("windowSize =", "windowSize"),
+                         ("windowPosition =", "windowPosition"),
+                         ("isTransparent =", "isTransparent"),
+                         ("Screen.fullScreen =", "Screen.fullScreen"),
+                     })
+            {
+                StringAssert.Contains(contrast, enforcerCode,
+                    $"{LogPrefix} 대조 니들 '{contrast}'이 이 파일 어디에도 없습니다 — " +
+                    "부재 단언이 무의미해졌습니다(이름이 바뀌었다면 이 검사를 함께 갱신하세요).");
+                StringAssert.DoesNotContain(forbidden, capBody,
+                    $"{LogPrefix} ★ 상한 도달 알림이 창 상태를 되돌립니다('{forbidden}'). 직전 조사가 " +
+                    "재적용 루프 부활을 명시적으로 기각했습니다 — 드라이버가 회복 중인 순간에 " +
+                    "스왑체인을 다시 만들면 새 P0가 됩니다. 이 함수는 «알리기»만 합니다.");
+            }
         }
 
         /// <summary>

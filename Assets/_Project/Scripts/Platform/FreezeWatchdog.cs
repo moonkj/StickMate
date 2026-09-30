@@ -22,6 +22,12 @@ namespace StickMate.Platform
     /// <para><b>메인이 발행하는 값</b>은 프레임 경계 탐침(<c>StallAttributionProbe.cs</c>의
     /// <c>StallFrameBeginProbe</c>/<c>StallFrameEndProbe</c>)이 원자적 쓰기로만 넣는다. 탐침이 없으면
     /// 카운터가 0에 머물고, 판정기는 1 미만에서 무장하지 않으므로 거짓 정지가 나지 않는다.</para>
+    ///
+    /// <para>★ <b>2026-09-30 — 렌더 계기가 붙었다</b>(<see cref="PublishRenderState"/>). 직전까지 이 워치독은
+    /// 「Update가 돌았다」만 알았고 「실제로 렌더가 나갔는가」는 몰랐다. 이제 모든 줄(정지·재개·하트비트)에
+    /// <b>렌더 누적 장수 · 렌더 간격 · 화면 변경 유예 활성 여부 · 그 표본의 프레임 번호</b>가 함께 실린다.
+    /// 값을 읽는 것은 여전히 <b>메인 스레드</b>이고 이 스레드는 원자적으로 읽기만 한다 — 위 「절대 하지 않는 것」은
+    /// 한 줄도 완화되지 않았다.</para>
     /// </summary>
     public static class FreezeWatchdog
     {
@@ -36,6 +42,25 @@ namespace StickMate.Platform
         private static long s_mainRealtimeBits = BitConverter.DoubleToInt64Bits(-1.0);
         private static int s_mainPhase;
         private static long s_episodeStartTicks = -1;
+
+        // ------------------------------------------------------------------------------------
+        // ★ 2026-09-30 — 렌더 계기. 메인 스레드가 발행하고 이 스레드는 <b>읽기만</b> 한다.
+        //
+        // 왜 발행 방식인가: 이 스레드는 Unity API를 부르지 않는다(클래스 문서 「절대 하지 않는 것」).
+        // 렌더 간격(OnDemandRendering.renderFrameInterval)은 네이티브 속성이라 여기서 읽으면 스레드 규칙
+        // 위반이고, 누적 장수·유예 상태도 메인 스레드가 갱신하는 값이라 같은 시점의 조합으로 받는 것이 옳다.
+        // 프레임/단계와 <b>같은 관례</b>(원자적 쓰기만, 할당 0)를 쓴다.
+        // ------------------------------------------------------------------------------------
+        private static long s_renderSampleFrame = -1;
+        private static int s_renderedFrames;
+        private static int s_renderFrameInterval;
+        private static int s_renderFlags;
+        private static int s_holdEpisode;
+
+        /// <summary>계수기가 실제로 장착돼 있는가(0장이 「미장착」인지 「진짜 0장」인지 가른다).</summary>
+        private const int RenderFlagCounterArmed = 1;
+        /// <summary>모니터 토폴로지 변화로 인한 렌더 유예가 지금 활성인가.</summary>
+        private const int RenderFlagHoldActive = 2;
 
         private static double s_pollSeconds = FreezeForensicsPolicy.WatchdogPollSeconds;
         private static double s_stallSeconds = FreezeForensicsPolicy.StallThresholdSeconds;
@@ -57,6 +82,9 @@ namespace StickMate.Platform
         /// <summary>메인 스레드가 지금까지 발행한 프레임 수(진단/테스트).</summary>
         public static long PublishedFrames => Interlocked.Read(ref s_mainFrame);
 
+        /// <summary>렌더 계기가 마지막으로 발행된 <c>Time.frameCount</c>(음수 = 미발행). 진단/테스트.</summary>
+        public static long PublishedRenderSampleFrame => Interlocked.Read(ref s_renderSampleFrame);
+
         // ------------------------------------------------------------------------------------
         // 메인 스레드 발행 — 원자적 쓰기만. 할당 0.
         // ------------------------------------------------------------------------------------
@@ -71,6 +99,30 @@ namespace StickMate.Platform
 
         /// <summary>프레임 단계 경계에서 부른다.</summary>
         public static void PublishPhase(MainThreadPhase phase) => Volatile.Write(ref s_mainPhase, (int)phase);
+
+        /// <summary>
+        /// ★ 2026-09-30 — 렌더 계기 발행(<b>메인 스레드 전용</b>). 원자적 쓰기 5회, 할당 0.
+        ///
+        /// <para>발행 주기는 호출자가 정한다 — 워치독 폴링(<see cref="FreezeForensicsPolicy.WatchdogPollSeconds"/>)보다
+        /// 잦게 발행해도 워치독이 읽지 않으므로 이득이 없고, 렌더 간격 읽기는 네이티브 호출이라 24시간 상주 앱에서는
+        /// 매 프레임 재는 것 자체가 비용이다. 그래서 <b>표본 프레임 번호를 함께</b> 실어, 줄을 읽는 사람이
+        /// 「이 렌더 값은 몇 프레임 전 표본인가」를 알 수 있게 한다(추정하지 않는다).</para>
+        ///
+        /// <para>★ <b>쓰기 순서가 계약이다</b>: 표본 프레임을 <b>맨 마지막에</b> 쓴다. 워치독이 중간에 읽으면
+        /// 표본 프레임이 아직 음수여서 「미발행」으로 보이고, 한 번이라도 양수로 보이면 나머지 네 값은 이미
+        /// 들어와 있다 — <b>찢긴 조합을 그럴듯한 값으로 읽는 일이 없다.</b></para>
+        /// </summary>
+        public static void PublishRenderState(long sampleFrame, int renderedFrames, int renderFrameInterval,
+            bool renderCounterArmed, bool displayChangeHoldActive, int displayChangeHoldEpisode)
+        {
+            Interlocked.Exchange(ref s_renderedFrames, renderedFrames);
+            Interlocked.Exchange(ref s_renderFrameInterval, renderFrameInterval);
+            Interlocked.Exchange(ref s_holdEpisode, displayChangeHoldEpisode);
+            Volatile.Write(ref s_renderFlags,
+                (renderCounterArmed ? RenderFlagCounterArmed : 0)
+                | (displayChangeHoldActive ? RenderFlagHoldActive : 0));
+            Interlocked.Exchange(ref s_renderSampleFrame, sampleFrame);
+        }
 
         /// <summary>토폴로지 변화 감지(t0). 하트비트 창과 원장의 사건 창을 함께 연다(다시 부르면 새로 시작된다).
         /// 두 창이 갈라지면 워치독 파일에는 하트비트가 있는데 메인 파일에는 적합 줄이 맥락으로만 남는 구간이 생긴다.</summary>
@@ -169,9 +221,22 @@ namespace StickMate.Platform
         {
             double mainRealtime = BitConverter.Int64BitsToDouble(Interlocked.Read(ref s_mainRealtimeBits));
             var phase = (MainThreadPhase)Volatile.Read(ref s_mainPhase);
+            // ★ 2026-09-30 — 표본 프레임을 <b>가장 먼저</b> 읽는다(발행 쪽이 마지막에 쓰는 값이다).
+            //   음수면 나머지 넷을 읽지 않고 「미발행」으로 적는다 — 0을 값으로 착각하지 않게.
+            long renderSampleFrame = Interlocked.Read(ref s_renderSampleFrame);
+            int renderFlags = Volatile.Read(ref s_renderFlags);
             string detail = what +
                 " / 단계=" + FreezeForensicsPolicy.DescribePhase(phase) +
                 " / 열린구간=" + DescribeOpenSection(StallAttribution.ProbeOpenSectionForWatchdog()) +
+                // ★ 이 토막이 「Update는 도는데 렌더가 0장」과 「렌더도 나갔는데 화면만 죽었다(DWM)」를 가른다.
+                //   하트비트 두 줄의 렌더누적을 빼면 그 사이 실제 제출 수가 나온다(판정은 사람이 한다).
+                " / " + FreezeForensicsPolicy.DescribeRenderState(
+                    renderSampleFrame,
+                    Volatile.Read(ref s_renderedFrames),
+                    Volatile.Read(ref s_renderFrameInterval),
+                    (renderFlags & RenderFlagCounterArmed) != 0,
+                    (renderFlags & RenderFlagHoldActive) != 0,
+                    Volatile.Read(ref s_holdEpisode)) +
                 " / t0+" + (episodeStart >= 0.0 ? Seconds(now - episodeStart) + "초" : "없음") +
                 " / 기록스레드=워치독";
             // ★ 워치독 채널 — 메인 채널과 파일·잠금이 따로다. 이 flush가 메인 스레드의 SetResolution 직전 기록을
@@ -217,6 +282,11 @@ namespace StickMate.Platform
             Interlocked.Exchange(ref s_mainRealtimeBits, BitConverter.DoubleToInt64Bits(-1.0));
             Volatile.Write(ref s_mainPhase, (int)MainThreadPhase.Unknown);
             Interlocked.Exchange(ref s_episodeStartTicks, -1);
+            Interlocked.Exchange(ref s_renderSampleFrame, -1);
+            Interlocked.Exchange(ref s_renderedFrames, 0);
+            Interlocked.Exchange(ref s_renderFrameInterval, 0);
+            Interlocked.Exchange(ref s_holdEpisode, 0);
+            Volatile.Write(ref s_renderFlags, 0);
         }
     }
 

@@ -4904,6 +4904,187 @@ namespace StickMate.Tests.EditMode
 
         }
 
+        // ============================================================================
+        // ★ 2026-09-30 — 동결 계측의 렌더 축 (외장 모니터 분리 → 흰 화면 신고의 관측 구멍)
+        // ============================================================================
+
+        /// <summary>
+        /// <b>워치독 줄이 「렌더가 실제로 나갔는가」를 함께 싣는가</b> — 양 플랫폼 공용이라 정식 검사다.
+        ///
+        /// <para><b>왜 필요했나.</b> 직전까지 워치독은 「Update가 돌았다」만 알았다. 그래서 흰 화면 신고에서
+        /// <b>「루프는 도는데 한 장도 안 나갔다」</b>와 <b>「렌더는 나갔는데 화면만 죽었다(DWM 합성)」</b>를
+        /// 로그로 가를 수 없었다 — 두 원인이 완전히 다른 수정으로 이어지는데 증거가 같았다.</para>
+        ///
+        /// <para>배선이 <b>중립 탐침</b>(<c>StallAttributionProbe</c>)에 있어 두 플랫폼이 <b>같은 코드</b>로
+        /// 값을 발행한다. 그래서 이 항목에는 갭이 없다 — 한쪽만 배선되는 사고를 여기서 막는다.</para>
+        ///
+        /// <para>★ 계기 장착 여부를 같은 줄에 싣는 것이 이 검사의 절반이다. 누적 0장은 「렌더 안 나감」과
+        /// 「아직 세기 시작 안 함」이 <b>똑같이 생기는</b> 값이고, 이 저장소는 그 형태로 여러 번 오진했다.</para>
+        /// </summary>
+        [Test]
+        public void 동결_워치독_줄이_렌더_계기를_함께_싣는다()
+        {
+            string watchdogPath = Path.Combine(PlatformRoot, "FreezeWatchdog.cs");
+            string probePath = Path.Combine(PlatformRoot, "StallAttributionProbe.cs");
+            string policyPath = Path.Combine(PlatformRoot, "FreezeForensicsPolicy.cs");
+
+            // (1) 중립성 — 어느 쪽도 플랫폼 분기 안에 들어가면 반대편 절반이 조용히 사라진다.
+            foreach (string neutral in new[] { watchdogPath, probePath, policyPath })
+            {
+                StringAssert.DoesNotContain("#if UNITY_STANDALONE", ReadSource(neutral),
+                    $"중립 파일({Path.GetFileName(neutral)})에 플랫폼 분기가 들어왔습니다 — " +
+                    "렌더 계기가 한쪽 플랫폼에서만 실리면 그 플랫폼 로그만 신고를 가를 수 있습니다.");
+            }
+
+            // (2) 워치독이 줄마다 그 토막을 실제로 붙이는가(니들은 nameof — 이름이 바뀌면 컴파일이 깨진다).
+            string watchdog = StripLineComments(ReadSource(watchdogPath));
+            StringAssert.Contains(
+                nameof(FreezeForensicsPolicy) + "." + nameof(FreezeForensicsPolicy.DescribeRenderState) + "(",
+                watchdog,
+                "워치독 줄에 렌더 토막이 붙지 않습니다 — 「Update는 도는데 렌더가 0장」을 다시 못 가릅니다.");
+            StringAssert.Contains(nameof(FreezeWatchdog.PublishRenderState), watchdog,
+                "발행 창구가 사라졌습니다.");
+
+            // (3) 발행은 메인 스레드(중립 탐침)가 한다 — 워치독 스레드는 Unity API를 부르지 않는다.
+            string probe = StripLineComments(ReadSource(probePath));
+            StringAssert.Contains(nameof(FreezeWatchdog) + "." + nameof(FreezeWatchdog.PublishRenderState) + "(", probe,
+                "중립 탐침이 렌더 계기를 발행하지 않습니다 — 워치독이 영원히 「미발행」만 찍습니다.");
+            foreach (string source in new[]
+                     {
+                         nameof(RenderDiagnostics) + "." + nameof(RenderDiagnostics.ActualRenderedFrameCount),
+                         nameof(RenderDiagnostics) + "." + nameof(RenderDiagnostics.IsRenderCounterArmed),
+                         nameof(FramePacing) + "." + nameof(FramePacing.EffectiveRenderFrameInterval),
+                         nameof(DisplayChangeHoldStatus) + "." + nameof(DisplayChangeHoldStatus.IsActive),
+                     })
+            {
+                StringAssert.Contains(source, probe,
+                    $"발행 값의 출처 '{source}'가 빠졌습니다 — 그 축은 로그에서 영원히 기본값으로 보입니다.");
+            }
+
+            // (4) 규칙 자체를 실행한다 — 문자열 배선만 보면 함수가 죽어도 초록이다.
+            Assert.AreEqual("렌더=미발행",
+                FreezeForensicsPolicy.DescribeRenderState(-1L, 1234, 30, true, true, 7),
+                "미발행 표본에서 값을 그럴듯하게 적으면, 0을 실측으로 착각한 판정이 나옵니다.");
+
+            string armed = FreezeForensicsPolicy.DescribeRenderState(500L, 0, 1, true, false, 0);
+            string unarmed = FreezeForensicsPolicy.DescribeRenderState(500L, 0, 1, false, false, 0);
+            Assert.AreNotEqual(armed, unarmed,
+                "계기 장착 여부가 줄에 드러나지 않습니다 — 누적 0장이 「렌더 안 나감」과 " +
+                "「아직 세기 시작 안 함」으로 똑같이 읽힙니다(이 저장소의 재발 형태).");
+
+            string held = FreezeForensicsPolicy.DescribeRenderState(500L, 10, 30, true, true, 3);
+            StringAssert.Contains("3", held, "유예 에피소드 번호가 줄에 없습니다 — 몇 번째 착탈인지 못 셉니다.");
+            Assert.AreNotEqual(held, FreezeForensicsPolicy.DescribeRenderState(500L, 10, 30, true, false, 3),
+                "유예 활성 여부가 줄에 드러나지 않습니다 — 억제로 줄어든 장수를 고장으로 오진합니다.");
+        }
+
+        /// <summary>
+        /// <b>유예 해제 직후의 읽기 전용 사후확인이 Windows에만 있다.</b>
+        ///
+        /// <para>적합 확정(<c>_fullScreenBoundsApplied</c>)이 서면 두 Enforcer 모두 기하 확인을 <b>영구히</b>
+        /// 멈춘다. 그래서 유예가 끝난 뒤 창 기하·확장 스타일·DWM 클로킹·카메라 배경이 틀어져 있어도
+        /// 기록이 남지 않는다. 이번 라운드는 <b>신고된 플랫폼(Windows)만</b> 메웠다
+        /// (CLAUDE.md: 「사용자 신고에 플랫폼 단서가 있으면 그 플랫폼을 먼저 고친다」).</para>
+        /// </summary>
+        [Test]
+        public void 미해결_유예_해제_직후_사후확인이_macOS에_없다()
+        {
+            string win = StripLineComments(ReadSource(WinEnforcerPath));
+            string mac = StripLineComments(ReadSource(MacEnforcerPath));
+
+            // ① Windows 착지 확인 — 이 항목 사유의 절반이 여기 기대고 있다.
+            StringAssert.Contains("LogPostHoldFactsOnce", win,
+                "Windows 쪽 사후확인이 사라졌습니다 — 그러면 이 항목은 «macOS만 남았다»가 아니라 " +
+                "«양쪽이 열렸다»로 다시 써야 합니다.");
+            StringAssert.Contains(nameof(FreezeForensicsEvent.RenderHoldReleaseProbe), win,
+                "사후확인이 원장에 남지 않습니다 — Player.log만 보내는 사용자에게는 그 줄이 사라집니다.");
+
+            // ② 양성 대조 — macOS 소스를 실제로 읽고 있는가(아래 부재 단언이 죽은 프로브가 아님을 못박는다).
+            StringAssert.Contains(nameof(DisplayChangeHoldDriver), mac,
+                "macOS Enforcer 소스를 읽지 못했거나 유예 배선이 사라졌습니다 — 아래 «없다» 판정이 공허합니다.");
+
+            // ③ macOS가 같은 사후확인을 갖추면 갭이 닫힌 것이다.
+            if (mac.Contains("LogPostHoldFactsOnce"))
+            {
+                Assert.Pass("macOS Enforcer도 유예 해제 직후 사후확인을 남깁니다 — 이 항목을 정식 " +
+                    "패리티 검사(«양쪽이 해제 직후 사실을 남긴다»)로 바꾸세요.");
+            }
+
+            Assert.Ignore("【미해결 · Windows 착지 / macOS 대기】 신설 2026-09-30 (dev-platform)\n" +
+                "Windows: 유예 해제 가장자리에서 읽기 전용 사실 한 줄(창 OS 실측 사각형 · GWL_EXSTYLE · " +
+                "GWL_STYLE · DWMWA_CLOAKED · 카메라 배경 RGBA · fullScreenMode · SetResolution 상한 소모)을 " +
+                "프로세스당 최대 8줄 남긴다. 쓰기 0 · 판정 0 · 재적용 0.\n" +
+                "macOS: 대응 줄이 없다. 세 조회의 macOS 대응물은 서로 다른 API다 — 창 사각형은 " +
+                "UniWindowController 캐시가 아니라 Cocoa frame 되읽기가 필요하고, DWMWA_CLOAKED에 " +
+                "대응하는 개념 자체가 없다(Space 이동·최소화는 별개 신호다).\n" +
+                "왜 이번에 안 했나: 신고가 Windows 전용이고(외장 모니터 분리 + 프리멀티플라이드 워시), " +
+                "macOS 쪽은 대응 API를 먼저 조사해야 한다 — 추측으로 배선하면 「모름」만 찍는 죽은 줄이 된다.\n" +
+                "착수 조건: 없음(독립). 해소: MacOverlayStateEnforcer의 유예 틱에 같은 가장자리 검출을 두고, " +
+                "조회 가능한 항목만 싣고 나머지는 「해당 없음」으로 적는다(모름과 해당 없음을 가른다).");
+        }
+
+        /// <summary>
+        /// <b>재적합 수명 상한 도달 알림이 Windows에만 있다.</b>
+        ///
+        /// <para>판정(<see cref="OverlayBoundsFitPolicy.ShouldNoticeSetResolutionCapReached"/>)과 문안
+        /// (<see cref="SystemTrayPresencePolicy.RefitCapNoticeBody"/>)은 <b>둘 다 플랫폼 중립</b>이다 —
+        /// 막힌 것은 <b>창구</b>뿐이고, macOS에는 트레이 대응물 자체가 없다.</para>
+        /// </summary>
+        [Test]
+        public void 미해결_재적합_상한_도달_알림이_macOS에_없다()
+        {
+            string win = StripLineComments(ReadSource(WinEnforcerPath));
+            string mac = StripLineComments(ReadSource(MacEnforcerPath));
+
+            // ① 판정과 문안이 중립에 있는가 — 여기서 갈라지면 macOS 배선이 다른 규칙을 쓰게 된다.
+            Assert.IsTrue(OverlayBoundsFitPolicy.ShouldNoticeSetResolutionCapReached(
+                    OverlayBoundsFitPolicy.DefaultMaxSetResolutionCalls,
+                    OverlayBoundsFitPolicy.DefaultMaxSetResolutionCalls, alreadyNoticed: false),
+                "상한에 닿았는데 알리지 않습니다.");
+            Assert.IsFalse(OverlayBoundsFitPolicy.ShouldNoticeSetResolutionCapReached(
+                    OverlayBoundsFitPolicy.DefaultMaxSetResolutionCalls,
+                    OverlayBoundsFitPolicy.DefaultMaxSetResolutionCalls, alreadyNoticed: true),
+                "같은 알림을 두 번 냅니다 — 24시간 상주 앱에서 반복 알림은 그 자체가 방해입니다(원칙 2).");
+            Assert.IsFalse(OverlayBoundsFitPolicy.ShouldNoticeSetResolutionCapReached(
+                    OverlayBoundsFitPolicy.DefaultMaxSetResolutionCalls - 1,
+                    OverlayBoundsFitPolicy.DefaultMaxSetResolutionCalls, alreadyNoticed: false),
+                "상한 전에 알립니다 — 정상 착탈에서 경고가 뜨면 사용자가 알림을 끕니다.");
+
+            // ② Windows 착지 확인.
+            StringAssert.Contains(nameof(OverlayBoundsFitPolicy.ShouldNoticeSetResolutionCapReached), win,
+                "Windows 쪽이 중립 판정을 부르지 않습니다 — 조건이 두 벌이 되면 한쪽만 고쳐집니다.");
+            StringAssert.Contains(nameof(SystemTrayPresencePolicy.RefitCapNoticeBody), win,
+                "문안을 중립 정본에서 가져오지 않습니다 — 문구가 두 벌로 갈라집니다.");
+
+            // ③ 양성 대조 — macOS 소스를 실제로 읽고 있는가.
+            StringAssert.Contains(nameof(OverlayBoundsFitPolicy) + ".", mac,
+                "macOS Enforcer 소스를 읽지 못했습니다 — 아래 «없다» 판정이 공허합니다.");
+
+            // ④ macOS가 알리기 시작하면 갭이 닫힌 것이다.
+            if (mac.Contains(nameof(OverlayBoundsFitPolicy.ShouldNoticeSetResolutionCapReached)))
+            {
+                Assert.Pass("macOS Enforcer도 상한 도달을 사용자에게 알립니다 — 이 항목을 정식 " +
+                    "패리티 검사로 바꾸세요.");
+            }
+
+            Assert.Ignore("【미해결 · Windows 착지 / macOS 대기】 신설 2026-09-30 (dev-platform)\n" +
+                "무엇이 문제인가: SetResolution 수명 상한(OverlayBoundsFitPolicy." +
+                "DefaultMaxSetResolutionCalls)은 프로세스 수명 동안 초기화되지 않는다 — 재무장은 시도 " +
+                "횟수만 되돌린다. 모니터를 몇 번 착탈하면 다 쓰고, 그 뒤로는 그 세션에서 창을 다시 " +
+                "맞출 수 없으며 재시작 말고 복구 경로가 없다. 상한 자체는 진동 루프를 막는 정당한 " +
+                "장치라 올리거나 없애지 않는다.\n" +
+                "Windows: 상한에 닿는 순간 트레이 풍선(NIM_MODIFY + NIF_INFO) 1회 + 경고 로그 1회. " +
+                "창 위치·크기·스타일·스왑체인은 한 비트도 건드리지 않는다(복구 시도가 아니다).\n" +
+                "macOS: 알릴 창구가 없다. 트레이 대응물(NSStatusItem)이 미구현이고 그 사유는 " +
+                "SystemTrayPresencePolicy.MacOsGapReason에 실행 가능한 형태로 있다 — AppKit " +
+                "Objective-C API라 자체 네이티브 플러그인이 필요하고, 이 프로젝트는 그것이 반복 실패해 " +
+                "전부 제거한 이력이 있다.\n" +
+                "착수 조건: macOS 상시 표시 창구(NSStatusItem 또는 대체 표면) 판정이 먼저다. " +
+                "해소: 그 창구가 생기면 이 항목의 중립 판정·중립 문안을 그대로 부른다(새 규칙 0개).\n" +
+                "차선책(창구 없이 가능): 캐릭터 말풍선으로 알리는 안은 원칙 1(행동-텍스트 싱크)과 " +
+                "부딪히므로 design-narrative 판정이 필요하다 — 이 라운드에서 하지 않았다.");
+        }
+
         private const string RenderFrameIntervalName = nameof(UnityEngine.Rendering.OnDemandRendering.renderFrameInterval);
 
         /// <summary>대입·복합 대입·후위 증감. <c>==</c>·<c>=&gt;</c>·<c>&gt;=</c>·<c>!=</c>는 아니다. 앞뒤가 식별자 문자면 다른 이름이다.</summary>

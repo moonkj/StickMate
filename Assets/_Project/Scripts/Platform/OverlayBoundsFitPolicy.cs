@@ -237,6 +237,40 @@ namespace StickMate.Platform
             return !Within(screenW, screenH, targetW, targetH, epsilonPixels);
         }
 
+        /// <summary>
+        /// ★ 2026-09-30 — <b>수명 상한에 닿았다는 사실을 사용자에게 한 번 알릴 것인가.</b>
+        ///
+        /// ============================================================================
+        /// 왜 생겼나 — 상한은 정당한데 «닿은 뒤»에 복구 경로가 없다
+        /// ============================================================================
+        /// <see cref="DefaultMaxSetResolutionCalls"/>는 진동 루프를 막는 정당한 안전장치이고
+        /// <b>여기서 올리거나 없애지 않는다</b>. 그런데 이 카운터는 <b>프로세스 수명 동안 한 번도
+        /// 초기화되지 않는다</b>(재무장은 시도 횟수만 되돌리고 이 값은 절대 되돌리지 않는다 — 두 Enforcer의
+        /// 재무장 메서드 문서가 그렇게 못박고 있다). 모니터를 한 번 빼고 다시 꽂으면 이미 2~3회를 쓰고,
+        /// 다 쓰면 <b>그 세션 안에서는 창을 다시 맞출 수 없으며 재시작 말고 복구 경로가 없다.</b>
+        ///
+        /// <para>그때까지 남는 것은 <c>Player.log</c> 한 줄(「★상한 도달」)뿐이었다 — 사용자는 로그를 읽지
+        /// 않으므로 <b>「창이 화면에 안 맞는데 이유를 모르는 상태」</b>가 된다. 그래서 상한에 닿는 순간
+        /// <b>알림 한 번</b>을 낸다. 이것은 <b>복구 시도가 아니다</b> — 창 위치·크기·스타일·스왑체인을
+        /// 한 비트도 건드리지 않고, 사용자에게 상황과 해법(재시작)만 알린다.</para>
+        ///
+        /// <para><b>왜 정책이 여기 있는가</b>: 판정을 <c>Platform/Windows/</c> 안에 두면 macOS가 물리적으로
+        /// 호출할 수 없다(<c>FullscreenSuspendPolicy</c> 사고와 같은 형태). macOS Enforcer도 같은 상한을
+        /// 같은 방식으로 쓰므로 알림 배선이 그 플랫폼으로 확장될 때 <b>이 함수를 그대로</b> 부른다.</para>
+        ///
+        /// <para><b>한 번만</b>이 계약이다(<paramref name="alreadyNoticed"/>). 24시간 상주 앱에서 같은 알림을
+        /// 반복하면 그 자체가 방해다(원칙 2).</para>
+        /// </summary>
+        /// <param name="callsSoFar">지금까지 부른 횟수(증가 <b>뒤</b>의 값).</param>
+        /// <param name="maxCalls">수명 상한. 0 이하면 상한 개념이 없는 것으로 보고 알리지 않는다.</param>
+        /// <param name="alreadyNoticed">이 프로세스에서 이미 알렸는가.</param>
+        public static bool ShouldNoticeSetResolutionCapReached(int callsSoFar, int maxCalls, bool alreadyNoticed)
+        {
+            if (alreadyNoticed) return false;
+            if (maxCalls <= 0) return false;
+            return callsSoFar >= maxCalls;
+        }
+
         private static float Abs(float v) => v < 0f ? -v : v;
     }
 
