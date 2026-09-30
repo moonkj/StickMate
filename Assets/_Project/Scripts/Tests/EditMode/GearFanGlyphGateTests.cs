@@ -31,6 +31,17 @@ namespace StickMate.Tests.EditMode
     ///         <description><see cref="FG2_획_폭은_사다리_세_단_밖의_값을_쓰지_않는다"/></description></item>
     /// </list>
     ///
+    /// <para>★★ <b>2026-09-30 추가 — FG-9 광학 중심</b>(<c>design-iconography</c> 판정).
+    /// 2026-09-29 사용자 신고(「부채꼴 원형 버튼 5개 중 <b>둘</b>이 눈에 띄게 치우쳐 있다」 = ① ④)를
+    /// 겨눈다. 그날 이 리그는 상자 중심·무게중심을 <b>찍기만</b> 했고 「무엇을 기준으로 가운데라 하는가」는
+    /// 열려 있었다. 이제 <b>외접 상자 중심</b>으로 닫혔다 — 그 자로만 신고가 갈리고 <b>무게중심으로는
+    /// 갈라지지 않는다</b>(무사한 ③이 무게중심 최악이었다). 근거 표는
+    /// <see cref="FG9_잉크_외접_상자의_중심이_심볼_상자_중심_근처에_있다"/>, 그물 증명은
+    /// <see cref="대조_중심_보정을_되돌리면_FG9가_빨개진다"/>, 그리고 그 보정이 <b>지배 형태를 밀어내는
+    /// 방식으로</b> 이뤄지지 않았음을 <see cref="중심_보정이_지배_형태를_밀어내지_않았다"/>가 잠근다
+    /// (바늘이 문자판을 벗어나거나, 꺼져 있는 잔여 시간 호가 트랙에서 벗어나는 자리 — 둘 다 다른
+    /// 게이트가 <b>하나도</b> 못 보는 형태다).</para>
+    ///
     /// <para>★ <b>2026-09-06 추가(design-art R27 권고5)</b> —
     /// <see cref="FG3화소_축소폴백과_펼침전이에서도_알파0_골이_한_화소_남는다"/>.
     /// FG-3의 «3.0pt»는 W = 2.0 · 배율 1에서 나온 <b>파생값</b>이라 축소 폴백(Ø36)과 펼침 전이에서
@@ -101,6 +112,30 @@ namespace StickMate.Tests.EditMode
         private const float InkAreaMaxPercent = 26f;
         private const float InkDiagonalMinPoints = 24f;
         private const float InkDiagonalMaxPoints = 32f;
+
+        /// <summary>★★ <b>FG-9(2026-09-30 신설 · <c>design-iconography</c>)</b> — 잉크 <b>외접 상자
+        /// 중심</b>이 심볼 상자 중심에서 벗어날 수 있는 한계, <b>W 배수</b>로.
+        ///
+        /// <para><b>0.5W = 1.0pt의 유도</b>(세 가지가 같은 값으로 모인다):</para>
+        /// <list type="number">
+        ///   <item><b>실측 두 무리의 기하평균.</b> 신고되지 않은 셋의 최악이 <b>0.50pt</b>(⑤),
+        ///         신고된 둘의 최소가 <b>1.96pt</b>(①) ⇒ <c>√(0.50×1.96) = 0.99pt</c>.
+        ///         두 무리에서 <b>비율로 가장 먼</b> 자리다.</item>
+        ///   <item><b>화소.</b> 중심이 c만큼 치우치면 버튼 테두리까지의 여백이 한쪽에서 c 좁고
+        ///         반대쪽에서 c 넓다 — 눈이 비교하는 <b>차이는 2c</b>다. 1×(Windows 100 %)에서
+        ///         1pt = 1px이므로 c ≤ 1.0pt면 차이가 <b>2px 이하</b>다. FG-3이 쓰는 것과 같은 화소 자다.</item>
+        ///   <item><b>사다리 일관성.</b> 이 파일의 형제 규칙은 전부 W 배수다(FG-2 ×0.75/1.0/1.5 ·
+        ///         FG-3 1.5W · FG-4 1.5W). 절대 pt로 적으면 <c>SymbolStroke</c>가 바뀌는 날 홀로 남는다.</item>
+        /// </list>
+        ///
+        /// <para>★ <b>목표는 문턱이 아니라 그 절반</b>이다. 고친 두 칸은 <b>0.46pt · 0.47pt</b>로
+        /// 앉혔다 — 신고 없이 출하돼 있던 ⑤(0.50pt)와 같은 자리다. 문턱까지 꽉 채우지 않는 이유는
+        /// 이 값이 <b>사람 눈의 신고</b>에서 유도된 것이어서 소수점 한 자리를 다툴 정밀도가 없기 때문이다.</para></summary>
+        private const float InkBoxCenterOffsetMaxInStrokes = 0.5f;
+
+        /// <summary>FG-9 판정 여유(pt). 래스터 격자가 1/24pt이고 상자 중심은 <b>두 칸 중심의 평균</b>이라
+        /// 참값과 최대 1칸(<c>0.0417pt</c>)까지 어긋난다.</summary>
+        private const float BoxCenterTolerance = 0.05f;
 
         // ---- 측정 오차 허용 ----
         /// <summary>두 자(尺)로 잰 획 두께가 어긋나도 되는 폭. <c>UiChrome.Capsule</c>의 캐시 키가
@@ -190,20 +225,24 @@ namespace StickMate.Tests.EditMode
               .Append(" 상자=").Append(SymbolBoxPoints.ToString("0.##"))
               .Append(" 필드 r≤").Append(SymbolFieldRadiusPoints.ToString("0.##")).Append('\n');
             sb.Append("칸                조각 Image 덩어리  최소간극  r_max  잉크%   대각")
-              .Append("    상자중심(x,y)     무게중심(x,y)\n");
+              .Append("    상자중심(x,y)  치우침   무게중심(x,y)\n");
             foreach (Glyph g in _glyphs)
             {
                 float gap = WorstCrossBlobGap(g.Cores, out _, out _);
                 sb.Append($"{g,-18}{g.PieceNames.Count,4}{g.Cores.Count,6}{BlobCount(g.Cores),7}")
                   .Append(float.IsPositiveInfinity(gap) ? "        —" : $"{gap,9:F2}")
                   .Append($"{g.RMax,8:F2}{g.InkPercent,7:F1}{g.InkDiagonal,7:F2}")
-                  // ★ 계측만 — 문턱은 design-iconography 소관(Glyph.InkCenterX 문서).
-                  .Append($"  ({g.InkCenterX,6:F2},{g.InkCenterY,6:F2})  ({g.InkCentroidX,6:F2},{g.InkCentroidY,6:F2})")
+                  .Append($"  ({g.InkCenterX,6:F2},{g.InkCenterY,6:F2}){BoxOffsetOf(g),7:F2}")
+                  .Append($"  ({g.InkCentroidX,6:F2},{g.InkCentroidY,6:F2})")
                   .Append(g.InactiveImages.Count == 0 ? "" : $"   (꺼진 조각 제외: {string.Join(", ", g.InactiveImages)})")
                   .Append('\n');
             }
-            sb.Append("★ 상자중심·무게중심은 계측만이다(게이트 없음) — 「가운데로 읽히는가」의 문턱은 ")
-              .Append("조형 소관이다. 2026-09-29 사용자 신고(부채꼴 아이콘 중앙 정렬) 실측치가 이 두 칸이다.\n");
+            sb.Append($"★ 상자중심은 <b>FG-9가 판정한다</b>(문턱 ")
+              .Append((InkBoxCenterOffsetMaxInStrokes * SymbolStroke).ToString("0.##"))
+              .Append("pt = ").Append(InkBoxCenterOffsetMaxInStrokes.ToString("0.##"))
+              .Append("W, 2026-09-30 신설). <b>무게중심에는 게이트가 없다</b> — 2026-09-29 신고 두 칸은 ")
+              .Append("상자중심으로만 갈라지고 무게중심으로는 갈라지지 않았다(그때 ③ 1.72 · ② 1.40이 ")
+              .Append("신고된 ④ 1.36보다 컸는데 둘 다 신고 밖이었다).\n");
             Debug.Log(sb.ToString());
         }
 
@@ -233,7 +272,14 @@ namespace StickMate.Tests.EditMode
                     "그림이 아닌 것이 심볼 상자에 들어왔다면 이 자(尺)가 그 조각을 세지 못합니다.");
 
                 // 꺼진 채로 태어나는 조각(잔여 시간 호 · 무장 카운트다운)은 화면에 없으므로 세지 않는다.
-                if (!child.gameObject.activeSelf) { g.InactiveImages.Add(child.name); continue; }
+                // ★ 중심만은 따로 담는다 — 그 둘은 트랙 링과 «같은 원을 재사용하는 계약»이고,
+                //   꺼져 있는 동안은 잉크 계측이 그 어긋남을 구조적으로 못 본다(Glyph.InactiveCenters).
+                if (!child.gameObject.activeSelf)
+                {
+                    g.InactiveImages.Add(child.name);
+                    g.InactiveCenters[child.name] = img.rectTransform.anchoredPosition;
+                    continue;
+                }
 
                 InkCore core = ReadCore(img);
                 g.Cores.Add(core);
@@ -578,6 +624,227 @@ namespace StickMate.Tests.EditMode
                 "(옛 확성기 나팔이 그랬습니다) 그 순간 조인이 사라집니다.");
 
             Debug.Log($"{LogPrefix} FG-5 — 여러 선분으로 realize된 조각 {chains}개, 이음매 전부 연결.");
+        }
+
+        // ================================================================================
+        // FG-9 광학 중심 — 2026-09-30 신설
+        // ================================================================================
+
+        /// <summary>잉크 외접 상자 중심이 심볼 상자 중심에서 떨어진 <b>거리</b>(pt).</summary>
+        private static float BoxOffsetOf(Glyph g)
+            => Mathf.Sqrt(g.InkCenterX * g.InkCenterX + g.InkCenterY * g.InkCenterY);
+
+        /// <summary>
+        /// ★★ <b>2026-09-29 사용자 신고를 겨눈다</b>: 「부채꼴 원형 버튼 5개 중 <b>둘</b>이 눈에 띄게
+        /// 치우쳐 있다」. 실측으로 그 둘은 <b>① 집중 모드</b>와 <b>④ 행동</b>이었다.
+        ///
+        /// <para><b>무엇을 기준으로 「가운데」라고 하는가</b> — 이 물음은 2026-09-29에 열려 있었고
+        /// (그때 이 리그는 두 값을 <b>찍기만</b> 했다) 2026-09-30에 <b>측정으로</b> 닫혔다.
+        /// 후보 셋을 신고와 맞춰 봤다:</para>
+        /// <list type="table">
+        ///   <item><term><b>외접 상자 중심</b></term>
+        ///         <description>신고 { ① 1.96 · ④ 2.33 } / 무사 { ② 0.27 · ③ 0.41 · ⑤ 0.50 } —
+        ///         <b>4배 간격으로 깨끗하게 갈린다.</b> ⇒ <b>채택</b></description></item>
+        ///   <item><term>무게중심(면적 가중)</term>
+        ///         <description>신고 { ① 1.58 · ④ 1.36 } / 무사 { ② 1.40 · ③ <b>1.72</b> · ⑤ 0.53 } —
+        ///         무사한 ③이 <b>전체 최악</b>이고 ②도 신고된 ④보다 크다. <b>갈리지 않는다</b> ⇒ 기각</description></item>
+        ///   <item><term>지배 형태(① 다이얼 · ⑤ 링)</term>
+        ///         <description>신고 { ① 0.00 } — ①의 다이얼은 <b>정확히</b> 원점에 있었는데도 신고됐다.
+        ///         단독 기준으로는 <b>거꾸로</b>다 ⇒ 기각(다만 아래 「지배 형태 보호」로 <b>보조 조건</b>으로 남는다)</description></item>
+        /// </list>
+        ///
+        /// <para><b>왜 상자가 이기는가</b>: 글리프는 Ø44 원판 <b>안</b>에 있고 잉크 대각이 26~32pt라
+        /// 눈이 비교하는 것은 잉크와 테두리 사이의 <b>여백 고리</b>다. 그 고리의 폭은 잉크의 <b>끝</b>이
+        /// 정하고(= 외접 상자) 잉크의 <b>양</b>이 정하지 않는다. ①은 아래 여백이 위보다 3.9pt,
+        /// ④는 왼쪽이 오른쪽보다 3.2pt 넓었다.</para>
+        ///
+        /// <para>★★★ <b>이 게이트는 FG-6과 결합돼 있다 — 「조금만 옮기기」가 최악이다.</b>
+        /// ①을 중심에 맞추려면 그 <b>다이얼 링</b>을 상자 원점에서 내려야 하는데, ①의 링(Ø20 ⇒ 띠
+        /// r ∈ [8,10])과 ⑤의 링(Ø22 ⇒ 띠 r ∈ [9,11])은 <b>반경 차가 정확히 1.0pt</b>다. 그래서 ①을
+        /// 1.0pt 내리면 <b>아래쪽에서 두 띠가 포개져</b> FG-6의 ⑤ 고유 잉크가 하한 아래로 떨어진다
+        /// (⑤의 62° 틈은 <b>위</b>에 있어 위쪽 겹침은 공짜인데, ①을 내리면 겹침이 틈 없는 아래로
+        /// 옮겨 온다). 실측 두 점: δ = 0에서 <b>0.480</b> · δ = 1.5에서 <b>0.440</b>(하한 0.45 미달).
+        /// 그래서 프로덕션은 금지대를 <b>빠져나온</b> δ = 2.0을 쓴다 — 자세한 표는
+        /// <c>StopwatchCenteringDropPoints</c>. <b>이 값을 줄이는 「보수적인」 수정이 오히려 FG-6을 깬다.</b></para>
+        ///
+        /// <para>★ <b>이 단언은 상한 단언이라 어기면 시끄럽게 빨개진다.</b> 다만 <b>계측 경로가 죽으면
+        /// 조용히 초록</b>이 된다(중심이 (0,0)으로 나오면 「완벽하게 가운데」다). 그래서
+        /// <see cref="대조_중심_보정을_되돌리면_FG9가_빨개진다"/>가 <b>같은 판정 함수</b>
+        /// (<see cref="InkBoxCenterOf"/>)에 신고 당시의 배치를 먹여 그물이 무는지 증명한다.</para>
+        /// </summary>
+        [Test]
+        public void FG9_잉크_외접_상자의_중심이_심볼_상자_중심_근처에_있다()
+        {
+            float limit = InkBoxCenterOffsetMaxInStrokes * SymbolStroke;
+            var offenders = new List<string>();
+            float worst = 0f; string worstWhere = "—";
+
+            foreach (Glyph g in _glyphs)
+            {
+                float offset = BoxOffsetOf(g);
+                if (offset > worst) { worst = offset; worstWhere = g.ToString(); }
+                if (offset > limit + BoxCenterTolerance)
+                {
+                    offenders.Add($"{g} = ({g.InkCenterX:F2}, {g.InkCenterY:F2}) → {offset:F2}pt" +
+                                  $"({offset / SymbolStroke:F2}W · 버튼 Ø{GearRadialMenuWidget.ButtonDiameterPoints:F0}의 " +
+                                  $"{offset / GearRadialMenuWidget.ButtonDiameterPoints * 100f:F1} %)");
+                }
+            }
+
+            Assert.IsEmpty(offenders,
+                $"{LogPrefix} 잉크 외접 상자의 중심이 문턱({limit:F2}pt = {InkBoxCenterOffsetMaxInStrokes:0.##}W)을 " +
+                $"넘은 칸이 있습니다: {string.Join(", ", offenders)}.\n" +
+                "2026-09-29 사용자 신고가 정확히 이 자(尺)에서 갈렸습니다 — 신고된 두 칸은 1.96 / 2.33pt였고 " +
+                "무사한 세 칸은 0.27 / 0.41 / 0.50pt였습니다. 치우침 c는 버튼 테두리까지의 여백을 한쪽에서 c " +
+                "좁히고 반대쪽에서 c 넓혀 <b>2c의 차이</b>를 만들고, 1×에서 1pt = 1px입니다.\n" +
+                "★ 고치는 방법은 <b>그림을 다시 그리는 것이 아니라 상자 안에서 옮기는 것</b>입니다 — " +
+                "① ④가 그렇게 고쳐졌습니다(StopwatchCenteringOffset / MegaphoneCenteringOffset). " +
+                "조각 하나만 옮기면 FG-3 간극과 용접이 함께 풀리므로 <b>글리프 전체를 강체로</b> 옮기십시오.\n" +
+                "★ 무게중심을 맞추려 하지 마십시오 — 그 자로는 신고가 갈리지 않습니다(위 클래스 문서의 표).");
+
+            var report = new StringBuilder();
+            foreach (Glyph g in _glyphs)
+            {
+                report.Append($" {g.Slot}:{BoxOffsetOf(g):F2}");
+            }
+            Debug.Log($"{LogPrefix} FG-9 — 최악 치우침 {worst:F2}pt ({worstWhere}), 문턱 {limit:F2}pt" +
+                      $"({InkBoxCenterOffsetMaxInStrokes:0.##}W), 여유 {limit - worst:F2}pt. 칸별:{report} " +
+                      $"(버튼 Ø{GearRadialMenuWidget.ButtonDiameterPoints:F0} 대비 최악 " +
+                      $"{worst / GearRadialMenuWidget.ButtonDiameterPoints * 100f:F2} %)");
+        }
+
+        /// <summary>
+        /// ★★ <b>FG-9의 그물이 실제로 무는지</b>를 2026-09-29 신고 당시의 배치로 증명한다.
+        ///
+        /// <para>돌연변이를 <b>지어내지 않는다</b> — 프로덕션의 중심 보정 오프셋을 <b>리플렉션으로
+        /// 읽어</b> 그만큼 되돌린다. 즉 이 대조는 「신고된 그 그림」을 재현한다. 오프셋 이름이 사라지면
+        /// <see cref="PrivateVectorField"/>가 <b>실패</b>하므로 대조가 대상 없이 도는 일이 없다.</para>
+        ///
+        /// <para>★ 이 대조가 없으면 FG-9는 <b>계측 경로가 죽어도 초록</b>이다 —
+        /// <see cref="InkBoxCenterOf"/>가 (0,0)을 돌려주면 다섯 칸 전부 「완벽하게 가운데」가 된다.
+        /// (같은 리그의 <c>대조_가려진_조각을_주입하면_같은_검사가_빨개진다</c>와 같은 규율.)</para>
+        /// </summary>
+        [Test]
+        public void 대조_중심_보정을_되돌리면_FG9가_빨개진다()
+        {
+            float limit = InkBoxCenterOffsetMaxInStrokes * SymbolStroke;
+
+            Vector2 stopwatchOffset = PrivateVectorField("StopwatchCenteringOffset");
+            Vector2 megaphoneOffset = PrivateVectorField("MegaphoneCenteringOffset");
+
+            Assert.Greater(stopwatchOffset.magnitude, limit,
+                $"{LogPrefix} ①의 중심 보정 오프셋이 {stopwatchOffset.magnitude:F2}pt로 문턱({limit:F2}pt) " +
+                "이하입니다 — 그만큼 되돌려도 문턱을 못 넘으므로 아래 대조가 아무것도 증명하지 못합니다.");
+            Assert.Greater(megaphoneOffset.magnitude, limit,
+                $"{LogPrefix} ④의 중심 보정 오프셋이 {megaphoneOffset.magnitude:F2}pt로 문턱({limit:F2}pt) " +
+                "이하입니다 — 같은 이유로 대조가 무효입니다.");
+
+            var reverted = new (Glyph Target, Vector2 Undo)[]
+            {
+                (Slot(GearMenuButton.FocusMode), -stopwatchOffset),
+                (Slot(GearMenuButton.Action), -megaphoneOffset),
+            };
+
+            var lines = new List<string>();
+            foreach ((Glyph glyph, Vector2 undo) in reverted)
+            {
+                // 현행은 문턱 안에 있어야 한다 — 그게 아니면 «되돌리니 빨개졌다»가 무의미하다.
+                float now = BoxOffsetOf(glyph);
+                Assert.LessOrEqual(now, limit + BoxCenterTolerance,
+                    $"{LogPrefix} {glyph}의 현행 치우침이 이미 {now:F2}pt로 문턱을 넘습니다 — " +
+                    "FG-9가 먼저 빨개져야 하고, 이 대조는 판정할 것이 없습니다.");
+
+                bool[] mask = RasterOf(Translated(glyph.Cores, undo));
+                InkBoxCenterOf(mask, out float x, out float y);
+                float before = Mathf.Sqrt(x * x + y * y);
+
+                Assert.Greater(before, limit + BoxCenterTolerance,
+                    $"{LogPrefix} {glyph}의 중심 보정을 {undo}만큼 되돌렸는데 치우침이 {before:F2}pt로 " +
+                    $"여전히 문턱({limit:F2}pt) 안입니다 — 그렇다면 FG-9의 초록은 아무것도 증명하지 못하고, " +
+                    "2026-09-30 좌표 이동의 근거도 사라집니다. 실측(신고 당시)은 ① 1.96pt · ④ 2.33pt였습니다.");
+
+                lines.Add($"{glyph}: 되돌림 ({x:F2},{y:F2})={before:F2}pt → 현행 " +
+                          $"({glyph.InkCenterX:F2},{glyph.InkCenterY:F2})={now:F2}pt");
+            }
+
+            Debug.Log($"{LogPrefix} 대조(FG-9) — 문턱 {limit:F2}pt · {string.Join(" / ", lines)}.");
+        }
+
+        /// <summary>
+        /// ★★ <b>중심 맞추기가 「지배 형태를 밀어내는 것」으로 이뤄지지 않게 한다</b>(FG-9 보조 조건).
+        ///
+        /// <para>2026-09-30 이전에는 ①의 다이얼·바늘 피벗이 <b>둘 다 좌표 원점</b>이라 두 값이
+        /// 저절로 같았다. 중심 보정이 다이얼을 원점에서 <b>1.5pt 아래로</b> 내리면서 그 일치가 처음으로
+        /// <b>지켜야 하는 계약</b>이 됐다 — 링만 옮기고 바늘 경로를 안 고치면 <b>문자판에서 벗어난 바늘</b>이
+        /// 되는데, 두께·간극·조각 수·실루엣은 전부 정상이라 다른 게이트는 <b>하나도</b> 빨개지지 않는다.</para>
+        ///
+        /// <para>★ 함께 잠그는 것 하나 더: <b>꺼진 조각의 중심</b>. 잔여 시간 호(<c>RingFill</c>)와
+        /// 무장 카운트다운(<c>QuitCountdown</c>)은 평상시 꺼져 있어 잉크 계측에서 빠지므로, 트랙 링만
+        /// 옮기면 <b>세션이 돌 때만</b> 호가 트랙에서 벗어난다. 이 리그는 그 둘의
+        /// <c>anchoredPosition</c>을 따로 담아 여기서 대조한다.</para>
+        /// </summary>
+        [Test]
+        public void 중심_보정이_지배_형태를_밀어내지_않았다()
+        {
+            // ── ① 스톱워치: 다이얼 링의 중심 == 두 바늘의 피벗.
+            Glyph stopwatch = Slot(GearMenuButton.FocusMode);
+            InkCore ring = PieceCore(stopwatch, "Ring");
+            InkCore minute = PieceCore(stopwatch, "MinuteHand");
+            InkCore hour = PieceCore(stopwatch, "HourHand");
+            Assert.IsTrue(ring.IsArc, $"{LogPrefix} 스톱워치 Ring이 링으로 되읽히지 않았습니다.");
+
+            // AddPolyline은 points[0] → points[1] 방향으로 굽고 ReadCore가 A ≈ points[0]으로 되읽는다.
+            // 두 바늘 경로의 첫 점이 피벗이다.
+            Assert.AreEqual(0f, Vector2.Distance(minute.A, hour.A), ChainTolerance,
+                $"{LogPrefix} 분침({minute.A})과 시침({hour.A})의 피벗이 다릅니다 — 한 문자판의 바늘 둘이 " +
+                "서로 다른 점에서 돌고 있습니다.");
+            Assert.AreEqual(0f, Vector2.Distance(ring.Center, minute.A), ChainTolerance,
+                $"{LogPrefix} 다이얼 링의 중심({ring.Center})과 바늘 피벗({minute.A})이 " +
+                $"{Vector2.Distance(ring.Center, minute.A):F3}pt 어긋났습니다 — <b>바늘이 문자판에서 " +
+                "벗어났습니다</b>.\n" +
+                "2026-09-30 광학 중심 보정은 ①을 <b>강체로</b> 내렸습니다(StopwatchCenteringOffset). " +
+                "링의 중심만 옮기고 StopwatchMinuteHandPath/StopwatchHourHandPath의 피벗을 그대로 두면 " +
+                "이 자리가 깨지는데, 두께·간극·조각 수·실루엣은 전부 정상이라 <b>다른 게이트는 하나도 " +
+                "빨개지지 않습니다</b>.");
+
+            // ── ⑤ 전원: 링 중심이 세로획의 축(x) 위에 있다 — 틈이 세로획을 물고 있어야 한다.
+            Glyph quit = Slot(GearMenuButton.Quit);
+            InkCore powerRing = PieceCore(quit, "PowerRing");
+            InkCore stem = PieceCore(quit, "PowerStem");
+            Assert.AreEqual(powerRing.Center.x, stem.A.x, ChainTolerance,
+                $"{LogPrefix} 전원 링의 중심 x({powerRing.Center.x:F3})가 세로획의 축 x({stem.A.x:F3})에서 " +
+                "벗어났습니다 — 트인 틈이 세로획을 정확히 물지 못합니다.");
+
+            // ── 꺼진 채 태어나는 재사용 부품이 자기 트랙과 같은 중심인가.
+            var reused = new (Glyph Owner, string Track, string Overlay)[]
+            {
+                (stopwatch, "Ring", "RingFill"),
+                (quit, "PowerRing", "QuitCountdown"),
+            };
+
+            var lines = new List<string>();
+            foreach ((Glyph glyph, string track, string overlay) in reused)
+            {
+                Assert.IsTrue(glyph.InactiveCenters.ContainsKey(overlay),
+                    $"{LogPrefix} {glyph}에 꺼진 조각 '{overlay}'이 없습니다" +
+                    $"(꺼진 조각: {(glyph.InactiveImages.Count == 0 ? "없음" : string.Join(", ", glyph.InactiveImages))}). " +
+                    "이름이 바뀌었거나 켜진 채로 태어난다면 이 대조는 <b>대상 없이</b> 돕니다.");
+
+                Vector2 trackCenter = PieceCore(glyph, track).Center;
+                Vector2 overlayCenter = glyph.InactiveCenters[overlay];
+                Assert.AreEqual(0f, Vector2.Distance(trackCenter, overlayCenter), ChainTolerance,
+                    $"{LogPrefix} {glyph}의 '{overlay}'({overlayCenter})가 트랙 '{track}'({trackCenter})와 " +
+                    $"{Vector2.Distance(trackCenter, overlayCenter):F3}pt 어긋났습니다 — " +
+                    "「같은 원을 재사용한다」는 계약이 <b>좌표에서</b> 깨졌습니다. 이 조각은 평상시 꺼져 " +
+                    "있으므로 잉크 계측·실루엣·간극이 <b>구조적으로</b> 이것을 보지 못하고, 세션이 돌거나 " +
+                    "종료가 무장된 순간에만 호가 트랙에서 벗어난 채 나타납니다.");
+
+                lines.Add($"{glyph}: {track}{trackCenter} = {overlay}{overlayCenter}");
+            }
+
+            Debug.Log($"{LogPrefix} 지배 형태 — ① 다이얼 중심{ring.Center} = 바늘 피벗{minute.A} · " +
+                      $"⑤ 링 중심 x {powerRing.Center.x:F2} = 세로획 축 x {stem.A.x:F2} · " +
+                      $"재사용 부품 {string.Join(" / ", lines)}.");
         }
 
         private static Glyph Slot(GearMenuButton button) => _glyphs[(int)button];

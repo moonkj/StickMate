@@ -214,6 +214,54 @@ namespace StickMate.Tests.EditMode
             return mask;
         }
 
+        /// <summary>★ <b>FG-9의 판정 함수 하나</b> — 마스크의 잉크 <b>외접 상자 중심</b>을 심볼 상자
+        /// 중심(원점) 기준으로 돌려준다.
+        /// <para>게이트(<c>FG9_…</c>)와 대조(<c>대조_중심_보정을_되돌리면_…</c>)가 <b>같은 이 함수</b>를
+        /// 쓴다. 따로 계산하면 둘이 갈라져도 아무도 모른다 — 이 저장소가 반복해서 당한 형태다
+        /// (거짓 통과 8번째: 「설계 거울이 프로덕션과 13건 갈라진 채 서로 다른 판정」).</para>
+        /// <para>왜 <b>외접 상자</b>이고 무게중심이 아닌지는
+        /// <see cref="GearFanGlyphGateTests.FG9_잉크_외접_상자의_중심이_심볼_상자_중심_근처에_있다"/>의
+        /// 문서에 측정으로 적었다.</para></summary>
+        internal static void InkBoxCenterOf(bool[] mask, out float centerX, out float centerY)
+        {
+            int minI = int.MaxValue, maxI = int.MinValue, minJ = int.MaxValue, maxJ = int.MinValue;
+            for (int j = 0; j < RasterN; j++)
+            {
+                int row = j * RasterN;
+                for (int i = 0; i < RasterN; i++)
+                {
+                    if (!mask[row + i]) continue;
+                    if (i < minI) minI = i;
+                    if (i > maxI) maxI = i;
+                    if (j < minJ) minJ = j;
+                    if (j > maxJ) maxJ = j;
+                }
+            }
+
+            Assert.LessOrEqual(minI, maxI,
+                $"{LogPrefix} FG-9의 자가 <b>잉크 0셀</b>인 마스크를 재고 있습니다 — 이 상태로 " +
+                "중심을 (0,0)으로 돌려주면 「완벽하게 가운데」라는 조용한 초록이 됩니다.");
+
+            centerX = (CellCenter(minI) + CellCenter(maxI)) * 0.5f;
+            centerY = (CellCenter(minJ) + CellCenter(maxJ)) * 0.5f;
+        }
+
+        /// <summary>코어 목록 전체를 <paramref name="delta"/>만큼 <b>평행이동</b>한 사본.
+        /// <para>중심 보정을 되돌리는 대조에 쓴다. 원호는 <c>StartDeg</c>/<c>EndDeg</c>가 <c>Center</c>
+        /// 기준 절대각이므로 중심만 옮기면 되고, 채운 원반은 <c>A == B</c>라 같은 갈래로 처리된다.</para></summary>
+        internal static List<InkCore> Translated(IReadOnlyList<InkCore> cores, Vector2 delta)
+        {
+            var moved = new List<InkCore>(cores.Count);
+            foreach (InkCore c in cores)
+            {
+                InkCore m = c;
+                if (m.IsArc) m.Center += delta;
+                else { m.A += delta; m.B += delta; }
+                moved.Add(m);
+            }
+            return moved;
+        }
+
         private static void MeasureRaster(Glyph g)
         {
             g.Mask = RasterOf(g.Cores);
@@ -247,9 +295,8 @@ namespace StickMate.Tests.EditMode
             g.InkDiagonal = Mathf.Sqrt(g.InkWidth * g.InkWidth + g.InkHeight * g.InkHeight);
             g.InkPercent = g.InkAreaPoints / (SymbolBoxPoints * SymbolBoxPoints) * 100f;
 
-            // ★ 계측만 — 문턱은 조형 소관이다(Glyph.InkCenterX 문서).
-            g.InkCenterX = (CellCenter(minI) + CellCenter(maxI)) * 0.5f;
-            g.InkCenterY = (CellCenter(minJ) + CellCenter(maxJ)) * 0.5f;
+            // ★ 상자 중심은 FG-9가 판정한다 — 게이트와 <b>같은 함수</b>로 낸다(위 InkBoxCenterOf).
+            InkBoxCenterOf(g.Mask, out g.InkCenterX, out g.InkCenterY);
             g.InkCentroidX = (float)(sumX / cells);
             g.InkCentroidY = (float)(sumY / cells);
 

@@ -95,19 +95,33 @@ namespace StickMate.Tests.EditMode
             public float InkAreaPoints, InkPercent, InkWidth, InkHeight, InkDiagonal, RMax;
 
             /// <summary>잉크 <b>외접 상자의 중심</b>(심볼 상자 중심 = 원점). 0이면 그 축으로 가운데다.
-            /// <para>★ <b>계측만 한다 — 게이트가 아니다</b>(2026-09-29 사용자 신고 「부채꼴 아이콘이
-            /// 중앙에 안 맞아 보인다」로 추가). 「가운데로 읽히는가」의 기준이 외접 상자인지
-            /// 무게중심인지 <b>지배 형태</b>(① 스톱워치의 링처럼)인지는 조형 판단이라
-            /// <c>design-iconography</c>/<c>design-art</c> 소관이고, 구현이 문턱을 정할 수 없다.
-            /// 그래서 이 값은 <see cref="GearFanGlyphGateTests.프로덕션_빌더를_실제로_돌려_글리프를_되읽는다"/>의
-            /// 표에 <b>매 실행 찍히기만</b> 한다 — 판정할 사람이 다시 계측 도구를 짜지 않도록.</para>
-            /// <para>★ <b>지금 통과하는 값을 얼려 단언하지 마라</b> — 이 파일의 클래스 문서가 금지한
-            /// 스냅샷 비교가 정확히 그것이다. 문턱이 정해지면 그때 <b>결함별로</b> 겨눈 테스트를 만든다.</para></summary>
+            /// <para>★★ <b>2026-09-30 — 이 값이 FG-9의 판정 대상이 됐다</b>(<c>design-iconography</c>
+            /// 판정). 2026-09-29에 이 칸이 «계측만»으로 추가될 때 남은 물음 — 「가운데로 읽히는가」의
+            /// 기준이 외접 상자인지 무게중심인지 지배 형태인지 — 는 <b>측정으로</b> 닫혔다:
+            /// 사용자가 신고한 두 칸(① ④)은 <b>외접 상자 중심에서만</b> 갈라지고 무게중심으로는
+            /// 갈라지지 않는다. 근거 수치는
+            /// <see cref="GearFanGlyphGateTests.FG9_잉크_외접_상자의_중심이_심볼_상자_중심_근처에_있다"/>.</para>
+            /// <para>★ 값은 여전히 <b>매 실행 표에 찍힌다</b> — 판정할 사람이 계측 도구를 다시 짜지
+            /// 않도록. 계산은 <see cref="GearFanGlyphGateTests.InkBoxCenterOf"/> 한 곳이다.</para></summary>
             public float InkCenterX, InkCenterY;
 
             /// <summary>잉크 <b>무게중심</b>(면적 가중). 외접 상자 중심과 갈리는 정도가
-            /// 「한쪽에 잉크가 몰렸는가」를 말한다.</summary>
+            /// 「한쪽에 잉크가 몰렸는가」를 말한다.
+            /// <para>★★ <b>이 값에는 게이트가 없다 — 없는 것이 판정이다.</b> 2026-09-29 실측에서
+            /// 무게중심 편차의 최악은 <b>③ 오늘 할일(1.72pt)</b>이고 그 다음이 <b>② 캐릭터(1.40pt)</b>인데
+            /// <b>둘 다 신고되지 않았다</b>. 신고된 ④는 1.36pt로 그 둘보다 <b>작다</b>. ⇒ 이 크기에서
+            /// 사용자의 눈이 읽는 것은 무게중심이 아니다. 여기에 문턱을 걸면 ②③에 <b>아무도 요구하지
+            /// 않은 변경</b>을 강요하게 되고, ③의 편차는 「왼쪽 표식 칸 + 오른쪽 글줄」이라는
+            /// <b>체크리스트의 정체성 그 자체</b>에서 나온다.</para></summary>
             public float InkCentroidX, InkCentroidY;
+
+            /// <summary>꺼진 채로 태어나는 조각의 <b>중심</b>(이름 → <c>anchoredPosition</c>).
+            /// <para>★ 왜 따로 담는가: 잔여 시간 호(<c>RingFill</c>)와 무장 카운트다운
+            /// (<c>QuitCountdown</c>)은 평상시 꺼져 있어 <b>잉크 계측에서 빠진다</b>. 그 둘은 각각
+            /// 트랙 링과 <b>같은 원을 재사용하는 계약</b>인데, 2026-09-30 중심 보정으로 트랙 링이
+            /// 원점을 벗어나면서 그 계약이 처음으로 <b>좌표 계약</b>이 됐다 — 한쪽만 옮기면 세션 중에만
+            /// 호가 트랙에서 벗어나고, 꺼져 있는 동안은 어떤 계측도 그것을 보지 못한다.</para></summary>
+            public readonly Dictionary<string, Vector2> InactiveCenters = new Dictionary<string, Vector2>();
 
             public override string ToString() => $"{Slot}·{Label}";
         }
@@ -363,6 +377,26 @@ namespace StickMate.Tests.EditMode
             object value = f.GetValue(null);
             Assert.IsInstanceOf<float>(value, $"{LogPrefix} 상수 '{name}'이 float이 아닙니다({value?.GetType()}).");
             return (float)value;
+        }
+
+        /// <summary>프로덕션의 <c>static readonly Vector2</c>를 <b>참조</b>로 읽는다(중심 보정
+        /// 오프셋 두 개). <see cref="PrivateFloatConst"/>와 같은 규율 — 이름이 바뀌면 <b>실패</b>한다.
+        /// <para>★ 왜 숫자를 베끼지 않는가: 이 값으로 대조가 중심 보정을 <b>되돌린다</b>. 여기에
+        /// 숫자를 적어 두면, 프로덕션 오프셋이 바뀐 날 대조는 <b>엉뚱한 자리로</b> 되돌린 뒤
+        /// 「그래도 빨개졌으니 그물은 산다」는 초록을 낸다(CLAUDE.md 「테스트에 프로덕션 상수·식별자를
+        /// 베끼지 않는다」).</para></summary>
+        private static Vector2 PrivateVectorField(string name)
+        {
+            FieldInfo f = typeof(GearRadialMenuWidget).GetField(name,
+                BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Static);
+            Assert.NotNull(f,
+                $"{LogPrefix} GearRadialMenuWidget에서 '{name}'을 찾지 못했습니다. " +
+                "중심 보정 오프셋의 이름이 바뀌었다면 읽는 쪽도 함께 갱신하십시오 — 그 전까지 " +
+                "FG-9의 대조는 <b>대상 없이</b> 돕니다.");
+            object value = f.GetValue(null);
+            Assert.IsInstanceOf<Vector2>(value,
+                $"{LogPrefix} '{name}'이 Vector2가 아닙니다({value?.GetType()}).");
+            return (Vector2)value;
         }
     }
 }

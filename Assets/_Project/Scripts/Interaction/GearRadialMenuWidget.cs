@@ -2536,27 +2536,87 @@ namespace StickMate.Interaction
         /// 같은 원을 재사용하는 계약이 여기에 걸려 있다.</summary>
         private const float StopwatchRingDiameterPoints = 20f;
 
+        /// <summary>★★ <b>2026-09-30 광학 중심 보정(FG-9 신설)</b> — ① 글리프 <b>전체</b>를 이만큼
+        /// 아래로 내린다. <b>조형은 한 점도 바뀌지 않는다</b>(순수 평행이동) — 아래 좌표는 R26 설계값
+        /// (<c>docs/DESIGN_FAN_MENU_ICONS.md</c> §6-①)을 그대로 두고 이 오프셋만 더해 쓴다.
+        ///
+        /// <para>★ 아래 숫자의 <b>좌표계</b>: 「설계 좌표」는 이 오프셋을 <b>적용하기 전</b>, 즉 다이얼
+        /// 중심이 원점인 R26 §6-① 기준이다. 「상자 좌표」는 심볼 상자 중심이 원점인 실제 배치 기준이다.
+        /// 오프셋이 그 둘을 잇는다 — 두 계를 섞어 읽으면 1.5pt가 어긋난다.</para>
+        ///
+        /// <para><b>왜</b>: 2026-09-29 사용자 신고(「부채꼴 아이콘 둘이 눈에 띄게 치우쳐 있다」)의 한쪽이
+        /// 이 칸이었다. 보정 전에는 두 좌표계가 같았고, 잉크 <b>외접 상자</b>가 y ∈ [−10.00, +13.90]이라
+        /// 상자 중심이 <b>+1.96pt</b> 위였다 — Ø44 버튼 안에서 아래 여백이 위 여백보다 <b>3.9pt</b> 넓어
+        /// 시계가 「높이 떠 있는」 것으로 읽혔다. 위로 끌어당긴 것은 <b>용두 단추</b>
+        /// (<c>CrownCap</c>, 설계 좌표로 잉크 y 10.9~13.9)다.</para>
+        ///
+        /// <para><b>왜 용두를 내리는 대신 전체를 내리는가</b>: 용두는 <b>글리프 안에서</b> 내려올 수
+        /// 없다. <c>CrownStem</c>이 화면에 남아 있으려면(FG-4 「100 % 가려진 조각 금지」) 링 잉크 위 끝
+        /// (설계 좌표 y = 10.0)과 단추 잉크 아래 끝(설계 좌표 y = 10.9) 사이에 노출 구간이 있어야 하고,
+        /// 그 구간은 <b>0.9pt</b>뿐이다. 단추를 1pt만 내려도 목이 통째로 삼켜진다. ⇒ 링과 용두의 간격은
+        /// 고정이고, 남는 레버는 <b>강체 평행이동</b> 하나다.</para>
+        ///
+        /// <para>★★★ <b>왜 2.0pt인가 — 「상자를 0으로」가 곧 답이 아니었다.</b> 이 값에는
+        /// <b>금지대</b>가 있다. ①의 다이얼(Ø20 ⇒ 띠 r ∈ [8,10])과 ⑤ 전원 링(Ø22 ⇒ 띠 r ∈ [9,11])은
+        /// <b>반경 차가 정확히 1.0pt</b>다. 그래서 ①을 δ만큼 내리면 <b>아래쪽에서 두 띠가 포개지고</b>,
+        /// FG-6의 ⑤ 고유 잉크가 무너진다. ⑤의 62° 틈이 <b>위</b>에 있어서 위쪽 겹침은 원래 공짜인데,
+        /// ①을 내리면 그 겹침이 <b>틈이 없는 아래쪽으로 옮겨 온다</b> — 그것이 이 결합의 정체다.</para>
+        /// <list type="table">
+        ///   <item><term>δ = 0</term><description>⑤ 고유 잉크 <b>0.480</b>(실측) · 상자 +1.96 ✘ FG-9</description></item>
+        ///   <item><term>δ ≈ 1.0</term><description><b>최악</b> — 반경 차와 이동량이 같아 아래쪽에서 두 띠가 정확히 포개진다</description></item>
+        ///   <item><term>δ = 1.5</term><description>⑤ 고유 잉크 <b>0.440</b>(실측) ✘ FG-6(하한 0.45) · 상자 +0.46</description></item>
+        ///   <item><term><b>δ = 2.0</b></term><description>겹침이 금지대를 <b>빠져나온다</b> · 상자 <b>−0.04</b> ✓ 둘 다</description></item>
+        /// </list>
+        /// <para>즉 쓸 수 있는 δ는 <b>≲0.35(보정 포기)</b>와 <b>≳1.9</b> 둘뿐이고, 순진한 목표값
+        /// (상자를 0으로 = 1.96 · 무게중심을 0으로 = 1.58)은 <b>둘 다 금지대 안</b>이다.
+        /// 2.0은 위쪽 가용 구간의 가장 작은 정수배이고 <b>1.0 W</b>이며, 하필 상자 중심을
+        /// <b>−0.04pt</b>로 — 다섯 칸 중 가장 정확하게 — 맞춘다. 계측 격자(1/24pt)의 <b>정확히 48칸</b>이라
+        /// 잉크 면적·대각·간극이 양자화 오차 없이 보존된다.</para>
+        /// <para>★ <b>δ를 「조금만」 줄이지 마라.</b> 1.5 → 1.0으로 내리는 것은 개선이 아니라 <b>금지대의
+        /// 정중앙</b>으로 들어가는 것이다. 이 결합은 두 상수(<see cref="StopwatchRingDiameterPoints"/> 20 ·
+        /// <see cref="PowerRingDiameterPoints"/> 22)의 차이에서 나오므로, 그 둘 중 하나를 고치는 날
+        /// 이 금지대도 같이 옮겨 간다.</para>
+        ///
+        /// <para>★ 함께 좋아지는 것: FG-1 r_max <b>13.99 → 12.01</b>(한계 14.0. 여유가 0.01pt에서
+        /// 2.0pt로 늘어 이 카탈로그에서 가장 아슬아슬했던 자리가 풀린다). 간극·획·조각·잉크 면적·대각은
+        /// 평행이동이라 <b>전부 불변</b>이다. 무게중심은 +1.58 → <b>−0.42</b>(게이트 없음).</para>
+        ///
+        /// <para>★ <b>실기 캡처 미확인</b> — 위 숫자는 오프라인 래스터다. 최종 판정은 실제 빌드
+        /// 캡처로만 한다(<c>design-capture-review</c>).</para></summary>
+        private const float StopwatchCenteringDropPoints = 2.0f;
+
+        /// <summary>① 의 모든 좌표에 더하는 광학 중심 오프셋. <b>다이얼(링)·바늘 피벗의 중심</b>이기도
+        /// 하다 — 링을 여기로 옮기면 바늘 피벗도 같이 와야 한다(그 일치는
+        /// <c>GearFanGlyphGateTests</c>의 「바늘 피벗 = 다이얼 중심」이 잠근다).</summary>
+        private static readonly Vector2 StopwatchCenteringOffset =
+            new Vector2(0f, -StopwatchCenteringDropPoints);
+
         /// <summary>용두 목의 아래 끝(pt). 링 코어는 r ∈ [8, 10]이므로 9.2는 <b>코어 한가운데</b>다 —
-        /// 즉 목이 링에 <b>용접</b>되고, 옛 「혹처럼 붙은 4pt 획 하나」가 사라진다(FG-3 ①).</summary>
+        /// 즉 목이 링에 <b>용접</b>되고, 옛 「혹처럼 붙은 4pt 획 하나」가 사라진다(FG-3 ①).
+        /// <para>좌표는 <b>다이얼 중심 기준</b>이다(<see cref="StopwatchCenteringOffset"/>을 더한다) —
+        /// 링과의 용접 관계가 평행이동에서 그대로 보존된다.</para></summary>
         private static readonly Vector2[] StopwatchCrownStemPath =
         {
-            new Vector2(0f, 9.2f),
-            new Vector2(0f, 11.6f),
+            new Vector2(0f, 9.2f) + StopwatchCenteringOffset,
+            new Vector2(0f, 11.6f) + StopwatchCenteringOffset,
         };
 
         /// <summary>분침 — 끝 y = 4.0 ⇒ 잉크 끝 5.0, 링 안쪽(8.0)까지 <b>3.00pt = 1.5W</b>(FG-3 ②).
-        /// 옛 값(길이 6.5, 끝 6.5)은 1.53pt로 링에 붙어 있었다.</summary>
+        /// 옛 값(길이 6.5, 끝 6.5)은 1.53pt로 링에 붙어 있었다.
+        /// <para>피벗은 <b>다이얼 중심</b>(<see cref="StopwatchCenteringOffset"/>)이다 — 상자 원점이
+        /// 아니다. 링만 옮기고 이 줄을 빼먹으면 바늘이 문자판에서 벗어난다.</para></summary>
         private static readonly Vector2[] StopwatchMinuteHandPath =
         {
-            Vector2.zero,
-            new Vector2(0f, 4f),
+            StopwatchCenteringOffset,
+            StopwatchCenteringOffset + new Vector2(0f, 4f),
         };
 
-        /// <summary>시침 — −30° 방향 길이 3.0(끝 잉크 r = 4.0, 링 안쪽까지 4.00pt).</summary>
+        /// <summary>시침 — −30° 방향 길이 3.0(끝 잉크 r = 4.0, 링 안쪽까지 4.00pt).
+        /// 피벗은 분침과 같은 <b>다이얼 중심</b>이다.</summary>
         private static readonly Vector2[] StopwatchHourHandPath =
         {
-            Vector2.zero,
-            Polar(-30f, 3f),
+            StopwatchCenteringOffset,
+            StopwatchCenteringOffset + Polar(-30f, 3f),
         };
 
         /// <summary>① 집중 모드 — 스톱워치(용두 목 + 용두 단추 + 링 + 바늘 2). 세션이 돌면 이 링이
@@ -2565,7 +2625,10 @@ namespace StickMate.Interaction
         /// 캡슐 하나였다 — 이 메뉴에서 가장 굵은 잉크가 가장 덜 중요한 부속에 붙어 <b>위계가 거꾸로</b>였고,
         /// 링과 0.5pt 겹쳐 목 없이 「혹」으로 읽혔다. 이제 <b>목(g0) + 단추(g2)</b> 두 조각이라
         /// 물건 안에 위계가 생긴다.</para>
-        /// <para>단추를 <b>가로</b>로 두는 것이 중요하다 — 세로로 두면 ⑤ 전원의 세로획과 같은 실루엣이 된다.</para></summary>
+        /// <para>단추를 <b>가로</b>로 두는 것이 중요하다 — 세로로 두면 ⑤ 전원의 세로획과 같은 실루엣이 된다.</para>
+        /// <para>★★ <b>2026-09-30 광학 중심 보정</b> — 위 다섯 조각이 전부
+        /// <see cref="StopwatchCenteringOffset"/>만큼 아래로 내려가 있다(조형은 불변, 순수 평행이동).
+        /// 근거와 대안 기각은 <see cref="StopwatchCenteringDropPoints"/>에 적었다.</para></summary>
         private Image[] BuildStopwatchSymbol(ButtonView view)
         {
             Transform p = view.Symbol;
@@ -2574,15 +2637,19 @@ namespace StickMate.Interaction
             UiChrome.AddPolyline(p, "CrownStem", StopwatchCrownStemPath, SymbolStroke, UiChrome.TextPrimary, parts);
             // 용두 단추 = 이 글리프의 유일한 g2. 꺾은선이 아니라 캡슐 하나라 AddStroke를 직접 쓴다.
             parts.Add(UiChrome.AddStroke(p, "CrownCap", 6f, SymbolStrokeHeavy, 0f,
-                new Vector2(0f, 12.4f), UiChrome.TextPrimary));
+                new Vector2(0f, 12.4f) + StopwatchCenteringOffset, UiChrome.TextPrimary));
 
             view.RingTrack = UiChrome.AddCircle(p, "Ring", StopwatchRingDiameterPoints,
-                UiChrome.TextPrimary, SymbolStroke);
+                UiChrome.TextPrimary, SymbolStroke, StopwatchCenteringOffset);
             parts.Add(view.RingTrack);
 
             // 잔여 시간 호 — 같은 링 위에 겹쳐 그린다(세션 중에만 켠다).
+            // ★ 중심을 <b>반드시</b> RingTrack과 같은 값으로 준다. 2026-09-30 중심 보정 전까지는 둘 다
+            //   기본값 (0,0)이라 「같은 원을 재사용한다」가 저절로 참이었고, 이제는 <b>좌표 계약</b>이다.
+            //   한쪽만 옮기면 세션 잔여 시간 호가 트랙에서 벗어나는데, 이 조각은 평상시 꺼져 있어
+            //   화면에서 눈에 띄지 않는다(GearFanGlyphGateTests가 꺼진 조각의 중심까지 대조한다).
             view.RingFill = UiChrome.AddCircle(p, "RingFill", StopwatchRingDiameterPoints,
-                UiChrome.WarmAccent, SymbolStroke);
+                UiChrome.WarmAccent, SymbolStroke, StopwatchCenteringOffset);
             view.RingFill.type = Image.Type.Filled;
             view.RingFill.fillMethod = Image.FillMethod.Radial360;
             view.RingFill.fillOrigin = (int)Image.Origin360.Top;
@@ -2757,17 +2824,46 @@ namespace StickMate.Interaction
         private const float MegaphoneWaveSpanDegrees = 38f;
         private const int MegaphoneWaveSegments = 8;       // FG-5: 원호는 8분할.
 
+        /// <summary>★★ <b>2026-09-30 광학 중심 보정(FG-9 신설)</b> — ④ 글리프 <b>전체</b>를 이만큼
+        /// 옮긴다. <b>조형은 한 점도 바뀌지 않는다</b>(순수 평행이동) — 아래 좌표는 R26 설계값
+        /// (<c>docs/DESIGN_FAN_MENU_ICONS.md</c> §6-④)을 그대로 두고 이 오프셋만 더해 쓴다.
+        ///
+        /// <para><b>왜</b>: 2026-09-29 사용자 신고의 다른 한쪽이 이 칸이고, <b>다섯 중 가장 심했다</b>.
+        /// 잉크 외접 상자가 x ∈ [−9.40, +12.60] · y ∈ [−10.20, +6.80]이라 상자 중심이
+        /// <b>(+1.58, −1.71)</b> = 원점에서 <b>2.33pt</b>(버튼 Ø44의 <b>5.3 %</b>) 떨어져 있었다 —
+        /// 오른쪽·아래로 밀린 것으로 읽혔다. 오른쪽으로 끈 것은 <b>소리선 호</b>(<c>Wave</c>, 잉크
+        /// x ≤ +12.6)이고 아래로 끈 것은 <b>손잡이</b>(<c>Handle</c>, 잉크 y ≥ −10.2)다.</para>
+        ///
+        /// <para><b>왜 호·손잡이를 줄이지 않고 전체를 옮기는가</b>: 둘 다 <b>산술로 유도된 값</b>이다.
+        /// 호의 반경 6.6은 나팔 입에서 FG-3의 3.0pt를 띄우는 하한이고(<c>6.6·cos38° − 2.0 = 3.20</c>),
+        /// 손잡이의 시작점은 나팔 아랫변 <b>위</b>라서 용접이 성립한다. 어느 쪽을 줄여도 R26이 8안을
+        /// 렌더해 확정한 간극·판독성 유도가 다시 풀린다. ⇒ <b>그림은 맞고 상자 안 위치가 틀렸다</b>.</para>
+        ///
+        /// <para><b>왜 (−1.5, +1.25)인가</b>: 문턱(FG-9 = 0.5W = 1.0pt)을 <b>2.1배 여유</b>로 통과하면서
+        /// <b>무게중심도 함께</b> 당기는 자리다 — 이동 후 상자 중심 <b>(+0.08, −0.46)</b> = 0.47pt ·
+        /// 무게중심 <b>(−0.29, +0.63)</b> = 0.69pt(이동 전 2.33 / 1.36). ★ 두 자 <b>모두</b> 버튼 Ø44의
+        /// 2 % 안(1.06 % · 1.58 %)에 든다. 두 값 다 계측 격자(1/24pt)의 정수배(36칸 · 30칸)라
+        /// 잉크 면적·대각·간극이 양자화 오차 없이 보존된다.</para>
+        ///
+        /// <para>★ 함께 좋아지는 것: FG-1 r_max <b>12.60 → 11.62</b>(한계 14.0). 간극·획·조각·닫힘·
+        /// 용접은 평행이동이라 <b>전부 불변</b>이다.</para>
+        ///
+        /// <para>★ <b>실기 캡처 미확인</b> — 오프라인 래스터다. 최종 판정은 실제 빌드 캡처로만 한다.</para></summary>
+        private static readonly Vector2 MegaphoneCenteringOffset = new Vector2(-1.5f, 1.25f);
+
         /// <summary>나팔 — <b>닫힌 꺾은선 한 조각</b>(옛 낱획 4개). 옛 형태의 병은 「조각 넷이 서로
         /// 0.43pt로 붙어 있다」였고 그 0.43pt는 이 카탈로그 <b>전체 최악</b>이었다(램프까지 세면 골이
         /// −0.57px = 두 획이 1×에서 <b>한 줄로 합쳐진다</b>). 원래 한 물건이므로 한 조각으로 그리면
-        /// 간극 규칙 자체가 사라진다(FG-3 ①「겹쳐서 한 덩어리」).</summary>
+        /// 간극 규칙 자체가 사라진다(FG-3 ①「겹쳐서 한 덩어리」).
+        /// <para>좌표는 <b>R26 설계값 + <see cref="MegaphoneCenteringOffset"/></b>다. 세 조각이 같은
+        /// 오프셋을 쓰는 것이 용접의 전제이므로 한 조각만 고치지 마라.</para></summary>
         private static readonly Vector2[] MegaphoneHornPath =
         {
-            new Vector2(-8.4f, 2.6f),
-            new Vector2(-8.4f, -2.6f),
-            new Vector2(MegaphoneMouthX, -5.8f),
-            new Vector2(MegaphoneMouthX, 5.8f),
-            new Vector2(-8.4f, 2.6f),
+            new Vector2(-8.4f, 2.6f) + MegaphoneCenteringOffset,
+            new Vector2(-8.4f, -2.6f) + MegaphoneCenteringOffset,
+            new Vector2(MegaphoneMouthX, -5.8f) + MegaphoneCenteringOffset,
+            new Vector2(MegaphoneMouthX, 5.8f) + MegaphoneCenteringOffset,
+            new Vector2(-8.4f, 2.6f) + MegaphoneCenteringOffset,
         };
 
         /// <summary>손잡이 — 시작점 (−1.0, −4.37)은 나팔 <b>아랫변 위</b>다(x = −1.0에서 그 변의
@@ -2777,8 +2873,8 @@ namespace StickMate.Interaction
         /// 않는 방법은 「가늘게」가 아니라 <b>「용접된 g0 한 획」</b>이다.</para></summary>
         private static readonly Vector2[] MegaphoneHandlePath =
         {
-            new Vector2(-1f, -4.37f),
-            new Vector2(-2.2f, -9.2f),
+            new Vector2(-1f, -4.37f) + MegaphoneCenteringOffset,
+            new Vector2(-2.2f, -9.2f) + MegaphoneCenteringOffset,
         };
 
         /// <summary>소리선 — 호 <b>1개</b>(옛 2개). 두 호가 서로 3.0pt를 지키려면 반경 차가
@@ -2787,7 +2883,7 @@ namespace StickMate.Interaction
         /// 필드 상한 15pt를 2.6pt 넘는다. 옛 코드가 소리선 2개를 우겨넣느라 입과 1.50pt(0.75W)로
         /// 붙어 있었다.</summary>
         private static readonly Vector2[] MegaphoneWavePath = BuildArcPath(
-            new Vector2(MegaphoneMouthX, 0f), MegaphoneWaveRadius,
+            new Vector2(MegaphoneMouthX, 0f) + MegaphoneCenteringOffset, MegaphoneWaveRadius,
             -MegaphoneWaveSpanDegrees, MegaphoneWaveSpanDegrees, MegaphoneWaveSegments);
 
         /// <summary>
@@ -2798,6 +2894,10 @@ namespace StickMate.Interaction
         /// 손잡이가 있는 확성기는 스피커(수동적 알림)가 아니라 <b>들고 외치는 도구</b>다.
         ///
         /// <para>배지도 상태 반영도 없다(32-4 ② — 내비게이션 표지는 영원히 같은 그림이다).</para>
+        ///
+        /// <para>★★ <b>2026-09-30 광학 중심 보정</b> — 세 조각이 전부
+        /// <see cref="MegaphoneCenteringOffset"/>만큼 옮겨져 있다(조형은 불변, 순수 평행이동).
+        /// 근거와 대안 기각은 그 필드 문서에 적었다.</para>
         /// </summary>
         private static Image[] BuildMegaphoneSymbol(Transform p)
         {

@@ -272,6 +272,26 @@ namespace StickMate.Tests.EditMode
         /// <para>이 테스트는 그 한 쌍만 <b>이름을 불러</b> 잠그고, 뒤이어 <b>양성 대조</b>로
         /// Ø20으로 되돌린 돌연변이를 <b>같은 판정 함수</b>에 먹여 그때 실제로 빨개지는지 보인다 —
         /// 「지금 통과한다」가 아니라 「되돌리면 잡힌다」를 증명한다.</para>
+        ///
+        /// <para>★★★ <b>2026-09-30 추가 — 이 쌍은 ⑤의 지름만으로 정해지지 않는다. ①의 「자리」도
+        /// 함께 정한다.</b> 두 링의 <b>반경 차가 정확히 1.0pt</b>(Ø20 vs Ø22)여서, ①을 상자 안에서
+        /// <b>1.0pt쯤 내리면</b> 아래쪽에서 두 띠가 포개져 이 단언이 깨진다. ⑤의 62° 틈이 <b>위</b>에
+        /// 있는 것이 이 비대칭의 원인이다 — 위쪽 겹침은 틈이 먹어 공짜인데, ①을 내리면 그 겹침이
+        /// <b>틈 없는 아래쪽</b>으로 옮겨 온다.</para>
+        /// <para>실측 세 점(①의 아래 이동량 δ에 대한 ⑤ 고유 잉크): δ = 0 → <b>0.480</b> ·
+        /// δ = 1.5 → <b>0.440</b>(하한 미달, 2026-09-30에 실제로 이 테스트가 빨개졌다) ·
+        /// δ = 2.0 → 금지대를 빠져나와 <b>0.501로 회복</b>(옛 0.480보다 오히려 낫다). FG-9(광학 중심)가
+        /// ①을 내려야 하므로 프로덕션은 δ = 2.0을 쓴다(<c>StopwatchCenteringDropPoints</c>).
+        /// ⇒ <b>①의 좌표를 만지는 라운드는 이 테스트를 함께 본다.</b> 그리고 두 지름 중 하나를 고치면
+        /// 금지대의 위치도 같이 옮겨 간다.</para>
+        ///
+        /// <para>★★★ <b>그 대가로 구멍 하나가 열렸다 — 아래 대조 「팔 B」가 그 자리다.</b>
+        /// 두 링이 2pt 떨어진 지금은 ⑤의 지름을 <b>Ø20으로 되돌려도 FG-6이 잡지 못한다</b>
+        /// (2026-09-30 실측 IoU 0.266 · 고유 잉크 0.518 = 통과). 틈 하한도 Ø20·62°에서 3.12pt로
+        /// 통과하고 FG-8은 Ø20이 <b>더 좋다</b>(대각 28.96 vs 31.77). ⇒ <c>PowerRingDiameterPoints</c> =
+        /// 22는 <b>지금 어떤 게이트도 지키지 않는 값</b>이다. 그 상수는 원래 <b>「★ 리더 판정」</b>
+        /// 항목(<c>DESIGN_FAN_MENU_ICONS</c> §6-⑤)이므로 이 라운드는 값을 바꾸지 않고 <b>숫자만
+        /// 로그로 올린다</b>. 능력 증명(그물이 삼켜짐을 무는가)은 <b>동심 세계</b>를 재현하는 팔 A가 맡는다.</para>
         /// </summary>
         [Test]
         public void 전원_기호는_스톱워치_잉크에_삼켜지지_않는다()
@@ -323,17 +343,45 @@ namespace StickMate.Tests.EditMode
             }
 
             bool[] mutantMask = RasterOf(mutant);
-            Silhouette(stopwatch.Mask, mutantMask, out float mutantIou, out float mutantUnique);
 
-            Assert.IsTrue(mutantIou > SilhouetteIouMax || mutantUnique < UniqueInkMin,
-                $"{LogPrefix} Ø{retiredDiameterPoints:F0}으로 되돌린 돌연변이가 FG-6을 <b>통과</b>합니다" +
-                $"(IoU {mutantIou:F3} · 고유 잉크 {mutantUnique:F3}) — 그렇다면 위 초록은 아무것도 " +
-                "증명하지 못하고, Ø20→22라는 처방의 근거도 사라집니다. 실측(문서 §6-⑤)은 " +
-                "Ø20에서 IoU 0.702 · 고유 잉크 0.056이었습니다.");
+            // ── 대조 팔 A — <b>동심 세계</b>에서 Ø20이 잡히는가(그물의 능력 증명).
+            //    ★★ 2026-09-30에 이 대조가 «두 변수»가 됐다. 원래는 ⑤의 지름 하나만 되돌려도
+            //    빨개졌는데, 그때 ①의 다이얼이 <b>상자 원점에 동심</b>이었기 때문이다. FG-9 광학 중심
+            //    보정이 ①을 2.0pt 내린 뒤로는 <b>동심이라는 전제 자체가 사라졌다</b> — 두 링이 2pt
+            //    떨어져 있으면 ⑤의 지름을 무엇으로 고르든 삼켜지지 않는다.
+            //    그래서 능력 증명은 «두 변수를 <b>둘 다</b> 옛 세계로» 되돌려서 한다. ①의 되돌림 양은
+            //    프로덕션 오프셋을 리플렉션으로 읽어 쓴다(숫자를 베끼지 않는다).
+            Vector2 stopwatchOffset = PrivateVectorField("StopwatchCenteringOffset");
+            Assert.Greater(stopwatchOffset.magnitude, 0f,
+                $"{LogPrefix} ①의 중심 보정 오프셋이 0입니다 — 아래 «동심으로 되돌림»이 아무것도 " +
+                "되돌리지 않고, 이 대조는 무효입니다.");
 
-            Debug.Log($"{LogPrefix} ①↔⑤ — 현행 Ø{PowerRingDiameterPoints:F0}: IoU {iou:F3} · 고유 잉크 {unique:F3} " +
-                      $"→ 되돌림 Ø{retiredDiameterPoints:F0}: IoU {mutantIou:F3} · 고유 잉크 {mutantUnique:F3} " +
-                      $"(상한 {SilhouetteIouMax} · 하한 {UniqueInkMin}).");
+            bool[] concentricStopwatch = RasterOf(Translated(stopwatch.Cores, -stopwatchOffset));
+            Silhouette(concentricStopwatch, mutantMask, out float oldIou, out float oldUnique);
+
+            Assert.IsTrue(oldIou > SilhouetteIouMax || oldUnique < UniqueInkMin,
+                $"{LogPrefix} 옛 세계(⑤ Ø{retiredDiameterPoints:F0} + ① 동심)를 재현했는데 FG-6을 " +
+                $"<b>통과</b>합니다(IoU {oldIou:F3} · 고유 잉크 {oldUnique:F3}) — 그렇다면 이 판정 함수는 " +
+                "«삼켜짐»을 잡지 못하는 것이고 위 초록은 아무것도 증명하지 못합니다. 실측(문서 §6-⑤)은 " +
+                "그 세계에서 IoU 0.702 · 고유 잉크 0.056이었습니다.");
+
+            // ── 대조 팔 B — <b>현행 세계</b>에서 Ø20만 되돌리면 어떻게 되는가.
+            //    ★★★ 여기에는 <b>단언을 두지 않는다</b>. 2026-09-30 실측이 «잡히지 않는다»이기 때문이고
+            //    (IoU 0.266 · 고유 잉크 0.518 = FG-6 통과), 그것이 곧 이 라운드가 연 <b>구멍</b>이다:
+            //    ①이 중심에 맞은 뒤로 ⑤의 Ø22는 <b>FG-6이 더는 요구하지 않는다</b>. Ø20으로 되돌려도
+            //    FG-6·FG-8·틈 하한(Ø20·62°에서 3.12pt ≥ 3.0) 어느 것도 빨개지지 않는다.
+            //    ⇒ PowerRingDiameterPoints = 22는 지금 <b>어떤 게이트도 지키지 않는 값</b>이다.
+            //      이 상수는 원래 «★ 리더 판정» 항목(DESIGN_FAN_MENU_ICONS §6-⑤)이므로 여기서 값을
+            //      바꾸지도, 「통과함」을 얼려 단언하지도 않는다 — <b>숫자를 로그로 올린다</b>.
+            //      다음에 이 자리를 보는 라운드는 아래 로그의 팔 B 숫자를 먼저 읽어라.
+            Silhouette(stopwatch.Mask, mutantMask, out float nowIou, out float nowUnique);
+
+            Debug.Log($"{LogPrefix} ①↔⑤ — 현행(⑤ Ø{PowerRingDiameterPoints:F0} · ① 보정 후): " +
+                      $"IoU {iou:F3} · 고유 잉크 {unique:F3} " +
+                      $"/ 팔A 옛 세계(⑤ Ø{retiredDiameterPoints:F0} + ① 동심): IoU {oldIou:F3} · 고유 잉크 {oldUnique:F3} " +
+                      $"/ 팔B 현행 세계에서 ⑤만 Ø{retiredDiameterPoints:F0}: IoU {nowIou:F3} · 고유 잉크 {nowUnique:F3} " +
+                      $"(상한 {SilhouetteIouMax} · 하한 {UniqueInkMin}). " +
+                      "★ 팔B가 하한을 넘으면 «Ø22는 FG-6이 요구하지 않는다»는 뜻이다 — 리더 판정 항목.");
         }
 
         /// <summary>
