@@ -494,7 +494,25 @@ namespace StickMate.Platform.Windows
             if (!topmostSkipped) _controller.isTopmost = DesiredTopmost;
             _controller.isClickThrough = DesiredClickThrough;
 
+            // ★ 2026-09-30 — 이 줄에 <b>벽시계</b>를 싣는다(진단 전용, 동작 변경 0줄).
+            //
+            //   Player.log에는 줄마다 시각이 없다. 그래서 "재적용 5회 = 0.5초 x 5 = <b>2.5초 구간</b>"이
+            //   <b>상수에서 유도된 값</b>인데도 <b>측정값처럼</b> 인용되는 사고가 났다. 사용자 실측은
+            //   「8초정도 흰화면깜박이 한 5번정도함」(2026-09-30 Windows 신고)으로 <b>3배 이상</b> 길다.
+            //
+            //   두 값이 갈리는 이유는 결함이 아니라 이 루프의 형태다: <see cref="ReapplyIntervalSeconds"/>는
+            //   <b>주기가 아니라 하한</b>이다(바로 위 `_timer += dt; if (_timer < ReapplyIntervalSeconds) return;`).
+            //   이 틱이 SetBorderless를 부르면 그 한 번이 SetWindowPos 4회 = 클라이언트 영역 변경 4회 =
+            //   스왑체인/DWM 리디렉션 표면 재생성 4회이고(등식 자체를 OverlayTransparencyReapplyTests가
+            //   "재적용 1회 = SetBorderless 1회 = SetWindowPos 4회"로 잠근다), 실기 실측이 재생성 1회당
+            //   268ms(OverlayStateReapplyPolicy 클래스 문서의 [프레임스파이크] 인용) ~ 최대 프레임 407ms다.
+            //   즉 한 회차가 1초를 넘겨 <b>0.5초 하한을 삼킨다</b> — 그래서 실제 간격은 상한이 아니라
+            //   이 틱이 한 일의 정지 시간이 지배한다.
+            //
+            //   ⇒ 앞으로 간격을 <b>상수에서 유도하지 말고</b> 이 줄의 「경과」 차이로 <b>잰다</b>.
+            //   (읽는 법 설명은 로그 줄에 싣지 않는다 — StallAttribution 클래스 문서의 2026-09-02 판정과 같은 규칙.)
             Debug.Log($"[WindowsOverlayStateEnforcer] 재적용 {_appliedCount}/{ReapplyAttempts} " +
+                $"(경과 {_elapsed:F2}초) " +
                 $"(isTopmost 재적용={(topmostSkipped ? "생략(이미 목표값)" : "실행")}) — " +
                 $"투명 재적용: {OverlayStateReapplyPolicy.Describe(transparency)} " +
                 $"[OS 실측 GWL_STYLE=0x{osStyle:X}(읽기={(styleReadOk ? "성공" : "실패")}, " +
