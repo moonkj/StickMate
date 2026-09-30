@@ -112,6 +112,37 @@ namespace StickMate.Platform.Windows
         private int _fullScreenApplyAttempts;
         private float _fullScreenTimer;
 
+        /// <summary>
+        /// ★★★ 2026-09-30 — <b>이번 재적합 에피소드가 «우리 자신의 SetBorderless»가 옮긴 창을
+        /// 되돌리려고 무장된 것인가.</b>
+        ///
+        /// <para>사용자가 보낸 Windows <c>Player.log</c>로 확정된 핑퐁의 표시다(기구 전문은
+        /// <see cref="OverlayBoundsFitPolicy.ShouldSetResolutionForFitAttempt"/> 문서). 참인 동안
+        /// 그 에피소드는 <b>「해상도 불일치」 사유로는 <c>Screen.SetResolution</c>을 부르지 않는다</b> —
+        /// 그 호출이 창 스타일을 되살려(<c>0x94000000</c> → <c>0x14CA0000</c>) 다음 재적용 틱을 다시
+        /// 비싼 경로로 떨어뜨리는 고리이기 때문이다. <b>창 모드 강등 복구는 그대로 실행된다.</b></para>
+        ///
+        /// <para>세우는 곳은 <see cref="ReArmFullScreenFitAfterNativeWindowMove"/> 한 곳뿐이고,
+        /// 내리는 곳은 <b>외부 사건으로 무장되는 모든 경로</b>(디스플레이 구성 변경 재무장 ·
+        /// <see cref="ReArmFullScreenFitForNewTarget"/>)와 <b>적합 확정</b>이다 — 그래야 진짜 해상도
+        /// 변경이 자기유발 억제를 물려받지 않는다.</para>
+        /// </summary>
+        private bool _selfInducedRefit;
+
+        /// <summary>적합이 확정된 시점의 목표 모니터 사각형. <see cref="_hasLatchedTargetRect"/>가 참일
+        /// 때만 의미가 있다. 네이티브가 창을 옮겼는지를 <b>부작용 없이</b>(모니터 재선택·로그 없이)
+        /// 판정하기 위한 기준값이며, 판정 자체는 <see cref="OverlayBoundsFitPolicy.Within"/>이 한다.</summary>
+        private Rect _latchedTargetRect;
+        private bool _hasLatchedTargetRect;
+
+        /// <summary>진단 계수 — 자기유발 재적합으로 무장된 에피소드 수 / 「이미 목표 안이라」 무장을
+        /// 생략한 횟수 / 자기유발 표시 때문에 <c>Screen.SetResolution</c>을 참았던 횟수.
+        /// <b>실기 로그에서 이 셋이 0이면 위 가설이 그 환경에서는 성립하지 않았다는 뜻이다</b>
+        /// (죽은 프로브를 산 프로브로 착각하지 않기 위한 계기).</summary>
+        private int _selfInducedRefitEpisodes;
+        private int _selfInducedReArmSkips;
+        private int _selfInducedSetResolutionSkips;
+
         /// <summary>스왑체인 재생성을 유발하는 두 호출의 <b>프로세스 누적</b> 횟수. 로그에 항상 함께
         /// 찍어 [프레임스파이크]의 "백버퍼가 바뀌었다" 줄과 시각 대조가 가능하게 한다.</summary>
         private int _setResolutionCalls;
@@ -588,7 +619,16 @@ namespace StickMate.Platform.Windows
         /// 커지고 Screen.width/height는 옛 값이라 ScreenCoordinateConverter의 y 반전이 통째로 틀어진다.
         ///
         /// 성공하면 <see cref="_fullScreenBoundsApplied"/>가 서고 루프가 멈춘다. 그 플래그를 다시
-        /// 내리는 <b>유일한</b> 경로가 <see cref="TickDisplayTopology"/>다(실행 중 해상도/모니터 변경).
+        /// 내리는 경로는 <b>셋</b>이다(예전 주석은 <see cref="TickDisplayTopology"/> 하나라고 적고
+        /// 있었는데, 그 뒤에 둘이 더 생겼다 — 2026-09-30 정정):
+        /// <list type="bullet">
+        ///   <item><see cref="TickDisplayTopology"/> — 실행 중 해상도/모니터 구성 변경(외부 사건).</item>
+        ///   <item><see cref="ReArmFullScreenFitForNewTarget"/> — 표시 모니터 선택 변경(외부 사건).</item>
+        ///   <item><see cref="ReArmFullScreenFitAfterNativeWindowMove"/> — 네이티브 <c>SetBorderless</c>가
+        ///         창을 옮긴 뒤(<b>우리 자신의 부작용</b>). 이 경로만 <see cref="_selfInducedRefit"/>를 세우고,
+        ///         그 에피소드는 「해상도 불일치」 사유로 <c>Screen.SetResolution</c>을 부르지 않는다
+        ///         (핑퐁 차단 — 기구는 <see cref="OverlayBoundsFitPolicy.ShouldSetResolutionForFitAttempt"/> 문서).</item>
+        /// </list>
         /// </summary>
         private void TickFullScreenBounds()
         {
@@ -693,9 +733,25 @@ namespace StickMate.Platform.Windows
                 Screen.width, Screen.height, targetPixelW, targetPixelH, BoundsEpsilonPixels);
             bool modeMismatch = Screen.fullScreenMode != FullScreenMode.Windowed;
             bool resolutionCapped = _setResolutionCalls >= MaxSetResolutionCalls;
-            bool calledSetResolution = OverlayBoundsFitPolicy.ShouldSetResolution(
+            // ★★★ 2026-09-30 — 핑퐁 차단. 실기 Player.log로 확정된 고리를 여기서 끊는다:
+            //   전체화면 확장 시도 -> Screen.SetResolution -> 창 스타일 부활(GWL_STYLE
+            //   0x94000000 -> 0x14CA0000) -> 재적용이 비싼 경로(SetBorderless, SetWindowPos 4회)
+            //   -> 그 호출이 창을 옮김 -> 재무장 -> 다시 이 함수.
+            //   자기유발 에피소드에서는 「해상도 불일치」 사유만 억제하고 <b>창 모드 강등 복구는 그대로</b>
+            //   실행한다(그쪽을 막으면 2026-09-01 "창 뒤로 넘어감"이 재발한다). 수명 상한은 손대지 않는다 —
+            //   판정의 첫 관문이 여전히 ShouldSetResolution이고 그 안에 상한이 있다.
+            //   기구 전문·정직한 한계는 OverlayBoundsFitPolicy.ShouldSetResolutionForFitAttempt 문서.
+            bool calledSetResolution = OverlayBoundsFitPolicy.ShouldSetResolutionForFitAttempt(
                 Screen.width, Screen.height, targetPixelW, targetPixelH, !modeMismatch,
-                BoundsEpsilonPixels, _setResolutionCalls, MaxSetResolutionCalls);
+                BoundsEpsilonPixels, _setResolutionCalls, MaxSetResolutionCalls, _selfInducedRefit);
+            // ★ 계기(진단 전용) — 「자기유발 표시 때문에 참았다」를 그 회차에 정확히 센다. 기준식을
+            //   재-유도하지 않고 <b>같은 순수 규칙의 자기유발=false 판정</b>과 대조하므로, 규칙이
+            //   바뀌어도 이 계기가 거짓말을 하지 않는다(로그가 규칙과 갈라진 사고가 이 파일에 이미 있었다).
+            bool setResolutionSuppressedBySelfInduced = _selfInducedRefit && !calledSetResolution
+                && OverlayBoundsFitPolicy.ShouldSetResolutionForFitAttempt(
+                    Screen.width, Screen.height, targetPixelW, targetPixelH, !modeMismatch,
+                    BoundsEpsilonPixels, _setResolutionCalls, MaxSetResolutionCalls, false);
+            if (setResolutionSuppressedBySelfInduced) _selfInducedSetResolutionSkips++;
             if (calledSetResolution)
             {
                 _setResolutionCalls++;
@@ -768,8 +824,11 @@ namespace StickMate.Platform.Windows
             //         newX = rcWin.left + bw;  newY = rcWin.top + (dy - bh);
             //     로 **창을 옛 클라이언트 원점으로 옮긴다**(프레임 두께만큼 오른쪽/아래로).
             //     150% 배율 실기에서 그 값이 정확히 (+11,+45)였다.
-            // 우리가 그 전에 완료를 확정해 버리면 이 이동을 되돌릴 주체가 **아무도 없다**
-            // (_fullScreenBoundsApplied를 내리는 유일한 경로가 디스플레이 구성 변경이다).
+            // 우리가 그 전에 완료를 확정해 버리면 이 이동을 되돌릴 주체가 **아무도 없다**.
+            // ★ 2026-09-30 정정 — 이 자리에 원래 "(_fullScreenBoundsApplied를 내리는 유일한 경로가
+            //   디스플레이 구성 변경이다)"라고 적혀 있었으나 **그 뒤에 경로가 둘 더 생겨 거짓이 됐다**.
+            //   지금은 셋이다: TickDisplayTopology · ReArmFullScreenFitForNewTarget ·
+            //   ReArmFullScreenFitAfterNativeWindowMove. 전수 목록은 TickFullScreenBounds의 클래스 문서.
             //
             // 판정은 플랫폼 중립 한 곳(OverlayBoundsFitPolicy.ShouldLatchFitApplied)에 있고
             // macOS판 Enforcer도 같은 함수를 같은 자리에서 쓴다 — 그쪽 SetResolution도 똑같이 지연 적용이다.
@@ -784,6 +843,14 @@ namespace StickMate.Platform.Windows
             if (ok)
             {
                 _fullScreenBoundsApplied = true;
+                // ★ 2026-09-30 — 확정된 목표 사각형을 기억한다. 재적용 루프가 SetBorderless를 부른 직후
+                //   「창이 실제로 옮겨졌는가」를 <b>부작용 없이</b> 물어볼 기준값이 이것 하나다
+                //   (TryGetTargetMonitorRect를 그 자리에서 다시 부르면 모니터 재선택·로그·다른 재무장까지
+                //   딸려 온다). 확정 틱은 정의상 쓰기가 0인 틱이므로 이 값은 「우리가 정착시킨 자리」다.
+                _latchedTargetRect = monitor;
+                _hasLatchedTargetRect = true;
+                // ★ 자기유발 에피소드가 끝났다 — 다음 에피소드는 완전한 권한(해상도 포함)으로 시작한다.
+                _selfInducedRefit = false;
 
                 // 같은 프레임에 좌표계를 갱신한다(폴링 대기 없음). 창이 방금 다른 크기/원점이 됐는데
                 // ScreenCoordinateConverter가 최대 0.5초 동안 옛 원점/배율을 들고 있으면, 그 사이의
@@ -806,6 +873,11 @@ namespace StickMate.Platform.Windows
                 //   갈라지면 로그가 거짓말을 하고, 이 저장소는 그 사고를 이미 여러 번 겪었다.
                 $"이번 틱 실행(SetResolution={calledSetResolution}, " +
                 $"리사이즈={needsResize}, 이동={needsMove}, 불감대={BoundsEpsilonPixels:F0}px), " +
+                // ★ 2026-09-30 핑퐁 차단 계기 — 이 셋이 세션 내내 0이면 그 환경에서는 핑퐁이
+                //   안 돌았다는 뜻이다(가설이 성립한 환경/안 한 환경을 로그 한 줄로 가른다).
+                $"핑퐁차단(자기유발={_selfInducedRefit}, 에피소드 누적 {_selfInducedRefitEpisodes}회, " +
+                $"이번 틱 SetResolution 참음={setResolutionSuppressedBySelfInduced}, " +
+                $"참음 누적 {_selfInducedSetResolutionSkips}회, 재무장 생략 누적 {_selfInducedReArmSkips}회), " +
                 $"기하 일치={within}(쓰기 있던 틱={wroteThisTick} -> 확정={ok}), " +
                 $"clientSize={_controller.clientSize}, " +
                 $"Screen=({Screen.width}x{Screen.height}) [목표 {targetPixelW}x{targetPixelH} 픽셀, dpi배율={dpi:F3}], " +
@@ -930,6 +1002,12 @@ namespace StickMate.Platform.Windows
             _fullScreenApplyAttempts = 0;
             _fullScreenTimer = ReapplyIntervalSeconds; // 다음 TickFullScreenBounds에서 곧바로 1회.
             _topologyBaselineSynced = false;
+            // ★ 2026-09-30 — 이것은 <b>외부 사건</b>이다. 해상도가 진짜로 바뀌었을 수 있으므로
+            //   자기유발 억제(핑퐁 차단 ①)를 물려주지 않는다 — 물려주면 모니터를 바꿨는데
+            //   Screen.SetResolution을 참는 새 버그가 된다.
+            _selfInducedRefit = false;
+            // 해상도·모니터 구성이 바뀌었으므로 기억해 둔 목표 사각형도 낡았다(위 ReArmFullScreenFitForNewTarget과 같은 이유).
+            _hasLatchedTargetRect = false;
 
             Debug.Log("[WindowsOverlayStateEnforcer] 디스플레이 구성 변경이 안정됐습니다 — " +
                 $"{_topologyWatcher.Baseline}. 전체화면 재적합 루프를 다시 무장합니다" +
@@ -1351,6 +1429,12 @@ namespace StickMate.Platform.Windows
             _fullScreenApplyAttempts = 0;
             _fullScreenTimer = ReapplyIntervalSeconds;   // 다음 틱에서 곧바로 1회.
             _topologyBaselineSynced = false;
+            // ★ 2026-09-30 — 사용자가 표시 모니터를 바꾼 것은 <b>외부 사건</b>이다. 새 모니터의
+            //   해상도가 다를 수 있으므로 자기유발 억제(핑퐁 차단 ①)를 물려주지 않는다.
+            _selfInducedRefit = false;
+            // 목표가 바뀌었으므로 기억해 둔 목표 사각형은 <b>낡았다</b>. 버리면 핑퐁 차단 ②는
+            // 「목표를 모른다 -> 무장한다」(= 이 라운드 전과 같은 동작)로 안전하게 물러난다.
+            _hasLatchedTargetRect = false;
         }
 
 
@@ -1383,16 +1467,52 @@ namespace StickMate.Platform.Windows
         ///         (프로세스 수명 상한), 진동 래치.</item>
         /// </list>
         /// <para>진동으로 이미 확정된 뒤에는 무장 자체를 하지 않는다(같은 이유).</para>
+        ///
+        /// <para>★★★ <b>2026-09-30 — 무장에 조건이 하나 더 붙었다(핑퐁 차단 ②).</b> 이 함수의 목적은
+        /// 「네이티브가 옮긴 창을 되돌리는 것」 하나인데, <c>SetBorderless</c>가 <b>이미 보더리스인 창</b>에
+        /// 다시 불린 회차에는 옮기는 일이 일어나지 않는다(폭 ±1 흔들기뿐이고 그 1px은 불감대 안이다).
+        /// 그런 회차까지 무장하면 재적합 에피소드가 한 번 더 돌고, 그 에피소드가 창 스타일을 되살려
+        /// 다음 재적용을 다시 비싼 경로로 떨어뜨린다 — 사용자 <c>Player.log</c>로 확정된 핑퐁이다.
+        /// 그래서 <b>OS에서 되읽은 창 사각형이 확정 목표 안이면 무장하지 않는다</b>
+        /// (판정은 플랫폼 중립 <see cref="OverlayBoundsFitPolicy.ShouldReArmFitAfterSelfInducedStyleWrite"/>).
+        /// 목표를 모르면(아직 확정 전) 예전과 <b>글자 그대로 같이</b> 무장한다.</para>
+        ///
+        /// <para>실제로 무장하면 <see cref="_selfInducedRefit"/>를 세운다 — 그 에피소드는
+        /// 「해상도 불일치」만으로 <c>Screen.SetResolution</c>을 부르지 않는다(핑퐁 차단 ①).</para>
         /// </summary>
         private void ReArmFullScreenFitAfterNativeWindowMove()
         {
             if (_boundsOscillation.IsOscillating) return;
             if (!_fullScreenBoundsApplied && _fullScreenApplyAttempts < MaxFullScreenApplyAttempts) return;
 
+            // OS 실측(네이티브 GetWindowRect 경유 — UniWinCore.GetWindowPosition/GetWindowSize는
+            // 캐시가 아니라 LibUniWinC.GetPosition/GetSize를 그대로 부른다. isTopmost에서 캐시 게터를
+            // 진실로 착각해 데인 전례가 있어 확인했다).
+            Vector2 posNow = _controller.windowPosition;
+            Vector2 sizeNow = _controller.windowSize;
+            bool withinLatchedTarget = _hasLatchedTargetRect
+                && OverlayBoundsFitPolicy.Within(posNow.x, posNow.y,
+                    _latchedTargetRect.x, _latchedTargetRect.y, BoundsEpsilonPixels)
+                && OverlayBoundsFitPolicy.Within(sizeNow.x, sizeNow.y,
+                    _latchedTargetRect.width, _latchedTargetRect.height, BoundsEpsilonPixels);
+            if (!OverlayBoundsFitPolicy.ShouldReArmFitAfterSelfInducedStyleWrite(
+                    _hasLatchedTargetRect, withinLatchedTarget))
+            {
+                _selfInducedReArmSkips++;
+                Debug.Log("[WindowsOverlayStateEnforcer] 보더리스 재적용 뒤 재무장을 생략했습니다 — " +
+                    $"창이 이미 확정 목표 안입니다(창 pos={posNow} size={sizeNow}, 목표={_latchedTargetRect}, " +
+                    $"불감대 {BoundsEpsilonPixels:F0}px). 무장하면 재적합이 Screen.SetResolution으로 창 스타일을 " +
+                    $"되살려 다음 재적용이 다시 SetBorderless(표면 재생성 4회)를 타는 핑퐁이 됩니다 " +
+                    $"(생략 누적 {_selfInducedReArmSkips}회).");
+                return;
+            }
+
             _fullScreenBoundsApplied = false;
             _fullScreenApplyAttempts = 0;
             _fullScreenTimer = ReapplyIntervalSeconds;   // 다음 TickFullScreenBounds에서 곧바로 1회.
             _topologyBaselineSynced = false;             // 우리가 만든 변화를 새 사건으로 오인하지 않도록.
+            _selfInducedRefit = true;                    // 이 에피소드는 해상도 사유로 SetResolution을 부르지 않는다.
+            _selfInducedRefitEpisodes++;
         }
 
         /// <summary>

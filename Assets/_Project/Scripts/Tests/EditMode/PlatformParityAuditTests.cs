@@ -1632,28 +1632,116 @@ namespace StickMate.Tests.EditMode
         /// <para>이번 라운드의 출발 가설은 "이 정책을 호출하는 곳은 Windows 하나뿐"이었는데
         /// <b>사실이 아니었다</b>(macOS Enforcer도 이미 호출하고 있었다). 그 오판이 조사를 엉뚱한
         /// 방향으로 보냈으므로, 앞으로는 사람이 눈으로 확인하지 않고 이 테스트가 대답하게 한다.</para>
+        ///
+        /// <para>★ <b>2026-09-30 — <c>SetResolution</c> 축만 「입구 둘 중 하나」로 넓혔다.</b> Windows가
+        /// 핑퐁 차단 래퍼(<c>ShouldSetResolutionForFitAttempt</c>)를 거치게 바뀌었기 때문이다. 넓히면서
+        /// 이 항목이 헐거워지지 않도록 <b>대가를 같은 테스트에서 받는다</b>: 래퍼가 기반 규칙
+        /// (= 불감대·수명 상한이 들어 있는 곳)을 <b>실제로 위임하는지</b>를 정책 파일에서 확인하고,
+        /// 「둘 중 하나」 목록이 비지 않았다는 양성 대조도 함께 센다. 그 두 장치가 없으면 이 완화가
+        /// 곧 「상한을 안 보는 Enforcer도 통과」로 썩는다.</para>
         /// </summary>
         [Test]
         public void 창기하_적합_규칙을_양_플랫폼_Enforcer가_모두_부른다()
         {
-            foreach (string call in new[]
+            // 축마다 «허용되는 입구»의 목록. 하나라도 있으면 그 축은 통과다.
+            //   · SetResolution 축은 입구가 둘이다(기반 규칙 · 핑퐁 차단 래퍼).
+            //   · 나머지 축은 여전히 입구가 하나다.
+            string[][] axes =
             {
-                "OverlayBoundsFitPolicy.ShouldSetResolution(",
+                new[]
+                {
+                    "OverlayBoundsFitPolicy.ShouldSetResolution(",
+                    // ★ 2026-09-30 — Windows는 이 래퍼를 부른다(핑퐁 차단 ①). 래퍼의 첫 관문이
+                    //   ShouldSetResolution이라는 사실은 아래에서 정책 파일을 읽어 따로 잠근다.
+                    "OverlayBoundsFitPolicy.ShouldSetResolutionForFitAttempt(",
+                },
                 // ★ 크기 재대입은 **수명 상한이 붙은** 변형을 써야 한다(2026-09-01). 상한 없는
                 //   ShouldResize를 직접 부르면 Screen.SetResolution만 조여진 비대칭으로 되돌아간다.
-                "OverlayBoundsFitPolicy.ShouldResizeWithinBudget(",
-                "OverlayBoundsFitPolicy.ShouldMove(",
-            })
+                new[] { "OverlayBoundsFitPolicy.ShouldResizeWithinBudget(" },
+                new[] { "OverlayBoundsFitPolicy.ShouldMove(" },
+            };
+
+            foreach (string[] entries in axes)
             {
+                // 양성 대조 — 빈 목록이면 아래 foreach가 아무것도 재지 않고 초록이 된다
+                // (docs/TEAM.md 거짓 통과 5번: "면제 목록이 비어 foreach가 아무것도 안 재고 초록").
+                Assert.IsNotEmpty(entries, "허용 입구 목록이 비어 있습니다 — 이 축은 측정되지 않습니다.");
+
                 foreach (string path in new[] { MacEnforcerPath, WinEnforcerPath })
                 {
-                    StringAssert.Contains(call, StripLineComments(ReadSource(path)),
-                        $"{Path.GetFileName(path)}가 \"{call}\"을 부르지 않습니다 — 그 플랫폼에는 " +
-                        "불감대/호출 상한이 존재하지 않는 것과 같고, 창 기하 재적용이 무제한이 됩니다. " +
+                    string src = StripLineComments(ReadSource(path));
+                    bool anyEntry = false;
+                    foreach (string call in entries)
+                    {
+                        if (src.Contains(call, StringComparison.Ordinal)) anyEntry = true;
+                    }
+
+                    Assert.IsTrue(anyEntry,
+                        $"{Path.GetFileName(path)}가 \"{string.Join("\" · \"", entries)}\" 중 어느 것도 " +
+                        "부르지 않습니다 — 그 플랫폼에는 불감대/호출 상한이 존재하지 않는 것과 같고, " +
+                        "창 기하 재적용이 무제한이 됩니다. " +
                         "(재생성 호출은 두 종류다: Screen.SetResolution과 창 크기 재대입. " +
                         "둘 다 OS 표면 재생성이므로 둘 다 수명 상한 안에 있어야 한다.)");
                 }
             }
+
+            // ★ 완화의 대가 — 래퍼가 기반 규칙을 실제로 위임하는가.
+            //   위임이 끊기면 「래퍼만 부르는 Enforcer」가 불감대·수명 상한을 통째로 우회한 채 통과한다.
+            string policy = StripLineComments(
+                ReadSource(Path.Combine(PlatformRoot, "OverlayBoundsFitPolicy.cs")));
+            int wrapperAt = policy.IndexOf("public static bool ShouldSetResolutionForFitAttempt(",
+                StringComparison.Ordinal);
+            Assert.Greater(wrapperAt, 0,
+                "핑퐁 차단 래퍼 ShouldSetResolutionForFitAttempt의 선언을 찾지 못했습니다 — " +
+                "이름이 바뀌었다면 위 허용 입구 목록도 함께 갱신해야 합니다(그러지 않으면 이 축이 " +
+                "「입구 하나뿐」으로 조용히 되돌아갑니다).");
+            int wrapperEnd = policy.IndexOf("\n        }", wrapperAt, StringComparison.Ordinal);
+            Assert.Greater(wrapperEnd, wrapperAt, "래퍼 본문의 끝을 찾지 못했습니다.");
+            StringAssert.Contains("ShouldSetResolution(", policy.Substring(wrapperAt, wrapperEnd - wrapperAt),
+                "핑퐁 차단 래퍼가 기반 규칙 ShouldSetResolution을 위임하지 않습니다 — 그러면 래퍼를 " +
+                "부르는 플랫폼에서 불감대와 SetResolution 수명 상한이 통째로 사라집니다. " +
+                "래퍼는 상한 «아래»에서 한 번 더 좁히는 것만 허용됩니다.");
+        }
+
+        /// <summary>
+        /// ★ <b>2026-09-30 — 핑퐁 차단은 Windows 전용 분기다</b>(의도된 비대칭, 신설 분기 등재).
+        ///
+        /// <para>기구가 Windows 고유이기 때문이다: Windows <c>libuniwinc.cpp</c>의 <c>SetBorderless</c>는
+        /// <c>SetWindowPos</c>로 창을 옮기고, 그 이동을 되돌리려는 재무장이
+        /// <c>Screen.SetResolution</c> → 창 스타일 부활 → 다시 비싼 재적용으로 이어지는 고리를 닫는다
+        /// (사용자 Windows <c>Player.log</c>로 확정, 2026-09-30). macOS Swift <c>_setWindowBorderless</c>는
+        /// <c>styleMask</c> 한 줄이라 <b>이동이 없고</b>, 그래서 그쪽에는
+        /// <c>ReArmFullScreenFitAfterNativeWindowMove</c> 자체가 없다 — 억제할 사건이 없는 곳에
+        /// 억제를 넣으면 <b>얻는 것 없이</b> 해상도 복구만 한 겹 약해진다.</para>
+        ///
+        /// <para>기구·차단 규칙의 실행 검증은 <c>OverlayStyleRefitPingPongTests</c>가 한다. 여기서는
+        /// <b>비대칭이 의도된 것임을 패리티 러너에 등재</b>하는 몫만 진다(CLAUDE.md: 새 플랫폼 분기는
+        /// 이 감사에 항목을 추가한다).</para>
+        /// </summary>
+        [Test]
+        public void 해당없음_핑퐁_차단은_Windows에만_필요하다()
+        {
+            string win = StripLineComments(ReadSource(WinEnforcerPath));
+            StringAssert.Contains("OverlayBoundsFitPolicy.ShouldSetResolutionForFitAttempt(", win,
+                "Windows에 핑퐁 차단이 없으면 SetBorderless가 옮긴 창을 되돌리는 재적합이 " +
+                "Screen.SetResolution으로 창 스타일을 되살려, 다음 재적용이 다시 SetBorderless " +
+                "(표면 재생성 4회)를 타는 고리가 돕니다 — 사용자 신고 「8초정도 흰화면깜박이 한 5번정도함」.");
+            StringAssert.Contains("OverlayBoundsFitPolicy.ShouldReArmFitAfterSelfInducedStyleWrite(", win,
+                "이미 목표 안인 회차까지 재무장하면 재적합 에피소드가 한 번 더 돌고 같은 고리가 열립니다.");
+
+            string mac = StripLineComments(ReadSource(MacEnforcerPath));
+            StringAssert.DoesNotContain("ShouldSetResolutionForFitAttempt", mac,
+                "macOS에 자기유발 억제를 넣지 마세요 — Swift의 _setWindowBorderless는 frame을 " +
+                "건드리지 않아 되돌릴 이동이 없고, 그쪽에는 ReArmFullScreenFitAfterNativeWindowMove " +
+                "자체가 없습니다. 억제만 남으면 해상도 복구가 한 겹 약해집니다.");
+            StringAssert.DoesNotContain("ShouldReArmFitAfterSelfInducedStyleWrite", mac,
+                "macOS에는 네이티브 이동 후 재무장 경로가 없으므로 그 재무장을 좁히는 규칙도 " +
+                "부를 자리가 없습니다.");
+
+            // 양성 대조 — 위 두 「0건」이 파일을 잘못 읽어 나온 값이 아님을 같은 테스트에서 못박는다.
+            StringAssert.Contains("OverlayBoundsFitPolicy.ShouldSetResolution(", mac,
+                "양성 대조 실패: macOS Enforcer에서 기반 규칙 호출조차 찾지 못했습니다 — 위의 " +
+                "「0건」은 부재가 아니라 죽은 프로브입니다.");
         }
 
         /// <summary>

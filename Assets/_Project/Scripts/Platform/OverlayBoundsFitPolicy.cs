@@ -238,6 +238,121 @@ namespace StickMate.Platform
         }
 
         /// <summary>
+        /// ★★★ 2026-09-30 — <b>재적합 ↔ 보더리스 재적용 «핑퐁»을 끊는 규칙 ①</b>
+        /// (이번 회차의 <c>Screen.SetResolution</c>을 부를 것인가).
+        ///
+        /// ============================================================================
+        /// 확정된 기구 — 추측이 아니라 사용자가 보낸 Windows <c>Player.log</c>로 관측됐다
+        /// ============================================================================
+        /// 실기 로그에서 두 루프가 서로를 먹이고 있었다(오른쪽이 관측된 증거):
+        /// <list type="number">
+        ///   <item><c>전체화면 확장 시도</c>가 <c>Screen.SetResolution(..., Windowed)</c>을 부른다.</item>
+        ///   <item>그 직후 <c>재적용</c> 틱의 OS 실측이 <c>GWL_STYLE</c>을
+        ///         <b><c>0x94000000</c>(보더리스=True) → <c>0x14CA0000</c>(보더리스=False)</b>로 읽는다 —
+        ///         <c>Screen.SetResolution</c>이 창 스타일을 되살린다. 이 인과는
+        ///         <c>Platform/Windows/WindowsOverlayStateEnforcer</c>의 확정 블록 주석이
+        ///         <b>이미 예견해 두었고</b>(「그 전환이 창 스타일을 되살리고 … 네이티브 SetBorderless가
+        ///         다시 실행된다」) 이제 로그로 실증됐다.</item>
+        ///   <item>재적용이 <see cref="TransparencyReapply.ReassignStyleMismatch"/>로 <b>비싼 경로</b>
+        ///         (<c>SetBorderless</c> → <c>SetWindowPos</c> 4회 = 표면 재생성 4회)를 탄다.</item>
+        ///   <item>그 <c>SetBorderless</c>가 창을 옛 클라이언트 원점으로 <b>옮긴다</b>
+        ///         (실기 150% 배율에서 +(11,45)). 되돌릴 주체가 필요하므로 재적합이 <b>다시 무장</b>된다.</item>
+        ///   <item>재무장된 재적합이 <c>Screen.SetResolution</c>을 또 부른다 → <b>1번으로 되돌아간다.</b></item>
+        /// </list>
+        /// 실측 로그에서 이 고리가 <b>재적용 5회 중 3회</b>(2·4·5번째)를 비싼 경로로 떨어뜨렸고,
+        /// 기동 이후 <c>SetClickThrough(True)</c> 시점에 <b>한 번 더</b> 같은 형태가 났다.
+        /// 사용자 실측은 「8초정도 흰화면깜박이 한 5번정도함」이다.
+        ///
+        /// ============================================================================
+        /// 무엇을 끊는가 — <b>5번 화살표 하나만</b> 끊는다
+        /// ============================================================================
+        /// 고리의 다섯 화살표 중 우리가 소유한 것은 5번(재무장된 재적합이 다시
+        /// <c>Screen.SetResolution</c>을 부르는 것)이다. 그리고 그 회차에서 <c>SetResolution</c>을 부를
+        /// 이유는 <b>없다</b>: 디스플레이 구성은 바뀌지 않았고, 모니터도 그대로이고, 바뀐 것은
+        /// <b>우리가 방금 부른 <c>SetBorderless</c>가 옮긴 창 사각형</b> 하나다. 창 사각형은
+        /// <b>위치 대입</b>(<c>SetWindowPos</c> + <c>SWP_NOSIZE</c>, 클라이언트 영역 불변 = 표면 재생성 0회)
+        /// 으로 되돌리면 되고, 그것은 창 스타일을 건드리지 않으므로 2번 화살표가 다시 서지 않는다.
+        ///
+        /// <para><b>양보하지 않는 것 — 창 모드 강제.</b> <paramref name="fullScreenModeIsWindowed"/>가
+        /// 거짓이면 이 함수는 <b>반드시 참</b>을 돌려준다. 전체화면 계열 모드로 남으면 Unity가 포커스를
+        /// 잃을 때 창을 z-order 뒤로 보내고, 그것이 2026-09-01 신고(엑셀 클릭 시 캐릭터가 창 뒤로 넘어감)
+        /// 그 자체다. 즉 <b>억제되는 사유는 「해상도 불일치」 하나뿐</b>이다.</para>
+        ///
+        /// <para><b>상한을 늘리거나 없애지 않는다.</b> 판정의 첫 관문은 여전히
+        /// <see cref="ShouldSetResolution"/>이고 <see cref="DefaultMaxSetResolutionCalls"/>가 그대로
+        /// 최종 권한을 가진다 — 이 함수는 상한 <b>아래</b>에서 한 번 더 좁히기만 한다.</para>
+        ///
+        /// <para><b>정직한 한계 — 코드를 읽고 확인한 범위까지만 적는다</b>: 자기유발 회차에서 해상도
+        /// 불일치를 고치지 않으므로, <c>SetBorderless</c>가 <b>클라이언트 영역 크기까지</b> 바꿔 놓은
+        /// 환경에서는 <c>Screen.width/height</c>가 모니터와 어긋난 채 남을 수 있다. 그 상태가 <b>지속되면
+        /// 좌표 배율이 그 비만큼 치우친다</b> — <c>ScreenCoordinateConverter.AutoDpiScale</c>은
+        /// <c>창 사각형 폭 ÷ Screen.width</c>이므로, 모니터 3840에서 프레임 두께만큼(약 22px) 어긋나면
+        /// 배율이 1.000 대신 약 1.006이 된다. 즉 「창 폭 == 모니터 폭」을 <b>가정하지는</b> 않지만
+        /// <b>영향을 받지 않는 것도 아니다</b>(원래 이 자리에 「영향 없음」처럼 읽히는 문장을 적었고,
+        /// 변환기 코드를 직접 읽어 정정했다).</para>
+        ///
+        /// <para>그럼에도 이쪽을 택한 근거는 <b>지속되지 않는다</b>는 것이다: 그 어긋남을 만든 프레임
+        /// 스타일은 같은 고리의 <c>SetBorderless</c>가 바로 없애고, 그러면 클라이언트 영역이 창 사각형과
+        /// 다시 같아진다. 반대쪽 거래는 <b>표면 재생성 4회 × 수백 ms를 매 회차</b> 지불하는 것이다.
+        /// 그리고 다음 디스플레이 구성 변경 한 번이 자기유발 표시를 지우고 완전한 권한을 되돌려 준다.
+        /// ★ 이 배율 치우침이 실기에서 실제로 관측된 적은 <b>없다</b> — 기구상 가능하다는 것까지가
+        /// 확인된 범위다.</para>
+        /// </summary>
+        /// <param name="selfInducedRefit">
+        /// 이번 재적합 에피소드가 <b>우리 자신의 <c>SetBorderless</c>가 옮긴 창</b>을 되돌리려고 무장된
+        /// 것인가. 외부 사건(디스플레이 구성 변경 · 표시 모니터 변경 · 기동 첫 적합)으로 무장된
+        /// 에피소드는 거짓이어야 한다 — 그때는 해상도가 진짜로 바뀌었을 수 있다.
+        /// </param>
+        public static bool ShouldSetResolutionForFitAttempt(
+            int screenW, int screenH, int targetW, int targetH,
+            bool fullScreenModeIsWindowed, float epsilonPixels, int callsSoFar, int maxCalls,
+            bool selfInducedRefit)
+        {
+            // 상한·불감대·모드 판정은 한 곳(ShouldSetResolution)에만 있다. 여기서 다시 쓰지 않는다.
+            if (!ShouldSetResolution(screenW, screenH, targetW, targetH,
+                    fullScreenModeIsWindowed, epsilonPixels, callsSoFar, maxCalls))
+            {
+                return false;
+            }
+
+            // 창 모드 강등 복구는 절대 양보하지 않는다(2026-09-01 "창 뒤로 넘어감").
+            if (!fullScreenModeIsWindowed) return true;
+
+            // 남은 사유는 「해상도 불일치」 하나뿐이고, 자기유발 재적합에서는 그것이 핑퐁의 되먹임 고리다.
+            return !selfInducedRefit;
+        }
+
+        /// <summary>
+        /// ★★★ 2026-09-30 — <b>핑퐁을 끊는 규칙 ②</b>(우리 <c>SetBorderless</c> 뒤에 재적합을 무장할 것인가).
+        ///
+        /// <para>재무장의 <b>유일한 목적</b>은 네이티브 <c>SetBorderless</c>가 창을 옮긴 것을 되돌리는
+        /// 것이다(위 규칙 ① 4번 화살표). 그러므로 <b>창이 이미 목표 사각형 안에 있으면 되돌릴 것이
+        /// 없고, 무장은 순수한 낭비 이상이다</b> — 무장 한 번이 재적합 에피소드 한 번이고, 그 에피소드가
+        /// 다시 스타일을 되살리면 비싼 경로 4회 재생성이 또 붙는다.</para>
+        ///
+        /// <para>이 규칙이 실제로 잡는 회차: <c>SetBorderless</c>가 <b>이미 보더리스인 창</b>에 다시
+        /// 불리는 경우다(스타일 실측 실패 · 유리 전용 경로 사용 불가 — <see cref="TransparencyReapply"/>의
+        /// <c>ReassignStyleUnreadable</c>·<c>ReassignGlassPathUnavailable</c>). 그때 네이티브가 하는 일은
+        /// 폭 ±1 흔들기뿐이고 그 1px은 <see cref="DefaultEpsilonPixels"/> 안이므로 창은 목표 안에 남는다.
+        /// 지금까지는 그 회차도 무조건 재무장해 전체 재적합 에피소드를 한 번 더 돌렸다.</para>
+        ///
+        /// <para><b>진짜 이동은 여전히 무장한다</b>(프레임→보더리스 전환의 +(11,45)는 불감대 2px를 한참
+        /// 넘는다). 그리고 <b>목표를 모르면 무장한다</b>(<paramref name="latchedTargetKnown"/> 거짓) —
+        /// 「모를 때는 고치는 쪽」이 이 파일과 <c>OverlayStateReapplyPolicy</c>가 일관되게 택해 온 태도이고,
+        /// 그 경우 동작은 이 규칙이 생기기 전과 <b>글자 그대로 같다</b>.</para>
+        /// </summary>
+        /// <param name="latchedTargetKnown">적합이 한 번이라도 확정돼 목표 사각형을 알고 있는가.</param>
+        /// <param name="geometryWithinLatchedTarget">
+        /// <c>SetBorderless</c> 직후 <b>OS에서 되읽은</b> 창 위치·크기가 그 목표 사각형의 불감대 안인가.
+        /// </param>
+        public static bool ShouldReArmFitAfterSelfInducedStyleWrite(
+            bool latchedTargetKnown, bool geometryWithinLatchedTarget)
+        {
+            if (!latchedTargetKnown) return true;
+            return !geometryWithinLatchedTarget;
+        }
+
+        /// <summary>
         /// ★ 2026-09-30 — <b>수명 상한에 닿았다는 사실을 사용자에게 한 번 알릴 것인가.</b>
         ///
         /// ============================================================================
