@@ -18,8 +18,16 @@ namespace StickMate.Tests.EditMode
     /// 상수가 바뀌면 기대값이 따라 바뀌고, 에셋이 안 따라오면 여기서 빨개진다.</para>
     ///
     /// <para><b>E-1 방향 점검</b>(§14-10-0): 안대 천은 <see cref="AccessoryShapeBuilder.PatchCenterRatio"/> = +0.62 R(보는 사람 오른쪽),
-    /// 드러난 눈은 −0.62 R(왼쪽) — 외알안경과 같은 「오른쪽 착용」이다. 끈 두 끝은 머리 원 위 111°/249°(뒤쪽 위·아래)에서
-    /// 천의 <b>뒤 두 꼭짓점</b>으로 들어오므로 얼굴(앞쪽 +x)을 가로지르지 않는다 — 아래 검사가 끝점 x 가 천보다 뒤임을 함께 본다.</para>
+    /// 드러난 눈은 −0.62 R(왼쪽) — 외알안경과 같은 「오른쪽 착용」이다.</para>
+    ///
+    /// <para>★★ <b>2026-09-30 §16-8 — 끈이 「좌상 → 우하 한 가닥」이 됐다.</b> 사용자 신고
+    /// *"안대 고정하는 끈 방향이 이상하고"* / *"왼쪽상단 오른쪽 하단이 맞지 않아?"*.
+    /// 옛 끈은 두 끝이 <b>둘 다 뒤쪽</b>(111°·249°)이고 가운데 변이 천의 뒤변이라 끝에서 끝까지의 방향이
+    /// <b>−90.0°(수직)</b>였고 카드에서 화살표 「&lt;」로 읽혔다. 지금은 위 끝 111° → 천의 <b>뒤위</b> 꼭짓점 →
+    /// 천의 <b>앞아래</b> 꼭짓점 → 꼬리 <see cref="AccessoryShapeBuilder.PatchStrapTailDegrees"/>이고
+    /// 끝에서 끝까지 <b>−48.7°</b>다. ⇒ 옛 판정 「끈 끝이 앞쪽(+x) 반원에 있으면 얼굴을 가로지른다」는
+    /// <b>꼬리에 적용되지 않는다</b>. 꼬리가 넘어가면 안 되는 선은 「천보다 뒤」가 아니라
+    /// <b>드러난 눈</b>이고, 그것은 아래에서 눈의 오른쪽 끝보다 앞(+x)인지로 잰다.</para>
     /// </summary>
     public sealed class EyePatchFallbackStrapTests
     {
@@ -75,14 +83,15 @@ namespace StickMate.Tests.EditMode
             Assert.Greater(scale, 0f);
 
             Vector2 wantTop = Project(head, scale, AccessoryShapeBuilder.PatchStrapDegrees, AccessoryShapeBuilder.PatchStrapReachRatio);
-            Vector2 wantBottom = Project(head, scale, 360f - AccessoryShapeBuilder.PatchStrapDegrees, AccessoryShapeBuilder.PatchStrapReachRatio);
+            // ★ 꼬리는 위 끝의 거울이 아니다(§16-8) — 각도·반경을 각자의 상수에서 유도한다.
+            Vector2 wantTail = Project(head, scale, AccessoryShapeBuilder.PatchStrapTailDegrees, AccessoryShapeBuilder.PatchStrapTailReachRatio);
             var gotTop = new Vector2(strap.Values[0], strap.Values[1]);
-            var gotBottom = new Vector2(strap.Values[6], strap.Values[7]);
+            var gotTail = new Vector2(strap.Values[6], strap.Values[7]);
 
             Assert.AreEqual(wantTop.x, gotTop.x, Tolerance, $"끈 위 끝 x: 에셋 {gotTop} / 상수 {AccessoryShapeBuilder.PatchStrapDegrees}°에서 유도 {wantTop}");
             Assert.AreEqual(wantTop.y, gotTop.y, Tolerance, $"끈 위 끝 y: 에셋 {gotTop} / 유도 {wantTop}");
-            Assert.AreEqual(wantBottom.x, gotBottom.x, Tolerance, $"끈 아래 끝 x: 에셋 {gotBottom} / 유도 {wantBottom}");
-            Assert.AreEqual(wantBottom.y, gotBottom.y, Tolerance, $"끈 아래 끝 y: 에셋 {gotBottom} / 유도 {wantBottom}");
+            Assert.AreEqual(wantTail.x, gotTail.x, Tolerance, $"끈 꼬리 x: 에셋 {gotTail} / 상수 {AccessoryShapeBuilder.PatchStrapTailDegrees}°에서 유도 {wantTail}");
+            Assert.AreEqual(wantTail.y, gotTail.y, Tolerance, $"끈 꼬리 y: 에셋 {gotTail} / 유도 {wantTail}");
         }
 
         /// <summary>★ 양성 대조 — 옛 각도(122°)의 끝점은 같은 프레임에서 지금 에셋과 <b>확실히</b> 다르다(비교기가 살아 있다).</summary>
@@ -99,13 +108,20 @@ namespace StickMate.Tests.EditMode
                 "옛 각도에서 유도한 끝점이 지금 에셋과 거의 같습니다 — 에셋이 아직 122° 이거나 비교기가 무딥니다.");
         }
 
-        /// <summary>E-1 — 한쪽 가리개는 오른쪽(+x) 눈에, 끈은 얼굴을 가로지르지 않는다(끝점이 천보다 뒤·머리 원 위).</summary>
+        /// <summary>
+        /// E-1 + §16-8 — 한쪽 가리개는 오른쪽(+x) 눈에, 끈은 <b>왼쪽 위에서 오른쪽 아래로</b> 한 가닥이고
+        /// 드러난 눈 위를 지나가지 않는다.
+        /// <para>★ 이 검사가 <b>사용자 신고 3건의 회귀 잠금</b>이다 — *"안대 고정하는 끈 방향이 이상하고"* /
+        /// *"왼쪽상단 오른쪽 하단이 맞지 않아?"*. 방향을 눈이 아니라 <b>각도</b>로 잰다.</para>
+        /// </summary>
         [Test]
-        public void 안대는_오른쪽_착용이고_끈은_얼굴을_가로지르지_않는다()
+        public void 안대_끈은_왼쪽_위에서_오른쪽_아래로_간다()
         {
             Assert.Greater(AccessoryShapeBuilder.PatchCenterRatio, 0f, "안대 천이 보는 사람 오른쪽(+x)에 있지 않습니다(E-1).");
-            Assert.Greater(AccessoryShapeBuilder.PatchStrapDegrees, 90f, "끈 끝이 앞쪽(+x) 반원에 있습니다 — 얼굴을 가로지릅니다.");
+            Assert.Greater(AccessoryShapeBuilder.PatchStrapDegrees, 90f, "끈 위 끝이 왼쪽 위(2사분면)가 아닙니다.");
             Assert.Less(AccessoryShapeBuilder.PatchStrapDegrees, 180f);
+            Assert.Greater(AccessoryShapeBuilder.PatchStrapTailDegrees, 270f, "끈 꼬리가 오른쪽 아래(4사분면)가 아닙니다.");
+            Assert.Less(AccessoryShapeBuilder.PatchStrapTailDegrees, 360f);
 
             var shapes = new System.Collections.Generic.List<AccessoryShapeBuilder.Shape>();
             AccessoryShapeBuilder.Rig rig = AccessoryCardIcon.CardRig();
@@ -114,14 +130,42 @@ namespace StickMate.Tests.EditMode
             AccessoryShapeBuilder.Shape strap = AccessorySilhouetteMetrics.Find(shapes, "PatchStrap");
             AccessoryShapeBuilder.Shape drawnEye = AccessorySilhouetteMetrics.Find(shapes, "PatchEye");
 
-            float coverMinX = float.MaxValue;
-            foreach (Vector3 p in cover.Points) coverMinX = Mathf.Min(coverMinX, p.x);
-            Assert.Less(strap.Points[0].x, coverMinX, "끈 위 끝이 천보다 앞에 있습니다 — 얼굴을 가로지릅니다.");
-            Assert.Less(strap.Points[strap.Points.Length - 1].x, coverMinX, "끈 아래 끝이 천보다 앞에 있습니다 — 얼굴을 가로지릅니다.");
+            Vector3 top = strap.Points[0];
+            Vector3 tail = strap.Points[strap.Points.Length - 1];
 
-            float eyeCx = 0f;
-            foreach (Vector3 p in drawnEye.Points) eyeCx += p.x;
+            // ⑴ 위 끝은 천보다 뒤(−x)에 있고, ⑵ 꼬리는 천의 앞아래 꼭짓점 쪽으로 나간다.
+            float coverMinX = float.MaxValue, coverMaxX = float.MinValue;
+            foreach (Vector3 p in cover.Points)
+            {
+                coverMinX = Mathf.Min(coverMinX, p.x);
+                coverMaxX = Mathf.Max(coverMaxX, p.x);
+            }
+            Assert.Less(top.x, coverMinX, "끈 위 끝이 천보다 앞에 있습니다 — 얼굴을 가로지릅니다.");
+            Assert.Greater(tail.x, coverMinX, "끈 꼬리가 천보다 뒤로 갔습니다 — 좌상→우하 한 가닥이 아닙니다.");
+
+            // ⑶ 끝에서 끝까지의 방향이 「오른쪽 아래」다. 옛 도형은 두 끝이 둘 다 뒤쪽이라 dx = 0(수직)이었다.
+            float dx = tail.x - top.x, dy = tail.y - top.y;
+            Assert.Greater(dx, 0f, "끈이 오른쪽으로 내려가지 않습니다 — 옛 「<」 화살표 모양이 돌아왔습니다.");
+            Assert.Less(dy, 0f, "끈이 아래로 내려가지 않습니다.");
+            float degrees = Mathf.Atan2(dy, dx) * Mathf.Rad2Deg;
+            Assert.That(degrees, Is.InRange(-75f, -20f),
+                $"끈 전체 방향이 {degrees:F1}°입니다 — 좌상→우하 대각선(−75°~−20°) 밖입니다.");
+
+            // ⑷ 양성 대조 — 옛 아래 끝(360−111°, 1.02R)을 넣으면 위 판정이 실제로 빨개진다(비교기가 살아 있다).
+            float oldRad = (360f - AccessoryShapeBuilder.PatchStrapDegrees) * Mathf.Deg2Rad;
+            float oldTailX = rig.HeadRadius * Mathf.Cos(oldRad) * AccessoryShapeBuilder.PatchStrapReachRatio * rig.Facing;
+            Assert.Less(oldTailX - top.x, 1e-4f,
+                "옛 아래 끝이 지금도 오른쪽으로 갑니다 — 이 대조가 뜻이 없습니다(둘 다 뒤쪽이어야 옛 결함입니다).");
+
+            // ⑸ 꼬리는 드러난 눈을 침범하지 않는다(눈은 반대쪽 −x에 있다).
+            float eyeCx = 0f, eyeMaxX = float.MinValue;
+            foreach (Vector3 p in drawnEye.Points)
+            {
+                eyeCx += p.x;
+                eyeMaxX = Mathf.Max(eyeMaxX, p.x);
+            }
             Assert.Less(eyeCx / drawnEye.Points.Length, 0f, "드러난 눈이 보는 사람 왼쪽(−x)에 있지 않습니다(E-1).");
+            Assert.Greater(tail.x, eyeMaxX, "끈 꼬리가 드러난 눈 위로 넘어왔습니다.");
         }
     }
 }

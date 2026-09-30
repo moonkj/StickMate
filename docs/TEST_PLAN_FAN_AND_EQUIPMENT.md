@@ -372,7 +372,7 @@ check: 4/6 생성물이 모델과 같다
 
 | ID | P | 모드 | 입력 → 기대 | 양성 대조 | 음성 대조 | 참조할 상수/API |
 |---|---|---|---|---|---|---|
-| **E18** | P1 | EditMode | (기존) 폴백 끈 끝점 = `HeadPolar(PatchStrapDegrees, PatchStrapReachRatio)` 와 거울(360−θ) | (기존) 옛 각도 122°로 유도하면 지금 에셋과 다르다 | (기존) 옛 각도 ≠ 현행 상수임을 먼저 확인 | `EyePatchFallbackStrapTests` **확장**(새 파일 금지) |
+| **E18** | P1 | EditMode | ~~(기존) 폴백 끈 끝점 = `HeadPolar(PatchStrapDegrees, PatchStrapReachRatio)` 와 거울(360−θ)~~ ★ **2026-09-30 §16-8 갱신 — 꼬리는 더 이상 거울이 아니다.** 위 끝 = `HeadPolar(PatchStrapDegrees, PatchStrapReachRatio)` / 꼬리 = `HeadPolar(PatchStrapTailDegrees, PatchStrapTailReachRatio)`, 그리고 **끝→끝 방향이 −75°~−20°(좌상→우하)** | (기존) 옛 각도 122°로 유도하면 지금 에셋과 다르다 · **추가**: 옛 아래 끝(360−111°)을 넣으면 방향 판정이 실제로 빨개진다 | (기존) 옛 각도 ≠ 현행 상수임을 먼저 확인 | `EyePatchFallbackStrapTests` **확장**(새 파일 금지) — 구현됨: `안대_끈은_왼쪽_위에서_오른쪽_아래로_간다` |
 | **E19** | P1 | EditMode | ★ **천**의 반폭/반높이가 `PatchHalfWidthRatio`(0.38)/`PatchHalfHeightRatio`(0.44)에서 유도한 값과 같다 | 두 값이 **서로 다르다**(정사각이면 외알안경 알과 안 갈린다 — 이 상수가 생긴 이유) | 옛 값 0.72×0.72로 유도하면 다르다 | 위 두 상수 + `PatchCenterRatio` |
 | **E20** | P1 | EditMode | ★ `PatchCenterRatio == DrawnEyeOffsetRatio` 라는 **유도 관계 자체**를 단언 | 두 상수가 실제로 같은 값 | 갈라지면 빨개진다(사본이 아니라 참조임을 강제) | `AccessoryShapeBuilder.DrawnEyeOffsetRatio`(0.62) |
 | **E21′** | **P0** | EditMode | ★★ **R20 외알안경 이동**: 알·눈 위치가 **±0.46 → ±0.56 R**(dx ±0.10). 「가리개 채움 왼끝 − 눈 오른끝」이 **≥ 1.5 획**(출하 획 예산) | ±0.46으로 계산하면 **0.94 W로 미달**(이 이동이 실제로 필요했음을 증명) | ±0.56에서 **1.52 W**(0.02 격자 최소 통과값), 알 오른끝 +1.070 < 출하 원반 현 1.128 | R20 §14-10-9. ★ **좌표 변경은 이 dx 하나뿐** — 다른 아이템이 같이 움직였으면 그건 사고 |

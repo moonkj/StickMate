@@ -732,13 +732,26 @@ namespace StickMate.Interaction
         internal const float BrowlineLensInnerRatio = 0.24f;       // 두 렌즈 사이 0.48R = 1.40획
         internal const float BrowlineLensOuterRatio = 1.06f;
 
-        // ---- 안대(안경 5번) — 외알안경과 같은 "앞쪽 눈에만" 규약. 채운 천 + 뒤로 넘어가는 끈 +
+        // ---- 안대(안경 5번) — 외알안경과 같은 "앞쪽 눈에만" 규약. 채운 천 + 천 뒤를 지나가는 끈 +
         //      <b>드러난 뒤쪽 눈</b>. ★ 2026-09-01(3차): 끈이 <b>주색</b>으로 바뀌었다 —
         //      보조색 정원 1개를 눈이 가져가기 때문이고, 의미상으로도 옳다(천과 끈은 같은 가죽이다).
-        //      끈 끝점은 <b>polar(111°/249°, 1.02)</b>다. ★ 2026-09-05(R13-P2): R13-P1이 드러난 눈을
-        //      아몬드에서 원반(r 0.33R)으로 바꾸면서 눈이 위아래로 <b>0.09R씩 자랐고</b>, 그만큼
-        //      끈-눈 간격이 <b>0.26획</b> 줄어 규칙 4(1.5획)를 1.31획으로 밑돌았다. 자란 것은
-        //      이웃이므로 P1을 되감지 않고 끈 각도만 122° -> 111°로 내렸다(docs/EQUIPMENT_SHAPE_SPEC.md §16).
+        //      ★ 2026-09-05(R13-P2): R13-P1이 드러난 눈을 아몬드에서 원반(r 0.33R)으로 바꾸면서 눈이
+        //      위아래로 <b>0.09R씩 자랐고</b>, 그만큼 끈-눈 간격이 <b>0.26획</b> 줄어 규칙 4(1.5획)를
+        //      1.31획으로 밑돌았다. 자란 것은 이웃이므로 P1을 되감지 않고 위쪽 끈 각도만 122° -> 111°로
+        //      내렸다(docs/EQUIPMENT_SHAPE_SPEC.md §16).
+        //
+        // ★★ 2026-09-30 사용자 신고 3건 — <b>끈 방향</b>(§16-8).
+        //      신고 원문: "안대 디자인이 이상함" / "안대 고정하는 끈 방향이 이상하고" /
+        //      "왼쪽상단 오른쪽 하단이 맞지 않아?" / "디자인도 너무 거칠다".
+        //      옛 끈은 끝점이 <b>polar(111°, 1.02)와 polar(249°, 1.02)</b>, 즉 <b>둘 다 뒤쪽(−x)</b>이었고
+        //      가운데 변이 천의 뒤변이라, 카드에서 「천을 향해 좌상·좌하에서 모이는 &lt;」 = <b>화살표</b>로
+        //      읽혔다(docs/verify/card-r17/unity/prod_232_EYES_5_equip_eyes_patch.png). 안대 도상은
+        //      <b>대각선 한 가닥이 천 뒤를 지나간다</b>이므로, 끈을 <b>좌상 → 우하</b> 한 가닥으로 돌린다:
+        //        위 끝 polar(111°, 1.02) → 천의 <b>뒤위</b> 꼭짓점 → 천의 <b>앞아래</b> 꼭짓점
+        //        → 꼬리 끝 polar(326°, 1.40)
+        //      가운데 변(뒤위→앞아래)은 <b>천의 대각선</b>이라 채움 안에 온전히 들어가고, 끈과 천이
+        //      <b>같은 주색</b>이므로 화면에서 보이지 않는다 — 그것이 "끈이 천 <b>뒤로</b> 지나간다"를
+        //      이 엔진에서 그리는 방법이다(레이어를 내리면 SortHair(6)와 동률이 된다 — 쓸 수 없다).
         internal const float PatchOffsetRatio = EyeOffsetXInHeadRadii;
         /// <summary>천의 반폭/반높이. ★ 알(외알안경)보다 <b>커야</b> 두 아이템이 갈린다 —
         /// 스펙 초안은 둘 다 0.72 × 0.72R이라 원이 사각형에 <b>내접</b>했고, 채움 격자 구분도가
@@ -751,15 +764,33 @@ namespace StickMate.Interaction
         /// 같은 눈을 가린다는 사실이 좌표에서 보여야 한다(규칙 4-a).</summary>
         internal const float PatchCenterRatio = DrawnEyeOffsetRatio;
 
-        /// <summary>끈 끝점의 반경(머리 원 밖 0.02R). 두 끝의 각도는 대칭이라 하나로 둔다.</summary>
+        /// <summary>끈 <b>위쪽</b> 끝점의 반경(머리 원 밖 0.02R) — 머리 링 잉크 띠(0.83~1.17R) 안이라
+        /// 끝이 링 밑으로 숨는다. 꼬리 쪽은 <see cref="PatchStrapTailReachRatio"/>가 따로 잡는다.</summary>
         internal const float PatchStrapReachRatio = 1.02f;
 
-        /// <summary>끈 끝점의 각도(도). 위쪽 끝이 이 각도, 아래쪽 끝이 360 − 이 각도다.
-        /// <para>★ 111°는 <b>파레토 최적</b>이다 — 끈-눈 간격에는 천장 1.6032획(끈의 가운데 변이
-        /// 천의 뒤변이라 각도와 무관하게 남는 구속)이 있고, 그 천장에 닿는 최대 각도가 111.06°다.
-        /// 더 내리면 <b>이득 없이</b> 실루엣만 잃고, 104°에서는 카드 지배축이 세로로 넘어가
-        /// 아이템이 카드에서 1.5% 작아진다. 올리면 규칙 4(1.5획)를 다시 깬다.</para></summary>
+        /// <summary>끈 <b>위쪽</b> 끝점의 각도(도, 머리 중심 극좌표. 보는 사람 왼쪽 위).
+        /// <para>★ 111°는 <b>파레토 최적</b>이다 — 끈-눈 간격에는 천장 1.6032획이 있고, 그 천장에
+        /// 닿는 최대 각도가 111.06°다. 더 내리면 <b>이득 없이</b> 실루엣만 잃고, 올리면 규칙 4(1.5획)를
+        /// 다시 깬다(§16-2·16-3). ★ 2026-09-30(§16-8): 옛 천장의 근거였던 「가운데 변 = 천의 뒤변」은
+        /// 더는 끈의 변이 아니다. 지금 끈이 눈에 가장 가까워지는 자리는 <b>이 위쪽 변</b>이고 그 값은
+        /// <b>1.6478획</b>이라 문턱 1.5획을 여전히 넘는다 — 각도를 바꿀 이유가 없어 111°를 유지한다.</para></summary>
         internal const float PatchStrapDegrees = 111f;
+
+        /// <summary>끈 <b>꼬리</b>(보는 사람 오른쪽 아래) 끝점의 각도(도)와 반경 — §16-8.
+        /// <para><b>유도</b>: 꼬리는 끈의 척추(천의 뒤위 꼭짓점 → 앞아래 꼭짓점, 기울기 −51.49°)를
+        /// 그대로 이은 자리다. polar(326°, 1.40) = (+1.16065, −0.78287) R 이고, 천의 앞아래 꼭짓점
+        /// (+0.94, −0.44) R 에서 <b>0.4078R = 1.186획</b> 떨어져 있으며 척추와의 꺾임은 <b>5.75°</b>다.
+        /// <para><b>왜 1.02R로 못 끝내는가</b>(산술): 천의 앞아래 꼭짓점이 이미 r = 1.038 R 이라
+        /// 거기서 우하로 1.0획(0.3439R) 이상 뻗으면 <b>어떤 방향으로도</b> r ≥ 1.31 R 이 된다. 위쪽 끝처럼
+        /// 머리 링 잉크(≤1.17R) 밑에 숨길 수 없으므로, 꼬리는 <b>보이는 끝</b>으로 설계한다 —
+        /// 외알안경 체인이 (+0.76, −1.16) R = r 1.387 로 이미 같은 일을 한다.</para>
+        /// <para><b>상한</b>: 카드 슬롯 고정 배율이 EYES 29.4933 u/R 이고 상자가 64 u 이므로 봉투 지배축
+        /// <b>2.1700 R</b>을 넘으면 넘침 축소가 걸려 아이템이 작아진다. 지금 지배축은 <b>2.1107 R</b>
+        /// (= 눈 왼끝 −0.95 → 꼬리 +1.16065)이라 <b>1.75 u</b> 남는다. 이 두 값을 올릴 때 먼저 풀어라.</para></summary>
+        internal const float PatchStrapTailDegrees = 326f;
+
+        /// <summary><see cref="PatchStrapTailDegrees"/>와 한 쌍 — 혼자 바꾸면 척추에서 꺾인다.</summary>
+        internal const float PatchStrapTailReachRatio = 1.40f;
 
 
 
@@ -2285,7 +2316,7 @@ namespace StickMate.Interaction
         //     2 고글       판 1 · 1.92R×0.92R · 카테고리 최대     + 머리를 도는 스트랩
         //     3 외알안경   판 1 · 앞쪽 눈에만(지름 0.80R)         + 늘어진 체인
         //     4 뿔테안경   판 2 · 렌즈 판 + 그보다 넓은 눈썹테     (눈썹테가 보조색)
-        //     5 안대       판 1 · 앞쪽 눈에만(방패꼴)             + 머리를 도는 끈
+        //     5 안대       판 1 · 앞쪽 눈에만(방패꼴)             + 천 뒤를 지나는 좌상→우하 끈
 
         private static void AppendEyes(List<Shape> sink, int item, in Rig rig)
         {
@@ -2409,17 +2440,19 @@ namespace StickMate.Interaction
                     float phh = r * PatchHalfHeightRatio;
                     float pcx = r * PatchCenterRatio;
                     Vector3 coverTopBack = rig.F(pcx - phw, cy + phh);
-                    Vector3 coverBottomBack = rig.F(pcx - phw + r * 0.04f, cy - phh * 0.82f);
+                    Vector3 coverBottomFront = rig.F(pcx + phw - r * 0.06f, cy - phh);
                     sink.Add(new Shape("PatchCover", new[]
                     {
                         coverTopBack,
                         rig.F(pcx + phw, cy + phh * 0.82f),
-                        rig.F(pcx + phw - r * 0.06f, cy - phh),
-                        coverBottomBack,
+                        coverBottomFront,
+                        rig.F(pcx - phw + r * 0.04f, cy - phh * 0.82f),
                     }, true, SortEyes, filled: true));
 
-                    // 끈은 천의 <b>뒤쪽 두 꼭짓점에서 출발</b>해 머리를 돌아 넘어간다. 끝점은 머리
-                    // 원 밖(1.02R)이라 허공에서 끊기지 않고, 드러난 눈과는 1.5획 넘게 떨어진다.
+                    // 끈 = <b>좌상 → 우하 한 가닥</b>(2026-09-30 사용자 신고, §16-8). 천의 <b>뒤위</b>
+                    // 꼭짓점으로 들어가 <b>앞아래</b> 꼭짓점으로 나오고, 그 가운데 변은 천의 대각선이라
+                    // 채움 안에 온전히 들어간다 — 끈과 천이 같은 주색이므로 화면에 보이지 않는다.
+                    // 위 끝은 머리 링 잉크 밑으로 숨고(1.02R), 꼬리는 보이는 끝이다(1.40R, 외알 체인과 같은 계열).
                     //
                     // ★ 배수 ×1.15 — 이것은 <b>머리를 도는 띠</b>라 인계본 「띠·기둥」군(1.10~1.40)이다
                     //   (배낭 손잡이 1.10 · 고글 머리끈 1.40 사이, 슬림한 끈). §14-14-5.
@@ -2428,8 +2461,8 @@ namespace StickMate.Interaction
                     sink.Add(new Shape("PatchStrap", new[]
                     {
                         HeadPolar(rig, PatchStrapDegrees, PatchStrapReachRatio),
-                        coverTopBack, coverBottomBack,
-                        HeadPolar(rig, 360f - PatchStrapDegrees, PatchStrapReachRatio),
+                        coverTopBack, coverBottomFront,
+                        HeadPolar(rig, PatchStrapTailDegrees, PatchStrapTailReachRatio),
                     }, false, SortEyes, strokeMult: 1.15f));
 
                     sink.Add(new Shape("PatchEye", DrawnEye(rig, -1f), true, SortEyes,
